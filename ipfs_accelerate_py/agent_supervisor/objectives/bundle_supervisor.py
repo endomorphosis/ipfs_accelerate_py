@@ -4032,6 +4032,7 @@ def write_bundle_lane_manifest(
     bundle_index_path: Path,
     lanes: Sequence[BundleLaneSpec],
     started: Sequence[dict[str, Any]] = (),
+    owner_status_path: Path | str | None = None,
 ) -> dict[str, Any]:
     detailed_lanes = [_lane_database_payload(lane, repo_root=repo_root) for lane in lanes]
     payload = {
@@ -4048,6 +4049,8 @@ def write_bundle_lane_manifest(
         "lanes": [_lane_manifest_payload(lane, repo_root=repo_root) for lane in lanes],
         "started": list(started),
     }
+    if owner_status_path:
+        payload["owner_status_path"] = str(owner_status_path)
     database_payload = {**payload, "lanes": detailed_lanes}
     return write_scheduler_manifest_artifact(
         manifest_path,
@@ -4110,6 +4113,9 @@ class DynamicBundleScheduler:
         self.worktree_root = Path(worktree_root or self.state_root / "worktrees").resolve()
         self.log_dir = Path(log_dir or self.state_root / "logs").resolve()
         self.manifest_path = Path(manifest_path or self.state_root / "bundle_lanes.json").resolve()
+        self.owner_status_path = str(
+            dict(lane_options).get("owner_status_path") or ""
+        ).strip()
         self.metrics_path = Path(metrics_path or self.state_root / "scheduler_metrics.json").resolve()
         self.decision_metrics_path = self.metrics_path.with_name("scheduler_decision_metrics.json")
         self.coordination_path = Path(
@@ -5617,6 +5623,8 @@ class DynamicBundleScheduler:
             "reaped_task_cids": list(reaped),
             "reconciled_task_cids": list(reconciled),
         }
+        if self.owner_status_path:
+            payload["owner_status_path"] = self.owner_status_path
         if self._last_discovery_error:
             payload["discovery_error"] = self._last_discovery_error
         database_payload = {

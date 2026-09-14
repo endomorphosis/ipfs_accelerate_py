@@ -1248,12 +1248,15 @@ def invoke_llm_resolver(
     *,
     command_template: str | None = None,
     timeout_seconds: float | None = None,
+    environment: Mapping[str, str] | None = None,
     route_receipt_path: Path | None = None,
     route_task_id: str = "",
     route_attempt: int | None = None,
     route_stage: str = "",
 ) -> dict[str, Any]:
-    """Invoke an external LLM resolver command with the prompt on stdin."""
+    """Invoke an external LLM resolver with no inherited state authority."""
+
+    from ..runtime.multi_supervisor_runner import provider_subprocess_environment
 
     command_template = (
         command_template or os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
@@ -1291,18 +1294,15 @@ def invoke_llm_resolver(
             ]
         )
     timeout = resolver_timeout_seconds(timeout_seconds)
-    # Import locally because the reusable runner imports merge checkout-lock
-    # helpers; a module-level dependency would make import order authoritative.
-    from ..runtime.multi_supervisor_runner import provider_subprocess_environment
-
+    provider_environment = provider_subprocess_environment(environment)
     process = subprocess.Popen(
         command,
         cwd=payload.get("repo_root") or None,
+        env=provider_environment,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env=provider_subprocess_environment(os.environ),
         start_new_session=True,
     )
     try:

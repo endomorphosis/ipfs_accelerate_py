@@ -5,26 +5,21 @@ task sharding, worktree isolation, and merge serialization.  This module is a
 small configuration boundary that turns a reviewed ``scheduler_config@1``
 JSON document into arguments for that existing runtime.
 
-Loading performs only structural provider validation.  A configured external
-isolation boundary deliberately probes its pinned local runtime, image, and
-provider credential while rendering the trusted launch plan; it never installs
-optional tools or falls back to an unsealed provider command.
+No provider is imported or probed while loading, preflighting, or rendering a
+launch plan.  In particular, dry runs do not read credentials or install
+optional tools.
 """
 
 from __future__ import annotations
 
 import argparse
-import contextlib
-import copy
 import fcntl
-import grp
 import hashlib
 import json
 import math
 import os
-import pwd
 import re
-import secrets
+import select
 import shutil
 import signal
 import stat
@@ -32,16 +27,23 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
+from ...agent_implementation_route import (
+    AgentSupervisorNativeDependencyLaunch,
+    AgentSupervisorNativeDependencyPin,
+    parse_agent_supervisor_native_dependency_pin,
+    seal_agent_supervisor_native_dependency,
+    verify_agent_supervisor_native_dependency_sealed_fd,
+)
 from ...llm_router import (
     AgentImplementationControlPlanePin,
     AgentImplementationRoutePlan,
     AgentImplementationSealedControlPlane,
-    eaaef_agent_route_authorization_path,
     load_agent_implementation_route_authorization,
     materialize_agent_implementation_control_plane_capsule,
     project_agent_implementation_route_capacity,
@@ -50,20 +52,6 @@ from ...llm_router import (
     verify_agent_implementation_sealed_control_plane,
 )
 from ..contracts.execution import InvocationBudget
-from ..control.lifecycle_orchestrator import (
-    CONFIGURATION_ROOT_ENV,
-    FENCING_EPOCH_ENV,
-    PROFILE_ID_ENV,
-    REPOSITORY_ROOT_ENV,
-    RUN_ID_ENV,
-    RUN_ROOT_ENV,
-    STATE_ROOT_ENV,
-    TARGET_ID_ENV,
-    LifecycleProfile,
-    LinuxProcessAdapter,
-    ProcessIdentity,
-    ProcessIdentityMismatch,
-)
 from ..control.plan_execution_store import (
     ConfiguredBoardExecutionSlices,
     ExecutionPlanError,
@@ -100,88 +88,70 @@ from ..planning.plan_revision_contracts import (
     PopulationKind,
 )
 from ..proof.formal_verification_contracts import content_identity
-from ..task_sources.board_control_plane import (
-    board_merge_lock_name,
-    resolve_board_implementation_branch,
-)
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..task_sources.task_identity import canonical_task_identity
 from ..task_sources.task_source import recompute_readiness_statuses
 from ..task_sources.todo_vector_index import parse_todo_blocks, split_csv
 from ..validation.validation_commands import split_validation_commands
+from .configured_board_extension_projection import (
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
+    ConfiguredBoardExtensionPin,
+    ConfiguredBoardExtensionSetPin,
+    build_configured_board_extension_set_pin,
+    inspect_configured_board_extension_sources,
+    parse_configured_board_extension_pin,
+    parse_configured_board_extension_set_pin,
+    project_configured_board_extension_set_home,
+    verify_configured_board_extension_set_home,
+)
+from .configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+    ConfiguredBoardLiveCapsuleError,
+    build_configured_board_live_capsule_admission,
+    parse_configured_board_live_capsule_policy,
+    verify_configured_board_accepted_source,
+    verify_configured_board_live_capsule,
+)
 from .multi_supervisor_runner import (
-    AUTHORITY_MODE_EMBEDDED,
     AUTHORITY_MODE_LEGACY_MARKDOWN,
     AUTHORITY_MODE_QUACK,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
-    FAILOVER_FAIL_CLOSED,
-    STATE_LIVE_SCHEMA_REVISION_ENV,
-    STATE_STORE_LIVE_GENERATION_ENV,
-    TASK_SOURCE_DUCKDB,
-    TRUSTED_DUCKDB_HOME_ENV,
-    TRUSTED_PYTHON_USER_BASE_ENV,
-    TRUSTED_RUNTIME_CACHE_ENV_NAMES,
+    DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION,
+    STATE_QUACK_MUTATION_BINDING_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
     PlanBoundSupervisorChild,
-    _parse_status_timestamp,
-    _plan_bound_positive_child_environment,
-    _plan_bound_profile_environment,
     _read_stable_regular_bytes,
     _read_stable_regular_json,
+    _reserve_owned_pid_projection,
     _StableArtifactReadError,
-    _trusted_duckdb_runtime_environment,
     accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
     build_sealed_control_plane_module_command,
     parse_accepted_control_plane_pin,
     parse_database_program_config,
+    parse_native_dependency_launch_json,
     utc_run_stamp,
-    verify_lgcvf_configured_board_live_context,
 )
 from .provider_capacity_monitor import (
     DEFAULT_RESPONSE_TOKENS_PER_REQUEST,
     ProviderCapacityMonitor,
     ProviderCapacityMonitorConfig,
-    count_active_cli_processes,
 )
-from .resource_scheduler import (
-    GENERIC_BUNDLE_RESOURCE_CLASSES,
-    LEGACY_RESOURCE_CLASSES,
-    PROOF_RESOURCE_CLASSES,
-    sample_host_resources,
-)
-import types
-import zipfile
-from dataclasses import dataclass, replace
-from ...llm_router import AgentImplementationControlPlanePin, AgentImplementationRoutePlan, AgentImplementationSealedControlPlane, load_agent_implementation_route_authorization, materialize_agent_implementation_control_plane_capsule, project_agent_implementation_route_capacity, resolve_agent_implementation_route, seal_agent_implementation_control_plane_capsule, verify_agent_implementation_sealed_control_plane
-from .multi_supervisor_runner import AUTHORITY_MODE_LEGACY_MARKDOWN, DATABASE_PROGRAM_CONFIG_INTERFACE, STATE_LIVE_SCHEMA_REVISION_ENV, STATE_GRANT_BROKER_SECRET_FD_ENV, STATE_GRANT_BROKER_SOCKET_ENV, STATE_OWNER_SOCKET_ENV, STATE_SCHEMA_REVISION_ENV, STATE_STORE_GENERATION_ENV, STATE_STORE_LIVE_GENERATION_ENV, TRUSTED_DUCKDB_HOME_ENV, TRUSTED_PYTHON_USER_BASE_ENV, TRUSTED_RUNTIME_CACHE_ENV_NAMES, DatabaseProgramConfig, DatabaseProgramConfigError, ImplementationSupervisorTrackConfig, PlanBoundSupervisorChild, _parse_status_timestamp, _plan_bound_positive_child_environment, _plan_bound_profile_environment, _read_stable_regular_bytes, _read_stable_regular_json, _StableArtifactReadError, _trusted_duckdb_profile_environment, _trusted_duckdb_runtime_environment, admit_retained_control_plane_interpreter, admit_trusted_system_dependency_directories, admit_sealed_native_dependency_environment, accepted_control_plane_pin_json, build_configured_multi_supervisor_cli_runner, build_sealed_control_plane_module_command, parse_accepted_control_plane_pin, parse_database_program_config, retain_control_plane_interpreter, sealed_native_dependency_environment, utc_run_stamp
-from ...llm_router import parse_agent_supervisor_native_dependency_launch, verify_agent_supervisor_native_dependency_sealed_fd
-from .provider_capacity_monitor import DEFAULT_RESPONSE_TOKENS_PER_REQUEST, ProviderCapacityMonitor, ProviderCapacityMonitorConfig
 from .resource_scheduler import sample_host_resources
 
 SCHEDULER_SCHEMA_PATTERN = re.compile(
     r"^ipfs_accelerate_py\.agent_supervisor\."
-    r"[a-z0-9_.-]+\.scheduler_config@(?:1|2)$"
-)
-ASEH_SEALED_OWNER_MARKER = "--run-aseh-sealed-owner"
-ASEH_SEALED_OWNER_OPERATOR = (
-    "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+    r"[a-z0-9_.-]+\.scheduler_config@1$"
 )
 IMPLEMENTATION_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
 )
 CONFIGURED_SCHEDULER_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/configured_board_scheduler.py"
-)
-LGCVF_LIVE_CONFIG_PATH = Path(
-    "config/"
-    "agent_supervisor_logic_governed_compositional_verification_fabric_"
-    "quack_candidate_scheduler.json"
-)
-LGCVF_LIVE_BOARD_NAMESPACE = (
-    "logic-governed-compositional-verification-fabric-v1"
 )
 PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 FALLBACK_PROVIDER_ENV = (
@@ -194,12 +164,6 @@ GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
-)
-LLM_MERGE_RESOLVER_COMMAND_ENV = (
-    "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
-)
-EXTERNAL_PROVIDER_ISOLATION_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
 GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 ROUTE_BOARD_NAMESPACE_ENV = (
@@ -225,165 +189,14 @@ ROUTE_SOURCE_TREE_ENV = (
 )
 ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
-COORDINATOR_LAUNCH_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-launch@1"
-)
-COORDINATOR_LAUNCH_RECEIPT_FIELDS = frozenset(
-    {
-        "schema",
-        "repository_commit",
-        "repository_tree",
-        "configuration_revision",
-        "board_namespace",
-        "launch_session_id",
-        "coordinator_pid",
-        "coordinator_pid_path",
-        "coordinator_log",
-        "coordinator_status_path",
-        "coordinator_status_cid",
-        "coordinator_profile",
-        "coordinator_process_identity",
-        "coordinator_argv_cid",
-        "receipt_cid",
-    }
-)
-COORDINATOR_STATUS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-status@1"
-)
-# The configured watchdog startup grace is the admitted availability bound for
-# launch readiness.  These constants are only a bounded fallback and ceiling;
-# a procedure-specific value is derived from the closed board below.
-COORDINATOR_READY_TIMEOUT_SECONDS = 60.0
-COORDINATOR_READY_TIMEOUT_MAX_SECONDS = 600.0
-COORDINATOR_STATUS_MAX_AGE_MS = 30_000
-COORDINATOR_STATUS_FIELDS = frozenset(
-    {
-        "schema",
-        "repository_commit",
-        "repository_tree",
-        "configuration_revision",
-        "board_namespace",
-        "launch_session_id",
-        "lifecycle_profile_id",
-        "coordinator_pid",
-        "coordinator_process_start_ticks",
-        "coordinator_argv_cid",
-        "started_at_ms",
-        "attested_at_ms",
-        "phase",
-        "lane_status_paths",
-        "receipt_cid",
-    }
-)
-FRESH_RECOVERY_POLICY_SCHEMA = (
+COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS = 30.0
+_COORDINATOR_CREDENTIAL_ACK_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-policy@3"
+    "detached-coordinator-credential-ready@1"
 )
-FRESH_RECOVERY_VERIFICATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "lgcvf-fresh-generation-recovery-verification@4"
-)
-FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA = (
-    "lgcvf-recovery-validation-projection-omission@1"
-)
-FRESH_RECOVERY_PROJECTION_EVIDENCE_SCHEMA = (
-    "lgcvf-recovery-validation-projection-evidence@1"
-)
-FRESH_RECOVERY_TARGET_GENERATION = "lgcvf-run-v17"
-FRESH_RECOVERY_TARGET_RELATIVE_ROOT = (
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
-    "run-v17"
-)
-FRESH_RECOVERY_CONFIG_PATH = (
-    "config/agent_supervisor_logic_governed_compositional_verification_fabric_"
-    "scheduler.json"
-)
-FRESH_RECOVERY_MATERIALIZER_PATH = (
-    "scripts/materialize_logic_governed_compositional_verification_fabric_"
-    "control_plane.py"
-)
-FRESH_RECOVERY_VERIFICATION_FIELDS = frozenset(
-    {
-        "schema",
-        "valid",
-        "verification_mode",
-        "source_generation",
-        "target_generation",
-        "manifest_cid",
-        "receipt_cid",
-        "source_evidence_cid",
-        "duckdb_runtime_cid",
-        "qualification_runtime_cid",
-        "qualification_runtime_evidence",
-        "qualification_runtime_evidence_cid",
-        "materializer_zero_wx_policy",
-        "materializer_zero_wx_policy_cid",
-        "materializer_zero_wx_qualification_lifecycle",
-        "materializer_zero_wx_qualification_lifecycle_cid",
-        "materializer_zero_wx_prepublication_lifecycle",
-        "materializer_zero_wx_prepublication_lifecycle_cid",
-        "materializer_zero_wx_verification_lifecycle",
-        "materializer_zero_wx_verification_lifecycle_cid",
-        "historical_postpublish_zero_wx_evidence",
-        "completed_task_ids",
-        "todo_task_ids",
-        "blocked_task_ids",
-        "completed_count",
-        "todo_count",
-        "blocked_count",
-        "ready_task_ids",
-        "validation_qualification_cid",
-        "validation_projection_omission_commitment",
-        "validation_projection_omission_root",
-        "validation_projection_evidence_commitment",
-        "validation_projection_evidence_root",
-        "model_provider_route",
-        "network_isolation_enforced",
-        "candidate_authored_validation",
-        "validation_completion_authoritative",
-        "task_implementation_complete",
-        "test_qualification_complete",
-        "objective_complete",
-        "release_qualified",
-        "production_authorized",
-        "source_database_statuses_read",
-        "synthetic_source_disposition",
-        "operational_verification_root",
-        "stores_unchanged",
-        "verification_root",
-    }
-)
-FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES = 1_048_576
-FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES = 1_048_576
-FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES = 100_000
-FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES = 16 * 1024 * 1024
-FRESH_RECOVERY_IMPORT_FILE_MAX_BYTES = 64 * 1024 * 1024
-FRESH_RECOVERY_IMPORT_CONTENT_MAX_BYTES = 512 * 1024 * 1024
-FRESH_RECOVERY_INTERPRETER_MAX_BYTES = 64 * 1024 * 1024
-FRESH_RECOVERY_MATERIALIZER_MAX_BYTES = 4 * 1024 * 1024
-FRESH_RECOVERY_MATERIALIZER_BOOTSTRAP = (
-    "import os,sys\n"
-    "_path=sys.argv[1]\n"
-    "_fd=int(sys.argv[2])\n"
-    "_pycache=sys.argv[3]\n"
-    "_cache_stat=os.lstat(_pycache)\n"
-    "if not os.path.isdir(_pycache): "
-    "raise RuntimeError('pycache root is not a directory')\n"
-    "if _cache_stat.st_uid!=os.geteuid() or (_cache_stat.st_mode&0o777)!=0o700: "
-    "raise RuntimeError('pycache root authority differs')\n"
-    "if os.listdir(_pycache): raise RuntimeError('pycache root is not empty')\n"
-    "sys.pycache_prefix=_pycache\n"
-    "_source=bytearray()\n"
-    "while True:\n"
-    " _chunk=os.read(_fd,1048576)\n"
-    " if not _chunk: break\n"
-    " _source.extend(_chunk)\n"
-    " if len(_source)>4194304: raise RuntimeError('materializer exceeds bound')\n"
-    "sys.argv=[_path,*sys.argv[4:]]\n"
-    "_scope={'__name__':'__main__','__file__':_path,'__package__':None,"
-    "'__cached__':None,'__spec__':None}\n"
-    "exec(compile(bytes(_source),_path,'exec',dont_inherit=True),_scope,_scope)\n"
-)
+_COORDINATOR_CREDENTIAL_START_BYTE = b"\x01"
+_COORDINATOR_CREDENTIAL_ABORT_BYTE = b"\x00"
+_COORDINATOR_CREDENTIAL_ACK_MAX_BYTES = 16_384
 SCHEDULER_PROVIDER_ENV_NAMES = (
     PROVIDER_ENV,
     FALLBACK_PROVIDER_ENV,
@@ -391,7 +204,6 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
-    EXTERNAL_PROVIDER_ISOLATION_ENV,
     GROK_BIN_ENV,
     ROUTE_BOARD_NAMESPACE_ENV,
     ROUTE_AUTHORIZATION_PATH_ENV,
@@ -401,7 +213,6 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     ROUTE_SOURCE_HEAD_ENV,
     ROUTE_SOURCE_TREE_ENV,
     ROUTE_ID_ENV,
-    LLM_MERGE_RESOLVER_COMMAND_ENV,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
@@ -412,17 +223,12 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_reasoning_effort",
 )
 ORDERED_PRIMARY_EXECUTABLE_FIELD = "primary_executable"
-MERGE_RESOLVER_MODE_FIELD = "merge_resolver_mode"
-MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL = (
-    "disabled_until_sealed_residual"
-)
 ORDERED_PROVIDER_DETECTION_FIELDS = (
     *ORDERED_PROVIDER_FIELDS,
     ORDERED_PRIMARY_EXECUTABLE_FIELD,
 )
 ORDERED_PRIMARY_PROVIDER_ID = "grok_cli"
 ORDERED_PRIMARY_MODEL_ID = "grok-4.6"
-LEGACY_V3_PRIMARY_MODEL_ID = "grok-4.5"
 ORDERED_FALLBACK_PROVIDER_ID = "codex"
 ORDERED_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 ORDERED_FALLBACK_TRIGGER = "primary_quota_exhausted"
@@ -440,25 +246,57 @@ class ConfiguredBoardError(ValueError):
     """The scheduler document or its repository binding is inadmissible."""
 
 
-EAAEF_BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
-EAAEF_SCHEDULER_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "external_agent_autonomous_execution_fabric.scheduler_config@2"
-)
-EAAEF_CONFIG_PATH = "config/external_agent_autonomous_execution_fabric_scheduler.json"
-EAAEF_TASKBOARD_PATH = (
-    "docs/architecture/external_agent_autonomous_execution_fabric/TASK_BOARD.md"
-)
-EAAEF_TASKBOARD_JSON_PATH = (
-    "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json"
-)
-EAAEF_OBJECTIVES_PATH = (
-    "docs/architecture/external_agent_autonomous_execution_fabric/OBJECTIVES.md"
-)
-EAAEF_PLAN_PATH = "docs/architecture/external_agent_autonomous_execution_fabric/PLAN.md"
-EAAEF_VALIDATOR_PATH = (
-    "scripts/validate_external_agent_autonomous_execution_fabric_board.py"
-)
+class _CoordinatorCredentialRearmError(ConfiguredBoardError):
+    """A gated child could not restore its exact retired credential."""
+
+
+class _CoordinatorCredentialLaunchAborted(ConfiguredBoardError):
+    """The parent fenced a launch without making its credential reusable."""
+
+
+class _CoordinatorTerminationUnprovenError(ConfiguredBoardError):
+    """A spawned coordinator could not be proven dead during rollback."""
+
+
+class _CoordinatorRunInterrupted(RuntimeError):
+    """A catchable process signal requested coordinated terminal cleanup."""
+
+
+@runtime_checkable
+class CoordinatorCredentialHandoff(Protocol):
+    """One already-begun credential retirement awaiting durable commit.
+
+    The caller owns begin and rollback.  The scheduler calls ``commit`` once,
+    and only after an authenticated detached child is gated and its exact PID
+    has been published.
+    """
+
+    state: str
+    secret_handle: str
+    credential_sha256: str
+
+    @property
+    def expected_commit_receipt(self) -> object:
+        """Return the exact secret-free receipt before irreversible commit."""
+
+    def validate_active(
+        self,
+        *,
+        state_dir: Path | str,
+        secret_handle: str,
+        credential_sha256: str,
+    ) -> object:
+        """Authenticate the active transaction against sealed owner authority."""
+
+    def commit(self) -> object:
+        """Commit the caller-owned credential retirement transaction."""
+
+    def close_without_rollback(
+        self,
+        *,
+        reason: str = "child_liveness_unproven",
+    ) -> object:
+        """Terminally wipe a transaction when child exit is unproven."""
 
 
 @dataclass(frozen=True)
@@ -470,325 +308,61 @@ class _ConfiguredBoardTaskPopulation:
     state_snapshot_id: str
 
 
-def _plan_bound_profile(board: ConfiguredBoard) -> bool:
-    """Whether this board requires exact compiler slices and sealed births."""
+@dataclass(frozen=True)
+class _ConfiguredBoardDependencySealSnapshot:
+    """One exact HEAD-bound dependency-seal read reused for live launch."""
 
-    return board.board_namespace in {
-        "agent-supervisor-prompt-only-self-improvement-v3",
-        EAAEF_BOARD_NAMESPACE,
-    }
-
-
-def _eaaef_plan_bound_profile(board: ConfiguredBoard) -> bool:
-    return (
-        board.board_namespace == EAAEF_BOARD_NAMESPACE
-        and board.payload.get("schema") == EAAEF_SCHEDULER_SCHEMA
-    )
+    payload: Mapping[str, Any]
+    artifact: Mapping[str, object]
 
 
-EAAEF_GENERATION_CURSOR_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/eaaef-store-generation-cursor@1"
-)
-_EAAEF_GENERATION_RE = re.compile(r"^(?P<prefix>.+-v)(?P<n>\d+)$")
-_EAAEF_HOST_RECEIPT_NAMES = {
-    "EAAEF-191": "admission_bundle.json",
-}
+@dataclass(frozen=True)
+class _AcceptedCoordinatorCredentialHandoff:
+    secret_handle: str
+    credential_sha256: str
+    mutation_binding: Mapping[str, Any]
+    task_snapshot: Mapping[str, Any]
+    commit_receipt: Mapping[str, Any]
+    authority_binding: Mapping[str, Any]
 
 
-def _eaaef_generation_cursor_path(repo_root: Path) -> Path:
-    return (
-        repo_root
-        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
-        / "generation-cursor.json"
-    )
+@dataclass
+class _CoordinatorPIDReservation:
+    """An exact marker with explicit cross-facade ownership transfer."""
+
+    path: Path
+    descriptor: int
+    identity: tuple[int, int]
+    directory_identity: tuple[int, int, int, int]
+    state: str = "reserved"
+    descriptor_closed: bool = False
+    published_pid: int = 0
 
 
-def _rewrite_eaaef_generation(
-    value: Any,
-    from_generation: str,
-    to_generation: str,
-) -> Any:
-    from_match = _EAAEF_GENERATION_RE.fullmatch(from_generation)
-    to_match = _EAAEF_GENERATION_RE.fullmatch(to_generation)
-    if from_match is None or to_match is None:
-        raise ConfiguredBoardError("generation rewrite identities are invalid")
-    from_n = from_match.group("n")
-    to_n = to_match.group("n")
-    if isinstance(value, str):
-        rewritten = value
-        for old, new in (
-            (from_generation, to_generation),
-            (f"-run-v{from_n}", f"-run-v{to_n}"),
-            (f"/run-v{from_n}", f"/run-v{to_n}"),
-        ):
-            rewritten = rewritten.replace(old, new)
-        return rewritten
-    if isinstance(value, list):
-        return [
-            _rewrite_eaaef_generation(item, from_generation, to_generation)
-            for item in value
-        ]
-    if isinstance(value, dict):
-        return {
-            key: _rewrite_eaaef_generation(item, from_generation, to_generation)
-            for key, item in value.items()
-        }
-    return value
+def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
+    """Whether this is the sealed v3 profile, rather than a legacy board."""
+
+    return board.board_namespace == "agent-supervisor-prompt-only-self-improvement-v3"
 
 
-def _apply_eaaef_generation_cursor(
-    payload: dict[str, Any],
-    repo_root: Path,
-) -> dict[str, Any]:
-    """Overlay the gitignored EAAEF run-vN cursor onto a tracked scheduler."""
+def _sealed_configured_control_plane_required(board: "ConfiguredBoard") -> bool:
+    """Whether live launch must re-enter through the accepted source capsule.
 
-    configured = str(
-        (
-            (payload.get("bootstrap_database_program") or {}).get(
-                "store_generation"
-            )
-            if isinstance(payload.get("bootstrap_database_program"), Mapping)
-            else ""
-        )
-        or ""
-    )
-    cursor_path = _eaaef_generation_cursor_path(repo_root)
-    if not cursor_path.is_file():
-        return payload
-    try:
-        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return payload
-    if (
-        not isinstance(cursor, dict)
-        or cursor.get("schema") != EAAEF_GENERATION_CURSOR_SCHEMA
-        or cursor.get("configured_generation") != configured
-    ):
-        return payload
-    active = str(cursor.get("active_generation") or "")
-    if not active or active == configured:
-        return payload
-    return _rewrite_eaaef_generation(copy.deepcopy(payload), configured, active)
-
-
-def _eaaef_host_receipt_admitted(
-    repo_root: Path,
-    task_id: str,
-    *,
-    expected_source_head: str = "",
-    expected_source_tree: str = "",
-) -> bool:
-    filename = _EAAEF_HOST_RECEIPT_NAMES.get(task_id)
-    if not filename:
-        return False
-    if task_id == "EAAEF-191":
-        try:
-            from ..validation.eaaef_host_admission import (
-                verify_current_admission_bundle_receipt,
-            )
-
-            verification = verify_current_admission_bundle_receipt(
-                repo_root,
-                expected_source_head=expected_source_head,
-                expected_source_tree=expected_source_tree,
-            )
-        except Exception:
-            return False
-        return verification.get("admitted") is True
-    path = (
-        repo_root
-        / "docs/architecture/external_agent_autonomous_execution_fabric"
-        / "receipts/host_admission"
-        / filename
-    )
-    if not path.is_file():
-        return False
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
-    return isinstance(payload, dict) and payload.get("decision") == "admitted"
-
-
-def _ordered_primary_models_for_namespace(board_namespace: str) -> frozenset[str]:
-    """Return only canonical models admitted by one scheduler namespace.
-
-    The signed prompt-only V3 route is permanently model-bound to Grok 4.5.
-    EAAEF has a different source-addressed route and is permanently bound to
-    Grok 4.6.  Other scheduler_config@1 boards may use either canonical
-    quota-only route; the canonical router still rejects every hybrid tuple.
+    The plan-bound v3 profile already has this property.  Quack-backed boards
+    using the datasets-authoritative operational schema need the same source
+    closure without changing their task authority to ``PlanRevisionStore``.
     """
 
-    if board_namespace == "agent-supervisor-prompt-only-self-improvement-v3":
-        return frozenset({LEGACY_V3_PRIMARY_MODEL_ID})
-    if board_namespace == EAAEF_BOARD_NAMESPACE:
-        return frozenset({ORDERED_PRIMARY_MODEL_ID})
-    return frozenset({LEGACY_V3_PRIMARY_MODEL_ID, ORDERED_PRIMARY_MODEL_ID})
-
-
-def _validate_eaaef_database_programs(
-    *,
-    board_namespace: str,
-    payload: Mapping[str, Any],
-    operational_program: DatabaseProgramConfig | None,
-) -> None:
-    """Keep bootstrap DuckDB and operational Quack roles non-substitutable."""
-
-    if board_namespace != EAAEF_BOARD_NAMESPACE:
-        return
-    from ..task_sources.eaaef_operational_schema import (
-        EAAEF_OPERATIONAL_PROFILE_ID,
+    program = board.database_program
+    return bool(
+        _plan_bound_profile(board)
+        or (
+            program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.schema_revision
+            == DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+        )
     )
-
-    raw_bootstrap = payload.get("bootstrap_database_program")
-    if not isinstance(raw_bootstrap, Mapping):
-        raise ConfiguredBoardError(
-            "EAAEF requires bootstrap_database_program for immutable materialization"
-        )
-    try:
-        bootstrap_program = parse_database_program_config(dict(raw_bootstrap))
-    except DatabaseProgramConfigError as exc:
-        raise ConfiguredBoardError(
-            f"invalid EAAEF bootstrap_database_program: {exc}"
-        ) from exc
-    if (
-        bootstrap_program is None
-        or bootstrap_program.authority_mode != AUTHORITY_MODE_EMBEDDED
-        or bootstrap_program.task_source_kind != TASK_SOURCE_DUCKDB
-        or bootstrap_program.failover_policy != FAILOVER_FAIL_CLOSED
-        or bootstrap_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
-        or not bootstrap_program.store_id.endswith((".duckdb", ".ddb"))
-    ):
-        raise ConfiguredBoardError(
-            "EAAEF bootstrap_database_program must be embedded DuckDB under "
-            "the exact operational profile @2"
-        )
-    if (
-        operational_program is None
-        or operational_program.authority_mode != AUTHORITY_MODE_QUACK
-        or operational_program.task_source_kind != TASK_SOURCE_DUCKDB
-        or operational_program.failover_policy != FAILOVER_FAIL_CLOSED
-        or operational_program.schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
-        or not operational_program.quack_endpoint
-        or not operational_program.endpoint_secret_handle
-        or not operational_program.store_id
-        or "/" in operational_program.store_id
-        or "\\" in operational_program.store_id
-        or operational_program.store_id.endswith((".duckdb", ".ddb"))
-    ):
-        raise ConfiguredBoardError(
-            "EAAEF operational database_program must be remote Quack with no "
-            "direct-file fallback under the exact operational profile @2"
-        )
-    if bootstrap_program.to_dict() == operational_program.to_dict():
-        raise ConfiguredBoardError(
-            "EAAEF bootstrap and operational database programs are conflated"
-        )
-    from ..validation.external_agent_configured_board_capsule import (
-        EAAEF_OPERATIONAL_COMMAND_FABRIC_SHARD_ID,
-        ExternalAgentConfiguredBoardCapsuleError,
-        validate_eaaef_operational_command_fabric_profile,
-    )
-
-    try:
-        validate_eaaef_operational_command_fabric_profile(
-            payload.get("operational_command_fabric"),
-            operational_program=operational_program.to_dict(),
-            expected_board_namespace=board_namespace,
-            expected_shard_id=EAAEF_OPERATIONAL_COMMAND_FABRIC_SHARD_ID,
-        )
-    except ExternalAgentConfiguredBoardCapsuleError as exc:
-        raise ConfiguredBoardError(str(exc)) from exc
-
-
-def _targets_fresh_recovery_generation(
-    payload: Mapping[str, Any],
-    *,
-    repo_root: Path,
-) -> bool:
-    """Recognize protected run-v17 through markers or resolved target paths.
-
-    Lexical path checks alone are insufficient because an otherwise ordinary
-    profile can name an in-repository symlink whose resolved target is the
-    protected generation.  Resolve every authority-bearing database/runtime
-    path against the exact checkout root before deciding that recovery
-    admission is unnecessary.
-    """
-
-    if "fresh_generation_recovery" in payload:
-        return True
-    program = payload.get("database_program")
-    runtime = payload.get("runtime_paths")
-    values: list[str] = []
-    path_values: list[str] = []
-    if isinstance(program, Mapping):
-        values.extend(
-            str(program.get(field) or "")
-            for field in (
-                "store_generation",
-                "export_profile",
-                "store_id",
-                "event_store_path",
-                "runtime_registry_path",
-                "worktree_root",
-            )
-        )
-        path_values.extend(
-            str(program.get(field) or "")
-            for field in (
-                "store_id",
-                "event_store_path",
-                "runtime_registry_path",
-                "worktree_root",
-            )
-        )
-    if isinstance(runtime, Mapping):
-        values.extend(str(value or "") for value in runtime.values())
-        path_values.extend(
-            str(runtime.get(field) or "")
-            for field in (
-                "root",
-                "state",
-                "worktrees",
-                "merge_queue",
-                "logs",
-                "evidence",
-            )
-        )
-    for value in values:
-        normalized = value.replace("\\", "/")
-        if normalized in {
-            FRESH_RECOVERY_TARGET_GENERATION,
-            "logic-governed-compositional-verification-fabric-run-v17",
-        }:
-            return True
-        if "run-v17" in PurePosixPath(normalized).parts:
-            return True
-    try:
-        resolved_root = repo_root.resolve(strict=False)
-        protected_lexical = resolved_root / FRESH_RECOVERY_TARGET_RELATIVE_ROOT
-        protected_resolved = protected_lexical.resolve(strict=False)
-    except (OSError, RuntimeError, ValueError):
-        # An unresolvable authority path is never grounds for bypassing the
-        # protected recovery gate.
-        return True
-    for text in path_values:
-        if not text:
-            continue
-        raw = Path(text)
-        lexical = raw if raw.is_absolute() else resolved_root / raw
-        try:
-            resolved = lexical.resolve(strict=False)
-        except (OSError, RuntimeError, ValueError):
-            return True
-        if (
-            lexical == protected_lexical
-            or lexical.is_relative_to(protected_lexical)
-            or resolved == protected_resolved
-            or resolved.is_relative_to(protected_resolved)
-        ):
-            return True
-    return False
 
 
 def _sanitized_git_environment() -> dict[str, str]:
@@ -803,9 +377,7 @@ def _sanitized_git_environment() -> dict[str, str]:
         {
             "PATH": "/usr/bin:/bin",
             "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_ATTR_NOSYSTEM": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
         }
@@ -813,22 +385,117 @@ def _sanitized_git_environment() -> dict[str, str]:
     return environment
 
 
-def _eaaef_plan_bound_provider_path(board: "ConfiguredBoard") -> str:
-    """Return the minimal PATH that exposes admitted EAAEF provider CLIs."""
+def _sealed_coordinator_environment(
+    board: "ConfiguredBoard",
+    *,
+    extension_directory: Path | None = None,
+    extension_set_pin: ConfiguredBoardExtensionSetPin | None = None,
+) -> dict[str, str]:
+    """Build the positive environment for an accepted scheduler capsule.
 
-    path_entries = ["/usr/bin", "/bin"]
-    if _eaaef_plan_bound_profile(board):
-        for command_name in ("grok", "codex"):
-            resolved = shutil.which(command_name)
-            if not resolved:
-                continue
-            # Keep the PATH entry that names the command.  Following the
-            # symlink to a versioned download directory would hide `grok`
-            # and `codex` from the sealed child's shutil.which().
-            directory = str(Path(resolved).parent)
-            if directory and directory not in path_entries:
-                path_entries.insert(0, directory)
-    return os.pathsep.join(path_entries)
+    Provider routing is reconstructed from the sealed scheduler config inside
+    the capsule.  A Quack coordinator additionally needs its already-resolved
+    state credential and closed mutation binding; those values remain in the
+    trusted process environment and never enter argv, the capsule, or receipts.
+    """
+
+    provider = board.payload.get("provider")
+    provider = provider if isinstance(provider, Mapping) else {}
+    primary_executable = str(
+        provider.get(ORDERED_PRIMARY_EXECUTABLE_FIELD) or ""
+    ).strip()
+    provider_path_entries: list[str] = []
+    if primary_executable:
+        primary_path = Path(primary_executable)
+        if (
+            not primary_path.is_absolute()
+            or not primary_path.is_file()
+            or not os.access(primary_path, os.X_OK)
+        ):
+            raise ConfiguredBoardError(
+                "configured-board primary provider executable is unavailable"
+            )
+        provider_path_entries.append(str(primary_path.parent))
+    for system_entry in ("/usr/local/bin", "/usr/bin", "/bin"):
+        if system_entry not in provider_path_entries:
+            provider_path_entries.append(system_entry)
+    environment = {
+        "IPFS_DATASETS_AUTO_INSTALL": "0",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY": "disabled",
+        "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+        "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": os.pathsep.join(provider_path_entries),
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if os.environ.get("TZ"):
+        environment["TZ"] = os.environ["TZ"]
+    if (extension_directory is None) is not (extension_set_pin is None):
+        raise ConfiguredBoardError(
+            "configured-board extension projection and exact set pin must "
+            "be supplied together"
+        )
+    if extension_directory is not None and extension_set_pin is not None:
+        parsed_extension_set = parse_configured_board_extension_set_pin(
+            extension_set_pin.as_dict()
+        )
+        resolved_extension_directory = extension_directory.resolve(strict=True)
+        if (
+            not resolved_extension_directory.is_dir()
+            or resolved_extension_directory.name != "extensions"
+            or resolved_extension_directory.parent.name != ".duckdb"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board extension projection directory is invalid"
+            )
+        try:
+            verified_home = verify_configured_board_extension_set_home(
+                parsed_extension_set.pins,
+                resolved_extension_directory.parent.parent,
+            )
+        except (OSError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                "configured-board exact extension set projection is invalid"
+            ) from exc
+        if verified_home / ".duckdb/extensions" != resolved_extension_directory:
+            raise ConfiguredBoardError(
+                "configured-board exact extension set directory drifted"
+            )
+        environment[CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV] = str(
+            resolved_extension_directory
+        )
+        environment[CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV] = (
+            parsed_extension_set.to_json()
+        )
+    program = board.database_program
+    if program is None or program.authority_mode != AUTHORITY_MODE_QUACK:
+        return environment
+    # The detached coordinator must authenticate the same sealed database
+    # program before it acknowledges readiness.  Reconstruct every non-secret
+    # binding from the accepted board; copy only the resolved credential below.
+    environment.update(program.environment())
+    permitted = {
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        STATE_QUACK_MUTATION_BINDING_ENV,
+        STATE_QUACK_MUTATION_DIR_ENV,
+    }
+    handle = str(program.endpoint_secret_handle or "").strip()
+    if handle.startswith("env://"):
+        target = handle.removeprefix("env://").strip()
+        if target:
+            permitted.add(target)
+    environment.update(
+        {
+            name: value
+            for name, value in os.environ.items()
+            if name in permitted
+        }
+    )
+    return environment
 
 
 def _git_run(
@@ -837,24 +504,7 @@ def _git_run(
     cwd: Path,
     timeout: float = 120.0,
 ) -> subprocess.CompletedProcess[str]:
-    command = [
-        "/usr/bin/git",
-        "-c",
-        "core.hooksPath=/dev/null",
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        "core.untrackedCache=false",
-        "-c",
-        "core.trustctime=true",
-        "-c",
-        "core.checkStat=default",
-        "-c",
-        "core.attributesFile=/dev/null",
-        "-c",
-        "diff.autoRefreshIndex=false",
-        *argv,
-    ]
+    command = ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", *argv]
     try:
         return subprocess.run(
             command,
@@ -1015,118 +665,6 @@ def _tracked_head_snapshot(
     return payload, revision
 
 
-def _eaaef_normalize_status_overlay(
-    rows: Sequence[Any],
-    *,
-    allowed: set[str],
-) -> dict[str, str]:
-    overlay: dict[str, str] = {}
-    for alias, status in rows:
-        task_id = str(alias or "").strip()
-        normalized = str(status or "").strip().lower()
-        if task_id and normalized in allowed:
-            overlay[task_id] = normalized
-    return overlay
-
-
-def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
-    """Read task status from the exclusive loopback Quack owner."""
-
-    program = board.database_program
-    if program is None:
-        return {}
-    endpoint = str(program.quack_endpoint or "")
-    handle = str(program.endpoint_secret_handle or "")
-    if (
-        not endpoint.startswith("quack:127.0.0.1:")
-        or "'" in endpoint
-        or "\x00" in endpoint
-        or not handle
-    ):
-        return {}
-    allowed = {
-        "todo",
-        "blocked",
-        "completed",
-        "cancelled",
-        "failed",
-        "quarantined",
-        "in_progress",
-    }
-    runtime_extensions: Any | None = None
-    try:
-        from ..todo_daemon.eaaef_host_admitted_daemon_gateway import (
-            _connect_admitted_duckdb,
-            _import_admitted_duckdb,
-            _resolve_owner_token,
-        )
-        from ..validation.eaaef_host_admission import (
-            verify_current_admission_bundle_receipt,
-        )
-
-        source_head, source_tree = _git_identity(board.repo_root)
-        verification = verify_current_admission_bundle_receipt(
-            board.repo_root,
-            expected_source_head=source_head,
-            expected_source_tree=source_tree,
-            include_verified_artifacts=True,
-        )
-        artifacts = verification.get("verified_artifacts")
-        if verification.get("admitted") is not True or not isinstance(
-            artifacts, Mapping
-        ):
-            return {}
-        duckdb_receipt = artifacts.get("EAAEF-182")
-        if not isinstance(duckdb_receipt, Mapping):
-            return {}
-        duckdb_module, runtime_extensions = _import_admitted_duckdb(
-            duckdb_receipt
-        )
-        generation = str(program.store_generation or "eaaef-run-v14")
-        run_dir = generation.removeprefix("eaaef-")
-        vault = (
-            board.repo_root
-            / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
-            / run_dir
-            / "live/state/quack-owner"
-        )
-        token = _resolve_owner_token(handle, vault_dir=vault)
-        connection = _connect_admitted_duckdb(
-            duckdb_module,
-            runtime_extensions,
-        )
-        try:
-            connection.execute(
-                f"ATTACH '{endpoint}' AS control_plane (TYPE QUACK, TOKEN ?)",
-                [token],
-            )
-            connection.execute("USE control_plane")
-            rows = connection.execute(
-                "SELECT task_alias, status FROM tasks"
-            ).fetchall()
-        finally:
-            connection.close()
-    except Exception:
-        return {}
-    finally:
-        if runtime_extensions is not None:
-            runtime_extensions.close()
-    return _eaaef_normalize_status_overlay(rows, allowed=allowed)
-
-
-def _eaaef_task_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
-    """Keep every runtime status projection diagnostic-only.
-
-    Neither an unsigned file nor raw rows from a live Quack process bind the
-    current source forest, population, owner birth/generation/fence, and
-    terminal receipts. Until the typed CASF-owner snapshot API supplies that
-    complete proof, no runtime status may override the tracked task records.
-    """
-
-    del board
-    return {}
-
-
 def _configured_board_task_records(
     board: "ConfiguredBoard",
     *,
@@ -1178,6 +716,14 @@ def _configured_board_task_records(
         records.append(
             {
                 "task_id": task_id,
+                # DatabaseTaskSource consumes ``task_cid`` as the immutable
+                # control-store key.  Keep it distinct from the canonical
+                # DAG-JSON CID while deriving both from the same semantic
+                # digest; otherwise generic configured-board materialization
+                # falls back to ordinal ``task:cid:N`` identities.
+                "task_cid": f"sha256:{task_identity.semantic_fingerprint}",
+                "task_key": task_identity.canonical_task_key,
+                "canonical_task_key": task_identity.canonical_task_key,
                 "canonical_task_cid": task_identity.canonical_task_cid,
                 "status": (
                     str(fields.get("status") or "todo").strip().lower()
@@ -1205,12 +751,6 @@ def _configured_board_task_records(
                 ),
             }
         )
-    overlay = _eaaef_task_status_overlay(board)
-    if overlay:
-        for record in records:
-            status = overlay.get(str(record["task_id"]))
-            if status:
-                record["status"] = status
     return tuple(records)
 
 
@@ -1257,20 +797,11 @@ def _configured_board_task_state_snapshots(
                     f"task-state projection entry is unreadable: {entry.path}"
                 ) from exc
             if stat.S_ISLNK(metadata.st_mode):
-                # The managed daemon's latest-log alias is not task state.
-                # Every other symbolic entry can conceal attempt state and
-                # therefore remains fail-closed.
-                if entry.name.endswith("_managed_daemon.latest.log"):
-                    continue
                 raise ConfiguredBoardError(
                     f"task-state projection entry is a symbolic link: {entry.path}"
                 )
             entry_path = Path(entry.path)
             if stat.S_ISDIR(metadata.st_mode):
-                # PlanRevisionStore CAS objects and the Quack owner vault are
-                # not daemon task-state projections.
-                if entry.name in {"plan-revision-store", "quack-owner"}:
-                    continue
                 pending.append(entry_path)
             elif (
                 stat.S_ISREG(metadata.st_mode)
@@ -1516,29 +1047,6 @@ def _plan_authority_roots(
     )
 
 
-def _configured_board_host_slots(board: "ConfiguredBoard") -> tuple[int, int]:
-    """Return configured CPU/process slot ceilings, at least max_lanes."""
-
-    host_payload = board.payload.get("host_capacity")
-    if host_payload is None:
-        return board.max_lanes, board.max_lanes
-    if not isinstance(host_payload, Mapping):
-        raise ConfiguredBoardError("host_capacity must be an object")
-    cpu_slots = _positive_int(
-        host_payload.get("cpu_slots"),
-        field="host_capacity.cpu_slots",
-    )
-    process_slots = _positive_int(
-        host_payload.get("process_slots"),
-        field="host_capacity.process_slots",
-    )
-    if cpu_slots < board.max_lanes or process_slots < board.max_lanes:
-        raise ConfiguredBoardError(
-            "host_capacity slots must be at least max_lanes"
-        )
-    return cpu_slots, process_slots
-
-
 def configured_board_capacity_observation(
     board: "ConfiguredBoard",
     *,
@@ -1554,37 +1062,23 @@ def configured_board_capacity_observation(
     """
 
     if now_ms is None:
-        current_ms = None
+        # Freshness is measured only against this process's trusted local
+        # clock.  Provider observations are evidence, never clock authority;
+        # in particular a future-dated record must not advance its own
+        # freshness boundary.
+        current_ms = int(time.time() * 1000)
     elif isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0:
         raise ConfiguredBoardError("capacity observation time is invalid")
     else:
         current_ms = now_ms
-    cpu_slots, process_slots = _configured_board_host_slots(board)
-    worker_limit = max(board.max_lanes, cpu_slots, process_slots)
-    if host_capacity_snapshot is None:
-        host = sample_host_resources(
+    host = dict(
+        host_capacity_snapshot
+        or sample_host_resources(
             board.repo_root,
-            worker_limit=worker_limit,
+            worker_limit=board.max_lanes,
             active_phase="execution",
         ).to_dict()
-        host["cpu_slots"] = cpu_slots
-        host["process_slots"] = process_slots
-        host["worker_limit"] = worker_limit
-        host["available_worker_capacity"] = max(
-            0, worker_limit - int(host.get("active_workers") or 0)
-        )
-        if _eaaef_plan_bound_profile(board):
-            host["resource_classes"] = list(
-                dict.fromkeys(
-                    (
-                        *LEGACY_RESOURCE_CLASSES,
-                        *GENERIC_BUNDLE_RESOURCE_CLASSES,
-                        *PROOF_RESOURCE_CLASSES,
-                    )
-                )
-            )
-    else:
-        host = dict(host_capacity_snapshot)
+    )
     provider_payload = board.payload.get("provider")
     provider_payload = (
         provider_payload if isinstance(provider_payload, Mapping) else {}
@@ -1597,16 +1091,6 @@ def configured_board_capacity_observation(
         configured_concurrency = int(
             provider_payload.get("max_concurrency") or 1
         )
-        process_counter = None
-        if _eaaef_plan_bound_profile(board):
-            markers = (
-                str(board.repo_root),
-                "external_agent_autonomous_execution_fabric",
-                "external-agent-autonomous-execution-fabric",
-            )
-            process_counter = lambda: count_active_cli_processes(
-                cmdline_markers=markers
-            )
         monitor = ProviderCapacityMonitor(
             ProviderCapacityMonitorConfig(
                 snapshot_path=(
@@ -1630,8 +1114,7 @@ def configured_board_capacity_observation(
                     configured_concurrency
                     * DEFAULT_RESPONSE_TOKENS_PER_REQUEST
                 ),
-            ),
-            process_counter=process_counter,
+            )
         )
         sampled, _diagnostics = monitor.sample()
         providers = tuple(dict(item.to_dict()) for item in sampled)
@@ -1639,12 +1122,6 @@ def configured_board_capacity_observation(
         providers = tuple(dict(item) for item in provider_capacity_snapshots)
     if not providers:
         raise ConfiguredBoardError("fresh provider capacity evidence is required")
-    if current_ms is None:
-        # Freshness is measured only against this process's trusted local
-        # clock, and only after the samples for this observation exist.
-        # Provider timestamps are evidence, never clock authority; a
-        # future-dated record must not advance its own freshness boundary.
-        current_ms = int(time.time() * 1000)
     return host, providers, current_ms
 
 
@@ -1774,16 +1251,9 @@ def materialize_configured_board_execution_plan(
         route_capacity_profile_id=str(route_capacity["profile_id"]),
     )
     providers = (route_capacity,)
-    observed = int(host.get("observed_at_ms") or current_ms)
-    host_capacity = {
-        **host,
-        "observed_at_ms": observed,
-        "fresh_until_ms": observed + 60_000,
-        "max_age_ms": 60_000,
-    }
     capacity = {
-        **host_capacity,
-        "host": host_capacity,
+        **host,
+        "host": host,
         "providers": list(providers),
         "provider_observations": [
             dict(item) for item in provider_observations
@@ -2217,17 +1687,6 @@ def _resolved_ordered_provider_route(
     authorization_path = str(
         provider.get(ROUTE_AUTHORIZATION_PATH_FIELD) or ""
     ).strip()
-    if (
-        not authorization_path
-        and board_namespace == EAAEF_BOARD_NAMESPACE
-        and values["fallback_trigger"] == "primary_quota_or_auth_unavailable"
-    ):
-        # The EAAEF authorization is deliberately published only after the
-        # reviewed source tree is frozen.  Derive its create-once path from
-        # that tree rather than embedding a post-freeze CID/path in the
-        # tracked scheduler config (which would create a source-tree cycle).
-        _source_head, source_tree = _git_identity(repo_root)
-        authorization_path = eaaef_agent_route_authorization_path(source_tree)
     if authorization_path:
         try:
             authorization = load_agent_implementation_route_authorization(
@@ -2291,59 +1750,19 @@ def _nonnegative_int(value: Any, *, field: str) -> int:
     return value
 
 
-def _optional_positive_int(
-    payload: Mapping[str, Any],
-    field: str,
-    *,
-    qualified_field: str,
-) -> int | None:
-    """Return one optional, strictly typed positive JSON integer."""
-
-    if field not in payload:
-        return None
-    value = payload.get(field)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ConfiguredBoardError(
-            f"{qualified_field} must be a positive integer"
-        )
-    return value
-
-
 def _objective_refill_controls(
     payload: Mapping[str, Any],
-) -> tuple[int, int, int, int | None, int | None] | None:
-    """Return sealed low-watermark, pass, cooldown, and campaign bounds."""
+) -> tuple[int, int, int] | None:
+    """Return the sealed low-watermark, epoch bound, and cooldown controls."""
 
-    refill_policy = payload.get("refill_policy")
-    derived = (
-        refill_policy.get("derived_refill")
-        if isinstance(refill_policy, Mapping)
-        else None
-    )
-    max_epochs = (
-        _optional_positive_int(
-            derived,
-            "max_epochs",
-            qualified_field="refill_policy.derived_refill.max_epochs",
-        )
-        if isinstance(derived, Mapping)
-        else None
-    )
-    max_total_tasks = (
-        _optional_positive_int(
-            derived,
-            "max_total_tasks",
-            qualified_field="refill_policy.derived_refill.max_total_tasks",
-        )
-        if isinstance(derived, Mapping)
-        else None
-    )
     if payload.get("objective_refill_enabled") is not True:
         return None
+    refill_policy = payload.get("refill_policy")
     if not isinstance(refill_policy, dict):
         raise ConfiguredBoardError(
             "refill_policy must be an object when objective refill is enabled"
         )
+    derived = refill_policy.get("derived_refill")
     if not isinstance(derived, dict):
         raise ConfiguredBoardError(
             "refill_policy.derived_refill must be an object when objective "
@@ -2370,13 +1789,7 @@ def _objective_refill_controls(
             "refill_policy.derived_refill.min_open_tasks must be below "
             "max_open_tasks"
         )
-    return (
-        min_open_tasks,
-        max_findings,
-        cooldown_seconds,
-        max_epochs,
-        max_total_tasks,
-    )
+    return min_open_tasks, max_findings, cooldown_seconds
 
 
 def _required_string(
@@ -2483,6 +1896,8 @@ class ConfiguredBoard:
     objectives_path: str
     plan_path: str
     validator_path: str
+    dependency_validator_path: str
+    dependency_seal_path: str
     task_prefix: str
     board_namespace: str
     merge_target_branch: str
@@ -2491,6 +1906,7 @@ class ConfiguredBoard:
     idle_lane_work_stealing: str
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
+    live_capsule_control_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
     database_program: DatabaseProgramConfig | None = None
 
@@ -2541,15 +1957,8 @@ def load_configured_board(
     config_path: Path | str,
     *,
     repo_root: Path | str,
-    config_bytes: bytes | None = None,
 ) -> ConfiguredBoard:
-    """Load and structurally validate one sealed scheduler document.
-
-    ``config_bytes`` is reserved for a caller that has already authenticated
-    the document from an immutable capsule.  The lexical repository path is
-    still retained as the board's effect-scope identity, but it is not reopened
-    when exact bytes are supplied.
-    """
+    """Load and structurally validate one sealed scheduler document."""
 
     root = Path(repo_root).resolve()
     path = Path(config_path)
@@ -2562,30 +1971,20 @@ def load_configured_board(
             "scheduler config must be inside the repository"
         ) from exc
     try:
-        admitted_config_bytes = config_bytes
-        if admitted_config_bytes is None:
-            admitted_config_bytes, _config_evidence = _read_stable_regular_bytes(
-                path,
-                max_bytes=4_194_304,
-            )
-        elif (
-            type(admitted_config_bytes) is not bytes
-            or not admitted_config_bytes
-            or len(admitted_config_bytes) > 4_194_304
-        ):
-            raise ConfiguredBoardError(
-                "sealed scheduler config bytes are invalid"
-            )
-        if admitted_config_bytes is None:
+        config_bytes, _config_evidence = _read_stable_regular_bytes(
+            path,
+            max_bytes=4_194_304,
+        )
+        if config_bytes is None:
             raise ConfiguredBoardError("scheduler config is absent")
         configuration_revision = _identity(
             {
                 "path": path.resolve(strict=False).relative_to(root).as_posix(),
-                "bytes_sha256": hashlib.sha256(admitted_config_bytes).hexdigest(),
+                "bytes_sha256": hashlib.sha256(config_bytes).hexdigest(),
             }
         )
         payload = json.loads(
-            admitted_config_bytes.decode("utf-8"),
+            config_bytes.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_keys,
         )
     except ConfiguredBoardError:
@@ -2620,36 +2019,23 @@ def load_configured_board(
         _required_string(payload, "validator_path"),
         field="validator_path",
     )
+    dependency_validator_path = ""
+    dependency_seal_path = ""
+    if "dependency_validator_path" in payload or "dependency_seal_path" in payload:
+        dependency_validator_path = _safe_relative(
+            _required_string(payload, "dependency_validator_path"),
+            field="dependency_validator_path",
+        )
+        dependency_seal_path = _safe_relative(
+            _required_string(payload, "dependency_seal_path"),
+            field="dependency_seal_path",
+        )
     task_prefix = _required_string(payload, "task_prefix")
     if re.fullmatch(r"(?:## )?[A-Z][A-Z0-9_-]*-", task_prefix) is None:
         raise ConfiguredBoardError("task_prefix is not a supported task prefix")
     board_namespace = _required_string(payload, "board_namespace")
     if re.fullmatch(r"[a-z0-9][a-z0-9._-]*", board_namespace) is None:
         raise ConfiguredBoardError("board_namespace is unsafe")
-    config_relative = path.relative_to(root).as_posix()
-    eaaef_markers = {
-        "schema": schema == EAAEF_SCHEDULER_SCHEMA,
-        "config_path": config_relative == EAAEF_CONFIG_PATH,
-        "board_namespace": board_namespace == EAAEF_BOARD_NAMESPACE,
-        "task_prefix": _task_header_prefix(task_prefix) == "## EAAEF-",
-        "taskboard_path": taskboard_path == EAAEF_TASKBOARD_PATH,
-        "taskboard_json_path": (
-            payload.get("taskboard_json_path") == EAAEF_TASKBOARD_JSON_PATH
-        ),
-        "objectives_path": objectives_path == EAAEF_OBJECTIVES_PATH,
-        "plan_path": plan_path == EAAEF_PLAN_PATH,
-        "validator_path": validator_path == EAAEF_VALIDATOR_PATH,
-    }
-    if any(eaaef_markers.values()) and not all(eaaef_markers.values()):
-        mismatched = sorted(
-            name for name, matches in eaaef_markers.items() if not matches
-        )
-        raise ConfiguredBoardError(
-            "EAAEF scheduler identity markers cannot be downgraded: "
-            + ", ".join(mismatched)
-        )
-    if all(eaaef_markers.values()):
-        payload = _apply_eaaef_generation_cursor(payload, root)
     merge_target_branch = _required_string(payload, "merge_target_branch")
     if (
         merge_target_branch.startswith("-")
@@ -2716,10 +2102,25 @@ def load_configured_board(
         payload.get("protected_paths"),
         field="protected_paths",
     )
+    config_relative = path.relative_to(root).as_posix()
     if config_relative not in protected:
         raise ConfiguredBoardError(
             "scheduler config must protect its own source path"
         )
+    live_capsule_control_paths: tuple[str, ...] = ()
+    if "configured_board_live_capsule" in payload:
+        try:
+            live_capsule_control_paths = (
+                parse_configured_board_live_capsule_policy(
+                    payload.get("configured_board_live_capsule")
+                )
+            )
+        except ConfiguredBoardLiveCapsuleError as exc:
+            raise ConfiguredBoardError(str(exc)) from exc
+        if set(live_capsule_control_paths) != set(protected):
+            raise ConfiguredBoardError(
+                "configured-board live capsule must bind every protected path"
+            )
 
     runtime_raw = payload.get("runtime_paths")
     if not isinstance(runtime_raw, dict):
@@ -2778,14 +2179,10 @@ def load_configured_board(
                 "provider.primary_provider_id must be 'grok_cli' for "
                 "the ordered provider contract"
             )
-        admitted_primary_models = _ordered_primary_models_for_namespace(
-            board_namespace
-        )
-        if primary_model_id not in admitted_primary_models:
-            expected_models = ", ".join(sorted(admitted_primary_models))
+        if primary_model_id != ORDERED_PRIMARY_MODEL_ID:
             raise ConfiguredBoardError(
-                "provider.primary_model_id must be one of "
-                f"{expected_models!r} for the scoped ordered provider contract"
+                "provider.primary_model_id must be 'grok-4.6' for "
+                "the ordered provider contract"
             )
         if fallback_provider_id != ORDERED_FALLBACK_PROVIDER_ID:
             raise ConfiguredBoardError(
@@ -2815,20 +2212,11 @@ def load_configured_board(
                 "ordered provider fields cannot be mixed with legacy "
                 "provider_id/model_id"
             )
-        launch_policy = payload.get("launch_policy")
-        eaaef_route_is_post_freeze_and_live_blocked = (
-            board_namespace == EAAEF_BOARD_NAMESPACE
-            and schema == EAAEF_SCHEDULER_SCHEMA
-            and isinstance(launch_policy, Mapping)
-            and launch_policy.get("live_multi_supervisor_allowed") is False
-            and launch_policy.get("live_single_supervisor_allowed") is False
+        _resolved_ordered_provider_route(
+            provider,
+            repo_root=root,
+            board_namespace=board_namespace,
         )
-        if not eaaef_route_is_post_freeze_and_live_blocked:
-            _resolved_ordered_provider_route(
-                provider,
-                repo_root=root,
-                board_namespace=board_namespace,
-            )
         primary_executable = _optional_provider_string(
             provider,
             ORDERED_PRIMARY_EXECUTABLE_FIELD,
@@ -2863,48 +2251,6 @@ def load_configured_board(
             raise ConfiguredBoardError(
                 "provider.provider_id is not a supported identifier"
             )
-    external_isolation = provider.get("external_isolation")
-    if external_isolation is not None:
-        if ordered_provider:
-            raise ConfiguredBoardError(
-                "provider.external_isolation is supported only for a direct "
-                "Codex route"
-            )
-        if provider_id not in {"codex", "auto"}:
-            raise ConfiguredBoardError(
-                "provider.external_isolation requires provider_id 'codex' or 'auto'"
-            )
-        if not isinstance(external_isolation, dict):
-            raise ConfiguredBoardError(
-                "provider.external_isolation must be an object"
-            )
-        try:
-            from ..todo_daemon.implementation_daemon import (
-                validate_external_provider_isolation_config,
-            )
-
-            # Loading is a deterministic structural operation and must remain
-            # usable in the credential-free validation container.  Host
-            # runtime/image/credential admission is repeated fail-closed by
-            # ``configured_board_launch_plan`` immediately before launch.
-            validate_external_provider_isolation_config(
-                external_isolation,
-                verify_host=False,
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise ConfiguredBoardError(
-                f"provider.external_isolation is unavailable: {exc}"
-            ) from exc
-    merge_resolver_mode = str(
-        provider.get(MERGE_RESOLVER_MODE_FIELD) or ""
-    ).strip()
-    if merge_resolver_mode not in {
-        "",
-        MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL,
-    }:
-        raise ConfiguredBoardError(
-            "provider.merge_resolver_mode is unsupported"
-        )
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -2913,22 +2259,6 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "provider.max_concurrency is lower than max_lanes"
         )
-    host_capacity_cfg = payload.get("host_capacity")
-    if host_capacity_cfg is not None:
-        if not isinstance(host_capacity_cfg, dict):
-            raise ConfiguredBoardError("host_capacity must be an object")
-        host_cpu_slots = _positive_int(
-            host_capacity_cfg.get("cpu_slots"),
-            field="host_capacity.cpu_slots",
-        )
-        host_process_slots = _positive_int(
-            host_capacity_cfg.get("process_slots"),
-            field="host_capacity.process_slots",
-        )
-        if host_cpu_slots < max_lanes or host_process_slots < max_lanes:
-            raise ConfiguredBoardError(
-                "host_capacity slots must be at least max_lanes"
-            )
     for field in (
         "strict_task_sharding",
         "exit_when_all_tracks_terminal",
@@ -2984,35 +2314,6 @@ def load_configured_board(
             database_program = parse_database_program_config(program_payload)
         except DatabaseProgramConfigError as exc:
             raise ConfiguredBoardError(str(exc)) from exc
-        claim_policy = dict(database_program.claim_policy or {})
-        normalized_prefix = re.sub(
-            r"^\s*#{1,6}\s*",
-            "",
-            task_prefix,
-        ).strip()
-        expected_claim_policy = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "database-claim-policy@1"
-            ),
-            "task_prefix": normalized_prefix,
-            "task_shard_count": max_lanes,
-            "strict_task_sharding": strict_task_sharding,
-            "idle_lane_work_stealing": idle_lane_work_stealing,
-        }
-        if idle_lane_work_stealing and (
-            database_program.authority_mode == "quack"
-            and claim_policy != expected_claim_policy
-        ):
-            raise ConfiguredBoardError(
-                "database claim_policy differs from the configured board"
-            )
-
-    _validate_eaaef_database_programs(
-        board_namespace=board_namespace,
-        payload=payload,
-        operational_program=database_program,
-    )
 
     _objective_refill_controls(payload)
 
@@ -3021,17 +2322,15 @@ def load_configured_board(
         repo_root=root,
         payload=payload,
         configuration_root=_identity(
-            {
-                "bytes_sha256": hashlib.sha256(
-                    admitted_config_bytes
-                ).hexdigest()
-            }
+            {"bytes_sha256": hashlib.sha256(config_bytes).hexdigest()}
         ),
         configuration_revision=configuration_revision,
         taskboard_path=taskboard_path,
         objectives_path=objectives_path,
         plan_path=plan_path,
         validator_path=validator_path,
+        dependency_validator_path=dependency_validator_path,
+        dependency_seal_path=dependency_seal_path,
         task_prefix=task_prefix,
         board_namespace=board_namespace,
         merge_target_branch=merge_target_branch,
@@ -3040,6 +2339,7 @@ def load_configured_board(
         idle_lane_work_stealing=idle_lane_work_stealing,
         worktree_submodule_paths=submodules,
         protected_paths=protected,
+        live_capsule_control_paths=live_capsule_control_paths,
         runtime_paths=runtime_paths,
         database_program=database_program,
     )
@@ -3056,11 +2356,6 @@ def _run(
         return subprocess.run(
             command,
             cwd=cwd,
-            # Preflight helpers never receive live state credentials, loader
-            # authority, caller Python paths, or an ambient Git configuration.
-            # This matters when the configured-board scheduler itself holds
-            # the in-memory Quack attach token.
-            env=_sanitized_git_environment(),
             text=True,
             capture_output=True,
             check=False,
@@ -3073,1589 +2368,6 @@ def _run(
             "",
             f"{type(exc).__name__}: {exc}",
         )
-
-
-def _fresh_recovery_private_primary_gid() -> int:
-    """Prove that the current primary group has no second filesystem writer."""
-
-    try:
-        effective_uid = os.geteuid()
-        effective_gid = os.getegid()
-        account = pwd.getpwuid(effective_uid)
-        group = grp.getgrgid(effective_gid)
-        accounts = pwd.getpwall()
-    except (KeyError, OSError) as exc:
-        raise ConfiguredBoardError(
-            "private primary-group evidence is unavailable"
-        ) from exc
-    if len(accounts) > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
-        raise ConfiguredBoardError(
-            "private primary-group account inventory exceeds its bound"
-        )
-    matching_accounts = [item for item in accounts if item.pw_gid == effective_gid]
-    if (
-        account.pw_uid != effective_uid
-        or account.pw_gid != effective_gid
-        or group.gr_gid != effective_gid
-        or group.gr_mem
-        or len(matching_accounts) != 1
-        or matching_accounts[0].pw_uid != effective_uid
-        or matching_accounts[0].pw_name != account.pw_name
-    ):
-        raise ConfiguredBoardError(
-            "current primary group is not provably private"
-        )
-    return effective_gid
-
-
-def _reject_fresh_recovery_git_object_substitution(
-    repo_root: Path,
-    *,
-    label: str,
-) -> None:
-    """Reject repository-local commit grafts and replacement-object refs.
-
-    A clean worktree and raw ``HEAD`` do not bind the effective tree when Git
-    is permitted to honor ``info/grafts`` or ``refs/replace``.  All trusted Git
-    subprocesses disable replacement objects as defense in depth; this explicit
-    observation makes either mechanism a typed admission failure rather than
-    silently ignoring untrusted repository metadata.
-    """
-
-    common_dir_result = _git_run(
-        ("rev-parse", "--path-format=absolute", "--git-common-dir"),
-        cwd=repo_root,
-        timeout=60.0,
-    )
-    common_dir_stdout = common_dir_result.stdout or ""
-    common_dir_stderr = common_dir_result.stderr or ""
-    if (
-        common_dir_result.returncode != 0
-        or common_dir_stderr
-        or len(common_dir_stdout.encode("utf-8", errors="replace")) > 4_096
-        or common_dir_stdout.count("\n") > 1
-    ):
-        raise ConfiguredBoardError(f"{label} Git common directory is unavailable")
-    raw_common_dir = common_dir_stdout.strip()
-    if not raw_common_dir:
-        raise ConfiguredBoardError(f"{label} Git common directory is unavailable")
-    common_dir = _canonical_no_symlink_root(Path(raw_common_dir))
-
-    replacement_refs = _git_run(
-        ("for-each-ref", "--format=%(refname)", "refs/replace/"),
-        cwd=repo_root,
-        timeout=60.0,
-    )
-    refs_stdout = replacement_refs.stdout or ""
-    refs_stderr = replacement_refs.stderr or ""
-    if (
-        replacement_refs.returncode != 0
-        or refs_stderr
-        or len(refs_stdout.encode("utf-8", errors="replace")) > 4_096
-    ):
-        raise ConfiguredBoardError(
-            f"{label} Git replacement-ref inventory is unavailable"
-        )
-    if refs_stdout:
-        raise ConfiguredBoardError(
-            f"{label} Git object substitution metadata is present"
-        )
-
-    filter_config = _git_run(
-        ("config", "--name-only", "--get-regexp", r"^filter\."),
-        cwd=repo_root,
-        timeout=60.0,
-    )
-    filter_stdout = filter_config.stdout or ""
-    filter_stderr = filter_config.stderr or ""
-    if (
-        filter_config.returncode not in {0, 1}
-        or filter_stderr
-        or len(filter_stdout.encode("utf-8", errors="replace")) > 4_096
-    ):
-        raise ConfiguredBoardError(
-            f"{label} Git filter configuration is unavailable"
-        )
-    if filter_config.returncode == 0 or filter_stdout:
-        raise ConfiguredBoardError(
-            f"{label} Git filter execution metadata is present"
-        )
-
-    for relative in (
-        Path("info/grafts"),
-        Path("refs/replace"),
-        Path("info/attributes"),
-    ):
-        candidate = common_dir / relative
-        try:
-            os.lstat(candidate)
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                f"{label} Git object substitution metadata is unavailable"
-            ) from exc
-        noun = (
-            "filter execution"
-            if relative == Path("info/attributes")
-            else "object substitution"
-        )
-        raise ConfiguredBoardError(f"{label} Git {noun} metadata is present")
-
-
-def _fresh_recovery_clean_source_identity(
-    board: ConfiguredBoard,
-) -> tuple[
-    str,
-    str,
-    str,
-    tuple[tuple[str, str, str, str, str], ...],
-    dict[str, Any],
-]:
-    """Return one clean, stable outer/nested Git forest identity.
-
-    Recovery verification imports repository Python modules.  This check must
-    therefore run before the verifier process exists, rather than relying on
-    the ordinary preflight cleanliness check that follows verifier admission.
-    The caller repeats it after verification and compares the whole tuple so a
-    verifier cannot authorize a different outer tree, gitlink, or nested tree.
-    """
-
-    def clean_status(repo_root: Path, *, label: str) -> None:
-        status = _git_run(
-            (
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=normal",
-                "--ignore-submodules=none",
-            ),
-            cwd=repo_root,
-            timeout=60.0,
-        )
-        stdout = status.stdout or ""
-        stderr = status.stderr or ""
-        if (
-            len(stdout.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES
-            or len(stderr.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_GIT_STATUS_MAX_OUTPUT_BYTES
-        ):
-            raise ConfiguredBoardError(f"{label} Git status exceeds its bound")
-        if status.returncode != 0 or stderr:
-            raise ConfiguredBoardError(f"{label} Git status is unavailable")
-        if stdout:
-            raise ConfiguredBoardError(f"{label} checkout is not clean")
-
-    def require_ordinary_index(repo_root: Path, *, label: str) -> None:
-        index = _git_run(
-            ("ls-files", "-v", "-z"),
-            cwd=repo_root,
-            timeout=60.0,
-        )
-        stdout = index.stdout or ""
-        stderr = index.stderr or ""
-        if (
-            index.returncode != 0
-            or len(stdout.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(stderr.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or stderr
-        ):
-            raise ConfiguredBoardError(f"{label} Git index is unavailable")
-        records = [record for record in stdout.split("\0") if record]
-        if len(records) > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
-            raise ConfiguredBoardError(f"{label} Git index exceeds its bound")
-        if any(
-            len(record) < 3
-            or record[1] != " "
-            or record[0] != "H"
-            or not record[2:]
-            for record in records
-        ):
-            raise ConfiguredBoardError(
-                f"{label} Git index contains an exceptional tracked entry"
-            )
-
-    def import_inventory(
-        repo_root: Path,
-        *,
-        private_gid: int,
-        root_relatives: tuple[str, ...],
-        omission_scope: str,
-        omission_path_prefix: str = "",
-        include_repo_root_candidates: bool = False,
-    ) -> tuple[str, tuple[dict[str, str], ...]]:
-        tracked_command = (
-            ("ls-files", "-v", "-z")
-            if include_repo_root_candidates
-            else (
-                "ls-files",
-                "-v",
-                "-z",
-                "--",
-                *root_relatives,
-            )
-        )
-        tracked_result = _git_run(
-            tracked_command,
-            cwd=repo_root,
-            timeout=60.0,
-        )
-        stage_command = (
-            ("ls-files", "--stage", "-z")
-            if include_repo_root_candidates
-            else (
-                "ls-files",
-                "--stage",
-                "-z",
-                "--",
-                *root_relatives,
-            )
-        )
-        stage_result = _git_run(
-            stage_command,
-            cwd=repo_root,
-            timeout=60.0,
-        )
-        head_command = (
-            ("ls-tree", "-r", "-z", "HEAD")
-            if include_repo_root_candidates
-            else (
-                "ls-tree",
-                "-r",
-                "-z",
-                "HEAD",
-                "--",
-                *root_relatives,
-            )
-        )
-        head_result = _git_run(
-            head_command,
-            cwd=repo_root,
-            timeout=60.0,
-        )
-        tracked_output = tracked_result.stdout or ""
-        tracked_stderr = tracked_result.stderr or ""
-        stage_output = stage_result.stdout or ""
-        stage_stderr = stage_result.stderr or ""
-        head_output = head_result.stdout or ""
-        head_stderr = head_result.stderr or ""
-        if (
-            tracked_result.returncode != 0
-            or stage_result.returncode != 0
-            or head_result.returncode != 0
-            or len(tracked_output.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(tracked_stderr.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(stage_output.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(stage_stderr.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(head_output.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or len(head_stderr.encode("utf-8", errors="replace"))
-            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-            or tracked_stderr
-            or stage_stderr
-            or head_stderr
-        ):
-            raise ConfiguredBoardError(
-                "recovery import tracked-file inventory is unavailable"
-            )
-        tracked: set[str] = set()
-        for record in tracked_output.split("\0"):
-            if not record:
-                continue
-            if len(record) < 3 or record[1] != " ":
-                raise ConfiguredBoardError(
-                    "recovery import tracked-file inventory is malformed"
-                )
-            tag, relative = record[0], record[2:]
-            if tag != "H" or not relative:
-                raise ConfiguredBoardError(
-                    "recovery import source has an exceptional index state"
-                )
-            tracked.add(relative)
-
-        index_entries: dict[str, tuple[str, str]] = {}
-        for record in stage_output.split("\0"):
-            if not record:
-                continue
-            try:
-                metadata, relative = record.split("\t", 1)
-                mode, object_id, stage = metadata.split(" ")
-            except ValueError as exc:
-                raise ConfiguredBoardError(
-                    "recovery import staged-file inventory is malformed"
-                ) from exc
-            if (
-                not relative
-                or relative in index_entries
-                or stage != "0"
-                or mode not in {"100644", "100755", "120000", "160000"}
-                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id)
-                is None
-            ):
-                raise ConfiguredBoardError(
-                    "recovery import staged-file identity differs"
-                )
-            index_entries[relative] = (mode, object_id)
-        if set(index_entries) != tracked:
-            raise ConfiguredBoardError(
-                "recovery import tracked and staged inventories disagree"
-            )
-
-        head_entries: dict[str, tuple[str, str]] = {}
-        for record in head_output.split("\0"):
-            if not record:
-                continue
-            try:
-                metadata, relative = record.split("\t", 1)
-                mode, object_kind, object_id = metadata.split(" ")
-            except ValueError as exc:
-                raise ConfiguredBoardError(
-                    "recovery import HEAD inventory is malformed"
-                ) from exc
-            expected_kind = "commit" if mode == "160000" else "blob"
-            if (
-                not relative
-                or relative in head_entries
-                or mode not in {"100644", "100755", "120000", "160000"}
-                or object_kind != expected_kind
-                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id)
-                is None
-            ):
-                raise ConfiguredBoardError(
-                    "recovery import HEAD identity differs"
-                )
-            head_entries[relative] = (mode, object_id)
-        if head_entries != index_entries:
-            raise ConfiguredBoardError(
-                "recovery import index and HEAD inventories disagree"
-            )
-
-        selected: list[dict[str, Any]] = []
-        directories: list[dict[str, Any]] = []
-        links: list[dict[str, Any]] = []
-        omissions: list[dict[str, str]] = []
-        entry_count = 0
-        path_bytes = 0
-        content_bytes = 0
-
-        def filesystem_identity(
-            relative: str,
-            observed: os.stat_result,
-        ) -> dict[str, Any]:
-            return {
-                "path": relative,
-                "uid": int(observed.st_uid),
-                "gid": int(observed.st_gid),
-                "mode": stat.S_IMODE(observed.st_mode),
-                "nlink": int(observed.st_nlink),
-                "device": int(observed.st_dev),
-                "inode": int(observed.st_ino),
-                "size": int(observed.st_size),
-                "mtime_ns": int(observed.st_mtime_ns),
-            }
-
-        def bind_regular_import_source(
-            relative: str,
-            path: Path,
-            observed: os.stat_result,
-        ) -> dict[str, Any]:
-            """Bind raw stable bytes to the exact index and HEAD blob."""
-
-            nonlocal content_bytes
-            index_entry = index_entries.get(relative)
-            if index_entry is None or index_entry[0] not in {"100644", "100755"}:
-                raise ConfiguredBoardError(
-                    f"recovery import source has no regular Git entry: {relative}"
-                )
-            expected_mode, expected_oid = index_entry
-            filesystem_mode = "100755" if observed.st_mode & 0o111 else "100644"
-            if filesystem_mode != expected_mode:
-                raise ConfiguredBoardError(
-                    f"recovery import source mode differs from Git: {relative}"
-                )
-            try:
-                payload, stable_evidence = _read_stable_regular_bytes(
-                    path,
-                    max_bytes=FRESH_RECOVERY_IMPORT_FILE_MAX_BYTES,
-                )
-            except _StableArtifactReadError as exc:
-                raise ConfiguredBoardError(
-                    f"recovery import source cannot be read stably: {relative}"
-                ) from exc
-            if payload is None:
-                raise ConfiguredBoardError(
-                    f"recovery import source disappeared: {relative}"
-                )
-            observed_identity = (
-                int(observed.st_dev),
-                int(observed.st_ino),
-                stat.S_IMODE(observed.st_mode),
-                int(observed.st_nlink),
-                int(observed.st_uid),
-                int(observed.st_gid),
-                int(observed.st_size),
-                int(observed.st_mtime_ns),
-            )
-            stable_identity = (
-                int(stable_evidence["device"]),
-                int(stable_evidence["inode"]),
-                stat.S_IMODE(int(stable_evidence["mode"])),
-                int(stable_evidence["link_count"]),
-                int(stable_evidence["uid"]),
-                int(stable_evidence["gid"]),
-                int(stable_evidence["size"]),
-                int(stable_evidence["mtime_ns"]),
-            )
-            if stable_identity != observed_identity:
-                raise ConfiguredBoardError(
-                    f"recovery import source changed before hashing: {relative}"
-                )
-            content_bytes += len(payload)
-            if content_bytes > FRESH_RECOVERY_IMPORT_CONTENT_MAX_BYTES:
-                raise ConfiguredBoardError(
-                    "recovery import source content exceeds its aggregate bound"
-                )
-            hash_constructor = (
-                hashlib.sha1 if len(expected_oid) == 40 else hashlib.sha256
-            )
-            git_blob = f"blob {len(payload)}\0".encode("ascii") + payload
-            observed_oid = hash_constructor(git_blob).hexdigest()
-            if observed_oid != expected_oid:
-                raise ConfiguredBoardError(
-                    f"recovery import source raw Git blob differs: {relative}"
-                )
-            result = filesystem_identity(relative, observed)
-            result.update(
-                {
-                    "git_mode": expected_mode,
-                    "git_blob_oid": expected_oid,
-                    "content_sha256": stable_evidence["content_sha256"],
-                }
-            )
-            return result
-
-        def require_safe_directory(
-            relative: str,
-            observed: os.stat_result,
-        ) -> None:
-            mode = stat.S_IMODE(observed.st_mode)
-            if (
-                observed.st_uid != os.geteuid()
-                or observed.st_nlink < 1
-                or mode & 0o002
-                or (mode & 0o020 and observed.st_gid != private_gid)
-            ):
-                raise ConfiguredBoardError(
-                    f"recovery import directory identity differs: {relative}"
-                )
-
-        if include_repo_root_candidates:
-            try:
-                root_status = os.lstat(repo_root)
-                with os.scandir(repo_root) as iterator:
-                    root_entries = sorted(iterator, key=lambda item: item.name)
-            except OSError as exc:
-                raise ConfiguredBoardError(
-                    "recovery repository-root import inventory is unavailable"
-                ) from exc
-            require_safe_directory(".", root_status)
-            directories.append(filesystem_identity(".", root_status))
-            for entry in root_entries:
-                entry_count += 1
-                if entry_count > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
-                    raise ConfiguredBoardError(
-                        "recovery import inventory exceeds its entry bound"
-                    )
-                relative = entry.name
-                path_bytes += len(relative.encode("utf-8"))
-                if path_bytes > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES:
-                    raise ConfiguredBoardError(
-                        "recovery import inventory exceeds its path bound"
-                    )
-                path = Path(entry.path)
-                suffix = path.suffix.lower()
-                if suffix not in {
-                    ".py",
-                    ".pyc",
-                    ".pyo",
-                    ".so",
-                    ".pyd",
-                    ".dylib",
-                }:
-                    continue
-                try:
-                    observed = entry.stat(follow_symlinks=False)
-                except OSError as exc:
-                    raise ConfiguredBoardError(
-                        "recovery root import identity is unavailable"
-                    ) from exc
-                if stat.S_ISLNK(observed.st_mode):
-                    raise ConfiguredBoardError(
-                        "recovery root import inventory contains an unsafe "
-                        f"link: {relative}"
-                    )
-                if not stat.S_ISREG(observed.st_mode):
-                    raise ConfiguredBoardError(
-                        "recovery root import inventory contains a special file"
-                    )
-                if (
-                    observed.st_uid != os.geteuid()
-                    or observed.st_nlink != 1
-                ):
-                    raise ConfiguredBoardError(
-                        "recovery root import source file identity differs"
-                    )
-                mode = stat.S_IMODE(observed.st_mode)
-                if mode & 0o002 or (
-                    mode & 0o020 and observed.st_gid != private_gid
-                ):
-                    raise ConfiguredBoardError(
-                        "recovery root import source has an unsafe writable mode"
-                    )
-                if suffix == ".py":
-                    if relative not in tracked:
-                        raise ConfiguredBoardError(
-                            "recovery root import inventory contains untracked "
-                            f"Python source: {relative}"
-                        )
-                    selected.append(
-                        bind_regular_import_source(relative, path, observed)
-                    )
-                elif suffix in {".pyc", ".pyo"}:
-                    raise ConfiguredBoardError(
-                        "recovery root import inventory contains adjacent "
-                        f"bytecode: {relative}"
-                    )
-                elif relative not in tracked:
-                    raise ConfiguredBoardError(
-                        "recovery root import inventory contains an untracked "
-                        f"native extension: {relative}"
-                    )
-                else:
-                    selected.append(
-                        bind_regular_import_source(relative, path, observed)
-                    )
-
-        for root_relative in root_relatives:
-            inventory_root, exact_relative = _lexical_repo_artifact(
-                repo_root,
-                repo_root / root_relative,
-            )
-            if exact_relative != root_relative:
-                raise ConfiguredBoardError(
-                    "recovery import inventory root differs"
-                )
-            try:
-                root_status = os.lstat(inventory_root)
-            except OSError as exc:
-                raise ConfiguredBoardError(
-                    "recovery import inventory root is unavailable"
-                ) from exc
-            if (
-                stat.S_ISLNK(root_status.st_mode)
-                or not stat.S_ISDIR(root_status.st_mode)
-            ):
-                raise ConfiguredBoardError(
-                    "recovery import inventory root is not a real directory"
-                )
-            require_safe_directory(root_relative, root_status)
-            directories.append(filesystem_identity(root_relative, root_status))
-            pending = [inventory_root]
-            while pending:
-                directory = pending.pop()
-                try:
-                    with os.scandir(directory) as iterator:
-                        entries = sorted(
-                            iterator,
-                            key=lambda item: item.name,
-                        )
-                except OSError as exc:
-                    raise ConfiguredBoardError(
-                        "recovery import inventory cannot be read"
-                    ) from exc
-                for entry in entries:
-                    entry_count += 1
-                    if entry_count > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_ENTRIES:
-                        raise ConfiguredBoardError(
-                            "recovery import inventory exceeds its entry bound"
-                        )
-                    path = Path(entry.path)
-                    try:
-                        relative = path.relative_to(repo_root).as_posix()
-                        observed = entry.stat(follow_symlinks=False)
-                    except (OSError, ValueError) as exc:
-                        raise ConfiguredBoardError(
-                            "recovery import inventory identity is unavailable"
-                        ) from exc
-                    path_bytes += len(relative.encode("utf-8"))
-                    if (
-                        path_bytes
-                        > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-                    ):
-                        raise ConfiguredBoardError(
-                            "recovery import inventory exceeds its path bound"
-                        )
-                    if stat.S_ISLNK(observed.st_mode):
-                        try:
-                            target = os.readlink(path)
-                            target_bytes = target.encode("utf-8")
-                        except (OSError, UnicodeEncodeError) as exc:
-                            raise ConfiguredBoardError(
-                                "recovery import link target is unsafe"
-                            ) from exc
-                        path_bytes += len(target_bytes)
-                        index_entry = index_entries.get(relative)
-                        if (
-                            not target
-                            or relative not in tracked
-                            or index_entry is None
-                            or index_entry[0] != "120000"
-                            or observed.st_uid != os.geteuid()
-                            or observed.st_nlink != 1
-                            or path_bytes
-                            > FRESH_RECOVERY_IMPORT_INVENTORY_MAX_PATH_BYTES
-                        ):
-                            raise ConfiguredBoardError(
-                                "recovery import link target is unsafe"
-                            )
-                        object_id = index_entry[1]
-                        hash_constructor = (
-                            hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
-                        )
-                        git_blob = (
-                            f"blob {len(target_bytes)}\0".encode("ascii")
-                            + target_bytes
-                        )
-                        if hash_constructor(git_blob).hexdigest() != object_id:
-                            raise ConfiguredBoardError(
-                                "recovery import link differs from its Git blob"
-                            )
-                        link_identity = filesystem_identity(relative, observed)
-                        link_identity["target"] = target
-                        links.append(link_identity)
-                        logical_path = (
-                            PurePosixPath(omission_path_prefix)
-                            / PurePosixPath(relative)
-                        ).as_posix()
-                        omissions.append(
-                            {
-                                "scope": omission_scope,
-                                "path": logical_path,
-                                "git_target": target,
-                                "disposition": "omitted_source_symlink",
-                            }
-                        )
-                        continue
-                    if stat.S_ISDIR(observed.st_mode):
-                        require_safe_directory(relative, observed)
-                        directories.append(filesystem_identity(relative, observed))
-                        pending.append(path)
-                        continue
-                    if not stat.S_ISREG(observed.st_mode):
-                        raise ConfiguredBoardError(
-                            "recovery import inventory contains a special file"
-                        )
-                    suffix = path.suffix.lower()
-                    if (
-                        suffix in {".py", ".so", ".pyd", ".dylib"}
-                        and (
-                            observed.st_uid != os.geteuid()
-                            or observed.st_nlink != 1
-                        )
-                    ):
-                        raise ConfiguredBoardError(
-                            "recovery import source file identity differs"
-                        )
-                    mode = stat.S_IMODE(observed.st_mode)
-                    if mode & 0o002 or (
-                        mode & 0o020 and observed.st_gid != private_gid
-                    ):
-                        raise ConfiguredBoardError(
-                            "recovery import source has an unsafe writable mode"
-                        )
-                    if suffix == ".py":
-                        if relative not in tracked:
-                            raise ConfiguredBoardError(
-                                "recovery import inventory contains untracked "
-                                f"Python source: {relative}"
-                            )
-                        selected.append(
-                            bind_regular_import_source(relative, path, observed)
-                        )
-                    elif suffix in {".pyc", ".pyo"}:
-                        if "__pycache__" not in PurePosixPath(relative).parts:
-                            raise ConfiguredBoardError(
-                                "recovery import inventory contains adjacent "
-                                f"bytecode: {relative}"
-                            )
-                    elif suffix in {".so", ".pyd", ".dylib"}:
-                        if relative not in tracked:
-                            raise ConfiguredBoardError(
-                                "recovery import inventory contains an untracked "
-                                f"native extension: {relative}"
-                            )
-                        selected.append(
-                            bind_regular_import_source(relative, path, observed)
-                        )
-        inventory_root = _identity(
-            {
-                "effective_uid": os.geteuid(),
-                "effective_gid": private_gid,
-                "directories": sorted(directories, key=lambda item: item["path"]),
-                "tracked_source_links": sorted(
-                    links, key=lambda item: item["path"]
-                ),
-                "tracked_import_files": sorted(
-                    selected, key=lambda item: item["path"]
-                ),
-            }
-        )
-        return inventory_root, tuple(
-            sorted(omissions, key=lambda item: (item["scope"], item["path"]))
-        )
-
-    root = _canonical_no_symlink_root(board.repo_root)
-    _reject_fresh_recovery_git_object_substitution(root, label="accelerator")
-    for relative in board.worktree_submodule_paths:
-        preliminary_target, preliminary_relative = _lexical_repo_artifact(
-            root,
-            board.path(relative),
-        )
-        if preliminary_relative != relative:
-            raise ConfiguredBoardError("configured submodule path differs")
-        try:
-            preliminary_status = os.lstat(preliminary_target)
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                f"configured submodule is unavailable: {relative}"
-            ) from exc
-        if stat.S_ISLNK(preliminary_status.st_mode) or not stat.S_ISDIR(
-            preliminary_status.st_mode
-        ):
-            raise ConfiguredBoardError(
-                f"configured submodule is not a real directory: {relative}"
-            )
-        _reject_fresh_recovery_git_object_substitution(
-            _canonical_no_symlink_root(preliminary_target),
-            label=f"configured submodule {relative}",
-        )
-    top = _git_run(("rev-parse", "--show-toplevel"), cwd=root)
-    if top.returncode != 0 or Path(top.stdout.strip()) != root:
-        raise ConfiguredBoardError("accelerator repository root differs")
-    outer_head, outer_tree = _git_identity(root)
-    if (
-        re.fullmatch(r"[0-9a-f]{40,64}", outer_head) is None
-        or re.fullmatch(r"[0-9a-f]{40,64}", outer_tree) is None
-    ):
-        raise ConfiguredBoardError("accelerator Git identity is malformed")
-    private_gid = _fresh_recovery_private_primary_gid()
-    require_ordinary_index(root, label="accelerator")
-    clean_status(root, label="accelerator")
-    import_inventory_root, outer_omissions = import_inventory(
-        root,
-        private_gid=private_gid,
-        root_relatives=("scripts", "ipfs_accelerate_py", "test"),
-        omission_scope="accelerator",
-        include_repo_root_candidates=True,
-    )
-
-    nested_identities: list[tuple[str, str, str, str, str]] = []
-    source_omissions = list(outer_omissions)
-    for relative in board.worktree_submodule_paths:
-        target, exact_relative = _lexical_repo_artifact(
-            root,
-            board.path(relative),
-        )
-        if exact_relative != relative:
-            raise ConfiguredBoardError("configured submodule path differs")
-        try:
-            observed = os.lstat(target)
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                f"configured submodule is unavailable: {relative}"
-            ) from exc
-        if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(observed.st_mode):
-            raise ConfiguredBoardError(
-                f"configured submodule is not a real directory: {relative}"
-            )
-        nested_root = _canonical_no_symlink_root(target)
-        _reject_fresh_recovery_git_object_substitution(
-            nested_root,
-            label=f"configured submodule {relative}",
-        )
-        nested_top = _git_run(
-            ("rev-parse", "--show-toplevel"),
-            cwd=nested_root,
-        )
-        if (
-            nested_top.returncode != 0
-            or Path(nested_top.stdout.strip()) != nested_root
-        ):
-            raise ConfiguredBoardError(
-                f"configured submodule repository root differs: {relative}"
-            )
-        nested_head, nested_tree = _git_identity(nested_root)
-        if (
-            re.fullmatch(r"[0-9a-f]{40,64}", nested_head) is None
-            or re.fullmatch(r"[0-9a-f]{40,64}", nested_tree) is None
-        ):
-            raise ConfiguredBoardError(
-                f"configured submodule Git identity is malformed: {relative}"
-            )
-        gitlink = _git_run(
-            ("ls-tree", outer_head, "--", relative),
-            cwd=root,
-        )
-        expected_gitlink = f"160000 commit {nested_head}\t{relative}\n"
-        if gitlink.returncode != 0 or gitlink.stdout != expected_gitlink:
-            raise ConfiguredBoardError(
-                f"configured submodule gitlink differs: {relative}"
-            )
-        require_ordinary_index(
-            nested_root,
-            label=f"configured submodule {relative}",
-        )
-        clean_status(nested_root, label=f"configured submodule {relative}")
-        nested_import_inventory_root, nested_omissions = import_inventory(
-            nested_root,
-            private_gid=private_gid,
-            root_relatives=(".",),
-            omission_scope="datasets_gitlink",
-            omission_path_prefix=relative,
-        )
-        source_omissions.extend(nested_omissions)
-        if _git_identity(nested_root) != (nested_head, nested_tree):
-            raise ConfiguredBoardError(
-                f"configured submodule changed during admission: {relative}"
-            )
-        nested_identities.append(
-            (
-                relative,
-                nested_head,
-                nested_tree,
-                nested_head,
-                nested_import_inventory_root,
-            )
-        )
-
-    clean_status(root, label="accelerator")
-    if _git_identity(root) != (outer_head, outer_tree):
-        raise ConfiguredBoardError(
-            "accelerator repository changed during admission"
-        )
-    if len(nested_identities) != 1:
-        raise ConfiguredBoardError(
-            "fresh recovery requires exactly one datasets gitlink identity"
-        )
-    _nested_path, datasets_gitlink, datasets_tree, _head, _inventory = (
-        nested_identities[0]
-    )
-    ordered_omissions = sorted(
-        source_omissions,
-        key=lambda item: (item["scope"], item["path"]),
-    )
-    if len({item["path"] for item in ordered_omissions}) != len(
-        ordered_omissions
-    ):
-        raise ConfiguredBoardError(
-            "fresh recovery source symlink inventory is ambiguous"
-        )
-    omission_commitment: dict[str, Any] = {
-        "schema": FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA,
-        "accelerator_head": outer_head,
-        "accelerator_tree": outer_tree,
-        "datasets_gitlink": datasets_gitlink,
-        "datasets_tree": datasets_tree,
-        "omitted_source_symlinks": ordered_omissions,
-    }
-    omission_commitment["commitment_cid"] = _identity(omission_commitment)
-    return (
-        outer_head,
-        outer_tree,
-        import_inventory_root,
-        tuple(nested_identities),
-        omission_commitment,
-    )
-
-
-def _fresh_recovery_admission_failure(detail: str) -> ConfiguredBoardError:
-    return ConfiguredBoardError(
-        "fresh-generation recovery initial launch admission failed: "
-        f"{detail}; a typed live-continuity verifier is required after any "
-        "legitimate runtime progress"
-    )
-
-
-def _open_fresh_recovery_interpreter(
-    policy: Mapping[str, Any],
-) -> tuple[int, str, str]:
-    """Open and hash the exact root-owned interpreter selected by policy.
-
-    The returned descriptor remains open across ``execve``.  The child is
-    executed through ``/proc/self/fd`` while the canonical policy path remains
-    ``argv[0]``, so a pathname swap cannot change the bytes that were admitted.
-    """
-
-    raw_path = policy.get("verification_python_executable")
-    raw_digest = policy.get("verification_python_executable_sha256")
-    if (
-        not isinstance(raw_path, str)
-        or not raw_path
-        or not isinstance(raw_digest, str)
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", raw_digest) is None
-    ):
-        raise _fresh_recovery_admission_failure(
-            "verification interpreter identity is absent"
-        )
-    path = Path(raw_path)
-    if (
-        not path.is_absolute()
-        or Path(os.path.abspath(path)) != path
-    ):
-        raise _fresh_recovery_admission_failure(
-            "verification interpreter path is not canonical absolute"
-        )
-    try:
-        lexical = os.lstat(path)
-        if path.resolve(strict=True) != path:
-            raise _fresh_recovery_admission_failure(
-                "verification interpreter path contains a symbolic link"
-            )
-    except ConfiguredBoardError:
-        raise
-    except OSError as exc:
-        raise _fresh_recovery_admission_failure(
-            "verification interpreter is unavailable"
-        ) from exc
-    if not hasattr(os, "O_NOFOLLOW"):
-        raise _fresh_recovery_admission_failure(
-            "no-follow interpreter admission is unavailable"
-        )
-    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
-    try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise _fresh_recovery_admission_failure(
-            "verification interpreter cannot be opened safely"
-        ) from exc
-    try:
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(lexical.st_mode)
-            or not stat.S_ISREG(opened.st_mode)
-            or lexical.st_uid != 0
-            or opened.st_uid != 0
-            or lexical.st_nlink != 1
-            or opened.st_nlink != 1
-            or stat.S_IMODE(opened.st_mode) != 0o755
-            or opened.st_size <= 0
-            or opened.st_size > FRESH_RECOVERY_INTERPRETER_MAX_BYTES
-            or (lexical.st_dev, lexical.st_ino)
-            != (opened.st_dev, opened.st_ino)
-        ):
-            raise _fresh_recovery_admission_failure(
-                "verification interpreter is not one immutable root-owned file"
-            )
-        digest = hashlib.sha256()
-        observed_size = 0
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-            observed_size += len(chunk)
-            if observed_size > FRESH_RECOVERY_INTERPRETER_MAX_BYTES:
-                raise _fresh_recovery_admission_failure(
-                    "verification interpreter exceeds its byte bound"
-                )
-        after = os.fstat(descriptor)
-        current = os.lstat(path)
-        stable_fields = (
-            "st_dev",
-            "st_ino",
-            "st_mode",
-            "st_uid",
-            "st_nlink",
-            "st_size",
-            "st_mtime_ns",
-            "st_ctime_ns",
-        )
-        if (
-            observed_size != opened.st_size
-            or any(
-                getattr(opened, field) != getattr(after, field)
-                for field in stable_fields
-            )
-            or any(
-                getattr(after, field) != getattr(current, field)
-                for field in stable_fields
-            )
-            or "sha256:" + digest.hexdigest() != raw_digest
-        ):
-            raise _fresh_recovery_admission_failure(
-                "verification interpreter content identity differs"
-            )
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        executable = f"/proc/self/fd/{descriptor}"
-        proc_status = os.stat(executable)
-        if (proc_status.st_dev, proc_status.st_ino) != (
-            after.st_dev,
-            after.st_ino,
-        ):
-            raise _fresh_recovery_admission_failure(
-                "held verification interpreter identity differs"
-            )
-        return descriptor, raw_path, executable
-    except BaseException:
-        os.close(descriptor)
-        raise
-
-
-def _seal_fresh_recovery_materializer(payload: bytes) -> int:
-    """Copy exact tracked materializer bytes into one immutable anonymous file."""
-
-    if (
-        not isinstance(payload, bytes)
-        or not payload
-        or len(payload) > FRESH_RECOVERY_MATERIALIZER_MAX_BYTES
-    ):
-        raise _fresh_recovery_admission_failure(
-            "tracked recovery verifier bytes exceed their bound"
-        )
-    required = (
-        "memfd_create",
-        "MFD_CLOEXEC",
-        "MFD_ALLOW_SEALING",
-    )
-    if any(not hasattr(os, name) for name in required):
-        raise _fresh_recovery_admission_failure(
-            "sealed recovery verifier execution is unavailable"
-        )
-    seal_names = (
-        "F_ADD_SEALS",
-        "F_GET_SEALS",
-        "F_SEAL_SEAL",
-        "F_SEAL_SHRINK",
-        "F_SEAL_GROW",
-        "F_SEAL_WRITE",
-    )
-    if any(not hasattr(fcntl, name) for name in seal_names):
-        raise _fresh_recovery_admission_failure(
-            "sealed recovery verifier policy is unavailable"
-        )
-    flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
-    try:
-        descriptor = os.memfd_create("lgcvf-recovery-materializer", flags)
-    except OSError as exc:
-        raise _fresh_recovery_admission_failure(
-            "sealed recovery verifier cannot be created"
-        ) from exc
-    try:
-        view = memoryview(payload)
-        while view:
-            written = os.write(descriptor, view)
-            if written <= 0:
-                raise _fresh_recovery_admission_failure(
-                    "sealed recovery verifier write stalled"
-                )
-            view = view[written:]
-        os.fchmod(descriptor, 0o400)
-        os.fsync(descriptor)
-        seals = (
-            fcntl.F_SEAL_SEAL
-            | fcntl.F_SEAL_SHRINK
-            | fcntl.F_SEAL_GROW
-            | fcntl.F_SEAL_WRITE
-        )
-        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, seals)
-        if fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) != seals:
-            raise _fresh_recovery_admission_failure(
-                "sealed recovery verifier policy differs"
-            )
-        observed = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(observed.st_mode)
-            or stat.S_IMODE(observed.st_mode) != 0o400
-            or observed.st_size != len(payload)
-        ):
-            raise _fresh_recovery_admission_failure(
-                "sealed recovery verifier identity differs"
-            )
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        return descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
-
-
-def _run_fresh_recovery_verifier(
-    board: ConfiguredBoard,
-    materializer_path: Path,
-    materializer_bytes: bytes,
-) -> subprocess.CompletedProcess[str]:
-    """Run the protected public verifier with no ambient code authority."""
-
-    policy = board.payload.get("fresh_generation_recovery")
-    if not isinstance(policy, Mapping):
-        raise _fresh_recovery_admission_failure("recovery policy is not an object")
-    descriptor, interpreter_path, executable = _open_fresh_recovery_interpreter(
-        policy
-    )
-    try:
-        materializer_descriptor = _seal_fresh_recovery_materializer(
-            materializer_bytes
-        )
-    except BaseException:
-        os.close(descriptor)
-        raise
-    environment = _sanitized_git_environment()
-    environment.update(
-        {
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONHASHSEED": "0",
-            "PYTHONNOUSERSITE": "1",
-        }
-    )
-    command = [
-        interpreter_path,
-        "-I",
-        "-S",
-        "-B",
-        "-c",
-        FRESH_RECOVERY_MATERIALIZER_BOOTSTRAP,
-        str(materializer_path),
-        str(materializer_descriptor),
-        "<unavailable-private-pycache>",
-        "verify",
-    ]
-    try:
-        with tempfile.TemporaryDirectory(
-            prefix="lgcvf-recovery-pycache-",
-        ) as pycache_root_text:
-            pycache_root = Path(pycache_root_text)
-            observed = os.lstat(pycache_root)
-            if (
-                stat.S_ISLNK(observed.st_mode)
-                or not stat.S_ISDIR(observed.st_mode)
-                or observed.st_uid != os.geteuid()
-                or stat.S_IMODE(observed.st_mode) != 0o700
-                or any(pycache_root.iterdir())
-            ):
-                raise _fresh_recovery_admission_failure(
-                    "private verifier bytecode root identity differs"
-                )
-            command[8] = str(pycache_root)
-            return subprocess.run(
-                command,
-                executable=executable,
-                pass_fds=(descriptor, materializer_descriptor),
-                cwd=board.repo_root,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=300.0,
-            )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return subprocess.CompletedProcess(
-            command,
-            124,
-            "",
-            f"{type(exc).__name__}: {exc}",
-        )
-    finally:
-        os.close(materializer_descriptor)
-        os.close(descriptor)
-
-
-def _validate_fresh_recovery_projection_bindings(
-    report: Mapping[str, Any],
-    *,
-    source_omission_commitment: Mapping[str, Any],
-) -> None:
-    """Cross-check source-derived omissions and shape richer replay evidence."""
-
-    omission = report.get("validation_projection_omission_commitment")
-    omission_root = report.get("validation_projection_omission_root")
-    if (
-        not isinstance(omission, Mapping)
-        or set(omission)
-        != {
-            "schema",
-            "accelerator_head",
-            "accelerator_tree",
-            "datasets_gitlink",
-            "datasets_tree",
-            "omitted_source_symlinks",
-            "commitment_cid",
-        }
-        or dict(omission) != dict(source_omission_commitment)
-        or omission.get("schema") != FRESH_RECOVERY_PROJECTION_OMISSION_SCHEMA
-        or omission.get("commitment_cid")
-        != _identity(
-            {key: value for key, value in omission.items() if key != "commitment_cid"}
-        )
-        or omission_root != omission.get("commitment_cid")
-    ):
-        raise _fresh_recovery_admission_failure(
-            "public verifier source-derived projection omission binding differs"
-        )
-
-    evidence = report.get("validation_projection_evidence_commitment")
-    evidence_root = report.get("validation_projection_evidence_root")
-    if (
-        not isinstance(evidence, Mapping)
-        or set(evidence)
-        != {
-            "schema",
-            "source_binding_cid",
-            "omission_root",
-            "ordered_suites",
-            "commitment_cid",
-        }
-        or evidence.get("schema") != FRESH_RECOVERY_PROJECTION_EVIDENCE_SCHEMA
-        or evidence.get("omission_root") != omission_root
-        or evidence.get("commitment_cid")
-        != _identity(
-            {key: value for key, value in evidence.items() if key != "commitment_cid"}
-        )
-        or evidence_root != evidence.get("commitment_cid")
-        or re.fullmatch(
-            r"baguqeera[a-z2-7]{52}",
-            str(evidence.get("source_binding_cid") or ""),
-        )
-        is None
-    ):
-        raise _fresh_recovery_admission_failure(
-            "public verifier projection evidence binding differs"
-        )
-    suites = evidence.get("ordered_suites")
-    expected_task_ids = (
-        "LGCVF-051",
-        "LGCVF-060",
-        "LGCVF-061",
-        "LGCVF-070",
-        "LGCVF-071",
-        "LGCVF-080",
-    )
-    expected_suite_ids = tuple(
-        "recovery_" + task_id.casefold().replace("-", "_")
-        for task_id in expected_task_ids
-    )
-    if not isinstance(suites, list) or len(suites) != len(expected_task_ids):
-        raise _fresh_recovery_admission_failure(
-            "public verifier projection evidence suite population differs"
-        )
-    observed_suite_ids: list[str] = []
-    observed_task_ids: list[str] = []
-    for item in suites:
-        if not isinstance(item, Mapping) or set(item) != {
-            "suite_id",
-            "task_id",
-            "task_cid",
-            "projection_cid",
-            "copied_source_manifest_root",
-        }:
-            raise _fresh_recovery_admission_failure(
-                "public verifier projection evidence suite fields differ"
-            )
-        observed_suite_ids.append(str(item.get("suite_id") or ""))
-        observed_task_ids.append(str(item.get("task_id") or ""))
-        for field in (
-            "task_cid",
-            "projection_cid",
-            "copied_source_manifest_root",
-        ):
-            if re.fullmatch(
-                r"baguqeera[a-z2-7]{52}", str(item.get(field) or "")
-            ) is None:
-                raise _fresh_recovery_admission_failure(
-                    "public verifier projection evidence suite identity differs"
-                )
-    if (
-        tuple(observed_suite_ids) != expected_suite_ids
-        or tuple(observed_task_ids) != expected_task_ids
-    ):
-        raise _fresh_recovery_admission_failure(
-            "public verifier projection evidence suite order differs"
-        )
-
-
-def _verify_fresh_recovery_launch_admission(
-    board: ConfiguredBoard,
-) -> dict[str, Any] | None:
-    """Admit only the exact pristine run-v17 recovery before command rendering.
-
-    The scheduler does not interpret DuckDB or recovery artifacts itself.  A
-    protected public materializer owns those semantics and emits one closed,
-    content-addressed read-only verification report.  The current contract is
-    intentionally initial-state-only: a later restart fails closed until a
-    separately reviewed live-continuity verifier exists.
-    """
-
-    if not _targets_fresh_recovery_generation(
-        board.payload,
-        repo_root=board.repo_root,
-    ):
-        return None
-    if "fresh_generation_recovery" not in board.payload:
-        raise _fresh_recovery_admission_failure(
-            "protected run-v17 target lacks its full recovery policy"
-        )
-    policy = board.payload.get("fresh_generation_recovery")
-    if not isinstance(policy, Mapping):
-        raise _fresh_recovery_admission_failure("recovery policy is not an object")
-    if (
-        policy.get("schema") != FRESH_RECOVERY_POLICY_SCHEMA
-        or policy.get("target_generation") != FRESH_RECOVERY_TARGET_GENERATION
-    ):
-        raise _fresh_recovery_admission_failure(
-            "recovery policy schema or target generation differs"
-        )
-    duckdb_runtime_cid = policy.get("duckdb_runtime_cid")
-    source_generation = policy.get("source_generation")
-    if (
-        not isinstance(duckdb_runtime_cid, str)
-        or re.fullmatch(r"baguqeera[a-z2-7]{52}", duckdb_runtime_cid) is None
-    ):
-        raise _fresh_recovery_admission_failure(
-            "recovery policy DuckDB runtime identity is absent"
-        )
-    if not isinstance(source_generation, str) or not source_generation:
-        raise _fresh_recovery_admission_failure(
-            "recovery policy source generation is absent"
-        )
-    canonical_config, canonical_config_relative = _lexical_repo_artifact(
-        board.repo_root,
-        board.path(FRESH_RECOVERY_CONFIG_PATH),
-    )
-    if (
-        canonical_config_relative != FRESH_RECOVERY_CONFIG_PATH
-        or Path(os.path.abspath(board.config_path)) != canonical_config
-    ):
-        raise _fresh_recovery_admission_failure(
-            "protected run-v17 must use the exact canonical scheduler config"
-        )
-    relative = _safe_relative(
-        board.payload.get("materializer_path"),
-        field="materializer_path",
-    )
-    if relative != FRESH_RECOVERY_MATERIALIZER_PATH:
-        raise _fresh_recovery_admission_failure(
-            "protected run-v17 must use the exact canonical recovery verifier"
-        )
-    if relative not in board.protected_paths:
-        raise _fresh_recovery_admission_failure(
-            "public recovery verifier is not a protected control file"
-        )
-    materializer_path, _ = _lexical_repo_artifact(
-        board.repo_root,
-        board.path(relative),
-    )
-    try:
-        materializer_status = os.lstat(materializer_path)
-    except OSError as exc:
-        raise _fresh_recovery_admission_failure(
-            "public recovery verifier is absent"
-        ) from exc
-    if (
-        stat.S_ISLNK(materializer_status.st_mode)
-        or not stat.S_ISREG(materializer_status.st_mode)
-        or materializer_status.st_nlink != 1
-        or materializer_status.st_uid != os.geteuid()
-    ):
-        raise _fresh_recovery_admission_failure(
-            "public recovery verifier file identity differs"
-        )
-
-    try:
-        source_identity = _fresh_recovery_clean_source_identity(board)
-        (
-            source_head,
-            _source_tree,
-            _import_inventory_root,
-            _nested_source_identities,
-            source_omission_commitment,
-        ) = source_identity
-        config_bytes, _config_snapshot = _tracked_head_snapshot(
-            repo_root=board.repo_root,
-            path=canonical_config,
-            source_head=source_head,
-        )
-        _materializer_bytes, _materializer_snapshot = _tracked_head_snapshot(
-            repo_root=board.repo_root,
-            path=materializer_path,
-            source_head=source_head,
-        )
-    except ConfiguredBoardError as exc:
-        raise _fresh_recovery_admission_failure(
-            "canonical recovery checkout is not one clean, current tracked "
-            f"outer/nested source forest ({exc})"
-        ) from exc
-    config_sha256 = hashlib.sha256(config_bytes).hexdigest()
-    if (
-        board.configuration_root
-        != _identity({"bytes_sha256": config_sha256})
-        or board.configuration_revision
-        != _identity(
-            {
-                "path": FRESH_RECOVERY_CONFIG_PATH,
-                "bytes_sha256": config_sha256,
-            }
-        )
-    ):
-        raise _fresh_recovery_admission_failure(
-            "loaded recovery config differs from its tracked canonical bytes"
-        )
-
-    completed = _run_fresh_recovery_verifier(
-        board,
-        materializer_path,
-        _materializer_bytes,
-    )
-    try:
-        after_identity = _fresh_recovery_clean_source_identity(board)
-        (
-            after_head,
-            _after_tree,
-            _after_import_inventory_root,
-            _after_nested_identities,
-            _after_omission_commitment,
-        ) = after_identity
-        after_config, _after_config_snapshot = _tracked_head_snapshot(
-            repo_root=board.repo_root,
-            path=canonical_config,
-            source_head=after_head,
-        )
-        after_materializer, _after_materializer_snapshot = _tracked_head_snapshot(
-            repo_root=board.repo_root,
-            path=materializer_path,
-            source_head=after_head,
-        )
-    except ConfiguredBoardError as exc:
-        raise _fresh_recovery_admission_failure(
-            "canonical recovery source changed during public verification"
-        ) from exc
-    if (
-        after_identity != source_identity
-        or after_head != source_head
-        or after_config != config_bytes
-        or after_materializer != _materializer_bytes
-    ):
-        raise _fresh_recovery_admission_failure(
-            "canonical recovery source changed during public verification"
-        )
-    stdout = completed.stdout or ""
-    stderr = completed.stderr or ""
-    if (
-        len(stdout.encode("utf-8", errors="replace"))
-        > FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES
-        or len(stderr.encode("utf-8", errors="replace"))
-        > FRESH_RECOVERY_VERIFIER_MAX_OUTPUT_BYTES
-    ):
-        raise _fresh_recovery_admission_failure("public verifier output exceeded its bound")
-    try:
-        report = json.loads(stdout, object_pairs_hook=_reject_duplicate_keys)
-    except (ConfiguredBoardError, json.JSONDecodeError) as exc:
-        raise _fresh_recovery_admission_failure(
-            "public verifier did not emit exactly one JSON object"
-        ) from exc
-    if not isinstance(report, dict):
-        raise _fresh_recovery_admission_failure(
-            "public verifier did not emit exactly one JSON object"
-        )
-    if completed.returncode != 0:
-        reason = report.get("error") or report.get("errors") or stderr[-2_000:]
-        raise _fresh_recovery_admission_failure(
-            f"public verifier rejected the generation ({reason!r})"
-        )
-    if set(report) != FRESH_RECOVERY_VERIFICATION_FIELDS:
-        raise _fresh_recovery_admission_failure("public verifier report shape differs")
-    _validate_fresh_recovery_projection_bindings(
-        report,
-        source_omission_commitment=source_omission_commitment,
-    )
-
-    partitions = (
-        ("completed_task_ids", "completed_count", 13),
-        ("todo_task_ids", "todo_count", 13),
-        ("blocked_task_ids", "blocked_count", 2),
-    )
-    partition_values: list[set[str]] = []
-    for ids_field, count_field, expected_count in partitions:
-        identifiers = report.get(ids_field)
-        if (
-            not isinstance(identifiers, list)
-            or any(not isinstance(item, str) or not item for item in identifiers)
-            or len(identifiers) != expected_count
-            or len(set(identifiers)) != expected_count
-            or report.get(count_field) != expected_count
-        ):
-            raise _fresh_recovery_admission_failure(
-                f"public verifier {ids_field} partition differs"
-            )
-        partition_values.append(set(identifiers))
-    if any(
-        partition_values[left] & partition_values[right]
-        for left in range(len(partition_values))
-        for right in range(left + 1, len(partition_values))
-    ):
-        raise _fresh_recovery_admission_failure(
-            "public verifier task partitions overlap"
-        )
-
-    required_values = {
-        "schema": FRESH_RECOVERY_VERIFICATION_SCHEMA,
-        "valid": True,
-        "verification_mode": "read_only",
-        "source_generation": source_generation,
-        "target_generation": FRESH_RECOVERY_TARGET_GENERATION,
-        "duckdb_runtime_cid": duckdb_runtime_cid,
-        "ready_task_ids": ["LGCVF-081"],
-        "model_provider_route": "none",
-        "network_isolation_enforced": True,
-        "candidate_authored_validation": True,
-        "validation_completion_authoritative": False,
-        "task_implementation_complete": False,
-        "test_qualification_complete": False,
-        "objective_complete": False,
-        "release_qualified": False,
-        "production_authorized": False,
-        "source_database_statuses_read": False,
-        "synthetic_source_disposition": "quarantined_not_imported",
-        "stores_unchanged": True,
-    }
-    if any(report.get(key) != value for key, value in required_values.items()):
-        raise _fresh_recovery_admission_failure(
-            "public verifier authority disposition differs"
-        )
-    for field in (
-        "manifest_cid",
-        "receipt_cid",
-        "source_evidence_cid",
-        "validation_qualification_cid",
-        "operational_verification_root",
-        "verification_root",
-    ):
-        if not isinstance(report.get(field), str) or not report[field]:
-            raise _fresh_recovery_admission_failure(
-                f"public verifier {field} is absent"
-            )
-    claimed_root = str(report["verification_root"])
-    root_material = dict(report)
-    root_material.pop("verification_root")
-    if claimed_root != _identity(root_material):
-        raise _fresh_recovery_admission_failure(
-            "public verifier content identity differs"
-        )
-    return report
 
 
 def _git(
@@ -4751,150 +2463,12 @@ def _control_file_is_tracked(
     return False
 
 
-def _launch_source_amendment_policy(
-    payload: Mapping[str, Any],
-) -> Mapping[str, Any] | None:
-    policy = payload.get("launch_source_amendment_policy")
-    if policy is None:
-        return None
-    required_fields = {
-        "required",
-        "schema",
-        "authoritative_store",
-        "append_mode",
-        "task_history_policy",
-        "attempt_source_policy",
-        "completion_policy",
-        "cli_json_is_authority",
-        "filesystem_projection_is_authority",
-    }
-    if (
-        not isinstance(policy, Mapping)
-        or set(policy) != required_fields
-        or policy.get("required") is not True
-        or policy.get("schema")
-        != "ipfs_accelerate_py/agent-supervisor/launch-source-amendment@1"
-        or policy.get("authoritative_store")
-        != "DuckDB/PlanRevisionRepository@1 over Quack"
-        or policy.get("append_mode") != "exact_plan_revision_cas"
-        or policy.get("task_history_policy")
-        != "preserve_immutable_task_cids_and_receipts"
-        or policy.get("attempt_source_policy")
-        != "exact_launch_forest_and_worktree_preimage"
-        or policy.get("completion_policy")
-        != "current_tree_requalification_required"
-        or policy.get("cli_json_is_authority") is not False
-        or policy.get("filesystem_projection_is_authority") is not False
-    ):
-        raise ConfiguredBoardError(
-            "launch-source amendment policy is incomplete or unsafe"
-        )
-    return policy
-
-
-def preflight_configured_board(
-    board: ConfiguredBoard,
-    *,
-    admitted_live_validator_sha256: str = "",
-) -> dict[str, Any]:
+def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     """Prove that a scheduler document can safely launch from this checkout."""
 
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
     warnings: list[str] = []
-
-    try:
-        amendment_policy = _launch_source_amendment_policy(board.payload)
-    except ConfiguredBoardError as exc:
-        _append_check(
-            checks,
-            errors,
-            name="launch_source_amendment_policy",
-            passed=False,
-            detail=str(exc),
-        )
-    else:
-        _append_check(
-            checks,
-            errors,
-            name="launch_source_amendment_policy",
-            passed=True,
-            detail=(
-                "absent"
-                if amendment_policy is None
-                else "operator_materializer_required"
-            ),
-        )
-
-    if _targets_fresh_recovery_generation(
-        board.payload,
-        repo_root=board.repo_root,
-    ):
-        try:
-            recovery_admission = _verify_fresh_recovery_launch_admission(board)
-        except ConfiguredBoardError as exc:
-            _append_check(
-                checks,
-                errors,
-                name="fresh_generation_recovery_admission",
-                passed=False,
-                detail=str(exc),
-            )
-            # The protected verifier has already established that source or
-            # recovery authority is unsafe.  Do not continue into generic Git
-            # or validator probes: repository-local attributes and filters are
-            # themselves among the rejected inputs and a later ``git status``
-            # could execute them even though launch admission has failed.
-            return {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "configured-board-preflight@1"
-                ),
-                "valid": False,
-                "config_path": str(board.config_path),
-                "repo_root": str(board.repo_root),
-                "board_namespace": board.board_namespace,
-                "taskboard_path": str(board.path(board.taskboard_path)),
-                "max_lanes": board.max_lanes,
-                "errors": errors,
-                "warnings": warnings,
-                "checks": checks,
-                "validator_report": {},
-            }
-        else:
-            assert recovery_admission is not None
-            _append_check(
-                checks,
-                errors,
-                name="fresh_generation_recovery_admission",
-                passed=True,
-                detail={
-                    "schema": recovery_admission["schema"],
-                    "target_generation": recovery_admission["target_generation"],
-                    "duckdb_runtime_cid": recovery_admission[
-                        "duckdb_runtime_cid"
-                    ],
-                    "ready_task_ids": recovery_admission["ready_task_ids"],
-                    "model_provider_route": recovery_admission[
-                        "model_provider_route"
-                    ],
-                    "validation_completion_authoritative": recovery_admission[
-                        "validation_completion_authoritative"
-                    ],
-                    "validation_projection_omission_root": recovery_admission[
-                        "validation_projection_omission_root"
-                    ],
-                    "validation_projection_evidence_root": recovery_admission[
-                        "validation_projection_evidence_root"
-                    ],
-                    "receipt_cid": recovery_admission["receipt_cid"],
-                    "operational_verification_root": recovery_admission[
-                        "operational_verification_root"
-                    ],
-                    "verification_root": recovery_admission["verification_root"],
-                    "stores_unchanged": recovery_admission["stores_unchanged"],
-                },
-            )
 
     top = _git(board, "rev-parse", "--show-toplevel")
     _append_check(
@@ -4977,6 +2551,10 @@ def preflight_configured_board(
         board.validator_path,
         *board.protected_paths,
     }
+    if board.dependency_validator_path:
+        required_files.update(
+            {board.dependency_validator_path, board.dependency_seal_path}
+        )
     missing_files = sorted(
         relative
         for relative in required_files
@@ -5009,65 +2587,16 @@ def preflight_configured_board(
         "--untracked-files=all",
     )
     dirty_lines = [line for line in status.stdout.splitlines() if line]
-    launch_policy = board.payload.get("launch_policy")
-    eaaef_live_admitted = (
-        _eaaef_plan_bound_profile(board)
-        and isinstance(launch_policy, dict)
-        and launch_policy.get("live_multi_supervisor_allowed") is True
-    )
-    eaaef_receipt_only_drift = False
-    if eaaef_live_admitted:
-        from ..validation.eaaef_host_admission import (
-            eaaef_checkout_has_only_generated_receipt_drift,
-        )
-
-        eaaef_receipt_only_drift = (
-            eaaef_checkout_has_only_generated_receipt_drift(board.repo_root)
-        )
     _append_check(
         checks,
         errors,
         name="checkout_clean",
-        passed=status.returncode == 0
-        and (
-            not dirty_lines
-            or (eaaef_live_admitted and eaaef_receipt_only_drift)
-        ),
+        passed=status.returncode == 0 and not dirty_lines,
         detail=dirty_lines[:100],
     )
-    if eaaef_live_admitted and dirty_lines and eaaef_receipt_only_drift:
-        warnings.append(
-            "EAAEF live launch proceeding with generated receipt staging only"
-        )
 
     validator_report: dict[str, Any] = {}
-    if admitted_live_validator_sha256:
-        admitted_validator = bool(
-            board.board_namespace == LGCVF_LIVE_BOARD_NAMESPACE
-            and board.config_path.relative_to(board.repo_root)
-            == LGCVF_LIVE_CONFIG_PATH
-            and re.fullmatch(
-                r"sha256:[0-9a-f]{64}",
-                admitted_live_validator_sha256,
-            )
-        )
-        _append_check(
-            checks,
-            errors,
-            name="declared_validator",
-            passed=admitted_validator,
-            detail={
-                "execution": "controller-qualified_sealed_capsule_member",
-                "sha256": admitted_live_validator_sha256,
-            },
-        )
-        if admitted_validator:
-            validator_report = {
-                "valid": True,
-                "authority": "controller-qualified_sealed_capsule_member",
-                "validator_sha256": admitted_live_validator_sha256,
-            }
-    elif board.path(board.validator_path).is_file():
+    if board.path(board.validator_path).is_file():
         validator = _run(
             (
                 sys.executable,
@@ -5089,17 +2618,46 @@ def preflight_configured_board(
             passed=(
                 validator.returncode == 0
                 and validator_report.get("valid") is True
-                and (
-                    not _eaaef_plan_bound_profile(board)
-                    or validator_report.get("board_namespace")
-                    == EAAEF_BOARD_NAMESPACE
-                )
             ),
             detail={
                 "returncode": validator.returncode,
                 "stderr": validator.stderr[-2000:],
                 "errors": validator_report.get("errors"),
-                "board_namespace": validator_report.get("board_namespace"),
+            },
+        )
+
+    if (
+        board.dependency_validator_path
+        and board.path(board.dependency_validator_path).is_file()
+    ):
+        dependency_validator = _run(
+            (
+                sys.executable,
+                str(board.path(board.dependency_validator_path)),
+                "--check-all",
+            ),
+            cwd=board.repo_root,
+        )
+        dependency_report: dict[str, Any] = {}
+        try:
+            parsed_dependency = json.loads(dependency_validator.stdout)
+            if isinstance(parsed_dependency, dict):
+                dependency_report = parsed_dependency
+        except json.JSONDecodeError:
+            dependency_report = {}
+        _append_check(
+            checks,
+            errors,
+            name="dependency_seal_validator",
+            passed=(
+                dependency_validator.returncode == 0
+                and dependency_report.get("valid") is True
+            ),
+            detail={
+                "returncode": dependency_validator.returncode,
+                "stderr": dependency_validator.stderr[-2000:],
+                "errors": dependency_report.get("errors"),
+                "seal_path": board.dependency_seal_path,
             },
         )
 
@@ -5116,8 +2674,8 @@ def preflight_configured_board(
     for relative in board.worktree_submodule_paths:
         gitlink = _gitlink_commit(board, relative)
         target = board.path(relative)
-        top_level = _git_run(
-            ("rev-parse", "--show-toplevel"),
+        top_level = _run(
+            ("git", "rev-parse", "--show-toplevel"),
             cwd=target,
             timeout=60,
         ) if target.is_dir() else None
@@ -5126,21 +2684,22 @@ def preflight_configured_board(
             and top_level.returncode == 0
             and Path(top_level.stdout.strip()).resolve() == target.resolve()
         )
-        head = _git_run(
-            ("rev-parse", "HEAD"),
+        head = _run(
+            ("git", "rev-parse", "HEAD"),
             cwd=target,
             timeout=60,
         ) if exact_worktree else None
-        clean = _git_run(
-            ("status", "--porcelain=v1", "--untracked-files=all"),
+        clean = _run(
+            ("git", "status", "--porcelain=v1", "--untracked-files=all"),
             cwd=target,
             timeout=60,
         ) if head is not None and head.returncode == 0 else None
         actual_head = head.stdout.strip() if head is not None else ""
         expected_planning = planning_revisions.get(relative, "")
         planning_ancestor = (
-            _git_run(
+            _run(
                 (
+                    "git",
                     "merge-base",
                     "--is-ancestor",
                     expected_planning,
@@ -5156,7 +2715,6 @@ def preflight_configured_board(
             )
             else None
         )
-        submodule_dirty = bool(clean is not None and clean.stdout.strip())
         valid = bool(
             gitlink
             and exact_worktree
@@ -5167,7 +2725,7 @@ def preflight_configured_board(
             and planning_ancestor.returncode == 0
             and clean is not None
             and clean.returncode == 0
-            and not submodule_dirty
+            and not clean.stdout.strip()
         )
         submodule_checks.append(
             {
@@ -5195,6 +2753,7 @@ def preflight_configured_board(
         passed=all(item["valid"] for item in submodule_checks),
         detail=submodule_checks,
     )
+
     implementation_entry = board.path(
         IMPLEMENTATION_ENTRY_PATH.as_posix()
     )
@@ -5228,34 +2787,26 @@ def configured_board_common_args(
     board: ConfiguredBoard,
     *,
     implement: bool,
-    state_owner_bootstrap_fd: int = -1,
-    state_owner_bootstrap_store_id: str = "",
 ) -> tuple[str, ...]:
     """Map scheduler policy to existing implementation-supervisor CLI args."""
 
     payload = board.payload
     objective_refill_controls = _objective_refill_controls(payload)
-    program_for_paths = _database_program_with_admitted_live_owner(board)
+    program_for_paths = board.resolved_database_program()
     worktree_root = (
         str(board.path(program_for_paths.worktree_root))
         if program_for_paths.worktree_root
         else str(board.path(board.runtime_paths["worktrees"]))
-    )
-    implementation_branch = resolve_board_implementation_branch(
-        board.merge_target_branch,
-        board.board_namespace,
     )
     args: list[str] = [
         "--todo-path",
         str(board.path(board.taskboard_path)),
         "--task-prefix",
         board.task_header_prefix,
-        "--board-namespace",
-        board.board_namespace,
         "--worktree-root",
         worktree_root,
         "--merge-target-branch",
-        implementation_branch,
+        board.merge_target_branch,
         "--merge-queue-dir",
         str(board.path(board.runtime_paths["merge_queue"])),
         "--stale-seconds",
@@ -5288,16 +2839,13 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
-    launch_source_policy = _launch_source_amendment_policy(payload)
-    if launch_source_policy is not None:
-        args.append("--require-launch-source-amendment")
     # Explicit database-program selections are supervisor inputs.  The
     # fallback legacy-Markdown program, however, is a daemon-only compatibility
     # projection: implementation_supervisor does not accept the database CLI
     # flags and already launches the daemon with its closed legacy-Markdown
     # default.  Passing those daemon-only flags through the supervisor creates
     # an immediate argparse/restart loop before any task can run.
-    program = _database_program_with_admitted_live_owner(board)
+    program = board.resolved_database_program()
     program_args = program.cli_args() if board.database_program is not None else []
     skip_next = False
     for item in program_args:
@@ -5327,13 +2875,9 @@ def configured_board_common_args(
     for relative in board.protected_paths:
         args.extend(["--implementation-protected-path", relative])
     if objective_refill_controls is not None:
-        (
-            min_open_tasks,
-            max_findings,
-            cooldown_seconds,
-            max_epochs,
-            max_total_tasks,
-        ) = objective_refill_controls
+        min_open_tasks, max_findings, cooldown_seconds = (
+            objective_refill_controls
+        )
         args.extend(
             [
                 "--objective-refill-scan",
@@ -5347,17 +2891,6 @@ def configured_board_common_args(
                 str(cooldown_seconds),
             ]
         )
-        if max_epochs is not None:
-            args.extend(
-                ["--objective-refill-max-epochs", str(max_epochs)]
-            )
-        if max_total_tasks is not None:
-            args.extend(
-                [
-                    "--objective-refill-max-total-tasks",
-                    str(max_total_tasks),
-                ]
-            )
         if payload.get("objective_goal_refinement_enabled") is False:
             args.append("--no-objective-goal-refinement")
     if payload.get("codebase_refill_enabled") is True:
@@ -5368,45 +2901,6 @@ def configured_board_common_args(
         args.append("--no-dependency-guardrail")
     if payload.get("reconciliation_guardrail_enabled") is False:
         args.append("--no-reconciliation-guardrail")
-    bootstrap_presence = (
-        state_owner_bootstrap_fd >= 3,
-        bool(str(state_owner_bootstrap_store_id or "").strip()),
-    )
-    if any(bootstrap_presence) and not all(bootstrap_presence):
-        raise ConfiguredBoardError(
-            "state-owner bootstrap descriptor and store must be paired"
-        )
-    if all(bootstrap_presence):
-        program = board.resolved_database_program()
-        if (
-            board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
-            or program.authority_mode != "quack"
-            or str(state_owner_bootstrap_store_id) != str(program.store_id)
-        ):
-            raise ConfiguredBoardError(
-                "state-owner bootstrap scope differs from the LGCVF Quack board"
-            )
-        from ..task_sources.state_owner_bootstrap import (
-            StateOwnerBootstrapError,
-            validate_state_owner_bootstrap_listener,
-        )
-
-        try:
-            validate_state_owner_bootstrap_listener(
-                int(state_owner_bootstrap_fd)
-            )
-        except StateOwnerBootstrapError as exc:
-            raise ConfiguredBoardError(
-                "state-owner bootstrap listener is invalid"
-            ) from exc
-        args.extend(
-            [
-                "--state-owner-bootstrap-fd",
-                str(state_owner_bootstrap_fd),
-                "--state-owner-bootstrap-store-id",
-                str(state_owner_bootstrap_store_id),
-            ]
-        )
     return tuple(args)
 
 
@@ -5420,119 +2914,83 @@ def configured_board_launch_plan(
     parallelism_receipt: ParallelismDecisionReceipt | None = None,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
-    configured_board_live_capsule_pin_json: str = "",
-    configured_board_live_capsule_descriptor: int = -1,
-    configured_board_live_admission_json: str = "",
-    configured_board_live_native_launch_json: str = "",
-    configured_board_live_native_descriptor: int = -1,
-    state_owner_bootstrap_fd: int = -1,
-    state_owner_bootstrap_store_id: str = "",
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
-    live_values = (
-        bool(configured_board_live_capsule_pin_json),
-        configured_board_live_capsule_descriptor >= 3,
-        bool(configured_board_live_admission_json),
-        bool(configured_board_live_native_launch_json),
-        configured_board_live_native_descriptor >= 3,
-    )
-    if any(live_values) and not all(live_values):
-        raise ConfiguredBoardError(
-            "LGCVF configured-board live launch fields are incomplete"
-        )
-    bootstrap_values = (
-        state_owner_bootstrap_fd >= 3,
-        bool(str(state_owner_bootstrap_store_id or "").strip()),
-    )
-    if any(bootstrap_values) and not all(bootstrap_values):
-        raise ConfiguredBoardError(
-            "LGCVF state-owner bootstrap fields are incomplete"
-        )
-    if all(live_values) != all(bootstrap_values):
-        raise ConfiguredBoardError(
-            "LGCVF live capsule and state-owner bootstrap are bidirectional"
-        )
-    live_context = None
-    if all(live_values):
-        try:
-            live_context = verify_lgcvf_configured_board_live_context(
-                capsule_pin_json=configured_board_live_capsule_pin_json,
-                capsule_descriptor=configured_board_live_capsule_descriptor,
-                admission_json=configured_board_live_admission_json,
-                native_launch_json=configured_board_live_native_launch_json,
-                native_descriptor=configured_board_live_native_descriptor,
-            )
-        except (OSError, ValueError) as exc:
-            raise ConfiguredBoardError(
-                "LGCVF configured-board live launch binding is invalid"
-            ) from exc
-
-    recovery_admission = _verify_fresh_recovery_launch_admission(board)
-    implementation_branch = resolve_board_implementation_branch(
-        board.merge_target_branch,
-        board.board_namespace,
-    )
     run_stamp = stamp or utc_run_stamp()
     runtime_root = board.path(board.runtime_paths["root"])
     state_dir = board.path(board.runtime_paths["state"])
     state_relative = Path(board.runtime_paths["state"])
     log_dir = board.path(board.runtime_paths["logs"])
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
-    program = _database_program_with_admitted_live_owner(board)
+    program = board.resolved_database_program()
     plan_bound = _plan_bound_profile(board)
-    if live_context is not None:
-        try:
-            config_relative = board.config_path.relative_to(
-                board.repo_root
-            ).as_posix()
-        except ValueError as exc:
+    live_admission = configured_board_live_admission
+    accepted_source_receipt: Mapping[str, object] | None = None
+    if live_admission is not None:
+        if not board.live_capsule_control_paths:
             raise ConfiguredBoardError(
-                "LGCVF live config path escapes the repository"
+                "configured-board live admission lacks a required board policy"
+            )
+        if accepted_control_plane_pin is None:
+            raise ConfiguredBoardError(
+                "configured-board live admission lacks its control-plane capsule"
+            )
+        if native_dependency_launch is None:
+            raise ConfiguredBoardError(
+                "configured-board live admission lacks its native dependency"
+            )
+        try:
+            live_admission = verify_configured_board_live_capsule(
+                live_admission,
+                control_plane_pin=accepted_control_plane_pin,
+                control_plane_descriptor=accepted_control_plane_descriptor,
+                native_dependency_launch=native_dependency_launch,
+                repo_root=board.repo_root,
+                expected_board_namespace=board.board_namespace,
+                expected_config_path=(
+                    board.config_path.relative_to(board.repo_root).as_posix()
+                ),
+            )
+            accepted_source_receipt = verify_configured_board_accepted_source(
+                live_admission,
+                repo_root=board.repo_root,
+            )
+        except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                "configured-board live admission is invalid"
             ) from exc
+        expected_database_authority = {
+            "authority_mode": program.authority_mode,
+            "task_source_kind": program.task_source_kind,
+            "schema_revision": program.schema_revision,
+            "failover_policy": program.failover_policy,
+            "store_id": program.store_id,
+            "store_generation": int(program.store_generation),
+            "endpoint_secret_handle": program.endpoint_secret_handle,
+        }
         if (
-            detach
-            or plan_bound
-            or config_relative != LGCVF_LIVE_CONFIG_PATH.as_posix()
-            or board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
-            or board.max_lanes != 4
-            or not board.strict_task_sharding
-            or board.idle_lane_work_stealing != "virgin-transfer"
-            or board.configuration_root
-            != _identity(
-                {
-                    "bytes_sha256": str(
-                        live_context.capsule_pin.candidate_config_sha256
-                    ).removeprefix("sha256:")
-                }
-            )
+            live_admission.configuration_root != board.configuration_root
+            or live_admission.plan_revision
+            != str(board.payload.get("plan_revision") or "")
+            or live_admission.task_prefix != board.task_prefix
+            or live_admission.max_lanes != board.max_lanes
+            or live_admission.strict_task_sharding
+            is not board.strict_task_sharding
+            or dict(live_admission.database_authority)
+            != expected_database_authority
             or tuple(
-                str(lane.get("name") or "")
-                for lane in board.payload.get("lanes", ())
-                if isinstance(lane, Mapping)
+                str(item["path"])
+                for item in live_admission.control_artifacts
             )
-            != live_context.admission.lane_names
-            or board.payload.get("schema")
-            != (
-                "ipfs_accelerate_py.agent_supervisor."
-                "logic_governed_compositional_verification_fabric."
-                "scheduler_config@1"
-            )
-            or program.task_source_kind != "duckdb"
-            or program.authority_mode != "quack"
-            or program.schema_revision
-            != "datasets-authoritative-operational-v1"
-            or program.failover_policy != "fail_closed"
-            or str(state_owner_bootstrap_store_id) != str(program.store_id)
-            or state_owner_bootstrap_fd
-            in {
-                live_context.capsule_descriptor,
-                live_context.native_descriptor,
-            }
+            != board.live_capsule_control_paths
         ):
             raise ConfiguredBoardError(
-                "LGCVF live capsule does not match the exact foreground "
-                "four-lane Quack board"
+                "configured-board live admission differs from board authority"
             )
     plan_bound_children: tuple[PlanBoundSupervisorChild, ...] = ()
     implementation_tracks: tuple[ImplementationSupervisorTrackConfig, ...] = ()
@@ -5569,19 +3027,18 @@ def configured_board_launch_plan(
     elif not plan_bound:
         implementation_tracks = (
             ImplementationSupervisorTrackConfig(
-                name=(
-                    "lgcvf-quack-lane"
-                    if live_context is not None
-                    else board.board_namespace
-                ),
+                name=board.board_namespace,
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
-                database_program=(
-                    program if board.database_program is not None else None
-                ),
+                database_program=board.database_program,
             ),
         )
+    runner_master_pid_path = state_dir / (
+        "configured-board-wave.pid"
+        if plan_bound or accepted_control_plane_pin is not None
+        else "configured-board-master.pid"
+    )
     runner = build_configured_multi_supervisor_cli_runner(
         repo_root=board.repo_root,
         duration_seconds=duration_seconds,
@@ -5593,6 +3050,10 @@ def configured_board_launch_plan(
             60.0,
             float(board.payload["stale_seconds"]),
         ),
+        supervisor_status_startup_grace_seconds=max(
+            0.0,
+            float(board.payload["watchdog_startup_grace_seconds"]),
+        ),
         stop_grace_seconds=max(
             30.0,
             float(board.payload["check_interval_seconds"]) * 2.0,
@@ -5600,11 +3061,7 @@ def configured_board_launch_plan(
         stamp=run_stamp,
         master_dir=runtime_root,
         master_log=log_dir / f"configured-board-{run_stamp}.log",
-        master_pid_path=(
-            state_dir / "configured-board-wave.pid"
-            if plan_bound
-            else state_dir / "configured-board-master.pid"
-        ),
+        master_pid_path=runner_master_pid_path,
         label=board.board_namespace,
         python_executable=sys.executable,
         implementation_track_configs=implementation_tracks,
@@ -5612,12 +3069,9 @@ def configured_board_launch_plan(
         common_args=configured_board_common_args(
             board,
             implement=implement,
-            state_owner_bootstrap_fd=state_owner_bootstrap_fd,
-            state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
         ),
         detach=(detach and not plan_bound),
-        survive_external_sigterm=not math.isfinite(duration_seconds),
-        database_program=(program if board.database_program is not None else None),
+        database_program=board.database_program,
     )
     runner_args = runner.args()
     if plan_bound:
@@ -5625,46 +3079,6 @@ def configured_board_launch_plan(
         # runner accepts this marker without constructing or starting a child.
         if "--plan-bound-wave" not in runner_args:
             runner_args.append("--plan-bound-wave")
-        if accepted_control_plane_pin is not None:
-            verify_agent_implementation_sealed_control_plane(
-                accepted_control_plane_pin,
-                accepted_control_plane_descriptor,
-            )
-            expected_generation = (
-                (
-                    parallelism_receipt.slice_manifest.source_head,
-                    parallelism_receipt.slice_manifest.repository_tree_id,
-                )
-                if parallelism_receipt is not None
-                else _git_identity(board.repo_root)
-            )
-            if (
-                accepted_control_plane_pin.source_head,
-                accepted_control_plane_pin.source_tree,
-            ) != expected_generation:
-                raise ConfiguredBoardError(
-                    "accepted control-plane generation differs from the wave"
-                )
-            runner_args.extend(
-                [
-                    "--accepted-control-plane-pin-json",
-                    accepted_control_plane_pin_json(
-                        accepted_control_plane_pin
-                    ),
-                    "--accepted-control-plane-fd",
-                    str(accepted_control_plane_descriptor),
-                ]
-            )
-        if _eaaef_plan_bound_profile(board):
-            try:
-                live_config = board.config_path.relative_to(board.repo_root).as_posix()
-            except ValueError as exc:
-                raise ConfiguredBoardError(
-                    "EAAEF scheduler config escapes the accepted repository"
-                ) from exc
-            runner_args.extend(
-                ["--require-configured-board-live-seal", live_config]
-            )
     else:
         runner_args.extend(
             [
@@ -5672,23 +3086,60 @@ def configured_board_launch_plan(
                 str(board.max_lanes),
             ]
         )
-        if live_context is not None:
+        if live_admission is not None:
             runner_args.extend(
                 [
-                    "--require-lgcvf-configured-board-live-seal",
-                    LGCVF_LIVE_CONFIG_PATH.as_posix(),
-                    "--configured-board-live-capsule-pin-json",
-                    live_context.capsule_pin_json,
-                    "--configured-board-live-capsule-fd",
-                    str(live_context.capsule_descriptor),
+                    "--require-configured-board-live-capsule",
                     "--configured-board-live-admission-json",
-                    live_context.admission_json,
+                    live_admission.to_json(),
                     "--configured-board-live-native-launch-json",
-                    live_context.native_launch_json,
+                    native_dependency_launch.to_json(),
                     "--configured-board-live-native-fd",
-                    str(live_context.native_descriptor),
+                    str(native_dependency_launch.descriptor.descriptor),
                 ]
             )
+    if accepted_control_plane_pin is not None:
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
+        expected_generation = (
+            (
+                parallelism_receipt.slice_manifest.source_head,
+                parallelism_receipt.slice_manifest.repository_tree_id,
+            )
+            if parallelism_receipt is not None
+            else _git_identity(board.repo_root)
+        )
+        if (
+            accepted_control_plane_pin.source_head,
+            accepted_control_plane_pin.source_tree,
+        ) != expected_generation:
+            if (
+                accepted_source_receipt is None
+                or accepted_source_receipt.get("kind")
+                != "accepted_supervisor_merge_successor"
+                or accepted_source_receipt.get("source_head")
+                != accepted_control_plane_pin.source_head
+                or accepted_source_receipt.get("source_tree")
+                != accepted_control_plane_pin.source_tree
+                or (
+                    accepted_source_receipt.get("current_head"),
+                    accepted_source_receipt.get("current_tree"),
+                )
+                != expected_generation
+            ):
+                raise ConfiguredBoardError(
+                    "accepted control-plane generation differs from the launch"
+                )
+        runner_args.extend(
+            [
+                "--accepted-control-plane-pin-json",
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                "--accepted-control-plane-fd",
+                str(accepted_control_plane_descriptor),
+            ]
+        )
     if board.strict_task_sharding and not plan_bound:
         runner_args.append(
             "--implementation-supervisor-strict-task-sharding"
@@ -5725,56 +3176,42 @@ def configured_board_launch_plan(
         provider_id = str(provider.get("provider_id") or "").strip()
         model_id = str(provider.get("model_id") or "").strip()
         environment = {}
-        if provider_id:
-            # Always pin the scheduler value, including ``auto``. Leaving the
-            # variable unset lets an ambient Grok-session
-            # IMPLEMENTATION_PROVIDER leak into sealed lanes and force a
-            # Grok-only pin that then fail-closes without login in the
-            # qualification HOME.
+        if provider_id and provider_id != "auto":
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
-        external_isolation = provider.get("external_isolation")
-        if external_isolation is not None:
-            from ..todo_daemon.implementation_daemon import (
-                validate_external_provider_isolation_config,
-            )
-
-            try:
-                isolation_config = (
-                    validate_external_provider_isolation_config(
-                        external_isolation,
-                        verify_host=True,
-                    )
-                )
-            except (OSError, RuntimeError, ValueError) as exc:
-                raise ConfiguredBoardError(
-                    "provider.external_isolation launch preflight failed: "
-                    f"{exc}"
-                ) from exc
-            environment[EXTERNAL_PROVIDER_ISOLATION_ENV] = (
-                isolation_config.environment_json()
-            )
-    if (
-        str(provider.get(MERGE_RESOLVER_MODE_FIELD) or "").strip()
-        == MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL
-    ):
-        # Merge repair is a distinct semantic residual.  Until that route has
-        # its own sealed packet and lease, retain deterministic/manual merge
-        # handling and make the legacy free-form LLM resolver unreachable.
-        environment[LLM_MERGE_RESOLVER_COMMAND_ENV] = "disabled"
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
-        environment.update(program.environment(repository_root=board.repo_root))
-    plan = {
+        environment.update(program.environment())
+    if live_admission is not None:
+        extension_directory = str(
+            os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or ""
+        )
+        if not extension_directory:
+            raise ConfiguredBoardError(
+                "configured-board live launch lacks its extension projection"
+            )
+        environment[CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV] = (
+            extension_directory
+        )
+        environment[CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV] = (
+            live_admission.extension_set_pin.to_json()
+        )
+    owner_status_path = ""
+    owner = board.payload.get("quack_owner")
+    if isinstance(owner, dict):
+        state_dir = str(owner.get("state_dir") or "")
+        if state_dir:
+            owner_status_path = str(
+                board.path(state_dir) / "quack-state-server.status.json"
+            )
+    return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "configured-board-launch-plan@1"
         ),
         "board_namespace": board.board_namespace,
-        "implementation_branch": implementation_branch,
-        "merge_lock_name": board_merge_lock_name(board.board_namespace),
         "implement": bool(implement),
         "detach": bool(detach),
         "lanes": board.max_lanes,
@@ -5788,6 +3225,24 @@ def configured_board_launch_plan(
             board.idle_lane_work_stealing if not plan_bound else ""
         ),
         "plan_bound_dispatch": plan_bound,
+        "configured_board_live_capsule": {
+            "required": bool(board.live_capsule_control_paths),
+            "admitted": live_admission is not None,
+            "admission_cid": (
+                live_admission.admission_cid
+                if live_admission is not None
+                else ""
+            ),
+            "control_plane_capsule_id": (
+                live_admission.control_plane_capsule_id
+                if live_admission is not None
+                else ""
+            ),
+        },
+        "accepted_control_plane_required": (
+            _sealed_configured_control_plane_required(board)
+        ),
+        "accepted_control_plane_bound": accepted_control_plane_pin is not None,
         "active_plan_revision_cid": (
             parallelism_receipt.binding.revision_cid
             if parallelism_receipt is not None
@@ -5803,38 +3258,15 @@ def configured_board_launch_plan(
         "database_program": program.redacted_dict(),
         "database_program_interface": DATABASE_PROGRAM_CONFIG_INTERFACE,
         "runtime_root": str(runtime_root),
-        "master_pid_path": str(
-            state_dir / "configured-board-master.pid"
-        ),
+        "master_pid_path": str(runner_master_pid_path),
         "master_log": str(
             log_dir / f"configured-board-{run_stamp}.log"
         ),
+        "owner_status_path": owner_status_path,
+        "quack_owner": (
+            dict(owner) if isinstance(owner, dict) else {}
+        ),
     }
-    if recovery_admission is not None:
-        plan["fresh_generation_recovery_admission"] = {
-            "schema": recovery_admission["schema"],
-            "target_generation": recovery_admission["target_generation"],
-            "duckdb_runtime_cid": recovery_admission["duckdb_runtime_cid"],
-            "ready_task_ids": recovery_admission["ready_task_ids"],
-            "model_provider_route": recovery_admission["model_provider_route"],
-            "validation_completion_authoritative": recovery_admission[
-                "validation_completion_authoritative"
-            ],
-            "validation_projection_omission_root": recovery_admission[
-                "validation_projection_omission_root"
-            ],
-            "validation_projection_evidence_root": recovery_admission[
-                "validation_projection_evidence_root"
-            ],
-            "manifest_cid": recovery_admission["manifest_cid"],
-            "receipt_cid": recovery_admission["receipt_cid"],
-            "operational_verification_root": recovery_admission[
-                "operational_verification_root"
-            ],
-            "verification_root": recovery_admission["verification_root"],
-            "stores_unchanged": recovery_admission["stores_unchanged"],
-        }
-    return plan
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -5862,22 +3294,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--configured-board-live-capsule-pin-json",
-        default="",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--configured-board-live-capsule-fd",
-        type=int,
-        default=-1,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--configured-board-live-admission-json",
-        default="",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
         "--configured-board-live-native-launch-json",
         default="",
         help=argparse.SUPPRESS,
@@ -5889,25 +3305,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--state-owner-bootstrap-fd",
+        "--coordinator-credential-ready-fd",
         type=int,
         default=-1,
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--state-owner-bootstrap-store-id",
+        "--coordinator-credential-ready-pipe",
         default="",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--coordinator-launch-session",
+        "--coordinator-credential-start-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--coordinator-credential-start-pipe",
         default="",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--coordinator-status-path",
-        type=Path,
-        default=None,
+        "--coordinator-credential-nonce",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--coordinator-credential-snapshot-context-json",
+        default="",
         help=argparse.SUPPRESS,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -5939,25 +3365,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float("inf"),
     )
-    launch.add_argument(
-        "--launch-receipt-only",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
     return parser
 
 
 def _apply_configured_board_environment(plan: Mapping[str, Any]) -> None:
     environment = plan.get("environment")
     environment = environment if isinstance(environment, Mapping) else {}
-    for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
-        os.environ.pop(name, None)
     for name in SCHEDULER_PROVIDER_ENV_NAMES:
         if name not in environment:
             os.environ.pop(name, None)
     for name, value in environment.items():
-        if name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
-            continue
         os.environ[str(name)] = str(value)
 
 
@@ -6003,544 +3420,6 @@ def _ensure_plan_bound_runtime_directory(repo_root: Path, path: Path) -> Path:
     return directory
 
 
-def _coordinator_lane_status_paths(board: ConfiguredBoard) -> tuple[Path, ...]:
-    """Derive every configured lane heartbeat path from admitted board fields."""
-
-    state_dir = board.path(board.runtime_paths["state"])
-    state_prefix = _slug(board.task_prefix)
-    return tuple(
-        state_dir
-        / f"lane-{index}"
-        / f"{state_prefix}_lane_{index}_supervisor_status.json"
-        for index in range(board.max_lanes)
-    )
-
-
-def _expected_coordinator_status_path(
-    board: ConfiguredBoard,
-    launch_session_id: str,
-) -> Path:
-    if re.fullmatch(r"[0-9a-f]{64}", launch_session_id) is None:
-        raise ConfiguredBoardError("coordinator launch session is invalid")
-    return board.path(board.runtime_paths["state"]) / (
-        f"configured-board-{launch_session_id}.status.json"
-    )
-
-
-def _atomic_publish_coordinator_status(
-    path: Path,
-    payload: Mapping[str, Any],
-) -> None:
-    """Publish one immutable single-link status without replacing a pathname."""
-
-    body = (
-        json.dumps(
-            dict(payload),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        )
-        + "\n"
-    ).encode("utf-8")
-    if len(body) > 1_048_576:
-        raise ConfiguredBoardError("coordinator status exceeds its byte bound")
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{secrets.token_hex(16)}.tmp"
-    )
-    descriptor = -1
-    with serialized_lock_update(path):
-        try:
-            os.lstat(path)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot inspect coordinator status destination"
-            ) from exc
-        else:
-            raise ConfiguredBoardError("coordinator status already exists")
-        try:
-            descriptor = os.open(
-                temporary,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
-                0o600,
-            )
-            written = 0
-            while written < len(body):
-                count = os.write(descriptor, body[written:])
-                if count <= 0:
-                    raise OSError("short coordinator status write")
-                written += count
-            os.fsync(descriptor)
-            opened = os.fstat(descriptor)
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or int(opened.st_nlink) != 1
-                or int(opened.st_uid) != os.geteuid()
-                or stat.S_IMODE(opened.st_mode) != 0o600
-            ):
-                raise ConfiguredBoardError(
-                    "coordinator status staging file is unsafe"
-                )
-            os.close(descriptor)
-            descriptor = -1
-            os.link(temporary, path, follow_symlinks=False)
-            temporary.unlink()
-            observed = os.lstat(path)
-            if (
-                stat.S_ISLNK(observed.st_mode)
-                or not stat.S_ISREG(observed.st_mode)
-                or int(observed.st_nlink) != 1
-                or int(observed.st_uid) != os.geteuid()
-                or stat.S_IMODE(observed.st_mode) != 0o600
-                or int(observed.st_size) != len(body)
-            ):
-                raise ConfiguredBoardError(
-                    "published coordinator status is unsafe"
-                )
-            directory = os.open(
-                path.parent,
-                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-            )
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        except (FileExistsError, OSError) as exc:
-            raise ConfiguredBoardError(
-                "cannot atomically publish coordinator status"
-            ) from exc
-        finally:
-            if descriptor >= 0:
-                os.close(descriptor)
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
-
-
-def _read_coordinator_status(path: Path) -> dict[str, Any]:
-    try:
-        payload, evidence = _read_stable_regular_json(path)
-    except _StableArtifactReadError as exc:
-        raise ConfiguredBoardError("coordinator status is not stable") from exc
-    if payload is None or set(payload) != COORDINATOR_STATUS_FIELDS:
-        raise ConfiguredBoardError("coordinator status is absent or not closed")
-    if (
-        evidence.get("state") != "present"
-        or int(evidence.get("link_count", -1)) != 1
-        or int(evidence.get("uid", -1)) != os.geteuid()
-        or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
-    ):
-        raise ConfiguredBoardError("coordinator status file identity is unsafe")
-    receipt_cid = payload.get("receipt_cid")
-    unsigned = dict(payload)
-    unsigned.pop("receipt_cid", None)
-    if receipt_cid != content_identity(unsigned):
-        raise ConfiguredBoardError("coordinator status CID is invalid")
-    return payload
-
-
-def _coordinator_readiness_timeout_seconds(board: ConfiguredBoard) -> float:
-    """Return the bounded startup horizon declared by the admitted board."""
-
-    value = board.payload.get("watchdog_startup_grace_seconds")
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(float(value))
-        or float(value) <= 0.0
-    ):
-        raise ConfiguredBoardError(
-            "watchdog startup grace is not a positive finite duration"
-        )
-    return min(float(value), COORDINATOR_READY_TIMEOUT_MAX_SECONDS)
-
-
-def _coordinator_launch_attestation_max_age_ms(board: ConfiguredBoard) -> int:
-    """Bind the immutable birth attestation to the same startup horizon."""
-
-    return max(1, int(_coordinator_readiness_timeout_seconds(board) * 1_000))
-
-
-def _exact_process_option(
-    argv: Sequence[str],
-    name: str,
-    expected: str,
-) -> bool:
-    """Require one exact option/value occurrence in an observed process argv."""
-
-    if argv.count(name) != 1:
-        return False
-    index = argv.index(name)
-    return index + 1 < len(argv) and argv[index + 1] == expected
-
-
-def _configured_lane_process_ready(
-    board: ConfiguredBoard,
-    *,
-    lane_index: int,
-    supervisor_pid: int,
-    coordinator_pid: int,
-    coordinator_start_ticks: int,
-    repository_commit: str,
-    repository_tree: str,
-    _expected_start_ticks: int = 0,
-    _exec_deadline: float = 0.0,
-) -> bool:
-    """Re-observe one exact lifecycle-marked implementation supervisor."""
-
-    adapter = LinuxProcessAdapter()
-    try:
-        parent, group, session, start_ticks = adapter._stat(  # noqa: SLF001
-            supervisor_pid
-        )
-        argv = adapter._argv(supervisor_pid)  # noqa: SLF001
-        environment = adapter._environ(supervisor_pid)  # noqa: SLF001
-        cwd = Path(os.readlink(f"/proc/{supervisor_pid}/cwd")).resolve(
-            strict=False
-        )
-        executable = Path(os.readlink(f"/proc/{supervisor_pid}/exe")).resolve(
-            strict=False
-        )
-    except (
-        FileNotFoundError,
-        ProcessLookupError,
-        OSError,
-        UnicodeError,
-        ValueError,
-    ):
-        return False
-
-    plan_bound = _plan_bound_profile(board)
-    # Plan-bound v3 children keep the explicit "-lane-" token.  Ordinary
-    # configured boards expand shards as "{namespace}-{index}".
-    lane_name = (
-        f"{board.board_namespace}-lane-{lane_index}"
-        if plan_bound
-        else f"{board.board_namespace}-{lane_index}"
-    )
-    state_relative = Path(board.runtime_paths["state"]) / f"lane-{lane_index}"
-    state_dir = board.path(state_relative.as_posix()).resolve(strict=False)
-    expected_state_arg = state_relative.as_posix() if plan_bound else str(state_dir)
-    state_prefix = f"{_slug(board.task_prefix)}_lane_{lane_index}"
-    expected_run_id = (
-        "multi-supervisor:"
-        + hashlib.sha256(
-            f"{board.repo_root.resolve()}:{lane_name}".encode("utf-8")
-        ).hexdigest()
-    )
-    expected_markers = {
-        RUN_ID_ENV: expected_run_id,
-        TARGET_ID_ENV: f"supervisor-track:{lane_name}",
-        REPOSITORY_ROOT_ENV: str(board.repo_root.resolve()),
-        STATE_ROOT_ENV: str(state_dir),
-        RUN_ROOT_ENV: str(state_dir / "lifecycle-runs" / lane_name),
-        FENCING_EPOCH_ENV: "0",
-    }
-    identity_mismatch = bool(
-        (_expected_start_ticks and start_ticks != _expected_start_ticks)
-        or
-        parent != coordinator_pid
-        or group != supervisor_pid
-        or session != supervisor_pid
-        or start_ticks < coordinator_start_ticks
-        or cwd != board.repo_root.resolve()
-        or executable != Path(sys.executable).resolve()
-        or not argv
-        or Path(argv[0]).resolve(strict=False)
-        != Path(sys.executable).resolve(strict=False)
-        or any(environment.get(name) != value for name, value in expected_markers.items())
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", environment.get(PROFILE_ID_ENV, ""))
-        is None
-        or re.fullmatch(
-            r"sha256:[0-9a-f]{64}",
-            environment.get(CONFIGURATION_ROOT_ENV, ""),
-        )
-        is None
-        or not _exact_process_option(
-            argv, "--todo-path", str(board.path(board.taskboard_path))
-        )
-        or not _exact_process_option(
-            argv, "--task-prefix", board.task_header_prefix
-        )
-        or not _exact_process_option(argv, "--state-dir", expected_state_arg)
-        or not _exact_process_option(argv, "--state-prefix", state_prefix)
-    )
-    if identity_mismatch:
-        # A newly forked direct child can be observed after Popen returns but
-        # before setsid/exec replaces the inherited argv and environment.
-        # Retry only the same PID/start-tick identity, for a tiny fixed bound;
-        # a replacement PID, reparented process, or unrelated stable child can
-        # never become admissible through this launch handoff allowance.
-        now = time.monotonic()
-        deadline = _exec_deadline or (now + 0.1)
-        if (
-            parent == coordinator_pid
-            and start_ticks >= coordinator_start_ticks
-            and (
-                not _expected_start_ticks
-                or start_ticks == _expected_start_ticks
-            )
-            and now < deadline
-        ):
-            time.sleep(min(0.005, deadline - now))
-            return _configured_lane_process_ready(
-                board,
-                lane_index=lane_index,
-                supervisor_pid=supervisor_pid,
-                coordinator_pid=coordinator_pid,
-                coordinator_start_ticks=coordinator_start_ticks,
-                repository_commit=repository_commit,
-                repository_tree=repository_tree,
-                _expected_start_ticks=start_ticks,
-                _exec_deadline=deadline,
-            )
-        return False
-    if plan_bound:
-        return bool(
-            len(argv) > 9
-            and argv[1:3] == ("-I", "-c")
-            and argv[6]
-            == (
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                "implementation_supervisor"
-            )
-            and argv[7]
-            == "sha256:" + hashlib.sha256(argv[3].encode("utf-8")).hexdigest()
-            and re.fullmatch(r"sha256:[0-9a-f]{64}", argv[8]) is not None
-            and _exact_process_option(
-                argv, "--plan-bound-accepted-tree-root", str(board.repo_root)
-            )
-            and _exact_process_option(
-                argv, "--plan-bound-source-head", repository_commit
-            )
-            and _exact_process_option(
-                argv, "--plan-bound-source-tree", repository_tree
-            )
-            and _exact_process_option(argv, "--task-shard-count", "1")
-            and _exact_process_option(argv, "--task-shard-index", "0")
-        )
-    return bool(
-        len(argv) > 2
-        and Path(argv[1]).resolve(strict=False)
-        == board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
-        and _exact_process_option(
-            argv, "--task-shard-count", str(board.max_lanes)
-        )
-        and _exact_process_option(argv, "--task-shard-index", str(lane_index))
-    )
-
-
-def _lane_statuses_ready(
-    board: ConfiguredBoard,
-    paths: Sequence[Path],
-    *,
-    started_at_ms: int,
-    now_ms: int,
-    coordinator_pid: int,
-    coordinator_start_ticks: int,
-    repository_commit: str,
-    repository_tree: str,
-) -> bool:
-    """Require every configured lane's fresh status and exact live identity."""
-
-    lane_pids: set[int] = set()
-    for lane_index, path in enumerate(paths):
-        try:
-            payload, evidence = _read_stable_regular_json(path)
-        except _StableArtifactReadError:
-            return False
-        if payload is None or (
-            evidence.get("state") != "present"
-            or int(evidence.get("link_count", -1)) != 1
-            or int(evidence.get("uid", -1)) != os.geteuid()
-            or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
-            or payload.get("schema")
-            != (
-                "ipfs_accelerate_py.agent_supervisor."
-                "todo_implementation_supervisor.supervisor"
-            )
-            or str(payload.get("status") or "")
-            not in {
-                "starting",
-                "running",
-                "restarting",
-                "agentic_maintenance_started",
-            }
-            or payload.get("repo_root") != str(board.repo_root)
-            or payload.get("task_prefix") != board.task_header_prefix
-            or payload.get("state_prefix")
-            != f"{_slug(board.task_prefix)}_lane_{lane_index}"
-        ):
-            return False
-        updated_at = _parse_status_timestamp(payload.get("updated_at"))
-        try:
-            supervisor_pid = int(payload.get("supervisor_pid") or 0)
-        except (TypeError, ValueError):
-            return False
-        if (
-            updated_at is None
-            or supervisor_pid < 2
-            or supervisor_pid in lane_pids
-        ):
-            return False
-        updated_at_ms = int(updated_at.timestamp() * 1000)
-        if (
-            updated_at_ms < started_at_ms
-            or updated_at_ms > now_ms + 5_000
-            or now_ms - updated_at_ms > COORDINATOR_STATUS_MAX_AGE_MS
-        ):
-            return False
-        if not _configured_lane_process_ready(
-            board,
-            lane_index=lane_index,
-            supervisor_pid=supervisor_pid,
-            coordinator_pid=coordinator_pid,
-            coordinator_start_ticks=coordinator_start_ticks,
-            repository_commit=repository_commit,
-            repository_tree=repository_tree,
-        ):
-            return False
-        lane_pids.add(supervisor_pid)
-    return True
-
-
-def _publish_coordinator_launch_attestation(
-    board: ConfiguredBoard,
-    *,
-    launch_session_id: str,
-    status_path: Path,
-) -> dict[str, Any]:
-    expected_path = _expected_coordinator_status_path(board, launch_session_id)
-    if status_path != expected_path:
-        raise ConfiguredBoardError("coordinator status path differs from its session")
-    head, tree = _git_identity(board.repo_root)
-    adapter = LinuxProcessAdapter()
-    try:
-        _parent, _group, _session, started = adapter._stat(os.getpid())  # noqa: SLF001
-        argv = adapter._argv(os.getpid())  # noqa: SLF001
-    except (OSError, UnicodeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            "cannot observe coordinator process birth"
-        ) from exc
-    now_ms = int(time.time() * 1000)
-    unsigned = {
-        "schema": COORDINATOR_STATUS_SCHEMA,
-        "repository_commit": head,
-        "repository_tree": tree,
-        "configuration_revision": board.configuration_revision,
-        "board_namespace": board.board_namespace,
-        "launch_session_id": launch_session_id,
-        "lifecycle_profile_id": str(os.environ.get(PROFILE_ID_ENV) or ""),
-        "coordinator_pid": os.getpid(),
-        "coordinator_process_start_ticks": started,
-        "coordinator_argv_cid": content_identity({"argv": list(argv)}),
-        "started_at_ms": now_ms,
-        "attested_at_ms": now_ms,
-        "phase": "launch_attested",
-        "lane_status_paths": [
-            str(path) for path in _coordinator_lane_status_paths(board)
-        ],
-    }
-    payload = {**unsigned, "receipt_cid": content_identity(unsigned)}
-    _atomic_publish_coordinator_status(status_path, payload)
-    return payload
-
-
-def _bind_foreground_wave_pid(plan: dict[str, Any], board: ConfiguredBoard) -> None:
-    """Keep the child runner PID distinct from the outer coordinator marker."""
-
-    argv = plan.get("argv")
-    if not isinstance(argv, list) or argv.count("--master-pid-path") != 1:
-        raise ConfiguredBoardError("coordinator runner master PID binding is ambiguous")
-    index = argv.index("--master-pid-path")
-    if index + 1 >= len(argv):
-        raise ConfiguredBoardError("coordinator runner master PID binding is incomplete")
-    wave_path = board.path(board.runtime_paths["state"]) / "configured-board-wave.pid"
-    argv[index + 1] = str(wave_path)
-    plan["master_pid_path"] = str(wave_path)
-
-
-def _prepare_coordinator_lane_status_permissions(board: ConfiguredBoard) -> None:
-    """Prepare exact owner-private lane directories and status projections."""
-
-    for path in _coordinator_lane_status_paths(board):
-        lane_directory = _ensure_plan_bound_runtime_directory(
-            board.repo_root,
-            path.parent,
-        )
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_DIRECTORY", 0)
-        nofollow = getattr(os, "O_NOFOLLOW", None)
-        if nofollow is None:
-            raise ConfiguredBoardError(
-                "private lane directory admission requires no-follow access"
-            )
-        flags |= nofollow
-        try:
-            directory_descriptor = os.open(lane_directory, flags)
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot open configured lane directory safely"
-            ) from exc
-        try:
-            opened_directory = os.fstat(directory_descriptor)
-            observed_directory = os.lstat(lane_directory)
-            if (
-                not stat.S_ISDIR(opened_directory.st_mode)
-                or stat.S_ISLNK(observed_directory.st_mode)
-                or int(opened_directory.st_uid) != os.geteuid()
-                or int(observed_directory.st_uid) != os.geteuid()
-                or (int(opened_directory.st_dev), int(opened_directory.st_ino))
-                != (int(observed_directory.st_dev), int(observed_directory.st_ino))
-                or stat.S_IMODE(opened_directory.st_mode) != 0o700
-                or stat.S_IMODE(observed_directory.st_mode) != 0o700
-            ):
-                raise ConfiguredBoardError(
-                    "configured lane directory must be an exact owner-private directory"
-                )
-        finally:
-            os.close(directory_descriptor)
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags)
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot inspect pre-existing lane status safely"
-            ) from exc
-        try:
-            opened = os.fstat(descriptor)
-            observed = os.lstat(path)
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or int(opened.st_nlink) != 1
-                or int(opened.st_uid) != os.geteuid()
-                or stat.S_ISLNK(observed.st_mode)
-                or (int(opened.st_dev), int(opened.st_ino))
-                != (int(observed.st_dev), int(observed.st_ino))
-            ):
-                raise ConfiguredBoardError(
-                    "pre-existing lane status is not a safe owned file"
-                )
-            os.fchmod(descriptor, 0o600)
-            private = os.fstat(descriptor)
-            if stat.S_IMODE(private.st_mode) != 0o600:
-                raise ConfiguredBoardError(
-                    "pre-existing lane status could not be made private"
-                )
-        finally:
-            os.close(descriptor)
-
-
 def _open_plan_bound_coordinator_log(log_path: Path):
     """Open one append-only log without following or accepting hardlinks."""
 
@@ -6580,185 +3459,482 @@ def _open_plan_bound_coordinator_log(log_path: Path):
 
 
 def _reserve_coordinator_pid_projection(pid_path: Path) -> tuple[int, tuple[int, int]]:
-    """Exclusively reserve a no-follow PID artifact before process creation."""
-
-    path = Path(pid_path)
-    with serialized_lock_update(path):
-        try:
-            existing = os.lstat(path)
-        except FileNotFoundError:
-            existing = None
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot inspect detached coordinator PID projection"
-            ) from exc
-        if existing is not None:
-            if stat.S_ISLNK(existing.st_mode):
-                reason = "symbolic link"
-            elif not stat.S_ISREG(existing.st_mode):
-                reason = "non-regular file"
-            elif int(existing.st_nlink) != 1:
-                reason = "hardlinked file"
-            else:
-                reason = "existing owned file"
-            raise ConfiguredBoardError(
-                "detached coordinator PID projection is an unsafe " + reason
-            )
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags, 0o600)
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot exclusively reserve detached coordinator PID projection"
-            ) from exc
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or int(opened.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-        ):
-            os.close(descriptor)
-            raise ConfiguredBoardError(
-                "detached coordinator PID reservation is not a single-link file"
-            )
-        return descriptor, (int(opened.st_dev), int(opened.st_ino))
-
-
-def _publish_reserved_coordinator_pid(
-    pid_path: Path,
-    descriptor: int,
-    reserved_identity: tuple[int, int],
-    pid: int,
-) -> None:
-    """Publish an exact PID only while the reserved pathname still owns the fd."""
-
-    payload = f"{int(pid)}\n".encode("ascii")
-    try:
-        written = 0
-        while written < len(payload):
-            count = os.write(descriptor, payload[written:])
-            if count <= 0:
-                raise OSError("short PID projection write")
-            written += count
-        os.fsync(descriptor)
-        opened = os.fstat(descriptor)
-        observed = os.lstat(pid_path)
-        if (
-            (int(opened.st_dev), int(opened.st_ino)) != reserved_identity
-            or (int(observed.st_dev), int(observed.st_ino))
-            != reserved_identity
-            or stat.S_ISLNK(observed.st_mode)
-            or not stat.S_ISREG(observed.st_mode)
-            or int(observed.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or int(observed.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-            or stat.S_IMODE(observed.st_mode) != 0o600
-            or int(observed.st_size) != len(payload)
-        ):
-            raise ConfiguredBoardError(
-                "detached coordinator PID projection changed during publication"
-            )
-    except OSError as exc:
-        raise ConfiguredBoardError(
-            "cannot publish detached coordinator PID projection"
-        ) from exc
-
-
-def _repair_unreaped_coordinator_pid_projection(
-    pid_path: Path,
-    descriptor: int,
-    reserved_identity: tuple[int, int],
-    pid: int,
-) -> None:
-    """Repair the reserved projection with the exact known unreaped PID.
-
-    This is used only after process-group termination failed.  It never opens
-    a replacement pathname for writing: the original exclusive descriptor and
-    its device/inode identity remain the authority boundary.
-    """
+    """Recover dead evidence, then reserve before irreversible launch work."""
 
     try:
-        opened = os.fstat(descriptor)
-        observed = os.lstat(pid_path)
-        if (
-            (int(opened.st_dev), int(opened.st_ino)) != reserved_identity
-            or (int(observed.st_dev), int(observed.st_ino))
-            != reserved_identity
-            or stat.S_ISLNK(observed.st_mode)
-            or not stat.S_ISREG(observed.st_mode)
-            or int(observed.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or int(observed.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-            or stat.S_IMODE(observed.st_mode) != 0o600
-        ):
-            raise ConfiguredBoardError(
-                "cannot preserve unreaped coordinator PID in a changed projection"
-            )
-        os.ftruncate(descriptor, 0)
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        _publish_reserved_coordinator_pid(
-            pid_path,
-            descriptor,
-            reserved_identity,
-            pid,
+        return _reserve_owned_pid_projection(
+            Path(pid_path),
+            artifact_label="detached coordinator PID projection",
         )
-    except OSError as exc:
-        raise ConfiguredBoardError(
-            f"cannot preserve unreaped coordinator PID {int(pid)}"
-        ) from exc
+    except (OSError, ValueError) as exc:
+        raise ConfiguredBoardError(str(exc)) from exc
 
 
-def _publish_foreground_unreaped_coordinator_pid(
+def _reserve_detached_coordinator_pid(
     board: ConfiguredBoard,
-    pid: int,
-) -> Path:
-    """Create one secure recovery projection for an unreaped foreground PID."""
+) -> _CoordinatorPIDReservation:
+    """Reserve the configured marker before token/native handoff retirement."""
 
     state_dir = _ensure_plan_bound_runtime_directory(
         board.repo_root,
         board.path(board.runtime_paths["state"]),
     )
-    pid_path = state_dir / f"configured-board-unreaped-{int(pid)}.pid"
-    descriptor, identity = _reserve_coordinator_pid_projection(pid_path)
-    try:
-        _publish_reserved_coordinator_pid(
-            pid_path,
-            descriptor,
-            identity,
-            pid,
+    pid_path = state_dir / "configured-board-master.pid"
+    _lexical_repo_artifact(board.repo_root, pid_path)
+    directory = os.lstat(state_dir)
+    directory_identity = (
+        int(directory.st_dev),
+        int(directory.st_ino),
+        int(directory.st_uid),
+        stat.S_IMODE(directory.st_mode),
+    )
+    if (
+        stat.S_ISLNK(directory.st_mode)
+        or not stat.S_ISDIR(directory.st_mode)
+        or directory_identity[2] != os.geteuid()
+        or directory_identity[3] & 0o022
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator PID directory is not owner-confined"
         )
-    except BaseException:
-        _remove_reserved_coordinator_pid(pid_path, identity)
-        raise
+    descriptor, identity = _reserve_coordinator_pid_projection(pid_path)
+    return _CoordinatorPIDReservation(
+        path=pid_path,
+        descriptor=descriptor,
+        identity=identity,
+        directory_identity=directory_identity,
+    )
+
+
+def _validate_coordinator_pid_reservation(
+    board: ConfiguredBoard,
+    reservation: _CoordinatorPIDReservation,
+    *,
+    allowed_states: tuple[str, ...] = ("reserved",),
+) -> None:
+    """Authenticate an empty reservation before accepting facade ownership."""
+
+    if not isinstance(reservation, _CoordinatorPIDReservation):
+        raise ConfiguredBoardError("coordinator PID reservation is untyped")
+    if reservation.state not in allowed_states:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation is not transferable: "
+            f"state={reservation.state!r}"
+        )
+    if reservation.descriptor_closed or reservation.descriptor < 3:
+        raise ConfiguredBoardError("coordinator PID reservation fd is closed")
+    expected_path = (
+        board.path(board.runtime_paths["state"])
+        / "configured-board-master.pid"
+    )
+    _lexical_repo_artifact(board.repo_root, expected_path)
+    if reservation.path != expected_path:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation path was substituted"
+        )
+    try:
+        opened = os.fstat(reservation.descriptor)
+        observed = os.lstat(reservation.path)
+        directory = os.lstat(reservation.path.parent)
+        inheritable = os.get_inheritable(reservation.descriptor)
+        try:
+            import fcntl
+
+            descriptor_flags = int(
+                fcntl.fcntl(reservation.descriptor, fcntl.F_GETFL)
+            )
+        except (ImportError, OSError) as exc:
+            raise ConfiguredBoardError(
+                "coordinator PID reservation fd flags are unavailable"
+            ) from exc
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation cannot be inspected"
+        ) from exc
+    if (
+        (int(opened.st_dev), int(opened.st_ino)) != reservation.identity
+        or (int(observed.st_dev), int(observed.st_ino))
+        != reservation.identity
+        or stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(observed.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or stat.S_ISLNK(directory.st_mode)
+        or not stat.S_ISDIR(directory.st_mode)
+        or (
+            int(directory.st_dev),
+            int(directory.st_ino),
+            int(directory.st_uid),
+            stat.S_IMODE(directory.st_mode),
+        )
+        != reservation.directory_identity
+        or int(directory.st_uid) != os.geteuid()
+        or stat.S_IMODE(directory.st_mode) & 0o022
+        or int(opened.st_size) != 0
+        or int(observed.st_size) != 0
+        or inheritable
+        or descriptor_flags & os.O_ACCMODE != os.O_WRONLY
+    ):
+        raise ConfiguredBoardError(
+            "coordinator PID reservation is not one exact empty CLOEXEC file"
+        )
+
+
+def _claim_coordinator_pid_reservation(
+    board: ConfiguredBoard,
+    reservation: _CoordinatorPIDReservation,
+) -> None:
+    """Transfer one exact reservation to the scheduler exactly once."""
+
+    _validate_coordinator_pid_reservation(board, reservation)
+    reservation.state = "claimed"
+
+
+def _mark_coordinator_pid_reservation_published(
+    reservation: _CoordinatorPIDReservation,
+    *,
+    pid: int,
+) -> None:
+    """Prevent cleanup from deleting a successfully published live marker."""
+
+    if reservation.state != "claimed":
+        raise ConfiguredBoardError(
+            "coordinator PID reservation publication lacks ownership"
+        )
+    reservation.published_pid = int(pid)
+    reservation.state = "published"
+
+
+def _close_coordinator_pid_reservation(
+    reservation: _CoordinatorPIDReservation,
+) -> None:
+    """Close the held fd at most once."""
+
+    if reservation.descriptor_closed:
+        return
+    try:
+        os.close(reservation.descriptor)
     finally:
-        os.close(descriptor)
-    return pid_path
+        reservation.descriptor_closed = True
+
+
+def _discard_coordinator_pid_reservation(
+    reservation: _CoordinatorPIDReservation,
+    *,
+    prepublished_pid: int = 0,
+    remove_published: bool = False,
+) -> None:
+    """Remove an owned pre-commit reservation, including its exact PID."""
+
+    if reservation.state == "discarded":
+        return
+    if reservation.state == "published" and not remove_published:
+        _close_coordinator_pid_reservation(reservation)
+        return
+    try:
+        _close_coordinator_pid_reservation(reservation)
+    finally:
+        _remove_reserved_coordinator_pid(
+            reservation.path,
+            reservation.identity,
+            reservation.directory_identity,
+            expected_pid=prepublished_pid,
+        )
+        reservation.state = "discarded"
+
+
+def _publish_reserved_coordinator_pid(
+    reservation: _CoordinatorPIDReservation,
+    pid: int,
+) -> None:
+    """Atomically replace an exact empty reservation with one complete PID.
+
+    Partial writes are confined to a private adjacent temporary inode.  The
+    active pathname is therefore always either the authenticated empty
+    reservation or the complete canonical PID projection.
+    """
+
+    if reservation.state != "claimed":
+        raise ConfiguredBoardError(
+            "detached coordinator PID publication lacks claimed ownership"
+        )
+    pid_path = reservation.path
+    payload = f"{int(pid)}\n".encode("ascii")
+    directory_descriptor = -1
+    temporary_descriptor = -1
+    temporary_name = f".{pid_path.name}.publish.{uuid.uuid4().hex}"
+    replaced = False
+    old_descriptor = reservation.descriptor
+    try:
+        with serialized_lock_update(pid_path):
+            if _canonical_no_symlink_root(pid_path.parent) != pid_path.parent:
+                raise ConfiguredBoardError(
+                    "detached coordinator PID directory is not canonical"
+                )
+            opened = os.fstat(old_descriptor)
+            observed = os.lstat(pid_path)
+            if (
+                reservation.descriptor_closed
+                or (int(opened.st_dev), int(opened.st_ino))
+                != reservation.identity
+                or (int(observed.st_dev), int(observed.st_ino))
+                != reservation.identity
+                or stat.S_ISLNK(observed.st_mode)
+                or not stat.S_ISREG(opened.st_mode)
+                or not stat.S_ISREG(observed.st_mode)
+                or int(opened.st_nlink) != 1
+                or int(observed.st_nlink) != 1
+                or int(opened.st_uid) != os.geteuid()
+                or int(observed.st_uid) != os.geteuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+                or stat.S_IMODE(observed.st_mode) != 0o600
+                or int(opened.st_size) != 0
+                or int(observed.st_size) != 0
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator PID reservation changed during publication"
+                )
+            directory_descriptor = os.open(
+                pid_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            directory_opened = os.fstat(directory_descriptor)
+            directory_observed = os.lstat(pid_path.parent)
+            opened_directory_identity = (
+                int(directory_opened.st_dev),
+                int(directory_opened.st_ino),
+                int(directory_opened.st_uid),
+                stat.S_IMODE(directory_opened.st_mode),
+            )
+            observed_directory_identity = (
+                int(directory_observed.st_dev),
+                int(directory_observed.st_ino),
+                int(directory_observed.st_uid),
+                stat.S_IMODE(directory_observed.st_mode),
+            )
+            if (
+                not stat.S_ISDIR(directory_opened.st_mode)
+                or stat.S_ISLNK(directory_observed.st_mode)
+                or not stat.S_ISDIR(directory_observed.st_mode)
+                or opened_directory_identity != reservation.directory_identity
+                or observed_directory_identity != reservation.directory_identity
+                or opened_directory_identity[2] != os.geteuid()
+                or opened_directory_identity[3] & 0o022
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator PID directory changed during publication"
+                )
+            temporary_descriptor = os.open(
+                temporary_name,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+                dir_fd=directory_descriptor,
+            )
+            os.fchmod(temporary_descriptor, 0o600)
+            written = 0
+            while written < len(payload):
+                count = os.write(temporary_descriptor, payload[written:])
+                if count <= 0:
+                    raise OSError("short PID projection write")
+                written += count
+            os.fsync(temporary_descriptor)
+            published = os.fstat(temporary_descriptor)
+            if (
+                not stat.S_ISREG(published.st_mode)
+                or int(published.st_nlink) != 1
+                or int(published.st_uid) != os.geteuid()
+                or stat.S_IMODE(published.st_mode) != 0o600
+                or int(published.st_size) != len(payload)
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator temporary PID projection differs"
+                )
+            current = os.lstat(pid_path)
+            if (int(current.st_dev), int(current.st_ino)) != reservation.identity:
+                raise ConfiguredBoardError(
+                    "detached coordinator PID reservation changed before replacement"
+                )
+            os.replace(
+                temporary_name,
+                pid_path.name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+            replaced = True
+            new_identity = (int(published.st_dev), int(published.st_ino))
+            reservation.descriptor = temporary_descriptor
+            reservation.identity = new_identity
+            temporary_descriptor = -1
+            os.close(old_descriptor)
+            observed = os.lstat(pid_path)
+            if (
+                (int(observed.st_dev), int(observed.st_ino)) != new_identity
+                or stat.S_ISLNK(observed.st_mode)
+                or not stat.S_ISREG(observed.st_mode)
+                or int(observed.st_nlink) != 1
+                or int(observed.st_uid) != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o600
+                or int(observed.st_size) != len(payload)
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator PID projection changed after replacement"
+                )
+            os.fsync(directory_descriptor)
+    except ConfiguredBoardError:
+        raise
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "cannot publish detached coordinator PID projection"
+        ) from exc
+    finally:
+        if temporary_descriptor >= 0 and directory_descriptor >= 0:
+            # Recover a successful rename whose return path was interrupted
+            # before the in-memory reservation could adopt the new inode.
+            try:
+                temporary = os.fstat(temporary_descriptor)
+                current = os.stat(
+                    pid_path.name,
+                    dir_fd=directory_descriptor,
+                    follow_symlinks=False,
+                )
+                recovered_identity = (
+                    int(temporary.st_dev),
+                    int(temporary.st_ino),
+                )
+                if (
+                    (int(current.st_dev), int(current.st_ino))
+                    == recovered_identity
+                    and stat.S_ISREG(current.st_mode)
+                    and int(current.st_uid) == os.geteuid()
+                    and stat.S_IMODE(current.st_mode) == 0o600
+                    and int(current.st_nlink) == 1
+                    and int(current.st_size) == len(payload)
+                ):
+                    reservation.descriptor = temporary_descriptor
+                    reservation.identity = recovered_identity
+                    temporary_descriptor = -1
+                    replaced = True
+                    try:
+                        os.close(old_descriptor)
+                    except OSError:
+                        pass
+                    os.fsync(directory_descriptor)
+            except OSError:
+                pass
+        if temporary_descriptor >= 0:
+            try:
+                os.close(temporary_descriptor)
+            except OSError:
+                pass
+        if directory_descriptor >= 0:
+            if not replaced:
+                try:
+                    os.unlink(temporary_name, dir_fd=directory_descriptor)
+                    os.fsync(directory_descriptor)
+                except OSError:
+                    pass
+            try:
+                os.close(directory_descriptor)
+            except OSError:
+                pass
 
 
 def _remove_reserved_coordinator_pid(
     pid_path: Path,
     reserved_identity: tuple[int, int],
+    directory_identity: tuple[int, int, int, int],
+    *,
+    expected_pid: int = 0,
 ) -> None:
-    """Remove only the still-identical empty reservation after launch failure."""
+    """Remove only the still-identical empty or exact pre-commit projection."""
 
     with serialized_lock_update(pid_path):
+        directory_descriptor = -1
         try:
-            observed = os.lstat(pid_path)
-        except FileNotFoundError:
-            return
-        if (
-            (int(observed.st_dev), int(observed.st_ino)) == reserved_identity
-            and stat.S_ISREG(observed.st_mode)
-            and int(observed.st_nlink) == 1
-            and int(observed.st_uid) == os.geteuid()
-            and stat.S_IMODE(observed.st_mode) == 0o600
-        ):
-            pid_path.unlink()
+            try:
+                _canonical_no_symlink_root(pid_path.parent)
+                directory_descriptor = os.open(
+                    pid_path.parent,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0),
+                )
+                opened_directory = os.fstat(directory_descriptor)
+                observed_directory = os.lstat(pid_path.parent)
+                if (
+                    not stat.S_ISDIR(opened_directory.st_mode)
+                    or stat.S_ISLNK(observed_directory.st_mode)
+                    or not stat.S_ISDIR(observed_directory.st_mode)
+                    or (
+                        int(opened_directory.st_dev),
+                        int(opened_directory.st_ino),
+                        int(opened_directory.st_uid),
+                        stat.S_IMODE(opened_directory.st_mode),
+                    )
+                    != directory_identity
+                    or (
+                        int(observed_directory.st_dev),
+                        int(observed_directory.st_ino),
+                        int(observed_directory.st_uid),
+                        stat.S_IMODE(observed_directory.st_mode),
+                    )
+                    != directory_identity
+                    or int(opened_directory.st_uid) != os.geteuid()
+                    or stat.S_IMODE(opened_directory.st_mode) & 0o022
+                ):
+                    return
+                observed = os.lstat(pid_path)
+            except FileNotFoundError:
+                return
+            except (ConfiguredBoardError, OSError):
+                return
+            try:
+                payload, evidence = _read_stable_regular_bytes(
+                    pid_path,
+                    max_bytes=32,
+                )
+            except (OSError, _StableArtifactReadError):
+                return
+            expected_payload = b""
+            if type(expected_pid) is int and expected_pid > 0:
+                expected_payload = f"{expected_pid}\n".encode("ascii")
+            payload_is_owned_prefix = isinstance(payload, bytes) and (
+                payload == b""
+                or bool(expected_payload and expected_payload.startswith(payload))
+            )
+            if (
+                (int(observed.st_dev), int(observed.st_ino)) == reserved_identity
+                and evidence.get("state") == "present"
+                and int(evidence.get("device", -1)) == int(observed.st_dev)
+                and int(evidence.get("inode", -1)) == int(observed.st_ino)
+                and stat.S_ISREG(observed.st_mode)
+                and int(observed.st_nlink) == 1
+                and int(observed.st_uid) == os.geteuid()
+                and stat.S_IMODE(observed.st_mode) == 0o600
+                and payload_is_owned_prefix
+                and int(observed.st_size) == len(payload)
+            ):
+                os.unlink(pid_path.name, dir_fd=directory_descriptor)
+                os.fsync(directory_descriptor)
+        finally:
+            if directory_descriptor >= 0:
+                try:
+                    os.close(directory_descriptor)
+                except OSError:
+                    pass
 
 
 def _materialize_plan_bound_control_plane(
@@ -6776,114 +3952,6 @@ def _materialize_plan_bound_control_plane(
             "plan-bound coordinator repo root is not the accepted module tree"
         )
     source_head, source_tree = _git_identity(accepted_tree_root)
-    if _eaaef_plan_bound_profile(board):
-        # EAAEF authority is signed only after the tracked source/configuration
-        # is frozen.  The tracked config therefore names stable registry paths,
-        # never the post-freeze receipt CIDs (which would form a cryptographic
-        # fixed-point cycle).  Re-open and verify those create-once records
-        # before sealing the exact accepted archive for this coordinator.
-        live_seal = board.payload.get("configured_board_live_seal")
-        if not isinstance(live_seal, Mapping):
-            raise ConfiguredBoardError(
-                "EAAEF configured_board_live_seal is absent"
-            )
-        from ..validation.external_agent_bootstrap_admission import (
-            ExternalAgentBootstrapAdmissionError,
-            external_agent_bootstrap_admission_relative_path,
-            verify_external_agent_bootstrap_admission,
-        )
-        from ..validation.external_agent_configured_board_capsule import (
-            ExternalAgentConfiguredBoardCapsuleError,
-            _read_stable_repo_json,
-            external_agent_configured_board_launch_capsule_relative_path,
-            verify_external_agent_configured_board_live_seal,
-        )
-
-        try:
-            registry_prefix = str(live_seal.get("authority_registry_prefix") or "")
-            admission_path = external_agent_bootstrap_admission_relative_path(
-                source_head,
-                registry_prefix=registry_prefix,
-            )
-            admission_payload, _admission_evidence = _read_stable_repo_json(
-                board.repo_root,
-                admission_path.as_posix(),
-                noun="bootstrap admission receipt",
-            )
-            admission = verify_external_agent_bootstrap_admission(
-                admission_payload,
-                trusted_operator_dids=tuple(
-                    live_seal.get("trusted_operator_dids") or ()
-                ),
-                trusted_security_reviewer_dids=tuple(
-                    live_seal.get("trusted_security_reviewer_dids") or ()
-                ),
-                now_ms=int(time.time() * 1000),
-            )
-            capsule_path = external_agent_configured_board_launch_capsule_relative_path(
-                source_head,
-                str(admission["plan_root_cid"]),
-                registry_prefix=registry_prefix,
-            )
-            capsule_payload, _capsule_evidence = _read_stable_repo_json(
-                board.repo_root,
-                capsule_path.as_posix(),
-                noun="configured-board launch capsule",
-            )
-            raw_pin = capsule_payload["accepted_control_plane_pin"]
-            if not isinstance(raw_pin, dict):
-                raise TypeError("pin is not an object")
-            pin = AgentImplementationControlPlanePin(**raw_pin)
-            sealed = None
-            try:
-                verify_external_agent_configured_board_live_seal(
-                    live_seal,
-                    repo_root=board.repo_root,
-                    configuration_root=board.configuration_root,
-                    expected_source_head=source_head,
-                    expected_source_tree=source_tree,
-                    accepted_control_plane_pin=pin,
-                    now_ms=int(time.time() * 1000),
-                )
-                sealed = seal_agent_implementation_control_plane_capsule(pin)
-                verify_agent_implementation_sealed_control_plane(
-                    pin, sealed.descriptor
-                )
-            except (
-                ExternalAgentConfiguredBoardCapsuleError,
-                OSError,
-                ValueError,
-            ) as exc:
-                if sealed is not None:
-                    try:
-                        os.close(sealed.descriptor)
-                    except OSError:
-                        pass
-                raise ConfiguredBoardError(
-                    f"EAAEF configured-board live seal rejected: {exc}"
-                ) from exc
-            return pin, sealed, Path(pin.capsule_root).parent
-        except (
-            ExternalAgentBootstrapAdmissionError,
-            ExternalAgentConfiguredBoardCapsuleError,
-            ConfiguredBoardError,
-            KeyError,
-            TypeError,
-            ValueError,
-        ) as exc:
-            if not _eaaef_host_receipt_admitted(
-                board.repo_root,
-                "EAAEF-191",
-                expected_source_head=source_head,
-                expected_source_tree=source_tree,
-            ):
-                if isinstance(exc, ConfiguredBoardError):
-                    raise
-                raise ConfiguredBoardError(
-                    "EAAEF configured-board capsule has no canonical pin"
-                ) from exc
-            # Independently signed EAAEF-191 admits launch while create-once
-            # bootstrap admission/capsule receipts remain unpublished.
     capsule_parent = Path(
         tempfile.mkdtemp(prefix="asref-configured-control-plane-")
     )
@@ -6893,15 +3961,6 @@ def _materialize_plan_bound_control_plane(
             capsule_parent=capsule_parent,
             source_head=source_head,
             source_tree=source_tree,
-            allow_dirty_worktree=(
-                _eaaef_plan_bound_profile(board)
-                and _eaaef_host_receipt_admitted(
-                    board.repo_root,
-                    "EAAEF-191",
-                    expected_source_head=source_head,
-                    expected_source_tree=source_tree,
-                )
-            ),
         )
         sealed = seal_agent_implementation_control_plane_capsule(pin)
         if (
@@ -6925,6 +3984,1555 @@ def _materialize_plan_bound_control_plane(
         raise
 
 
+def _build_live_capsule_admission(
+    board: ConfiguredBoard,
+    *,
+    pin: AgentImplementationControlPlanePin,
+    descriptor: int,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> ConfiguredBoardLiveCapsuleAdmission:
+    """Bind the existing accepted source capsule to this configured board."""
+
+    if not board.live_capsule_control_paths:
+        raise ConfiguredBoardError(
+            "configured-board live control capsule policy is absent"
+        )
+    try:
+        verify_agent_implementation_sealed_control_plane(pin, descriptor)
+        native_executable = verify_agent_supervisor_native_dependency_sealed_fd(
+            native_dependency_launch
+        )
+        native_descriptor = native_dependency_launch.descriptor.descriptor
+        if (
+            native_descriptor == descriptor
+            or native_executable != f"/proc/self/fd/{native_descriptor}"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native dependency descriptor drifted"
+            )
+        program = board.resolved_database_program()
+        extension_set_pin, extension_pins, _extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
+        )
+        admission = build_configured_board_live_capsule_admission(
+            repo_root=board.repo_root,
+            board_namespace=board.board_namespace,
+            plan_revision=str(board.payload.get("plan_revision") or ""),
+            task_prefix=board.task_prefix,
+            config_path=board.config_path.relative_to(
+                board.repo_root
+            ).as_posix(),
+            configuration_root=board.configuration_root,
+            control_paths=board.live_capsule_control_paths,
+            control_plane_pin=pin,
+            native_authorization_id=(
+                native_dependency_launch.accepted_authorization_id
+            ),
+            native_dependency_id=native_dependency_launch.pin.dependency_id,
+            native_python_executable_sha256=(
+                native_dependency_launch.pin.python_executable_sha256
+            ),
+            quack_extension_projection=extension_pins["quack"],
+            extension_set_pin=extension_set_pin,
+            database_authority={
+                "authority_mode": program.authority_mode,
+                "task_source_kind": program.task_source_kind,
+                "schema_revision": program.schema_revision,
+                "failover_policy": program.failover_policy,
+                "store_id": program.store_id,
+                "store_generation": int(program.store_generation),
+                "endpoint_secret_handle": program.endpoint_secret_handle,
+            },
+            max_lanes=board.max_lanes,
+            strict_task_sharding=board.strict_task_sharding,
+        )
+        dependency_artifacts = tuple(
+            artifact
+            for artifact in admission.control_artifacts
+            if artifact.get("path") == board.dependency_seal_path
+        )
+        if dependency_artifacts != (dependency_seal_snapshot.artifact,):
+            raise ConfiguredBoardError(
+                "configured-board live admission observed a different dependency seal"
+            )
+    except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board live control capsule admission failed"
+        ) from exc
+    return admission
+
+
+def _configured_board_dependency_seal_snapshot(
+    board: ConfiguredBoard,
+    *,
+    expected_artifact: Mapping[str, object] | None = None,
+) -> _ConfiguredBoardDependencySealSnapshot:
+    """Read the protected dependency seal once from the accepted Git generation."""
+
+    if not board.dependency_seal_path:
+        raise ConfiguredBoardError(
+            "configured-board live launch lacks a dependency seal"
+        )
+    if (
+        board.dependency_seal_path not in board.protected_paths
+        or board.dependency_seal_path not in board.live_capsule_control_paths
+    ):
+        raise ConfiguredBoardError(
+            "configured-board dependency seal is not a protected live control"
+        )
+    try:
+        source_head, _source_tree = _git_identity(board.repo_root)
+        raw, _revision = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=board.path(board.dependency_seal_path),
+            source_head=source_head,
+            max_bytes=4_194_304,
+        )
+        def reject_duplicate_keys(
+            pairs: Sequence[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            payload: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in payload:
+                    raise ConfiguredBoardError(
+                        "configured-board dependency seal repeats a JSON key"
+                    )
+                payload[key] = value
+            return payload
+
+        seal = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+        if type(seal) is not dict:
+            raise ConfiguredBoardError(
+                "configured-board dependency seal is not a JSON object"
+            )
+        artifact: Mapping[str, object] = {
+            "path": board.dependency_seal_path,
+            "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "size": len(raw),
+        }
+        if expected_artifact is not None and dict(expected_artifact) != artifact:
+            raise ConfiguredBoardError(
+                "configured-board dependency seal differs from live admission"
+            )
+        return _ConfiguredBoardDependencySealSnapshot(
+            payload=dict(seal),
+            artifact=artifact,
+        )
+    except ConfiguredBoardError:
+        raise
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board dependency seal snapshot failed"
+        ) from exc
+
+
+def _configured_board_quack_projection(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[ConfiguredBoardExtensionPin, Path, Path]:
+    """Resolve Quack only from the exact seal snapshot used for this launch."""
+
+    try:
+        seal = dependency_seal_snapshot.payload
+        projection = (
+            seal.get("configured_board_quack_projection")
+            if type(seal) is dict
+            else None
+        )
+        if type(projection) is not dict or set(projection) != {
+            "schema",
+            "source_path",
+            "info_path",
+            "pin",
+            "load_policy",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board Quack projection seal is noncanonical"
+            )
+        if (
+            projection.get("schema")
+            != "semantic-addressed-world-model/configured-board-quack-projection@1"
+            or projection.get("load_policy") != "local_load_only"
+            or projection.get("network_install_allowed") is not False
+            or projection.get("unsigned_extension_allowed") is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board Quack projection policy is invalid"
+            )
+        pin = parse_configured_board_extension_pin(projection.get("pin"))
+        source = Path(str(projection.get("source_path") or ""))
+        info = Path(str(projection.get("info_path") or ""))
+        if not source.is_absolute() or not info.is_absolute():
+            raise ConfiguredBoardError(
+                "configured-board Quack projection sources are not absolute"
+            )
+        return pin, source, info
+    except ConfiguredBoardError:
+        raise
+    except (OSError, TypeError, ValueError, _StableArtifactReadError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board Quack projection admission failed"
+        ) from exc
+
+
+def _configured_board_extension_set_projection(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[
+    ConfiguredBoardExtensionSetPin,
+    dict[str, ConfiguredBoardExtensionPin],
+    dict[str, tuple[Path, Path]],
+]:
+    """Resolve one exact co-versioned HTTPFS+Quack load set.
+
+    The protected dependency-seal snapshot supplies byte authority.  The
+    protected scheduler configuration supplies the expected DuckDB extension
+    versions used to verify the native loader's post-LOAD rows.  Neither
+    source alone is sufficient.
+    """
+
+    quack_pin, quack_source, quack_info = _configured_board_quack_projection(
+        board,
+        dependency_seal_snapshot=dependency_seal_snapshot,
+    )
+    seal = dependency_seal_snapshot.payload
+    httpfs = seal.get("httpfs_extension_pin")
+    expected_httpfs_fields = {
+        "path",
+        "sha256",
+        "size",
+        "info_path",
+        "info_sha256",
+        "info_size",
+        "version",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
+    }
+    if type(httpfs) is not dict or set(httpfs) != expected_httpfs_fields:
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS dependency pin is noncanonical"
+        )
+    owner = board.payload.get("quack_owner")
+    if type(owner) is not dict:
+        raise ConfiguredBoardError(
+            "configured-board Quack owner authority is unavailable"
+        )
+    owner_pins = {
+        "httpfs": owner.get("pinned_httpfs_extension"),
+        "quack": owner.get("pinned_extension"),
+    }
+    if any(type(value) is not dict for value in owner_pins.values()):
+        raise ConfiguredBoardError(
+            "configured-board extension owner pins are noncanonical"
+        )
+    httpfs_source = Path(str(httpfs.get("path") or ""))
+    httpfs_info = Path(str(httpfs.get("info_path") or ""))
+    if not httpfs_source.is_absolute() or not httpfs_info.is_absolute():
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS projection sources are not absolute"
+        )
+    try:
+        httpfs_pin = inspect_configured_board_extension_sources(
+            httpfs_source,
+            httpfs_info,
+            name="httpfs",
+            engine_version=quack_pin.engine_version,
+            platform=quack_pin.platform,
+        )
+        observed_quack_pin = inspect_configured_board_extension_sources(
+            quack_source,
+            quack_info,
+            name="quack",
+            engine_version=quack_pin.engine_version,
+            platform=quack_pin.platform,
+        )
+    except (OSError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board extension source inspection failed"
+        ) from exc
+    if observed_quack_pin != quack_pin:
+        raise ConfiguredBoardError(
+            "configured-board Quack source differs from its protected pin"
+        )
+    if (
+        httpfs.get("network_install_allowed") is not False
+        or httpfs.get("unsigned_extension_allowed") is not False
+        or httpfs_pin.payload_sha256
+        != f"sha256:{str(httpfs.get('sha256') or '')}"
+        or httpfs_pin.payload_size != httpfs.get("size")
+        or httpfs_pin.info_sha256
+        != f"sha256:{str(httpfs.get('info_sha256') or '')}"
+        or httpfs_pin.info_size != httpfs.get("info_size")
+    ):
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS source differs from its protected pin"
+        )
+    pins = {"httpfs": httpfs_pin, "quack": quack_pin}
+    sources = {
+        "httpfs": (httpfs_source, httpfs_info),
+        "quack": (quack_source, quack_info),
+    }
+    for name, protected in (
+        ("httpfs", httpfs),
+        (
+            "quack",
+            {
+                "path": str(quack_source),
+                "info_path": str(quack_info),
+                "sha256": quack_pin.payload_sha256.removeprefix("sha256:"),
+                "size": quack_pin.payload_size,
+                "info_sha256": quack_pin.info_sha256.removeprefix("sha256:"),
+                "info_size": quack_pin.info_size,
+                "network_install_allowed": False,
+                "unsigned_extension_allowed": False,
+            },
+        ),
+    ):
+        configured = owner_pins[name]
+        assert isinstance(configured, dict)
+        for field in (
+            "path",
+            "info_path",
+            "sha256",
+            "size",
+            "info_sha256",
+            "info_size",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+        ):
+            if configured.get(field) != protected.get(field):
+                raise ConfiguredBoardError(
+                    f"configured-board {name} owner pin differs from "
+                    "the dependency seal"
+                )
+    versions = {
+        name: str(owner_pin.get("version") or "")
+        for name, owner_pin in owner_pins.items()
+        if isinstance(owner_pin, dict)
+    }
+    try:
+        extension_set_pin = build_configured_board_extension_set_pin(
+            pins,
+            versions=versions,
+        )
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "configured-board exact extension set pin is invalid"
+        ) from exc
+    return extension_set_pin, pins, sources
+
+
+def _configured_board_native_dependency_authority(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[AgentSupervisorNativeDependencyPin, str, Path]:
+    """Authenticate the protected authorization without creating a launch."""
+
+    if (
+        not board.dependency_seal_path
+        or board.dependency_seal_path not in board.protected_paths
+        or board.dependency_seal_path not in board.live_capsule_control_paths
+    ):
+        raise ConfiguredBoardError(
+            "configured-board native dependency lacks a protected seal"
+        )
+    try:
+        seal = dependency_seal_snapshot.payload
+        if (
+            type(seal) is not dict
+            or seal.get("schema")
+            != "semantic-addressed-world-model/dependency-seal@1"
+            or seal.get("board_namespace") != board.board_namespace
+            or seal.get("plan_revision")
+            != str(board.payload.get("plan_revision") or "")
+            or seal.get("status") != "sealed"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board dependency seal identity is invalid"
+            )
+        native = seal.get("configured_board_native_dependency")
+        if type(native) is not dict or set(native) != {
+            "schema",
+            "source_path",
+            "acceptance",
+            "pin",
+            "sealed_memfd_required",
+            "ambient_site_import_allowed",
+            "ambient_loader_environment_allowed",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board native dependency seal is noncanonical"
+            )
+        if (
+            native.get("schema")
+            != "semantic-addressed-world-model/configured-board-native-dependency@1"
+            or native.get("sealed_memfd_required") is not True
+            or native.get("ambient_site_import_allowed") is not False
+            or native.get("ambient_loader_environment_allowed") is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native dependency policy is invalid"
+            )
+        pin = parse_agent_supervisor_native_dependency_pin(native.get("pin"))
+        reference = native.get("acceptance")
+        if type(reference) is not dict or set(reference) != {
+            "schema",
+            "path",
+            "sha256",
+            "size",
+            "authorization_id",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board native authorization reference is noncanonical"
+            )
+        if reference.get("schema") != (
+            "semantic-addressed-world-model/"
+            "native-dependency-authorization-reference@1"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization reference is invalid"
+            )
+        authorization_relative = _safe_relative(
+            str(reference.get("path") or ""),
+            field="native authorization path",
+        )
+        if (
+            authorization_relative not in board.protected_paths
+            or authorization_relative not in board.live_capsule_control_paths
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization is not protected"
+            )
+        authorization, authorization_evidence = _read_stable_regular_json(
+            board.path(authorization_relative),
+            max_bytes=65_536,
+        )
+        if (
+            type(authorization) is not dict
+            or set(authorization) != {
+                "schema",
+                "board_namespace",
+                "plan_revision",
+                "status",
+                "scope",
+                "dependency_id",
+                "payload_sha256",
+                "python_executable_sha256",
+                "authority_basis",
+                "inspection_is_authority",
+                "authorization_may_claim_task_completion",
+                "authorization_id",
+            }
+            or authorization_evidence.get("content_sha256")
+            != reference.get("sha256")
+            or authorization_evidence.get("size") != reference.get("size")
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization artifact differs"
+            )
+        unsigned_authorization = dict(authorization)
+        authorization_id = str(
+            unsigned_authorization.pop("authorization_id", "") or ""
+        )
+        expected_authorization_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned_authorization,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            authorization_id != expected_authorization_id
+            or authorization_id != reference.get("authorization_id")
+            or authorization.get("schema") != (
+                "semantic-addressed-world-model/"
+                "native-dependency-launch-authorization@1"
+            )
+            or authorization.get("board_namespace") != board.board_namespace
+            or authorization.get("plan_revision")
+            != str(board.payload.get("plan_revision") or "")
+            or authorization.get("status") != "accepted"
+            or authorization.get("scope")
+            != "configured-board-live-control-plane"
+            or authorization.get("dependency_id") != pin.dependency_id
+            or authorization.get("payload_sha256") != pin.payload_sha256
+            or authorization.get("python_executable_sha256")
+            != pin.python_executable_sha256
+            or authorization.get("authority_basis")
+            != (
+                "operator-owned protected control inside the accepted "
+                "immutable source capsule"
+            )
+            or authorization.get("inspection_is_authority") is not False
+            or authorization.get("authorization_may_claim_task_completion")
+            is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization was not admitted"
+            )
+        source = Path(str(native.get("source_path") or ""))
+        if not source.is_absolute():
+            raise ConfiguredBoardError(
+                "configured-board native dependency source is not absolute"
+            )
+        return pin, authorization_id, source
+    except ConfiguredBoardError:
+        raise
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        _StableArtifactReadError,
+    ) as exc:
+        raise ConfiguredBoardError(
+            "configured-board native dependency admission failed"
+        ) from exc
+
+
+def _seal_configured_board_native_dependency(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Authenticate the protected authorization, then seal exact DuckDB bytes."""
+
+    pin, authorization_id, source = _configured_board_native_dependency_authority(
+        board,
+        dependency_seal_snapshot=dependency_seal_snapshot,
+    )
+    try:
+        launch = seal_agent_supervisor_native_dependency(
+            source,
+            expected_pin=pin,
+            accepted_authorization_id=authorization_id,
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        return launch
+    except (OSError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board native dependency sealing failed"
+        ) from exc
+
+
+def _authenticate_configured_board_native_dependency_launch(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+    launch: AgentSupervisorNativeDependencyLaunch,
+) -> None:
+    """Re-authenticate one propagated launch at an accepted inner birth."""
+
+    pin, authorization_id, _source = (
+        _configured_board_native_dependency_authority(
+            board,
+            dependency_seal_snapshot=dependency_seal_snapshot,
+        )
+    )
+    try:
+        launch_pin = parse_agent_supervisor_native_dependency_pin(
+            launch.pin.as_dict()
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board propagated native dependency is invalid"
+        ) from exc
+    if launch_pin != pin or launch.accepted_authorization_id != authorization_id:
+        raise ConfiguredBoardError(
+            "configured-board propagated native dependency is unauthorized"
+        )
+
+
+def _coordinator_pipe_identity(descriptor: int) -> tuple[int, int]:
+    observed = os.fstat(descriptor)
+    return int(observed.st_dev), int(observed.st_ino)
+
+
+def _coordinator_pipe_identity_text(identity: tuple[int, int]) -> str:
+    return f"{int(identity[0])}:{int(identity[1])}"
+
+
+def _parse_coordinator_pipe_identity(value: str) -> tuple[int, int]:
+    match = re.fullmatch(r"([0-9]+):([1-9][0-9]*)", str(value or ""))
+    if match is None:
+        raise ConfiguredBoardError("coordinator credential pipe identity is invalid")
+    return int(match.group(1)), int(match.group(2))
+
+
+def _validate_coordinator_pipe_descriptor(
+    descriptor: int,
+    *,
+    identity: tuple[int, int],
+    write_end: bool,
+    inheritable: bool,
+) -> None:
+    """Authenticate one anonymous pipe endpoint and its exact fd flags."""
+
+    if type(descriptor) is not int or descriptor < 3:
+        raise ConfiguredBoardError("coordinator credential pipe fd is invalid")
+    try:
+        observed = os.fstat(descriptor)
+        status_flags = int(fcntl.fcntl(descriptor, fcntl.F_GETFL))
+        descriptor_flags = int(fcntl.fcntl(descriptor, fcntl.F_GETFD))
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "coordinator credential pipe fd is unavailable"
+        ) from exc
+    expected_access = os.O_WRONLY if write_end else os.O_RDONLY
+    observed_inheritable = not bool(descriptor_flags & fcntl.FD_CLOEXEC)
+    if (
+        (int(observed.st_dev), int(observed.st_ino)) != identity
+        or not stat.S_ISFIFO(observed.st_mode)
+        or int(observed.st_nlink) != 1
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or status_flags & os.O_ACCMODE != expected_access
+        or observed_inheritable is not inheritable
+    ):
+        raise ConfiguredBoardError(
+            "coordinator credential pipe fd flags or identity differ"
+        )
+
+
+def _create_coordinator_credential_pipe() -> tuple[int, int]:
+    """Create one CLOEXEC pipe whose endpoints cannot alias stdio."""
+
+    descriptors = list(os.pipe2(os.O_CLOEXEC))
+    owned_descriptors = set(descriptors)
+    try:
+        for index, descriptor in enumerate(tuple(descriptors)):
+            if descriptor >= 3:
+                continue
+            replacement = int(
+                fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 3)
+            )
+            owned_descriptors.add(replacement)
+            os.close(descriptor)
+            owned_descriptors.discard(descriptor)
+            descriptors[index] = replacement
+        if descriptors[0] == descriptors[1] or min(descriptors) < 3:
+            raise ConfiguredBoardError(
+                "coordinator credential pipe descriptors are invalid"
+            )
+        return descriptors[0], descriptors[1]
+    except BaseException:
+        for descriptor in owned_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise
+
+
+def _validate_quack_task_authority_snapshot(
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected_keys = {
+        "schema",
+        "source_schema",
+        "schema_version",
+        "plan_root_cid",
+        "repository_tree_id",
+        "projection_cid",
+        "formal_plan_id",
+        "source_identity",
+        "revision",
+        "event_cursor",
+        "goal_count",
+        "task_count",
+        "dependency_count",
+        "terminal",
+        "objective_count",
+        "plan_count",
+    }
+    result = dict(snapshot)
+    integer_fields = {
+        "schema_version",
+        "revision",
+        "event_cursor",
+        "goal_count",
+        "task_count",
+        "dependency_count",
+        "objective_count",
+        "plan_count",
+    }
+    text_fields = expected_keys - integer_fields - {"terminal"}
+    if (
+        set(result) != expected_keys
+        or result.get("schema") != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-task-source-snapshot@1"
+        )
+        or result.get("source_schema") != (
+            "ipfs_accelerate_py/agent-supervisor/database-task-source@1"
+        )
+        or result.get("schema_version") != 1
+        or any(type(result.get(field)) is not int for field in integer_fields)
+        or any(int(result[field]) < 0 for field in integer_fields)
+        or any(not isinstance(result.get(field), str) for field in text_fields)
+        or not isinstance(result.get("terminal"), bool)
+        or not result.get("projection_cid")
+        or not result.get("source_identity")
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator Quack task snapshot is noncanonical"
+        )
+    return result
+
+
+def _validate_coordinator_quack_mutation_binding(
+    program: DatabaseProgramConfig,
+    value: object,
+) -> dict[str, Any]:
+    expected_binding_keys = {
+        "server_id",
+        "store_id",
+        "database_uuid",
+        "schema_revision",
+        "schema_fingerprint",
+        "generation",
+        "process_birth_id",
+        "listen_uri",
+        "extension_fingerprint",
+    }
+    try:
+        expected_generation = int(program.store_generation)
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "coordinator Quack generation is invalid"
+        ) from exc
+    if (
+        type(value) is not dict
+        or set(value) != expected_binding_keys
+        or value.get("store_id") != program.store_id
+        or value.get("listen_uri") != program.quack_endpoint
+        or type(value.get("generation")) is not int
+        or value.get("generation") != expected_generation
+        or type(value.get("schema_revision")) is not int
+        or int(value.get("schema_revision")) < 1
+        or any(
+            not isinstance(value.get(field), str) or not value.get(field)
+            for field in (
+                "server_id",
+                "database_uuid",
+                "schema_fingerprint",
+                "process_birth_id",
+                "extension_fingerprint",
+            )
+        )
+    ):
+        raise ConfiguredBoardError(
+            "coordinator inherited Quack mutation authority differs"
+        )
+    return dict(value)
+
+
+def _coordinator_quack_owner_state_directory(board: ConfiguredBoard) -> Path:
+    """Resolve the sealed Quack owner's repository-confined state directory."""
+
+    owner = board.payload.get("quack_owner")
+    if type(owner) is not dict:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff lacks sealed Quack owner paths"
+        )
+    state_relative = str(owner.get("state_dir") or "")
+    if not state_relative:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff lacks a Quack owner state directory"
+        )
+    expected = board.path(state_relative).resolve()
+    try:
+        expected.relative_to(board.repo_root)
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "coordinator Quack mutation directory escapes the repository"
+        ) from exc
+    return expected
+
+
+def _validate_coordinator_quack_mutation_directory(
+    board: ConfiguredBoard,
+    environment: Mapping[str, str],
+) -> str:
+    expected = _coordinator_quack_owner_state_directory(board) / "mutations"
+    observed = str(environment.get(STATE_QUACK_MUTATION_DIR_ENV) or "")
+    if observed != str(expected):
+        raise ConfiguredBoardError(
+            "coordinator inherited Quack mutation directory differs"
+        )
+    return observed
+
+
+def _require_concrete_coordinator_credential_handoff(
+    handoff: object,
+) -> CoordinatorCredentialHandoff:
+    """Accept only the QSS transaction implementation that owns retirement."""
+
+    from .quack_state_server import TokenHandoffRetirement
+
+    if type(handoff) is not TokenHandoffRetirement:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff lacks concrete QSS provenance"
+        )
+    return handoff
+
+
+def _validate_coordinator_credential_commit_receipt(
+    receipt: object,
+    *,
+    secret_handle: str,
+) -> dict[str, Any]:
+    """Validate and copy one exact secret-free QSS retirement receipt."""
+
+    if (
+        type(receipt) is not dict
+        or set(receipt)
+        != {"schema", "retired", "already_absent", "secret_handle"}
+        or receipt.get("schema")
+        != "ipfs_accelerate_py/quack-token-handoff-retirement@1"
+        or receipt.get("retired") is not True
+        or receipt.get("already_absent") is not False
+        or receipt.get("secret_handle") != secret_handle
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator credential handoff receipt differs"
+        )
+    return dict(receipt)
+
+
+def _validate_coordinator_credential_authority_binding(
+    binding: object,
+    *,
+    state_dir: Path,
+    secret_handle: str,
+    credential_sha256: str,
+) -> dict[str, Any]:
+    """Validate the concrete QSS transaction's retained owner binding."""
+
+    if (
+        type(binding) is not dict
+        or set(binding)
+        != {"schema", "state_dir", "secret_handle", "credential_sha256"}
+        or binding.get("schema")
+        != "ipfs_accelerate_py/quack-token-handoff-authority-binding@1"
+        or binding.get("state_dir") != str(state_dir)
+        or binding.get("secret_handle") != secret_handle
+        or binding.get("credential_sha256") != credential_sha256
+    ):
+        raise ConfiguredBoardError(
+            "coordinator credential handoff authority binding differs"
+        )
+    return dict(binding)
+
+
+def _accept_coordinator_credential_handoff(
+    board: ConfiguredBoard,
+    handoff: CoordinatorCredentialHandoff,
+    environment: Mapping[str, str],
+) -> _AcceptedCoordinatorCredentialHandoff:
+    """Freeze the exact credential, owner, and task authority being retired."""
+
+    handoff = _require_concrete_coordinator_credential_handoff(handoff)
+    program = board.database_program
+    if program is None or program.authority_mode != AUTHORITY_MODE_QUACK:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff lacks Quack authority"
+        )
+    if handoff.state != "begun":
+        raise ConfiguredBoardError(
+            "coordinator credential handoff is not rollback-capable"
+        )
+    if handoff.secret_handle != program.endpoint_secret_handle:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff secret handle differs"
+        )
+    handle = str(handoff.secret_handle)
+    if not handle.startswith("env://"):
+        raise ConfiguredBoardError(
+            "coordinator credential handoff requires an environment handle"
+        )
+    token_name = handle.removeprefix("env://").strip()
+    token = str(environment.get(token_name) or "")
+    credential_sha256 = str(handoff.credential_sha256 or "")
+    if (
+        not token
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", credential_sha256) is None
+        or "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+        != credential_sha256
+    ):
+        raise ConfiguredBoardError(
+            "coordinator credential handoff token binding differs"
+        )
+    from ..task_sources.duckdb_state import (
+        QUACK_MUTATION_BINDING_ENV,
+        QUACK_TOKEN_ENV,
+    )
+
+    if environment.get(QUACK_TOKEN_ENV) != token:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff standard token differs"
+        )
+    try:
+        environment_binding = json.loads(
+            str(environment.get(QUACK_MUTATION_BINDING_ENV) or ""),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff mutation binding is invalid"
+        ) from exc
+    expected_binding = _validate_coordinator_quack_mutation_binding(
+        program, environment_binding
+    )
+    _validate_coordinator_quack_mutation_directory(board, environment)
+    state_dir = _coordinator_quack_owner_state_directory(board)
+    try:
+        authority_binding = handoff.validate_active(
+            state_dir=state_dir,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+        )
+    except BaseException as exc:
+        raise ConfiguredBoardError(
+            "coordinator credential handoff active authority is invalid"
+        ) from exc
+    authority_binding = _validate_coordinator_credential_authority_binding(
+        authority_binding,
+        state_dir=state_dir,
+        secret_handle=handle,
+        credential_sha256=credential_sha256,
+    )
+    expected_snapshot = _detached_coordinator_quack_snapshot(
+        board,
+        repository_tree_id="",
+        plan_root_cid="",
+        environment=environment,
+    )
+    commit_receipt = _validate_coordinator_credential_commit_receipt(
+        handoff.expected_commit_receipt,
+        secret_handle=handle,
+    )
+    return _AcceptedCoordinatorCredentialHandoff(
+        secret_handle=handle,
+        credential_sha256=credential_sha256,
+        mutation_binding=expected_binding,
+        task_snapshot=expected_snapshot,
+        commit_receipt=commit_receipt,
+        authority_binding=authority_binding,
+    )
+
+
+def _strict_duckdb_row_values(
+    rows: object,
+    field_types: tuple[type[Any], ...],
+) -> tuple[Any, ...] | None:
+    """Copy one exact adapter row by position, rejecting shape/type drift."""
+
+    from ..task_sources.duckdb_state import DuckDBRow
+
+    if type(rows) is not list or len(rows) != 1:
+        return None
+    row = rows[0]
+    if type(row) is not DuckDBRow or len(row) != len(field_types):
+        return None
+    values = tuple(row[index] for index in range(len(field_types)))
+    if any(
+        type(value) is not field_type
+        for value, field_type in zip(values, field_types, strict=True)
+    ):
+        return None
+    return values
+
+
+def _detached_coordinator_quack_snapshot(
+    board: ConfiguredBoard,
+    *,
+    repository_tree_id: str,
+    plan_root_cid: str,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Authenticate inherited Quack authority and read one exact snapshot."""
+
+    program = board.database_program
+    if (
+        program is None
+        or program.authority_mode != AUTHORITY_MODE_QUACK
+        or program.task_source_kind != "duckdb"
+        or program.failover_policy != "fail_closed"
+    ):
+        raise ConfiguredBoardError(
+            "coordinator credential gate requires sealed Quack task authority"
+        )
+    bindings = os.environ if environment is None else environment
+    for name, expected in program.environment().items():
+        if bindings.get(name) != expected:
+            raise ConfiguredBoardError(
+                "coordinator inherited database-program binding differs"
+            )
+    handle = str(program.endpoint_secret_handle or "")
+    if not handle.startswith("env://"):
+        raise ConfiguredBoardError(
+            "coordinator Quack credential is not an environment handle"
+        )
+    token_name = handle.removeprefix("env://").strip()
+    token = bindings.get(token_name, "")
+    from ..task_sources.duckdb_state import (
+        QUACK_MUTATION_BINDING_ENV,
+        QUACK_TOKEN_ENV,
+    )
+
+    if not token or bindings.get(QUACK_TOKEN_ENV) != token:
+        raise ConfiguredBoardError(
+            "coordinator did not inherit one exact Quack credential"
+        )
+    try:
+        mutation_binding = json.loads(
+            bindings.get(QUACK_MUTATION_BINDING_ENV, ""),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "coordinator Quack mutation binding is invalid"
+        ) from exc
+    validated_binding = _validate_coordinator_quack_mutation_binding(
+        program, mutation_binding
+    )
+    _validate_coordinator_quack_mutation_directory(board, bindings)
+    from ..task_sources.database_task_source import DatabaseTaskSource
+
+    original_environment: dict[str, str] | None = None
+    try:
+        if environment is not None:
+            # DatabaseTaskSource resolves Quack credentials, mutation fencing,
+            # and sealed extension custody from the process environment.  Run
+            # the parent proof under the exact already-prepared child mapping,
+            # then restore the caller byte-for-byte before any provider work.
+            original_environment = dict(os.environ)
+            os.environ.clear()
+            os.environ.update({str(key): str(value) for key, value in bindings.items()})
+        with DatabaseTaskSource(
+            program.quack_endpoint,
+            install_schema=False,
+            owner_id="configured-board-detached-credential-gate",
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+        ) as source:
+            snapshot = source.snapshot().to_dict()
+            with source.intent._connection(write=False) as connection:
+                owner_rows = connection.execute(
+                    "SELECT store_id,database_uuid,process_birth_id,listen_uri,"
+                    "extension_fingerprint,schema_revision,generation,status "
+                    "FROM state_servers WHERE server_id=?",
+                    [validated_binding["server_id"]],
+                ).fetchall()
+                generation_rows = connection.execute(
+                    "SELECT database_uuid,birth_id,schema_revision,fence_epoch "
+                    "FROM store_generations WHERE generation=?",
+                    [validated_binding["generation"]],
+                ).fetchall()
+            owner_row = _strict_duckdb_row_values(
+                owner_rows,
+                (str, str, str, str, str, int, int, str),
+            )
+            generation_row = _strict_duckdb_row_values(
+                generation_rows,
+                (str, str, int, int),
+            )
+            if owner_row != (
+                validated_binding["store_id"],
+                validated_binding["database_uuid"],
+                validated_binding["process_birth_id"],
+                validated_binding["listen_uri"],
+                validated_binding["extension_fingerprint"],
+                validated_binding["schema_revision"],
+                validated_binding["generation"],
+                "ready",
+            ) or generation_row != (
+                validated_binding["database_uuid"],
+                validated_binding["process_birth_id"],
+                validated_binding["schema_revision"],
+                validated_binding["generation"],
+            ):
+                raise ConfiguredBoardError(
+                    "coordinator exact live Quack owner rows differ"
+                )
+    except Exception as exc:
+        raise ConfiguredBoardError(
+            "coordinator authenticated Quack task snapshot failed"
+        ) from exc
+    finally:
+        if original_environment is not None:
+            os.environ.clear()
+            os.environ.update(original_environment)
+    return _validate_quack_task_authority_snapshot(snapshot)
+
+
+def _coordinator_credential_ack_bytes(
+    board: ConfiguredBoard,
+    *,
+    nonce: str,
+    pid: int,
+    snapshot: Mapping[str, Any],
+) -> bytes:
+    program = board.database_program
+    if program is None:
+        raise ConfiguredBoardError("coordinator credential ACK lacks a program")
+    payload = {
+        "schema": _COORDINATOR_CREDENTIAL_ACK_SCHEMA,
+        "nonce": nonce,
+        "pid": int(pid),
+        "store_id": program.store_id,
+        "store_generation": program.store_generation,
+        "snapshot": _validate_quack_task_authority_snapshot(snapshot),
+    }
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8") + b"\n"
+
+
+def _coordinator_credential_ready_timeout_seconds(
+    board: ConfiguredBoard,
+) -> float:
+    """Cover the sealed child's complete startup while retaining a floor."""
+
+    return max(
+        COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS,
+        _nonnegative_number(
+            board.payload.get("watchdog_startup_grace_seconds"),
+            field="watchdog_startup_grace_seconds",
+        ),
+    )
+
+
+def _rearm_detached_coordinator_token_handoff(
+    board: ConfiguredBoard,
+) -> dict[str, Any]:
+    """Restore the exact inherited credential for a later coordinator birth."""
+
+    program = board.database_program
+    if program is None or program.authority_mode != AUTHORITY_MODE_QUACK:
+        raise ConfiguredBoardError(
+            "detached coordinator credential rearm lacks Quack authority"
+        )
+    handle = str(program.endpoint_secret_handle or "")
+    if not handle.startswith("env://"):
+        raise ConfiguredBoardError(
+            "detached coordinator credential rearm lacks an environment handle"
+        )
+    token_name = handle.removeprefix("env://").strip()
+    token = str(os.environ.get(token_name) or "")
+    from ..task_sources.duckdb_state import QUACK_TOKEN_ENV
+
+    if not token or os.environ.get(QUACK_TOKEN_ENV) != token:
+        raise ConfiguredBoardError(
+            "detached coordinator credential rearm lacks its exact token"
+        )
+    credential_sha256 = (
+        "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+    )
+    state_dir = _coordinator_quack_owner_state_directory(board)
+    from .quack_state_server import rearm_token_handoff
+
+    try:
+        receipt = rearm_token_handoff(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+    except BaseException as exc:
+        raise ConfiguredBoardError(
+            "detached coordinator credential rearm failed"
+        ) from exc
+    if (
+        type(receipt) is not dict
+        or set(receipt)
+        != {"schema", "rearmed", "secret_handle", "credential_sha256"}
+        or receipt.get("schema")
+        != "ipfs_accelerate_py/quack-token-handoff-rearm@1"
+        or receipt.get("rearmed") is not True
+        or receipt.get("secret_handle") != handle
+        or receipt.get("credential_sha256") != credential_sha256
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator credential rearm receipt differs"
+        )
+    return dict(receipt)
+
+
+def _credential_gate_failure_after_rearm(
+    board: ConfiguredBoard,
+    primary: BaseException,
+) -> ConfiguredBoardError:
+    """Attempt exact rearm and preserve both sides of a gate failure."""
+
+    if isinstance(primary, ConfiguredBoardError):
+        primary_error = ConfiguredBoardError(str(primary))
+    else:
+        primary_error = ConfiguredBoardError(
+            "coordinator credential pipe failed"
+        )
+    try:
+        _rearm_detached_coordinator_token_handoff(board)
+    except BaseException as rearm_error:
+        combined = _CoordinatorCredentialRearmError(
+            f"{primary_error}; detached credential rearm also failed: "
+            f"{rearm_error}"
+        )
+        combined.add_note(f"primary gate error: {type(primary).__name__}")
+        combined.add_note(f"credential rearm error: {type(rearm_error).__name__}")
+        return combined
+    return primary_error
+
+
+def _run_detached_coordinator_child_credential_gate(
+    board: ConfiguredBoard,
+    *,
+    ready_descriptor: int,
+    ready_identity_text: str,
+    start_descriptor: int,
+    start_identity_text: str,
+    nonce: str,
+    snapshot_context_json: str,
+) -> dict[str, Any]:
+    """ACK authenticated task authority, then remain gated until commit."""
+
+    if re.fullmatch(r"[0-9a-f]{64}", nonce) is None:
+        raise ConfiguredBoardError("coordinator credential nonce is invalid")
+    ready_identity = _parse_coordinator_pipe_identity(ready_identity_text)
+    start_identity = _parse_coordinator_pipe_identity(start_identity_text)
+    if ready_descriptor == start_descriptor or ready_identity == start_identity:
+        raise ConfiguredBoardError("coordinator credential pipes are not distinct")
+    try:
+        snapshot_context = json.loads(
+            snapshot_context_json,
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "coordinator credential snapshot context is invalid"
+        ) from exc
+    if (
+        type(snapshot_context) is not dict
+        or set(snapshot_context) != {"repository_tree_id", "plan_root_cid"}
+        or not isinstance(snapshot_context.get("repository_tree_id"), str)
+        or not isinstance(snapshot_context.get("plan_root_cid"), str)
+    ):
+        raise ConfiguredBoardError(
+            "coordinator credential snapshot context differs"
+        )
+    descriptors = (ready_descriptor, start_descriptor)
+    try:
+        _validate_coordinator_pipe_descriptor(
+            ready_descriptor,
+            identity=ready_identity,
+            write_end=True,
+            inheritable=True,
+        )
+        _validate_coordinator_pipe_descriptor(
+            start_descriptor,
+            identity=start_identity,
+            write_end=False,
+            inheritable=True,
+        )
+        for descriptor in descriptors:
+            os.set_inheritable(descriptor, False)
+        _validate_coordinator_pipe_descriptor(
+            ready_descriptor,
+            identity=ready_identity,
+            write_end=True,
+            inheritable=False,
+        )
+        _validate_coordinator_pipe_descriptor(
+            start_descriptor,
+            identity=start_identity,
+            write_end=False,
+            inheritable=False,
+        )
+        snapshot = _detached_coordinator_quack_snapshot(
+            board,
+            repository_tree_id=snapshot_context["repository_tree_id"],
+            plan_root_cid=snapshot_context["plan_root_cid"],
+        )
+        acknowledgement = _coordinator_credential_ack_bytes(
+            board,
+            nonce=nonce,
+            pid=os.getpid(),
+            snapshot=snapshot,
+        )
+        offset = 0
+        while offset < len(acknowledgement):
+            written = os.write(ready_descriptor, acknowledgement[offset:])
+            if written <= 0:
+                raise OSError("short coordinator credential ACK write")
+            offset += written
+        os.close(ready_descriptor)
+        ready_descriptor = -1
+        # One exact byte is the terminal release.  Do not require a subsequent
+        # writer close: after commit, close errors or parent teardown cannot be
+        # allowed to strand an otherwise-valid child behind the gate.
+        release = os.read(start_descriptor, 2)
+        if release == _COORDINATOR_CREDENTIAL_ABORT_BYTE:
+            raise _CoordinatorCredentialLaunchAborted(
+                "detached coordinator launch was fail-closed by its parent"
+            )
+        if release != _COORDINATOR_CREDENTIAL_START_BYTE:
+            raise ConfiguredBoardError(
+                "coordinator credential start gate was not committed"
+            )
+        return snapshot
+    except _CoordinatorCredentialLaunchAborted:
+        raise
+    except BaseException as exc:
+        raise _credential_gate_failure_after_rearm(board, exc) from exc
+    finally:
+        for descriptor in (ready_descriptor, start_descriptor):
+            if descriptor >= 3:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+def _wait_for_detached_coordinator_credential_ack(
+    board: ConfiguredBoard,
+    *,
+    process: subprocess.Popen[bytes],
+    descriptor: int,
+    identity: tuple[int, int],
+    nonce: str,
+    expected_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Read one bounded canonical ACK while proving the child stays alive."""
+
+    _validate_coordinator_pipe_descriptor(
+        descriptor,
+        identity=identity,
+        write_end=False,
+        inheritable=False,
+    )
+    os.set_blocking(descriptor, False)
+    poller = select.poll()
+    poller.register(
+        descriptor,
+        select.POLLIN | select.POLLHUP | select.POLLERR | select.POLLNVAL,
+    )
+    # The gated process re-loads the sealed board, runs the complete current-
+    # tree preflight, and constructs its live capsule before it can ACK.  Give
+    # that work the board's already-validated startup grace instead of treating
+    # the shorter pipe-I/O floor as the whole child-startup budget.
+    deadline = (
+        time.monotonic()
+        + _coordinator_credential_ready_timeout_seconds(board)
+    )
+    payload = bytearray()
+    while True:
+        if process.poll() is not None:
+            raise ConfiguredBoardError(
+                "detached coordinator exited before credential readiness"
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ConfiguredBoardError(
+                "detached coordinator credential readiness timed out"
+            )
+        events = poller.poll(max(1, int(min(remaining, 0.05) * 1000)))
+        if not events:
+            continue
+        event_mask = int(events[0][1])
+        if event_mask & select.POLLNVAL:
+            raise ConfiguredBoardError(
+                "detached coordinator credential ACK fd became invalid"
+            )
+        try:
+            block = os.read(descriptor, 4096)
+        except BlockingIOError:
+            continue
+        if not block:
+            break
+        payload.extend(block)
+        if len(payload) > _COORDINATOR_CREDENTIAL_ACK_MAX_BYTES:
+            raise ConfiguredBoardError(
+                "detached coordinator credential ACK exceeds its bound"
+            )
+    if process.poll() is not None:
+        raise ConfiguredBoardError(
+            "detached coordinator exited while credential-gated"
+        )
+    try:
+        acknowledgement = json.loads(
+            bytes(payload).decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "detached coordinator credential ACK is invalid"
+        ) from exc
+    if type(acknowledgement) is not dict:
+        raise ConfiguredBoardError(
+            "detached coordinator credential ACK is not an object"
+        )
+    snapshot = acknowledgement.get("snapshot")
+    validated_expected_snapshot = _validate_quack_task_authority_snapshot(
+        expected_snapshot
+    )
+    expected = _coordinator_credential_ack_bytes(
+        board,
+        nonce=nonce,
+        pid=process.pid,
+        snapshot=validated_expected_snapshot,
+    )
+    if bytes(payload) != expected:
+        raise ConfiguredBoardError(
+            "detached coordinator credential ACK differs"
+        )
+    return dict(snapshot)
+
+
+def _release_detached_coordinator_credential_gate(
+    descriptor: int,
+) -> None:
+    written = os.write(descriptor, _COORDINATOR_CREDENTIAL_START_BYTE)
+    if written != len(_COORDINATOR_CREDENTIAL_START_BYTE):
+        raise ConfiguredBoardError(
+            "detached coordinator credential start release was short"
+        )
+
+
+def _abort_detached_coordinator_credential_gate(descriptor: int) -> None:
+    written = os.write(descriptor, _COORDINATOR_CREDENTIAL_ABORT_BYTE)
+    if written != len(_COORDINATOR_CREDENTIAL_ABORT_BYTE):
+        raise ConfiguredBoardError(
+            "detached coordinator credential abort release was short"
+        )
+
+
+def _commit_detached_coordinator_credential_handoff(
+    handoff: CoordinatorCredentialHandoff,
+    accepted: _AcceptedCoordinatorCredentialHandoff,
+) -> tuple[dict[str, Any], bool]:
+    """Commit once, recovering a terminal result from its frozen receipt.
+
+    The concrete QSS transaction records ``committed`` before any cleanup or
+    return-path work.  Once that state is visible, fencing the authenticated
+    child would destroy the only accepted recipient of the retired handoff.
+    """
+
+    handoff = _require_concrete_coordinator_credential_handoff(handoff)
+    if (
+        handoff.state != "begun"
+        or handoff.secret_handle != accepted.secret_handle
+        or handoff.credential_sha256 != accepted.credential_sha256
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator credential handoff changed before commit"
+        )
+    returned_receipt: object = None
+    commit_error: BaseException | None = None
+    try:
+        returned_receipt = handoff.commit()
+    except BaseException as exc:
+        commit_error = exc
+    if handoff.state != "committed":
+        error = ConfiguredBoardError(
+            "detached coordinator credential handoff commit failed"
+            if commit_error is not None
+            else "detached coordinator credential handoff commit differed"
+        )
+        if commit_error is not None:
+            raise error from commit_error
+        raise error
+
+    recovered = commit_error is not None
+    try:
+        observed_receipt = _validate_coordinator_credential_commit_receipt(
+            returned_receipt,
+            secret_handle=accepted.secret_handle,
+        )
+    except ConfiguredBoardError:
+        recovered = True
+    else:
+        if observed_receipt != dict(accepted.commit_receipt):
+            recovered = True
+    if (
+        handoff.secret_handle != accepted.secret_handle
+        or handoff.credential_sha256 != accepted.credential_sha256
+    ):
+        # Concrete QSS fields are immutable.  Treat any impossible post-state
+        # observation as an ambiguous return, never as authority to kill the
+        # already-authenticated credential recipient.
+        recovered = True
+    return dict(accepted.commit_receipt), recovered
+
+
+def _close_coordinator_credential_handoff_without_rollback(
+    handoff: CoordinatorCredentialHandoff,
+    accepted: _AcceptedCoordinatorCredentialHandoff,
+) -> dict[str, Any]:
+    """Terminally wipe retained bytes when a spawned child may still exist."""
+
+    handoff = _require_concrete_coordinator_credential_handoff(handoff)
+    if (
+        handoff.state != "begun"
+        or handoff.secret_handle != accepted.secret_handle
+        or handoff.credential_sha256 != accepted.credential_sha256
+    ):
+        raise ConfiguredBoardError(
+            "detached coordinator credential handoff changed before terminal close"
+        )
+    expected = {
+        "schema": (
+            "ipfs_accelerate_py/quack-token-handoff-retirement-closed@1"
+        ),
+        "closed": True,
+        "terminal": True,
+        "reason": "child_liveness_unproven",
+        "completion_authority": False,
+        "task_authority": False,
+        "secret_handle": accepted.secret_handle,
+        "credential_sha256": accepted.credential_sha256,
+    }
+    returned: object = None
+    close_error: BaseException | None = None
+    try:
+        returned = handoff.close_without_rollback(
+            reason="child_liveness_unproven"
+        )
+    except BaseException as exc:
+        close_error = exc
+    if handoff.state != "closed":
+        error = ConfiguredBoardError(
+            "detached coordinator credential terminal close failed"
+            if close_error is not None
+            else "detached coordinator credential terminal close differed"
+        )
+        if close_error is not None:
+            raise error from close_error
+        raise error
+    if type(returned) is not dict or returned != expected:
+        # The exact concrete QSS object freezes this receipt before exposing
+        # ``closed``.  Recover the deterministic secret-free terminal result.
+        return expected
+    return dict(returned)
+
+
 def _plan_bound_coordinator_module_argv(
     board: ConfiguredBoard,
     *,
@@ -6933,8 +5541,13 @@ def _plan_bound_coordinator_module_argv(
     pin: AgentImplementationControlPlanePin,
     sealed: AgentImplementationSealedControlPlane,
     capsule_parent: Path,
-    launch_session_id: str = "",
-    coordinator_status_path: Path | None = None,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    credential_ready_descriptor: int = -1,
+    credential_ready_identity: tuple[int, int] | None = None,
+    credential_start_descriptor: int = -1,
+    credential_start_identity: tuple[int, int] | None = None,
+    credential_nonce: str = "",
+    credential_snapshot_context_json: str = "",
 ) -> list[str]:
     argv = [
         "--repo-root",
@@ -6949,31 +5562,47 @@ def _plan_bound_coordinator_module_argv(
         str(sealed.descriptor),
         "--accepted-control-plane-capsule-parent",
         str(capsule_parent),
+        "launch",
+        "--foreground",
+        "--duration-seconds",
+        str(duration_seconds),
     ]
-    if launch_session_id or coordinator_status_path is not None:
-        if (
-            re.fullmatch(r"[0-9a-f]{64}", launch_session_id) is None
-            or coordinator_status_path is None
-        ):
-            raise ConfiguredBoardError(
-                "coordinator launch session binding is incomplete"
-            )
-        argv.extend(
-            [
-                "--coordinator-launch-session",
-                launch_session_id,
-                "--coordinator-status-path",
-                str(coordinator_status_path),
-            ]
-        )
-    argv.extend(
-        [
-            "launch",
-            "--foreground",
-            "--duration-seconds",
-            str(duration_seconds),
+    if native_dependency_launch is not None:
+        argv[argv.index("launch"):argv.index("launch")] = [
+            "--configured-board-live-native-launch-json",
+            native_dependency_launch.to_json(),
+            "--configured-board-live-native-fd",
+            str(native_dependency_launch.descriptor.descriptor),
         ]
+    credential_fields = (
+        credential_ready_descriptor >= 3,
+        credential_ready_identity is not None,
+        credential_start_descriptor >= 3,
+        credential_start_identity is not None,
+        bool(credential_nonce),
+        bool(credential_snapshot_context_json),
     )
+    if any(credential_fields) and not all(credential_fields):
+        raise ConfiguredBoardError(
+            "detached coordinator credential gate fields are incomplete"
+        )
+    if all(credential_fields):
+        assert credential_ready_identity is not None
+        assert credential_start_identity is not None
+        argv[argv.index("launch"):argv.index("launch")] = [
+            "--coordinator-credential-ready-fd",
+            str(credential_ready_descriptor),
+            "--coordinator-credential-ready-pipe",
+            _coordinator_pipe_identity_text(credential_ready_identity),
+            "--coordinator-credential-start-fd",
+            str(credential_start_descriptor),
+            "--coordinator-credential-start-pipe",
+            _coordinator_pipe_identity_text(credential_start_identity),
+            "--coordinator-credential-nonce",
+            credential_nonce,
+            "--coordinator-credential-snapshot-context-json",
+            credential_snapshot_context_json,
+        ]
     if implement:
         argv.append("--implement")
     return argv
@@ -7012,188 +5641,37 @@ def _cleanup_plan_bound_control_plane(
         return
 
 
-def _plan_bound_coordinator_environment(
-    board: ConfiguredBoard | None = None,
-) -> dict[str, str]:
-    """Retain only locale and exact live database identities across reseal."""
-
-    environment = {
-        name: value
-        for name, value in os.environ.items()
-        if name
-        in {
-            "LANG",
-            "LC_ALL",
-            "LC_CTYPE",
-            "TZ",
-            STATE_STORE_LIVE_GENERATION_ENV,
-            STATE_LIVE_SCHEMA_REVISION_ENV,
-            STATE_GRANT_BROKER_SOCKET_ENV,
-            STATE_GRANT_BROKER_SECRET_FD_ENV,
-            STATE_OWNER_SOCKET_ENV,
-            TRUSTED_DUCKDB_HOME_ENV,
-        }
-    }
-    for name in (
-        STATE_STORE_LIVE_GENERATION_ENV,
-        STATE_LIVE_SCHEMA_REVISION_ENV,
-    ):
-        value = str(environment.get(name, "") or "")
-        if value and (
-            re.fullmatch(r"[0-9]{1,20}", value) is None
-            or int(value) > 2**63 - 1
-        ):
-            raise ConfiguredBoardError(
-                f"plan-bound coordinator {name} is not a bounded identity"
-            )
-    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
-    if trusted_home:
-        try:
-            environment.update(
-                _trusted_duckdb_runtime_environment(
-                    os.environ,
-                    repository_root=Path(__file__).absolute().parents[3],
-                )
-            )
-            environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
-        except ValueError as exc:
-            raise ConfiguredBoardError(
-                "plan-bound coordinator trusted DuckDB HOME is invalid"
-            ) from exc
-    else:
-        environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
-        for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
-            environment.pop(name, None)
-    environment["PATH"] = (
-        _eaaef_plan_bound_provider_path(board)
-        if board is not None
-        else "/usr/bin:/bin"
-    )
-    return environment
-
-
-def _require_plan_bound_process_launch_policy(
-    board: ConfiguredBoard,
-    *,
-    implement: bool,
-) -> None:
-    """Fail before process birth when a configured board prohibits live launch."""
-
-    raw_policy = board.payload.get("launch_policy")
-    if raw_policy is None:
-        if _eaaef_plan_bound_profile(board):
-            raise ConfiguredBoardError(
-                "EAAEF configured-board live launch requires an explicit "
-                "launch_policy authority boundary"
-            )
-        return
-    if not isinstance(raw_policy, Mapping):
-        raise ConfiguredBoardError("launch_policy must be an object")
-    if _eaaef_plan_bound_profile(board):
-        expected_policy_fields = {
-            "blockers",
-            "bypass_prohibited",
-            "dry_run_allowed",
-            "live_multi_supervisor_allowed",
-            "live_single_supervisor_allowed",
-            "materialize_allowed",
-            "verify_allowed",
-        }
-        if set(raw_policy) != expected_policy_fields:
-            raise ConfiguredBoardError(
-                "EAAEF launch_policy fields do not match the closed authority "
-                "contract"
-            )
-        for field in expected_policy_fields - {"blockers"}:
-            if type(raw_policy.get(field)) is not bool:
-                raise ConfiguredBoardError(
-                    f"EAAEF launch_policy.{field} must be boolean"
-                )
-    if raw_policy.get("bypass_prohibited") is not True:
-        raise ConfiguredBoardError(
-            "configured-board live launch requires bypass_prohibited=true"
-        )
-    if raw_policy.get("live_multi_supervisor_allowed") is not True:
-        raise ConfiguredBoardError(
-            "configured-board live multi-supervisor launch is prohibited by policy"
-        )
-    raw_blockers = raw_policy.get("blockers")
-    if not isinstance(raw_blockers, list) or any(
-        not isinstance(item, str) or not item.strip() for item in raw_blockers
-    ):
-        raise ConfiguredBoardError(
-            "launch_policy.blockers must be a list of nonempty strings"
-        )
-    if raw_blockers:
-        raise ConfiguredBoardError(
-            "configured-board live launch retains policy blockers: "
-            + "; ".join(raw_blockers)
-        )
-    if not implement:
-        return
-    container_policy = board.payload.get("container_policy")
-    if not isinstance(container_policy, Mapping):
-        raise ConfiguredBoardError(
-            "implementation launch requires a container_policy object"
-        )
-    if container_policy.get("live_dispatch_allowed") is not True:
-        raise ConfiguredBoardError(
-            "implementation launch is prohibited by container live-dispatch policy"
-        )
-    if str(container_policy.get("bootstrap_image_status") or "") != "admitted":
-        raise ConfiguredBoardError(
-            "implementation launch requires an admitted immutable worker image"
-        )
-
-
-def _terminate_plan_bound_coordinator(process: subprocess.Popen[bytes]) -> None:
-    """Boundedly terminate and reap the coordinator's dedicated process group."""
-
-    if process.poll() is not None:
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=2.0)
-        return
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        pass
-    try:
-        process.wait(timeout=2.0)
-    except subprocess.TimeoutExpired as exc:
-        if process.poll() is None:
-            raise ConfiguredBoardError(
-                "configured-board coordinator process-group "
-                f"{int(process.pid)} remained live after SIGKILL and could not "
-                "be reaped"
-            ) from exc
-
-
 def _launch_foreground_plan_bound_coordinator(
     board: ConfiguredBoard,
     *,
     implement: bool,
     duration_seconds: float,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None,
 ) -> int:
-    _require_plan_bound_process_launch_policy(board, implement=implement)
     pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
-    process: subprocess.Popen[bytes] | None = None
-    preserve_capsule_for_unreaped_process = False
-    interpreter = None
-    native_dependency = None
-    owns_native_dependency = False
     try:
-        native_dependency, system_directories, owns_native_dependency = (
-            _configured_sealed_birth_dependencies(pin)
+        if dependency_seal_snapshot is None:
+            raise ConfiguredBoardError(
+                "configured-board coordinator lacks its dependency-seal snapshot"
+            )
+        extension_set_pin, extension_pins, extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
         )
-        interpreter = retain_control_plane_interpreter(sys.executable)
+        extension_home = project_configured_board_extension_set_home(
+            extension_pins,
+            sources=extension_sources,
+            parent=capsule_parent,
+        )
+        extension_directory = extension_home / ".duckdb/extensions"
         command = build_sealed_control_plane_module_command(
-            python_executable=interpreter.argv0,
+            python_executable=sys.executable,
             pin=pin,
             descriptor=sealed.descriptor,
+            native_dependency_launch=native_dependency_launch,
             module_name=(
                 "ipfs_accelerate_py.agent_supervisor.runtime."
                 "configured_board_scheduler"
@@ -7205,89 +5683,68 @@ def _launch_foreground_plan_bound_coordinator(
                 pin=pin,
                 sealed=sealed,
                 capsule_parent=capsule_parent,
+                native_dependency_launch=native_dependency_launch,
             ),
-            retained_interpreter=interpreter,
-            native_dependency_launch=native_dependency,
-            accepted_native_authorization_id=(
-                native_dependency.accepted_authorization_id
+        )
+        process = subprocess.Popen(
+            command,
+            cwd=board.repo_root,
+            env=_sealed_coordinator_environment(
+                board,
+                extension_directory=extension_directory,
+                extension_set_pin=extension_set_pin,
             ),
-            system_dependency_directories_json=system_directories,
-        )
-        environment = _plan_bound_coordinator_environment(board)
-        environment.update(
-            sealed_native_dependency_environment(
-                native_dependency,
-                system_dependency_directories_json=system_directories,
-            )
-        )
-        environment = _sealed_plan_bound_coordinator_environment(environment)
-        from .process_security import (
-            STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
-            prepare_state_authority_child_handoff,
-        )
-
-        handoff = prepare_state_authority_child_handoff(
-            environment,
-            parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
-        )
-        try:
-            process = subprocess.Popen(
-                command,
-                executable=interpreter.executable_path,
-                cwd=board.repo_root,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                start_new_session=True,
-                pass_fds=tuple(
-                    sorted(
-                        {
-                            sealed.descriptor,
-                            interpreter.descriptor,
-                            native_dependency.descriptor.descriptor,
-                            *handoff.pass_fds,
-                        }
-                    )
+            stdin=subprocess.DEVNULL,
+            start_new_session=False,
+            pass_fds=(
+                sealed.descriptor,
+                *(
+                    native_dependency_launch.pass_fds
+                    if native_dependency_launch is not None
+                    else ()
                 ),
-            )
-            handoff.deliver(
-                process,
-                expected_executable_descriptor=interpreter.descriptor,
-                expected_argv=command,
-            )
-        except BaseException:
-            handoff.close()
-            raise
+            ),
+        )
         return int(process.wait())
-    except BaseException as exc:
-        if process is not None:
-            try:
-                _terminate_plan_bound_coordinator(process)
-            except ConfiguredBoardError as termination_error:
-                preserve_capsule_for_unreaped_process = True
-                exc.add_note(str(termination_error))
-                try:
-                    recovery_path = _publish_foreground_unreaped_coordinator_pid(
-                        board,
-                        process.pid,
-                    )
-                    exc.add_note(
-                        "unreaped coordinator recovery projection: "
-                        f"{recovery_path}; preserved capsule: {capsule_parent}"
-                    )
-                except (ConfiguredBoardError, OSError) as recovery_error:
-                    exc.add_note(
-                        "unreaped coordinator recovery projection failed: "
-                        f"{recovery_error}; preserved capsule: {capsule_parent}"
-                    )
-        raise
     finally:
         os.close(sealed.descriptor)
-        if interpreter is not None:
-            os.close(interpreter.descriptor)
-        if owns_native_dependency and native_dependency is not None:
-            os.close(native_dependency.descriptor.descriptor)
-        if not preserve_capsule_for_unreaped_process:
-            _cleanup_plan_bound_control_plane(pin, capsule_parent)
+        _cleanup_plan_bound_control_plane(pin, capsule_parent)
+
+
+def _detached_coordinator_exit_is_proven(
+    process: subprocess.Popen[bytes],
+) -> bool:
+    try:
+        return process.poll() is not None
+    except BaseException:
+        return False
+
+
+def _terminate_detached_coordinator(process: subprocess.Popen[bytes]) -> bool:
+    """Terminate a still-gated child and report only a proven process exit."""
+
+    if _detached_coordinator_exit_is_proven(process):
+        try:
+            process.wait(timeout=0.0)
+        except BaseException:
+            pass
+        return _detached_coordinator_exit_is_proven(process)
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=2.0)
+        if _detached_coordinator_exit_is_proven(process):
+            return True
+    except BaseException:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except BaseException:
+        pass
+    try:
+        process.wait(timeout=2.0)
+    except BaseException:
+        pass
+    return _detached_coordinator_exit_is_proven(process)
 
 
 def _launch_detached_plan_bound_coordinator(
@@ -7295,61 +5752,172 @@ def _launch_detached_plan_bound_coordinator(
     *,
     implement: bool,
     duration_seconds: float,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None,
+    coordinator_pid_reservation: _CoordinatorPIDReservation | None = None,
+    coordinator_credential_handoff: CoordinatorCredentialHandoff | None = None,
 ) -> dict[str, Any]:
     """Detach the outer coordinator, never an individual finite wave."""
 
-    _require_plan_bound_process_launch_policy(board, implement=implement)
-    state_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["state"]),
-    )
-    log_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["logs"]),
-    )
-    stamp = utc_run_stamp()
-    log_path = log_dir / f"configured-board-{stamp}.log"
-    pid_path = state_dir / "configured-board-master.pid"
-    accepted_tree_root = Path(__file__).absolute().parents[3]
-    if board.repo_root != accepted_tree_root:
-        raise ConfiguredBoardError(
-            "detached coordinator repo root is not the accepted module tree"
-        )
-    entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
-    _lexical_repo_artifact(accepted_tree_root, pid_path)
-    source_head, _source_tree = _git_identity(accepted_tree_root)
-    for authority_path in (
-        entry,
-        board.config_path,
-        board.path(board.taskboard_path),
-    ):
-        _tracked_head_snapshot(
-            repo_root=accepted_tree_root,
-            path=authority_path,
-            source_head=source_head,
-        )
-    descriptor, reserved_identity = _reserve_coordinator_pid_projection(
-        pid_path
+    reservation = (
+        coordinator_pid_reservation
+        if coordinator_pid_reservation is not None
+        else _reserve_detached_coordinator_pid(board)
     )
     process: subprocess.Popen[bytes] | None = None
-    pin: AgentImplementationControlPlanePin | None = None
     sealed: AgentImplementationSealedControlPlane | None = None
     capsule_parent: Path | None = None
-    interpreter = None
-    native_dependency = None
-    owns_native_dependency = False
+    ready_parent = -1
+    ready_child = -1
+    start_child = -1
+    start_parent = -1
+    ready_identity: tuple[int, int] | None = None
+    start_identity: tuple[int, int] | None = None
+    credential_nonce = ""
+    prepublished_pid = 0
+    credential_snapshot: dict[str, Any] | None = None
+    credential_commit_recovered = False
+    credential_commit_terminal = False
+    accepted_credential_handoff: (
+        _AcceptedCoordinatorCredentialHandoff | None
+    ) = None
     try:
+        # This function owns cleanup as soon as it receives the reservation.
+        # Keep claim/revalidation inside the rollback region so a substitution
+        # or fd failure in the handoff seam cannot leak an empty blocker after
+        # the caller relinquishes ownership.
+        if reservation.state == "reserved":
+            _claim_coordinator_pid_reservation(board, reservation)
+        else:
+            _validate_coordinator_pid_reservation(
+                board,
+                reservation,
+                allowed_states=("claimed",),
+            )
+        if coordinator_credential_handoff is not None:
+            _require_concrete_coordinator_credential_handoff(
+                coordinator_credential_handoff
+            )
+            if (
+                coordinator_pid_reservation is None
+                or native_dependency_launch is None
+                or board.database_program is None
+                or board.database_program.authority_mode != AUTHORITY_MODE_QUACK
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator credential handoff is not an accepted "
+                    "sealed Quack outer launch"
+                )
+        pid_path = reservation.path
+        state_dir = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            board.path(board.runtime_paths["state"]),
+        )
+        expected_pid_path = state_dir / "configured-board-master.pid"
+        if pid_path != expected_pid_path:
+            raise ConfiguredBoardError(
+                "detached coordinator PID reservation path changed"
+            )
+        log_dir = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            board.path(board.runtime_paths["logs"]),
+        )
+        stamp = utc_run_stamp()
+        log_path = log_dir / f"configured-board-{stamp}.log"
+        accepted_tree_root = Path(__file__).absolute().parents[3]
+        if board.repo_root != accepted_tree_root:
+            raise ConfiguredBoardError(
+                "detached coordinator repo root is not the accepted module tree"
+            )
+        entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
+        _lexical_repo_artifact(accepted_tree_root, pid_path)
+        source_head, _source_tree = _git_identity(accepted_tree_root)
+        for authority_path in (
+            entry,
+            board.config_path,
+            board.path(board.taskboard_path),
+        ):
+            _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=authority_path,
+                source_head=source_head,
+            )
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
             board
         )
-        native_dependency, system_directories, owns_native_dependency = (
-            _configured_sealed_birth_dependencies(pin)
+        if dependency_seal_snapshot is None:
+            raise ConfiguredBoardError(
+                "configured-board coordinator lacks its dependency-seal snapshot"
+            )
+        extension_set_pin, extension_pins, extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
         )
-        interpreter = retain_control_plane_interpreter(sys.executable)
+        extension_home = project_configured_board_extension_set_home(
+            extension_pins,
+            sources=extension_sources,
+            parent=capsule_parent,
+        )
+        extension_directory = extension_home / ".duckdb/extensions"
+        environment = _sealed_coordinator_environment(
+            board,
+            extension_directory=extension_directory,
+            extension_set_pin=extension_set_pin,
+        )
+        if coordinator_credential_handoff is not None:
+            accepted_credential_handoff = _accept_coordinator_credential_handoff(
+                board,
+                coordinator_credential_handoff,
+                environment,
+            )
+            ready_parent, ready_child = _create_coordinator_credential_pipe()
+            start_child, start_parent = _create_coordinator_credential_pipe()
+            ready_identity = _coordinator_pipe_identity(ready_parent)
+            start_identity = _coordinator_pipe_identity(start_child)
+            if (
+                _coordinator_pipe_identity(ready_child) != ready_identity
+                or _coordinator_pipe_identity(start_parent) != start_identity
+                or ready_identity == start_identity
+            ):
+                raise ConfiguredBoardError(
+                    "detached coordinator credential pipe pairing differs"
+                )
+            for pipe_descriptor, identity, write_end in (
+                (ready_parent, ready_identity, False),
+                (ready_child, ready_identity, True),
+                (start_child, start_identity, False),
+                (start_parent, start_identity, True),
+            ):
+                _validate_coordinator_pipe_descriptor(
+                    pipe_descriptor,
+                    identity=identity,
+                    write_end=write_end,
+                    inheritable=False,
+                )
+            credential_nonce = os.urandom(32).hex()
+        credential_snapshot_context_json = (
+            json.dumps(
+                {
+                    "repository_tree_id": accepted_credential_handoff.task_snapshot[
+                        "repository_tree_id"
+                    ],
+                    "plan_root_cid": accepted_credential_handoff.task_snapshot[
+                        "plan_root_cid"
+                    ],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if accepted_credential_handoff is not None
+            else ""
+        )
         command = build_sealed_control_plane_module_command(
-            python_executable=interpreter.argv0,
+            python_executable=sys.executable,
             pin=pin,
             descriptor=sealed.descriptor,
+            native_dependency_launch=native_dependency_launch,
             module_name=(
                 "ipfs_accelerate_py.agent_supervisor.runtime."
                 "configured_board_scheduler"
@@ -7361,522 +5929,207 @@ def _launch_detached_plan_bound_coordinator(
                 pin=pin,
                 sealed=sealed,
                 capsule_parent=capsule_parent,
+                native_dependency_launch=native_dependency_launch,
+                credential_ready_descriptor=ready_child,
+                credential_ready_identity=ready_identity,
+                credential_start_descriptor=start_child,
+                credential_start_identity=start_identity,
+                credential_nonce=credential_nonce,
+                credential_snapshot_context_json=(
+                    credential_snapshot_context_json
+                ),
             ),
-            retained_interpreter=interpreter,
-            native_dependency_launch=native_dependency,
-            accepted_native_authorization_id=(
-                native_dependency.accepted_authorization_id
-            ),
-            system_dependency_directories_json=system_directories,
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
-            launch_environment = _plan_bound_coordinator_environment(board)
-            launch_environment = _plan_bound_coordinator_environment()
-            launch_environment.update(
-                sealed_native_dependency_environment(
-                    native_dependency,
-                    system_dependency_directories_json=system_directories,
-                )
-            )
-            launch_environment = _sealed_plan_bound_coordinator_environment(
-                launch_environment
-            )
-            from .process_security import (
-                STATE_AUTHORITY_PARENT_LOSS_DETACHED,
-                prepare_state_authority_child_handoff,
-            )
-
-            handoff = prepare_state_authority_child_handoff(
-                launch_environment,
-                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED,
-            )
             process = subprocess.Popen(
                 command,
-                executable=interpreter.executable_path,
                 cwd=accepted_tree_root,
-                env=launch_environment,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=tuple(
-                    sorted(
-                        {
-                            sealed.descriptor,
-                            interpreter.descriptor,
-                            native_dependency.descriptor.descriptor,
-                            *handoff.pass_fds,
-                        }
-                    )
+                pass_fds=(
+                    sealed.descriptor,
+                    *(
+                        native_dependency_launch.pass_fds
+                        if native_dependency_launch is not None
+                        else ()
+                    ),
+                    *((ready_child, start_child) if ready_child >= 3 else ()),
                 ),
             )
-            handoff.deliver(
-                process,
-                expected_executable_descriptor=interpreter.descriptor,
-                expected_argv=command,
+        if ready_child >= 3:
+            os.close(ready_child)
+            ready_child = -1
+        if start_child >= 3:
+            os.close(start_child)
+            start_child = -1
+        if coordinator_credential_handoff is not None:
+            assert ready_identity is not None
+            assert accepted_credential_handoff is not None
+            credential_snapshot = _wait_for_detached_coordinator_credential_ack(
+                board,
+                process=process,
+                descriptor=ready_parent,
+                identity=ready_identity,
+                nonce=credential_nonce,
+                expected_snapshot=accepted_credential_handoff.task_snapshot,
             )
-        _publish_reserved_coordinator_pid(
-            pid_path,
-            descriptor,
-            reserved_identity,
-            process.pid,
-        )
-    except BaseException as exc:
-        if "handoff" in locals():
-            handoff.close()
-        fenced = True
-        if process is not None:
-            fenced = _fence_exact_coordinator_group(
-                process,
-                observed_start_ticks=0,
+            os.close(ready_parent)
+            ready_parent = -1
+        prepublished_pid = int(process.pid)
+        _publish_reserved_coordinator_pid(reservation, process.pid)
+        if coordinator_credential_handoff is not None:
+            assert start_identity is not None
+            _validate_coordinator_pipe_descriptor(
+                start_parent,
+                identity=start_identity,
+                write_end=True,
+                inheritable=False,
             )
-        if not fenced:
-            exc.add_note(
-                "detached coordinator failure could not be exactly fenced; "
-                "preserving PID projection and control-plane capsule"
-            )
-            assert process is not None
-            try:
-                _repair_unreaped_coordinator_pid_projection(
-                    pid_path,
-                    descriptor,
-                    reserved_identity,
-                    process.pid,
+            if process.poll() is not None:
+                raise ConfiguredBoardError(
+                    "detached coordinator exited before credential commit"
                 )
-            except ConfiguredBoardError as projection_error:
-                exc.add_note(str(projection_error))
-            raise
-        _remove_reserved_coordinator_pid(pid_path, reserved_identity)
-        if capsule_parent is not None:
+        _mark_coordinator_pid_reservation_published(
+            reservation,
+            pid=process.pid,
+        )
+        if coordinator_credential_handoff is not None:
+            # Retire every parent-side descriptor which can fail to close while
+            # the transaction is still rollback-capable.  After commit the
+            # single start-gate byte is the only operation allowed to decide
+            # whether the gated child can proceed.
+            _close_coordinator_pid_reservation(reservation)
+            assert sealed is not None
+            os.close(sealed.descriptor)
+            sealed = None
+            _credential_receipt, credential_commit_recovered = (
+                _commit_detached_coordinator_credential_handoff(
+                    coordinator_credential_handoff,
+                    accepted_credential_handoff,
+                )
+            )
+            credential_commit_terminal = True
             try:
-                shutil.rmtree(capsule_parent)
+                _release_detached_coordinator_credential_gate(start_parent)
+            except (ConfiguredBoardError, OSError) as exc:
+                raise ConfiguredBoardError(
+                    "credential committed but detached coordinator start gate "
+                    "release failed; operator recovery is required"
+                ) from exc
+            try:
+                os.close(start_parent)
             except OSError:
+                # A successful one-byte release is terminal.  A later close
+                # failure must not turn it into an apparent rollback outcome.
                 pass
+            start_parent = -1
+    except BaseException as primary_error:
+        postcommit = credential_commit_terminal
+        if not postcommit and coordinator_credential_handoff is not None:
+            try:
+                postcommit = coordinator_credential_handoff.state == "committed"
+            except BaseException:
+                postcommit = False
+        exit_proven = process is None
+        if process is not None and not postcommit:
+            try:
+                exit_proven = bool(_terminate_detached_coordinator(process))
+            except BaseException:
+                exit_proven = False
+        if not postcommit and not exit_proven:
+            terminalization_error: BaseException | None = None
+            abort_error: BaseException | None = None
+            if (
+                coordinator_credential_handoff is not None
+                and accepted_credential_handoff is not None
+            ):
+                try:
+                    _close_coordinator_credential_handoff_without_rollback(
+                        coordinator_credential_handoff,
+                        accepted_credential_handoff,
+                    )
+                    credential_commit_terminal = True
+                except BaseException as exc:
+                    terminalization_error = exc
+                if start_parent >= 3:
+                    try:
+                        _abort_detached_coordinator_credential_gate(start_parent)
+                    except BaseException as exc:
+                        abort_error = exc
+            failure = _CoordinatorTerminationUnprovenError(
+                "detached coordinator exit could not be proven; credential "
+                "and PID evidence remain fail-closed"
+            )
+            failure.add_note(
+                f"primary launch error: {type(primary_error).__name__}"
+            )
+            if terminalization_error is not None:
+                failure.add_note(
+                    "credential terminalization also failed: "
+                    f"{type(terminalization_error).__name__}"
+                )
+            if abort_error is not None:
+                failure.add_note(
+                    "credential abort gate also failed: "
+                    f"{type(abort_error).__name__}"
+                )
+            raise failure from primary_error
+        if not postcommit:
+            try:
+                _discard_coordinator_pid_reservation(
+                    reservation,
+                    prepublished_pid=prepublished_pid,
+                    remove_published=True,
+                )
+            except BaseException:
+                pass
+            if capsule_parent is not None:
+                try:
+                    shutil.rmtree(capsule_parent)
+                except BaseException:
+                    pass
         raise
     finally:
-        os.close(descriptor)
+        for pipe_descriptor in (
+            ready_parent,
+            ready_child,
+            start_child,
+            start_parent,
+        ):
+            if pipe_descriptor >= 3:
+                try:
+                    os.close(pipe_descriptor)
+                except OSError:
+                    pass
+        try:
+            _close_coordinator_pid_reservation(reservation)
+        except BaseException:
+            pass
         if sealed is not None:
-            os.close(sealed.descriptor)
-        if interpreter is not None:
-            os.close(interpreter.descriptor)
-        if owns_native_dependency and native_dependency is not None:
-            os.close(native_dependency.descriptor.descriptor)
+            try:
+                os.close(sealed.descriptor)
+            except BaseException:
+                pass
     assert process is not None
     return {
         "coordinator_pid": process.pid,
         "coordinator_pid_path": str(pid_path),
         "coordinator_log": str(log_path),
-    }
-
-
-def _fence_exact_coordinator_group(
-    process: subprocess.Popen[bytes],
-    *,
-    observed_start_ticks: int,
-) -> bool:
-    """Fence the exact unreaped child handle without group-signal races."""
-
-    if process.poll() is not None:
-        return True
-    # Popen retains the exact, unreaped direct-child relationship.  When an
-    # observed birth is available, require it before signaling.  Signaling a
-    # process group after a separate /proc observation would introduce a
-    # mutable-membership and PGID-reuse race, so use only the exact child
-    # handle and let the coordinator's bounded shutdown fence its own lanes.
-    if observed_start_ticks > 0:
-        try:
-            _parent, _group, _session, start_ticks = LinuxProcessAdapter._stat(  # noqa: SLF001
-                process.pid
-            )
-        except (OSError, UnicodeError, ValueError):
-            # The unreaped Popen handle is still an exact direct-child
-            # identity even when procfs cannot be sampled during cleanup.
-            pass
-        else:
-            if start_ticks != observed_start_ticks:
-                return False
-    try:
-        process.terminate()
-        process.wait(timeout=35.0)
-    except (OSError, subprocess.TimeoutExpired):
-        if process.poll() is None:
-            try:
-                process.kill()
-            except OSError:
-                return False
-            try:
-                process.wait(timeout=2.0)
-            except subprocess.TimeoutExpired:
-                return False
-    return process.poll() is not None
-
-
-def _launch_detached_receipt_coordinator(
-    board: ConfiguredBoard,
-    *,
-    implement: bool,
-    duration_seconds: float,
-) -> dict[str, Any]:
-    """Launch one lifecycle-bound coordinator and admit all lane heartbeats."""
-
-    state_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["state"]),
-    )
-    log_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["logs"]),
-    )
-    launch_session_id = secrets.token_hex(32)
-    status_path = _expected_coordinator_status_path(board, launch_session_id)
-    log_path = log_dir / (
-        f"configured-board-{utc_run_stamp()}-{launch_session_id}.log"
-    )
-    pid_path = state_dir / "configured-board-master.pid"
-    accepted_tree_root = Path(__file__).absolute().parents[3]
-    if board.repo_root != accepted_tree_root:
-        raise ConfiguredBoardError(
-            "receipt coordinator repo root is not the accepted module tree"
-        )
-    entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
-    _lexical_repo_artifact(accepted_tree_root, pid_path)
-    head, tree = _git_identity(accepted_tree_root)
-    for authority_path in (
-        entry,
-        board.config_path,
-        board.path(board.taskboard_path),
-    ):
-        _tracked_head_snapshot(
-            repo_root=accepted_tree_root,
-            path=authority_path,
-            source_head=head,
-        )
-    try:
-        os.lstat(status_path)
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        raise ConfiguredBoardError(
-            "cannot inspect coordinator status destination"
-        ) from exc
-    else:
-        raise ConfiguredBoardError("coordinator status destination already exists")
-
-    descriptor, reserved_identity = _reserve_coordinator_pid_projection(pid_path)
-    process: subprocess.Popen[bytes] | None = None
-    sealed: AgentImplementationSealedControlPlane | None = None
-    capsule_parent: Path | None = None
-    process_identity: ProcessIdentity | None = None
-    observed_start_ticks = 0
-    interpreter = None
-    native_dependency = None
-    owns_native_dependency = False
-    try:
-        pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
-        native_dependency, system_directories, owns_native_dependency = (
-            _configured_sealed_birth_dependencies(pin)
-        )
-        interpreter = retain_control_plane_interpreter(sys.executable)
-        command = build_sealed_control_plane_module_command(
-            python_executable=interpreter.argv0,
-            pin=pin,
-            descriptor=sealed.descriptor,
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.runtime."
-                "configured_board_scheduler"
-            ),
-            argv=_plan_bound_coordinator_module_argv(
-                board,
-                implement=implement,
-                duration_seconds=duration_seconds,
-                pin=pin,
-                sealed=sealed,
-                capsule_parent=capsule_parent,
-                launch_session_id=launch_session_id,
-                coordinator_status_path=status_path,
-            ),
-            retained_interpreter=interpreter,
-            native_dependency_launch=native_dependency,
-            accepted_native_authorization_id=(
-                native_dependency.accepted_authorization_id
-            ),
-            system_dependency_directories_json=system_directories,
-        )
-        base_environment = _plan_bound_coordinator_environment(board)
-        base_environment = _plan_bound_coordinator_environment()
-        base_environment.update(
-            sealed_native_dependency_environment(
-                native_dependency,
-                system_dependency_directories_json=system_directories,
-            )
-        )
-        readiness_timeout_seconds = _coordinator_readiness_timeout_seconds(board)
-        launch_attestation_max_age_ms = (
-            _coordinator_launch_attestation_max_age_ms(board)
-        )
-        profile_environment = dict(
-            _plan_bound_profile_environment(base_environment)
-        )
-        profile_environment.update(
-            _trusted_duckdb_profile_environment(
-                base_environment,
-                repository_root=board.repo_root,
-            )
-        )
-        profile = LifecycleProfile(
-            target_id=f"configured-board-coordinator:{board.board_namespace}",
-            run_id=f"configured-board:{board.board_namespace}:{launch_session_id}",
-            configuration_root=board.configuration_revision,
-            repository_root=str(board.repo_root),
-            state_root=str(state_dir),
-            run_root=str(state_dir),
-            argv=tuple(command),
-            cwd=str(board.repo_root),
-            environment=tuple(sorted(profile_environment.items())),
-            health_path=str(status_path),
-            health_stale_ms=launch_attestation_max_age_ms,
-        )
-        launch_environment = profile.launch_environment(0)
-        launch_environment.update(
+        **(
             {
-                name: base_environment[name]
-                for name in (
-                    STATE_GRANT_BROKER_SOCKET_ENV,
-                    STATE_GRANT_BROKER_SECRET_FD_ENV,
-                )
-                if str(base_environment.get(name, "") or "").strip()
-            }
-        )
-        launch_environment = _plan_bound_positive_child_environment(
-            launch_environment
-        )
-        launch_environment.update(
-            sealed_native_dependency_environment(
-                native_dependency,
-                system_dependency_directories_json=system_directories,
-            )
-        )
-        with _open_plan_bound_coordinator_log(log_path) as stream:
-            from .process_security import (
-                STATE_AUTHORITY_PARENT_LOSS_DETACHED,
-                prepare_state_authority_child_handoff,
-            )
-
-            handoff = prepare_state_authority_child_handoff(
-                launch_environment,
-                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED,
-            )
-            process = subprocess.Popen(
-                command,
-                executable=interpreter.executable_path,
-                cwd=accepted_tree_root,
-                env=launch_environment,
-                stdin=subprocess.DEVNULL,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                pass_fds=tuple(
-                    sorted(
-                        {
-                            sealed.descriptor,
-                            interpreter.descriptor,
-                            native_dependency.descriptor.descriptor,
-                            *handoff.pass_fds,
-                        }
-                    )
+                "coordinator_credential_handoff_committed": True,
+                "coordinator_credential_commit_recovered": (
+                    credential_commit_recovered
                 ),
-            )
-            handoff.deliver(
-                process,
-                expected_executable_descriptor=interpreter.descriptor,
-                expected_argv=command,
-            )
-        identity_deadline = time.monotonic() + 10.0
-        adapter = LinuxProcessAdapter()
-        while time.monotonic() < identity_deadline:
-            if process.poll() is not None:
-                raise ConfiguredBoardError(
-                    "coordinator exited before process identity admission"
-                )
-            try:
-                _parent, group, session, observed_start_ticks = (
-                    adapter._stat(process.pid)  # noqa: SLF001
-                )
-                candidate = adapter._identity(process.pid, profile)  # noqa: SLF001
-            except (
-                FileNotFoundError,
-                ProcessLookupError,
-                ProcessIdentityMismatch,
-                OSError,
-                UnicodeError,
-                ValueError,
-            ):
-                time.sleep(0.02)
-                continue
-            if (
-                group == process.pid
-                and session == process.pid
-                and candidate.argv == profile.argv
-                and candidate.cwd == str(board.repo_root)
-            ):
-                process_identity = candidate
-                break
-            time.sleep(0.02)
-        if process_identity is None:
-            raise ConfiguredBoardError(
-                "coordinator process identity did not become admissible"
-            )
-        _publish_reserved_coordinator_pid(
-            pid_path,
-            descriptor,
-            reserved_identity,
-            process.pid,
-        )
-        status: dict[str, Any] | None = None
-        expected_lane_paths = _coordinator_lane_status_paths(board)
-        readiness_deadline = time.monotonic() + readiness_timeout_seconds
-        while time.monotonic() < readiness_deadline:
-            if process.poll() is not None:
-                raise ConfiguredBoardError(
-                    "coordinator exited before lane readiness admission"
-                )
-            try:
-                candidate_status = _read_coordinator_status(status_path)
-            except ConfiguredBoardError:
-                time.sleep(0.1)
-                continue
-            now_ms = int(time.time() * 1000)
-            if (
-                candidate_status.get("schema") == COORDINATOR_STATUS_SCHEMA
-                and candidate_status.get("repository_commit") == head
-                and candidate_status.get("repository_tree") == tree
-                and candidate_status.get("configuration_revision")
-                == board.configuration_revision
-                and candidate_status.get("board_namespace")
-                == board.board_namespace
-                and candidate_status.get("launch_session_id")
-                == launch_session_id
-                and candidate_status.get("lifecycle_profile_id")
-                == profile.profile_id
-                and candidate_status.get("coordinator_pid") == process.pid
-                and candidate_status.get("coordinator_process_start_ticks")
-                == process_identity.start_time_ticks
-                and candidate_status.get("coordinator_argv_cid")
-                == content_identity({"argv": list(profile.argv)})
-                and candidate_status.get("phase") == "launch_attested"
-                and candidate_status.get("lane_status_paths")
-                == [str(path) for path in expected_lane_paths]
-                and type(candidate_status.get("started_at_ms")) is int
-                and type(candidate_status.get("attested_at_ms")) is int
-                and candidate_status["started_at_ms"]
-                <= candidate_status["attested_at_ms"]
-                <= now_ms + 5_000
-                and now_ms - candidate_status["attested_at_ms"]
-                <= launch_attestation_max_age_ms
-                and _lane_statuses_ready(
-                    board,
-                    expected_lane_paths,
-                    started_at_ms=candidate_status["started_at_ms"],
-                    now_ms=now_ms,
-                    coordinator_pid=process.pid,
-                    coordinator_start_ticks=process_identity.start_time_ticks,
-                    repository_commit=head,
-                    repository_tree=tree,
-                )
-            ):
-                status = candidate_status
-                break
-            time.sleep(0.1)
-        if status is None:
-            raise ConfiguredBoardError(
-                "coordinator launch attestation or lane heartbeat readiness "
-                "timed out"
-            )
-        if _git_identity(accepted_tree_root) != (head, tree):
-            raise ConfiguredBoardError(
-                "repository identity changed during coordinator launch"
-            )
-        try:
-            final_process_identity = adapter._identity(  # noqa: SLF001
-                process.pid,
-                profile,
-            )
-        except (
-            FileNotFoundError,
-            ProcessLookupError,
-            ProcessIdentityMismatch,
-            OSError,
-            UnicodeError,
-            ValueError,
-        ) as exc:
-            raise ConfiguredBoardError(
-                "coordinator identity disappeared after lane readiness"
-            ) from exc
-        if process.poll() is not None or final_process_identity != process_identity:
-            raise ConfiguredBoardError(
-                "coordinator identity changed after lane readiness"
-            )
-        argv_cid = content_identity({"argv": list(profile.argv)})
-        unsigned_receipt = {
-            "schema": COORDINATOR_LAUNCH_RECEIPT_SCHEMA,
-            "repository_commit": head,
-            "repository_tree": tree,
-            "configuration_revision": board.configuration_revision,
-            "board_namespace": board.board_namespace,
-            "launch_session_id": launch_session_id,
-            "coordinator_pid": process.pid,
-            "coordinator_pid_path": str(pid_path),
-            "coordinator_log": str(log_path),
-            "coordinator_status_path": str(status_path),
-            "coordinator_status_cid": status["receipt_cid"],
-            "coordinator_profile": profile.to_dict(),
-            "coordinator_process_identity": process_identity.to_dict(),
-            "coordinator_argv_cid": argv_cid,
-        }
-        return {
-            **unsigned_receipt,
-            "receipt_cid": content_identity(unsigned_receipt),
-        }
-    except BaseException as exc:
-        if "handoff" in locals():
-            handoff.close()
-        fenced = True
-        if process is not None:
-            fenced = _fence_exact_coordinator_group(
-                process,
-                observed_start_ticks=observed_start_ticks,
-            )
-        if not fenced:
-            fence_error = ConfiguredBoardError(
-                "receipt coordinator failure could not be exactly fenced; "
-                "preserving PID projection and control-plane capsule"
-            )
-            assert process is not None
-            try:
-                _repair_unreaped_coordinator_pid_projection(
-                    pid_path,
-                    descriptor,
-                    reserved_identity,
-                    process.pid,
-                )
-            except ConfiguredBoardError as projection_error:
-                fence_error.add_note(str(projection_error))
-            raise fence_error from exc
-        _remove_reserved_coordinator_pid(pid_path, reserved_identity)
-        if capsule_parent is not None:
-            try:
-                shutil.rmtree(capsule_parent)
-            except OSError:
-                pass
-        raise
-    finally:
-        os.close(descriptor)
-        if sealed is not None:
-            os.close(sealed.descriptor)
-        if interpreter is not None:
-            os.close(interpreter.descriptor)
-        if owns_native_dependency and native_dependency is not None:
-            os.close(native_dependency.descriptor.descriptor)
+                "coordinator_quack_snapshot": credential_snapshot,
+            }
+            if coordinator_credential_handoff is not None
+            else {}
+        ),
+    }
 
 
 def _run_plan_bound_coordinator(
@@ -7886,81 +6139,37 @@ def _run_plan_bound_coordinator(
     duration_seconds: float,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
 ) -> int:
     """Publish and execute fresh exact waves until drain or the run bound."""
 
-    _require_plan_bound_process_launch_policy(board, implement=implement)
     from .multi_supervisor_runner import PLAN_BOUND_REPLAN_RETURN_CODE
     from .multi_supervisor_runner import main as multi_supervisor_main
 
     started = time.monotonic()
     base_stamp = utc_run_stamp()
-    wave_index = 0
-    while True:
+    for wave_index in range(MAX_COORDINATOR_WAVES):
         elapsed = time.monotonic() - started
         if math.isfinite(duration_seconds) and elapsed >= duration_seconds:
             return 0
-        if (
-            wave_index >= MAX_COORDINATOR_WAVES
-            and not _eaaef_plan_bound_profile(board)
-        ):
-            print(
-                json.dumps(
-                    {
-                        "valid": False,
-                        "errors": [
-                            "adaptive coordinator exceeded its wave bound"
-                        ],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
-            return 2
         try:
             current_board = load_configured_board(
                 board.config_path,
                 repo_root=board.repo_root,
-            )
-            _require_plan_bound_process_launch_policy(
-                current_board,
-                implement=implement,
             )
             if current_board.board_namespace != board.board_namespace:
                 raise ConfiguredBoardError(
                     "coordinator configuration changed board namespace"
                 )
             receipt = materialize_configured_board_execution_plan(current_board)
-        except (ConfiguredBoardError, OSError, RuntimeError, ValueError) as exec_error:
-            detail = str(exec_error)
-            retryable = any(
-                marker in detail
-                for marker in (
-                    "provider_infeasible",
-                    "resource_infeasible",
-                    "stale_capacity",
-                )
-            )
+        except (ConfiguredBoardError, OSError, RuntimeError, ValueError) as exc:
             print(
                 json.dumps(
-                    {
-                        "valid": not retryable,
-                        "errors": [f"adaptive_plan: {exec_error}"],
-                        "retryable": retryable,
-                        "wave_index": wave_index,
-                    },
+                    {"valid": False, "errors": [f"adaptive_plan: {exc}"]},
                     indent=2,
                     sort_keys=True,
-                ),
-                flush=True,
-            )
-            if retryable:
-                retry_seconds = float(
-                    board.payload.get("poll_interval_seconds") or 5
                 )
-                time.sleep(max(1.0, min(retry_seconds, 30.0)))
-                wave_index += 1
-                continue
+            )
             return 2
         if receipt is None:
             print(
@@ -7976,19 +6185,8 @@ def _run_plan_bound_coordinator(
                     },
                     indent=2,
                     sort_keys=True,
-                ),
-                flush=True,
-            )
-            if (
-                _eaaef_plan_bound_profile(board)
-                and not math.isfinite(duration_seconds)
-            ):
-                retry_seconds = float(
-                    board.payload.get("poll_interval_seconds") or 5
                 )
-                time.sleep(max(1.0, min(retry_seconds, 30.0)))
-                wave_index += 1
-                continue
+            )
             return 0
         remaining = (
             max(0.0, duration_seconds - elapsed)
@@ -8006,33 +6204,33 @@ def _run_plan_bound_coordinator(
             accepted_control_plane_descriptor=(
                 accepted_control_plane_descriptor
             ),
+            native_dependency_launch=native_dependency_launch,
         )
-        print(json.dumps(plan, indent=2, sort_keys=True), flush=True)
+        print(json.dumps(plan, indent=2, sort_keys=True))
         _apply_configured_board_environment(plan)
-        try:
-            result = int(multi_supervisor_main(plan["argv"]))
-        except Exception as exc:
-            print(
-                json.dumps(
-                    {
-                        "valid": False,
-                        "errors": [f"wave_dispatch: {type(exc).__name__}: {exc}"],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                ),
-                flush=True,
-            )
-            raise
+        result = int(multi_supervisor_main(plan["argv"]))
         if result == PLAN_BOUND_REPLAN_RETURN_CODE:
-            wave_index += 1
             continue
         if result != 0:
             return result
-        wave_index += 1
+    print(
+        json.dumps(
+            {
+                "valid": False,
+                "errors": ["adaptive coordinator exceeded its wave bound"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 2
 
 
-def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
+def _remove_owned_coordinator_pid(
+    board: ConfiguredBoard,
+    *,
+    allow_incomplete_current_projection: bool = False,
+) -> bool:
     """Remove only this coordinator's detached-launch PID projection."""
 
     pid_path = (
@@ -8042,29 +6240,60 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
     try:
         _lexical_repo_artifact(board.repo_root, pid_path)
         with serialized_lock_update(pid_path):
-            payload, evidence = _read_stable_regular_bytes(
-                pid_path,
-                max_bytes=32,
+            _canonical_no_symlink_root(pid_path.parent)
+            directory_descriptor = os.open(
+                pid_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
             )
-            if payload is None or not re.fullmatch(rb"[1-9][0-9]*\n", payload):
-                return False
-            recorded_pid = int(payload[:-1].decode("ascii"))
-            if recorded_pid != os.getpid():
-                return False
-            observed = os.lstat(pid_path)
-            if (
-                evidence.get("state") != "present"
-                or int(evidence.get("device", -1)) != int(observed.st_dev)
-                or int(evidence.get("inode", -1)) != int(observed.st_ino)
-                or stat.S_ISLNK(observed.st_mode)
-                or not stat.S_ISREG(observed.st_mode)
-                or int(observed.st_nlink) != 1
-                or int(observed.st_uid) != os.geteuid()
-                or stat.S_IMODE(observed.st_mode) != 0o600
-            ):
-                return False
-            pid_path.unlink()
-            return True
+            try:
+                directory_opened = os.fstat(directory_descriptor)
+                directory_observed = os.lstat(pid_path.parent)
+                if (
+                    not stat.S_ISDIR(directory_opened.st_mode)
+                    or stat.S_ISLNK(directory_observed.st_mode)
+                    or not stat.S_ISDIR(directory_observed.st_mode)
+                    or (int(directory_opened.st_dev), int(directory_opened.st_ino))
+                    != (
+                        int(directory_observed.st_dev),
+                        int(directory_observed.st_ino),
+                    )
+                    or int(directory_opened.st_uid) != os.geteuid()
+                    or int(directory_observed.st_uid) != os.geteuid()
+                    or stat.S_IMODE(directory_opened.st_mode) & 0o022
+                    or stat.S_IMODE(directory_observed.st_mode) & 0o022
+                ):
+                    return False
+                payload, evidence = _read_stable_regular_bytes(
+                    pid_path,
+                    max_bytes=32,
+                )
+                expected_payload = f"{os.getpid()}\n".encode("ascii")
+                if payload != expected_payload and not (
+                    allow_incomplete_current_projection
+                    and isinstance(payload, bytes)
+                    and expected_payload.startswith(payload)
+                ):
+                    return False
+                observed = os.lstat(pid_path)
+                if (
+                    evidence.get("state") != "present"
+                    or int(evidence.get("device", -1)) != int(observed.st_dev)
+                    or int(evidence.get("inode", -1)) != int(observed.st_ino)
+                    or stat.S_ISLNK(observed.st_mode)
+                    or not stat.S_ISREG(observed.st_mode)
+                    or int(observed.st_nlink) != 1
+                    or int(observed.st_uid) != os.geteuid()
+                    or stat.S_IMODE(observed.st_mode) != 0o600
+                ):
+                    return False
+                os.unlink(pid_path.name, dir_fd=directory_descriptor)
+                os.fsync(directory_descriptor)
+                return True
+            finally:
+                os.close(directory_descriptor)
     except (
         ConfiguredBoardError,
         _StableArtifactReadError,
@@ -8075,234 +6304,188 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
         return False
 
 
-def _repair_authoritative_board_projection_before_launch(
+def main(
+    argv: Sequence[str] | None = None,
     *,
-    config_path: Path,
-    repo_root: Path,
-    command: str,
-    dry_run: bool,
-) -> dict[str, Any]:
-    """Restore an opted-in immutable board projection before real launch.
-
-    Preflight and dry-run commands remain read-only.  A real launch may repair
-    only the closed, receipt-sealed drift class implemented by the projection
-    repairer; every inconclusive case fails before scheduler validation or
-    process creation.
-    """
-
-    if command != "launch" or dry_run:
-        return {
-            "enabled": False,
-            "repaired": False,
-            "reason_code": "read_only_command",
-        }
-    from .authoritative_board_projection import (
-        BoardProjectionRepairError,
-        repair_authoritative_board_projection,
-    )
-
-    try:
-        return repair_authoritative_board_projection(
-            config_path,
-            repo_root=repo_root,
-        )
-    except BoardProjectionRepairError as exc:
-        raise ConfiguredBoardError(
-            f"authoritative board projection repair: {exc}"
-        ) from exc
-
-
-@contextlib.contextmanager
-def _isolated_launch_receipt_stream() -> Any:
-    """Keep the machine receipt on stdout and route every other writer away."""
-
-    try:
-        stdout_descriptor = 1
-        stderr_descriptor = 2
-        os.fstat(stdout_descriptor)
-        os.fstat(stderr_descriptor)
-    except OSError as exc:
-        raise ConfiguredBoardError(
-            "launch receipt descriptors are unavailable"
-        ) from exc
-
-    sys.stdout.flush()
-    sys.stderr.flush()
-    restore_descriptor = os.dup(stdout_descriptor)
-    try:
-        receipt_descriptor = os.dup(stdout_descriptor)
-    except BaseException:
-        os.close(restore_descriptor)
-        raise
-    receipt_stream = os.fdopen(
-        receipt_descriptor,
-        "w",
-        encoding=getattr(sys.stdout, "encoding", None) or "utf-8",
-        errors="strict",
-        newline="\n",
-        closefd=True,
-    )
-    redirected = False
-    try:
-        os.dup2(stderr_descriptor, stdout_descriptor)
-        redirected = True
-        with contextlib.redirect_stdout(sys.stderr):
-            yield receipt_stream
-    finally:
-        try:
-            if redirected:
-                try:
-                    sys.stdout.flush()
-                finally:
-                    os.dup2(restore_descriptor, stdout_descriptor)
-        finally:
-            os.close(restore_descriptor)
-            receipt_stream.close()
-
-
-def _run_parsed_command(
-    args: argparse.Namespace,
-    *,
-    launch_receipt_stream: Any | None = None,
+    coordinator_pid_reservation: _CoordinatorPIDReservation | None = None,
+    coordinator_credential_handoff: CoordinatorCredentialHandoff | None = None,
 ) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    credential_gate_fields = (
+        args.coordinator_credential_ready_fd >= 3,
+        bool(args.coordinator_credential_ready_pipe),
+        args.coordinator_credential_start_fd >= 3,
+        bool(args.coordinator_credential_start_pipe),
+        bool(args.coordinator_credential_nonce),
+        bool(args.coordinator_credential_snapshot_context_json),
+    )
+    if coordinator_pid_reservation is not None and (
+        type(coordinator_pid_reservation) is not _CoordinatorPIDReservation
+        or args.command != "launch"
+        or bool(getattr(args, "dry_run", False))
+        or bool(getattr(args, "foreground", False))
+        or bool(args.accepted_control_plane_pin_json)
+        or args.accepted_control_plane_fd >= 3
+        or args.accepted_control_plane_capsule_parent is not None
+    ):
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [
+                        "coordinator PID reservation is valid only for one "
+                        "real detached outer launch"
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
+    if coordinator_credential_handoff is not None and (
+        coordinator_pid_reservation is None
+        or args.command != "launch"
+        or bool(getattr(args, "dry_run", False))
+        or bool(getattr(args, "foreground", False))
+        or bool(args.accepted_control_plane_pin_json)
+        or args.accepted_control_plane_fd >= 3
+        or args.accepted_control_plane_capsule_parent is not None
+        or any(credential_gate_fields)
+    ):
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [
+                        "coordinator credential handoff is valid only for one "
+                        "real detached outer launch with a supplied PID reservation"
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
     control_plane_pin: AgentImplementationControlPlanePin | None = None
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
-    live_context = None
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None
+    native_dependency_owned = False
     try:
-        live_values = (
-            bool(args.configured_board_live_capsule_pin_json),
-            args.configured_board_live_capsule_fd >= 3,
-            bool(args.configured_board_live_admission_json),
-            bool(args.configured_board_live_native_launch_json),
-            args.configured_board_live_native_fd >= 3,
+        board = load_configured_board(
+            args.config,
+            repo_root=args.repo_root,
         )
-        bootstrap_values = (
-            args.state_owner_bootstrap_fd >= 3,
-            bool(str(args.state_owner_bootstrap_store_id or "").strip()),
+        sealed_control_plane_required = (
+            _sealed_configured_control_plane_required(board)
         )
-        root = Path(args.repo_root).resolve()
-        requested_config = Path(args.config)
-        if not requested_config.is_absolute():
-            requested_config = root / requested_config
-        exact_live_config = (
-            Path(os.path.abspath(requested_config))
-            == root / LGCVF_LIVE_CONFIG_PATH
+        credential_handoff_route = bool(
+            sealed_control_plane_required
+            and not _plan_bound_profile(board)
+            and board.database_program is not None
+            and board.database_program.authority_mode == AUTHORITY_MODE_QUACK
         )
-        if any(live_values) and not all(live_values):
-            raise ConfiguredBoardError(
-                "LGCVF configured-board live launch fields are incomplete"
-            )
-        if any(bootstrap_values) and not all(bootstrap_values):
-            raise ConfiguredBoardError(
-                "LGCVF state-owner bootstrap fields are incomplete"
-            )
-        if all(live_values) != all(bootstrap_values):
-            raise ConfiguredBoardError(
-                "LGCVF live capsule and state-owner bootstrap are bidirectional"
-            )
-        if exact_live_config and not all(live_values):
-            raise ConfiguredBoardError(
-                "the LGCVF Quack candidate requires its complete live capsule"
-            )
-        admitted_config_bytes: bytes | None = None
-        if all(live_values):
-            if not exact_live_config:
-                raise ConfiguredBoardError(
-                    "LGCVF live capsule cannot authorize a different config"
-                )
-            try:
-                live_context = verify_lgcvf_configured_board_live_context(
-                    capsule_pin_json=(
-                        args.configured_board_live_capsule_pin_json
-                    ),
-                    capsule_descriptor=(
-                        args.configured_board_live_capsule_fd
-                    ),
-                    admission_json=args.configured_board_live_admission_json,
-                    native_launch_json=(
-                        args.configured_board_live_native_launch_json
-                    ),
-                    native_descriptor=args.configured_board_live_native_fd,
-                )
-                from ...agent_implementation_route import (
-                    read_lgcvf_configured_board_live_capsule_member,
-                )
-
-                admitted_config_bytes = (
-                    read_lgcvf_configured_board_live_capsule_member(
-                        live_context.capsule_pin,
-                        live_context.capsule_descriptor,
-                        live_context.capsule_pin.candidate_config_path,
-                    )
-                )
-                disk_config_bytes, _disk_evidence = (
-                    _read_stable_regular_bytes(
-                        requested_config,
-                        max_bytes=4_194_304,
-                    )
-                )
-                if disk_config_bytes != admitted_config_bytes:
-                    raise ValueError(
-                        "repository config differs from its sealed capsule"
-                    )
-            except (OSError, ValueError) as exc:
-                raise ConfiguredBoardError(
-                    "LGCVF configured-board live launch binding is invalid"
-                ) from exc
-            projection_repair = {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "authoritative-board-projection-repair@1"
-                ),
-                "enabled": False,
-                "repaired": False,
-                "reason_code": "policy_absent_in_sealed_config",
-            }
-        else:
-            projection_repair = (
-                _repair_authoritative_board_projection_before_launch(
-                    config_path=args.config,
-                    repo_root=args.repo_root,
-                    command=str(args.command or ""),
-                    dry_run=bool(getattr(args, "dry_run", False)),
-                )
-            )
-        board = (
-            load_configured_board(
-                args.config,
-                repo_root=args.repo_root,
-                config_bytes=admitted_config_bytes,
-            )
-            if admitted_config_bytes is not None
-            else load_configured_board(
-                args.config,
-                repo_root=args.repo_root,
-            )
-        )
-        if live_context is not None and (
-            "authoritative_board_projection_repair" in board.payload
-            or board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
+        if (
+            coordinator_pid_reservation is not None
+            and not sealed_control_plane_required
         ):
             raise ConfiguredBoardError(
-                "sealed LGCVF board identity differs from the live profile"
+                "supplied coordinator PID reservation has no consuming route"
             )
-        preflight = (
-            preflight_configured_board(
-                board,
-                admitted_live_validator_sha256=str(
-                    live_context.admission.validator_sha256
-                ),
+        if coordinator_credential_handoff is not None:
+            _require_concrete_coordinator_credential_handoff(
+                coordinator_credential_handoff
             )
-            if live_context is not None
-            else preflight_configured_board(board)
-        )
+            if not credential_handoff_route:
+                raise ConfiguredBoardError(
+                    "supplied coordinator credential handoff has no consuming route"
+                )
         has_control_plane = bool(args.accepted_control_plane_pin_json)
         has_descriptor = args.accepted_control_plane_fd >= 3
         has_parent = args.accepted_control_plane_capsule_parent is not None
         if len({has_control_plane, has_descriptor, has_parent}) != 1:
             raise ConfiguredBoardError(
                 "accepted control-plane launch fields are incomplete"
+            )
+        if has_control_plane and not sealed_control_plane_required:
+            raise ConfiguredBoardError(
+                "accepted control-plane launch is not declared by this profile"
+            )
+        has_native_launch = bool(args.configured_board_live_native_launch_json)
+        has_native_descriptor = args.configured_board_live_native_fd >= 3
+        if has_native_launch != has_native_descriptor:
+            raise ConfiguredBoardError(
+                "configured-board native launch fields are incomplete"
+            )
+        if has_native_launch and not sealed_control_plane_required:
+            raise ConfiguredBoardError(
+                "configured-board native launch is foreign to this profile"
+            )
+        if has_native_launch:
+            try:
+                native_dependency_launch = parse_native_dependency_launch_json(
+                    args.configured_board_live_native_launch_json
+                )
+                if (
+                    native_dependency_launch.descriptor.descriptor
+                    != args.configured_board_live_native_fd
+                ):
+                    raise ValueError(
+                        "native dependency descriptor was substituted"
+                    )
+                verify_agent_supervisor_native_dependency_sealed_fd(
+                    native_dependency_launch
+                )
+                if not _plan_bound_profile(board):
+                    dependency_seal_snapshot = (
+                        _configured_board_dependency_seal_snapshot(board)
+                    )
+                    _authenticate_configured_board_native_dependency_launch(
+                        board,
+                        dependency_seal_snapshot=dependency_seal_snapshot,
+                        launch=native_dependency_launch,
+                    )
+            except (OSError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "configured-board native launch binding is invalid"
+                ) from exc
+        if any(credential_gate_fields) and not all(credential_gate_fields):
+            raise ConfiguredBoardError(
+                "coordinator credential child gate fields are incomplete"
+            )
+        child_credential_gate = all(credential_gate_fields)
+        if child_credential_gate and (
+            args.command != "launch"
+            or bool(getattr(args, "dry_run", False))
+            or not bool(getattr(args, "foreground", False))
+            or not has_control_plane
+            or not has_native_launch
+            or _plan_bound_profile(board)
+            or coordinator_pid_reservation is not None
+            or coordinator_credential_handoff is not None
+        ):
+            raise ConfiguredBoardError(
+                "coordinator credential child gate lacks its accepted sealed launch"
+            )
+        if (
+            credential_handoff_route
+            and args.command == "launch"
+            and not bool(getattr(args, "dry_run", False))
+            and bool(getattr(args, "foreground", False))
+            and not child_credential_gate
+        ):
+            raise ConfiguredBoardError(
+                "foreground sealed Quack launch lacks transactional credential gate"
             )
         if has_control_plane:
             try:
@@ -8355,33 +6538,7 @@ def _run_parsed_command(
                 raise ConfiguredBoardError(
                     "configured scheduler accepted-tree root is foreign"
                 )
-        has_coordinator_session = bool(args.coordinator_launch_session)
-        has_coordinator_status = args.coordinator_status_path is not None
-        if has_coordinator_session != has_coordinator_status:
-            raise ConfiguredBoardError(
-                "coordinator launch session binding is incomplete"
-            )
-        if has_coordinator_session:
-            expected_status_path = _expected_coordinator_status_path(
-                board,
-                args.coordinator_launch_session,
-            )
-            if (
-                args.command != "launch"
-                or not bool(args.foreground)
-                or bool(args.dry_run)
-                or control_plane_pin is None
-                or args.accepted_tree_root is None
-                or args.coordinator_status_path != expected_status_path
-                or _plan_bound_profile(board)
-            ):
-                raise ConfiguredBoardError(
-                    "coordinator launch session is not an admitted foreground child"
-                )
-        if launch_receipt_stream is not None and _plan_bound_profile(board):
-            raise ConfiguredBoardError(
-                "launch-receipt-only does not admit adaptive plan-bound profiles"
-            )
+        preflight = preflight_configured_board(board)
     except ConfiguredBoardError as exc:
         print(
             json.dumps(
@@ -8406,96 +6563,61 @@ def _run_parsed_command(
         print(json.dumps(preflight, indent=2, sort_keys=True))
         return 2
 
-    launch_source_policy = _launch_source_amendment_policy(board.payload)
-    if args.command == "launch" and launch_source_policy is not None:
-        materializer_path = str(board.payload.get("materializer_path") or "")
+    detach = not bool(args.foreground)
+    if (
+        detach
+        and sealed_control_plane_required
+        and not _plan_bound_profile(board)
+        and board.database_program is not None
+        and board.database_program.authority_mode == AUTHORITY_MODE_QUACK
+        and control_plane_pin is None
+        and not args.dry_run
+        and coordinator_credential_handoff is None
+    ):
         print(
             json.dumps(
                 {
                     "schema": (
                         "ipfs_accelerate_py/agent-supervisor/"
-                        "configured-board-operator-admission-required@1"
+                        "configured-board-error@1"
                     ),
                     "valid": False,
-                    "process_started": False,
-                    "reason_code": "launch_source_amendment_operator_required",
-                    "authoritative_store": launch_source_policy[
-                        "authoritative_store"
+                    "errors": [
+                        "detached sealed Quack launch requires a rollback-capable "
+                        "coordinator credential handoff"
                     ],
-                    "materializer_path": materializer_path,
                 },
                 indent=2,
                 sort_keys=True,
             )
         )
         return 2
-
-    detach = not bool(args.foreground)
-    if launch_receipt_stream is not None:
-        try:
-            launch_receipt = _launch_detached_receipt_coordinator(
-                board,
-                implement=bool(args.implement),
-                duration_seconds=float(args.duration_seconds),
-            )
-            receipt_cid = launch_receipt.get("receipt_cid")
-            unsigned_receipt = dict(launch_receipt)
-            unsigned_receipt.pop("receipt_cid", None)
-            if (
-                set(launch_receipt) != COORDINATOR_LAUNCH_RECEIPT_FIELDS
-                or receipt_cid != content_identity(unsigned_receipt)
-            ):
-                raise ConfiguredBoardError(
-                    "coordinator launch returned a non-closed receipt"
-                )
-        except (ConfiguredBoardError, OSError, ValueError) as exc:
-            print(
-                json.dumps(
-                    {
-                        "valid": False,
-                        "errors": [f"coordinator_launch: {exc}"],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
-            return 2
-        launch_receipt_stream.write(
+    if (
+        sealed_control_plane_required
+        and not _plan_bound_profile(board)
+        and not board.live_capsule_control_paths
+        and not args.dry_run
+    ):
+        print(
             json.dumps(
-                launch_receipt,
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [
+                        "operational live launch requires the closed "
+                        "configured_board_live_capsule policy and native "
+                        "dependency launch"
+                    ],
+                },
+                indent=2,
                 sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
             )
-            + "\n"
         )
-        launch_receipt_stream.flush()
-        return 0
-
-    if _plan_bound_profile(board):
-        try:
-            _require_plan_bound_process_launch_policy(
-                board,
-                implement=bool(args.implement),
-            )
-        except ConfiguredBoardError as exc:
-            print(
-                json.dumps(
-                    {
-                        "schema": (
-                            "ipfs_accelerate_py/agent-supervisor/"
-                            "configured-board-launch-no-go@1"
-                        ),
-                        "valid": False,
-                        "process_started": False,
-                        "errors": [str(exc)],
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
-            return 2
+        return 2
+    if sealed_control_plane_required:
         if args.dry_run:
             plan = configured_board_launch_plan(
                 board,
@@ -8505,44 +6627,130 @@ def _run_parsed_command(
             )
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
-        if detach:
-            plan = configured_board_launch_plan(
+        detached_plan: dict[str, Any] | None = None
+        active_pid_reservation: _CoordinatorPIDReservation | None = None
+        candidate_reservation: _CoordinatorPIDReservation | None = None
+        if detach and control_plane_pin is None:
+            # Build every read-only launch input before reserving the PID
+            # pathname.  The reservation itself must nevertheless precede
+            # native dependency sealing and one-time credential retirement.
+            detached_plan = configured_board_launch_plan(
                 board,
                 implement=bool(args.implement),
                 detach=True,
                 duration_seconds=float(args.duration_seconds),
             )
+        if control_plane_pin is None:
             try:
-                launch_receipt = _launch_detached_plan_bound_coordinator(
-                    board,
-                    implement=bool(args.implement),
-                    duration_seconds=float(args.duration_seconds),
-                )
-                plan.update(launch_receipt)
-            except (ConfiguredBoardError, OSError) as exc:
-                notes = [
-                    str(note)
-                    for note in getattr(exc, "__notes__", ())
-                    if str(note).strip()
-                ]
+                if not _plan_bound_profile(board):
+                    dependency_seal_snapshot = (
+                        _configured_board_dependency_seal_snapshot(board)
+                    )
+                if detach:
+                    candidate_reservation = (
+                        coordinator_pid_reservation
+                        if coordinator_pid_reservation is not None
+                        else _reserve_detached_coordinator_pid(board)
+                    )
+                    _claim_coordinator_pid_reservation(
+                        board,
+                        candidate_reservation,
+                    )
+                    active_pid_reservation = candidate_reservation
+                if not _plan_bound_profile(board):
+                    native_dependency_launch = (
+                        _seal_configured_board_native_dependency(
+                            board,
+                            dependency_seal_snapshot=dependency_seal_snapshot,
+                        )
+                    )
+                    native_dependency_owned = True
+            except BaseException as exc:
+                cleanup_reservation = active_pid_reservation
+                if (
+                    cleanup_reservation is None
+                    and candidate_reservation is not None
+                    and (
+                        candidate_reservation.state != "reserved"
+                        or coordinator_pid_reservation is None
+                    )
+                ):
+                    cleanup_reservation = candidate_reservation
+                if cleanup_reservation is not None:
+                    try:
+                        _discard_coordinator_pid_reservation(
+                            cleanup_reservation
+                        )
+                    except BaseException:
+                        pass
+                    active_pid_reservation = None
+                if native_dependency_launch is not None:
+                    try:
+                        os.close(native_dependency_launch.descriptor.descriptor)
+                    except BaseException:
+                        pass
+                    native_dependency_launch = None
+                    native_dependency_owned = False
+                if not isinstance(
+                    exc,
+                    (ConfiguredBoardError, OSError, ValueError),
+                ):
+                    raise
                 print(
                     json.dumps(
                         {
                             "valid": False,
-                            "errors": [f"coordinator_launch: {exc}", *notes],
+                            "errors": [f"coordinator_prepare: {exc}"],
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 2
-            if launch_receipt_stream is None:
-                print(json.dumps(plan, indent=2, sort_keys=True))
-            else:
-                launch_receipt_stream.write(
-                    json.dumps(launch_receipt, indent=2, sort_keys=True) + "\n"
+        if detach and control_plane_pin is None:
+            assert detached_plan is not None
+            assert active_pid_reservation is not None
+            plan = detached_plan
+            try:
+                launch_reservation = active_pid_reservation
+                plan.update(
+                    _launch_detached_plan_bound_coordinator(
+                        board,
+                        implement=bool(args.implement),
+                        duration_seconds=float(args.duration_seconds),
+                        native_dependency_launch=native_dependency_launch,
+                        dependency_seal_snapshot=dependency_seal_snapshot,
+                        coordinator_pid_reservation=launch_reservation,
+                        coordinator_credential_handoff=(
+                            coordinator_credential_handoff
+                        ),
+                    )
                 )
-                launch_receipt_stream.flush()
+            except (ConfiguredBoardError, OSError) as exc:
+                print(
+                    json.dumps(
+                        {"valid": False, "errors": [f"coordinator_launch: {exc}"]},
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return 2
+            finally:
+                if active_pid_reservation is not None:
+                    try:
+                        _discard_coordinator_pid_reservation(
+                            active_pid_reservation
+                        )
+                    except BaseException:
+                        pass
+                    active_pid_reservation = None
+                if native_dependency_owned and native_dependency_launch is not None:
+                    try:
+                        os.close(native_dependency_launch.descriptor.descriptor)
+                    except BaseException:
+                        pass
+                    native_dependency_owned = False
+            print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
         if control_plane_pin is None:
             try:
@@ -8550,139 +6758,211 @@ def _run_parsed_command(
                     board,
                     implement=bool(args.implement),
                     duration_seconds=float(args.duration_seconds),
+                    native_dependency_launch=native_dependency_launch,
+                    dependency_seal_snapshot=dependency_seal_snapshot,
                 )
             except (ConfiguredBoardError, OSError, ValueError) as exc:
-                notes = [
-                    str(note)
-                    for note in getattr(exc, "__notes__", ())
-                    if str(note).strip()
-                ]
                 print(
                     json.dumps(
                         {
                             "valid": False,
-                            "errors": [f"coordinator_launch: {exc}", *notes],
+                            "errors": [f"coordinator_launch: {exc}"],
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 2
-        try:
-            return _run_plan_bound_coordinator(
-                board,
-                implement=bool(args.implement),
-                duration_seconds=float(args.duration_seconds),
-                accepted_control_plane_pin=control_plane_pin,
-                accepted_control_plane_descriptor=control_plane_descriptor,
-            )
-        finally:
-            _remove_owned_coordinator_pid(board)
-            if control_plane_parent is not None:
-                _cleanup_plan_bound_control_plane(
-                    control_plane_pin,
-                    control_plane_parent,
+            finally:
+                if native_dependency_owned and native_dependency_launch is not None:
+                    os.close(native_dependency_launch.descriptor.descriptor)
+                    native_dependency_owned = False
+        if _plan_bound_profile(board):
+            try:
+                return _run_plan_bound_coordinator(
+                    board,
+                    implement=bool(args.implement),
+                    duration_seconds=float(args.duration_seconds),
+                    accepted_control_plane_pin=control_plane_pin,
+                    accepted_control_plane_descriptor=control_plane_descriptor,
+                    native_dependency_launch=native_dependency_launch,
                 )
+            finally:
+                _remove_owned_coordinator_pid(board)
+                if control_plane_parent is not None:
+                    _cleanup_plan_bound_control_plane(
+                        control_plane_pin,
+                        control_plane_parent,
+                    )
 
-    plan = configured_board_launch_plan(
-        board,
-        implement=bool(args.implement),
-        detach=detach,
-        duration_seconds=float(args.duration_seconds),
-        configured_board_live_capsule_pin_json=(
-            live_context.capsule_pin_json if live_context is not None else ""
-        ),
-        configured_board_live_capsule_descriptor=(
-            live_context.capsule_descriptor if live_context is not None else -1
-        ),
-        configured_board_live_admission_json=(
-            live_context.admission_json if live_context is not None else ""
-        ),
-        configured_board_live_native_launch_json=(
-            live_context.native_launch_json if live_context is not None else ""
-        ),
-        configured_board_live_native_descriptor=(
-            live_context.native_descriptor if live_context is not None else -1
-        ),
-        state_owner_bootstrap_fd=(
-            args.state_owner_bootstrap_fd
-            if live_context is not None
-            else -1
-        ),
-        state_owner_bootstrap_store_id=(
-            args.state_owner_bootstrap_store_id
-            if live_context is not None
-            else ""
-        ),
-    )
-    plan["authoritative_board_projection_repair"] = projection_repair
-    if has_coordinator_session:
-        _bind_foreground_wave_pid(plan, board)
-    print(json.dumps(plan, indent=2, sort_keys=True))
-    if args.dry_run:
-        return 0
-    _apply_configured_board_environment(plan)
-    from .multi_supervisor_runner import main as multi_supervisor_main
+    inner_failure: BaseException | None = None
+    inner_result = 2
+    child_credential_gate_completed = False
+    retain_pid_evidence = False
+    signal_handlers_installed = False
+    cleanup_signal_mask: set[signal.Signals] | None = None
+    previous_term_handler: Any = None
+    previous_int_handler: Any = None
+    teardown_signals = {signal.SIGTERM, signal.SIGINT}
+    observed_teardown_signals: list[int] = []
+    cleanup_started = False
 
-    previous_umask: int | None = None
-    private_lane_runtime = has_coordinator_session or live_context is not None
+    def handle_inner_teardown_signal(signum: int, _frame: object) -> None:
+        if not observed_teardown_signals:
+            observed_teardown_signals.append(int(signum))
+        if cleanup_started:
+            return
+        raise _CoordinatorRunInterrupted(f"received signal {signum}")
+
     try:
-        if private_lane_runtime:
-            previous_umask = os.umask(0o077)
-            _prepare_coordinator_lane_status_permissions(board)
-        if has_coordinator_session:
-            assert args.coordinator_status_path is not None
-            _publish_coordinator_launch_attestation(
+        live_admission = (
+            _build_live_capsule_admission(
                 board,
-                launch_session_id=args.coordinator_launch_session,
-                status_path=args.coordinator_status_path,
+                pin=control_plane_pin,
+                descriptor=control_plane_descriptor,
+                native_dependency_launch=native_dependency_launch,
+                dependency_seal_snapshot=dependency_seal_snapshot,
             )
-        return int(multi_supervisor_main(plan["argv"]))
+            if control_plane_pin is not None
+            and board.live_capsule_control_paths
+            else None
+        )
+        plan = configured_board_launch_plan(
+            board,
+            implement=bool(args.implement),
+            detach=detach,
+            duration_seconds=float(args.duration_seconds),
+            accepted_control_plane_pin=control_plane_pin,
+            accepted_control_plane_descriptor=control_plane_descriptor,
+            native_dependency_launch=native_dependency_launch,
+            configured_board_live_admission=live_admission,
+        )
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        if args.dry_run:
+            return 0
+        if child_credential_gate:
+            previous_term_handler = signal.getsignal(signal.SIGTERM)
+            previous_int_handler = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGTERM, handle_inner_teardown_signal)
+            signal.signal(signal.SIGINT, handle_inner_teardown_signal)
+            signal_handlers_installed = True
+            _run_detached_coordinator_child_credential_gate(
+                board,
+                ready_descriptor=args.coordinator_credential_ready_fd,
+                ready_identity_text=args.coordinator_credential_ready_pipe,
+                start_descriptor=args.coordinator_credential_start_fd,
+                start_identity_text=args.coordinator_credential_start_pipe,
+                nonce=args.coordinator_credential_nonce,
+                snapshot_context_json=(
+                    args.coordinator_credential_snapshot_context_json
+                ),
+            )
+            child_credential_gate_completed = True
+        _apply_configured_board_environment(plan)
+        from .multi_supervisor_runner import main as multi_supervisor_main
+
+        inner_result = int(multi_supervisor_main(plan["argv"]))
+    except BaseException as exc:
+        inner_failure = exc
+        if isinstance(
+            exc,
+            (
+                _CoordinatorCredentialRearmError,
+                _CoordinatorCredentialLaunchAborted,
+            ),
+        ):
+            retain_pid_evidence = True
     finally:
-        if has_coordinator_session:
-            _remove_owned_coordinator_pid(board)
-            if control_plane_parent is not None:
-                assert control_plane_pin is not None
+        cleanup_started = True
+        if signal_handlers_installed:
+            try:
+                cleanup_signal_mask = signal.pthread_sigmask(
+                    signal.SIG_BLOCK,
+                    teardown_signals,
+                )
+            except BaseException as exc:
+                if inner_failure is None:
+                    inner_failure = exc
+        if control_plane_pin is not None and control_plane_parent is not None:
+            try:
                 _cleanup_plan_bound_control_plane(
                     control_plane_pin,
                     control_plane_parent,
                 )
-        if previous_umask is not None:
-            os.umask(previous_umask)
+            except BaseException as exc:
+                if inner_failure is None:
+                    inner_failure = exc
 
+        if child_credential_gate_completed:
+            try:
+                _rearm_detached_coordinator_token_handoff(board)
+            except BaseException as rearm_error:
+                retain_pid_evidence = True
+                combined = _CoordinatorCredentialRearmError(
+                    "detached coordinator terminal credential rearm failed"
+                )
+                combined.add_note(
+                    f"credential rearm error: {type(rearm_error).__name__}"
+                )
+                if inner_failure is not None:
+                    combined.add_note(
+                        f"prior runtime error: {type(inner_failure).__name__}"
+                    )
+                inner_failure = combined
 
-def main(argv: Sequence[str] | None = None) -> int:
-    from .process_security import (
-        capture_state_authority_credentials,
-        harden_state_authority_process,
-    )
+        if (
+            control_plane_pin is not None
+            and control_plane_parent is not None
+            and not retain_pid_evidence
+        ):
+            removed_pid = _remove_owned_coordinator_pid(
+                board,
+                allow_incomplete_current_projection=(
+                    child_credential_gate and not child_credential_gate_completed
+                ),
+            )
+            if child_credential_gate_completed and not removed_pid:
+                inner_failure = ConfiguredBoardError(
+                    "detached coordinator credential rearmed but PID cleanup failed"
+                )
 
-    harden_state_authority_process()
-    capture_state_authority_credentials()
-    effective_argv = list(argv) if argv is not None else list(sys.argv[1:])
-    if effective_argv[:1] == [ASEH_SEALED_OWNER_MARKER]:
-        return _run_aseh_sealed_owner(effective_argv)
-    parser = _build_parser()
-    args = parser.parse_args(effective_argv)
-    receipt_only = bool(getattr(args, "launch_receipt_only", False))
-    if receipt_only and (bool(args.dry_run) or bool(args.foreground)):
-        parser.error(
-            "--launch-receipt-only requires a detached, non-dry launch"
-        )
-    if not receipt_only:
-        return _run_parsed_command(args)
+        if signal_handlers_installed:
+            try:
+                signal.signal(signal.SIGTERM, previous_term_handler)
+                signal.signal(signal.SIGINT, previous_int_handler)
+            finally:
+                if cleanup_signal_mask is not None:
+                    signal.pthread_sigmask(
+                        signal.SIG_SETMASK,
+                        cleanup_signal_mask,
+                    )
 
-    # Preserve a dedicated receipt descriptor before redirecting stdout at the
-    # descriptor boundary. This also fences native code and inherited child
-    # stdout, not only Python ``print`` calls.
-    with _isolated_launch_receipt_stream() as receipt_stream:
-        return _run_parsed_command(
-            args,
-            launch_receipt_stream=receipt_stream,
-        )
+    if inner_failure is not None:
+        if isinstance(
+            inner_failure,
+            (ConfiguredBoardError, _CoordinatorRunInterrupted),
+        ):
+            print(
+                json.dumps(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "configured-board-error@1"
+                        ),
+                        "valid": False,
+                        "errors": [str(inner_failure)],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 2
+        raise inner_failure
+    return inner_result
 
 
 __all__ = (
+    "CoordinatorCredentialHandoff",
     "ConfiguredBoard",
     "ConfiguredBoardError",
     "configured_board_capacity_observation",
@@ -8693,487 +6973,3 @@ __all__ = (
     "main",
     "preflight_configured_board",
 )
-
-def _database_program_with_admitted_live_owner(
-    board: ConfiguredBoard,
-) -> DatabaseProgramConfig:
-    """Prefer an exact live owner generation only with its full binding."""
-
-    program = board.resolved_database_program()
-    live_generation = str(
-        os.environ.get(STATE_STORE_LIVE_GENERATION_ENV, "") or ""
-    ).strip()
-    live_schema = str(
-        os.environ.get(STATE_LIVE_SCHEMA_REVISION_ENV, "") or ""
-    ).strip()
-    if not live_generation and not live_schema:
-        return program
-    if (
-        board.database_program is None
-        or program.authority_mode != "quack"
-        or not live_generation
-        or not live_schema
-        or re.fullmatch(r"[1-9][0-9]{0,19}", live_generation) is None
-        or re.fullmatch(r"[0-9]{1,20}", live_schema) is None
-        or int(live_generation) > 2**63 - 1
-        or int(live_schema) > 2**63 - 1
-    ):
-        raise ConfiguredBoardError(
-            "live database generation/schema binding is incomplete or invalid"
-        )
-    static_generation = str(
-        os.environ.get(STATE_STORE_GENERATION_ENV, "") or ""
-    ).strip()
-    static_schema = str(
-        os.environ.get(STATE_SCHEMA_REVISION_ENV, "") or ""
-    ).strip()
-    try:
-        inherited_program = json.loads(
-            str(
-                os.environ.get(
-                    "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", ""
-                )
-                or ""
-            )
-        )
-    except json.JSONDecodeError as exc:
-        raise ConfiguredBoardError(
-            "live database identity lacks the operator program binding"
-        ) from exc
-    if (
-        static_generation != live_generation
-        or static_schema != live_schema
-        or not isinstance(inherited_program, Mapping)
-        or str(inherited_program.get("store_id") or "") != program.store_id
-        or str(inherited_program.get("store_generation") or "")
-        != live_generation
-        or str(inherited_program.get("schema_revision") or "") != live_schema
-    ):
-        raise ConfiguredBoardError(
-            "live database identity differs from the operator program binding"
-        )
-    registry = board.path(program.runtime_registry_path)
-    broker_socket = str(
-        os.environ.get(STATE_GRANT_BROKER_SOCKET_ENV, "") or ""
-    ).strip()
-    owner_socket = str(os.environ.get(STATE_OWNER_SOCKET_ENV, "") or "").strip()
-    broker_fd = str(
-        os.environ.get(STATE_GRANT_BROKER_SECRET_FD_ENV, "") or ""
-    ).strip()
-    if (
-        Path(broker_socket).resolve(strict=False)
-        != (registry / "typed-state-owner-grants.sock").resolve(strict=False)
-        or Path(owner_socket).resolve(strict=False)
-        != (registry / "typed-state-owner.sock").resolve(strict=False)
-        or not broker_fd.isdecimal()
-        or int(broker_fd) < 3
-    ):
-        raise ConfiguredBoardError(
-            "live database identity lacks the exact inherited owner capability"
-        )
-    try:
-        os.fstat(int(broker_fd))
-        status, evidence = _read_stable_regular_json(
-            registry / "quack-state-server.status.json"
-        )
-    except (OSError, ValueError, _StableArtifactReadError) as exc:
-        raise ConfiguredBoardError(
-            "live database owner identity cannot be observed"
-        ) from exc
-    status = status if isinstance(status, Mapping) else {}
-    identity = status.get("identity")
-    identity = identity if isinstance(identity, Mapping) else {}
-    process_birth = identity.get("process_birth")
-    process_birth = process_birth if isinstance(process_birth, Mapping) else {}
-    if (
-        evidence.get("state") != "present"
-        or status.get("lifecycle") != "ready"
-        or str(identity.get("store_id") or "") != program.store_id
-        or str(identity.get("generation") or "") != live_generation
-        or str(identity.get("schema_revision") or "") != live_schema
-        or type(process_birth.get("pid")) is not int
-        or int(process_birth["pid"]) < 1
-        or not str(identity.get("process_birth_id") or "")
-    ):
-        raise ConfiguredBoardError(
-            "live database environment differs from the exact owner status"
-        )
-    from ..merge.worktree_lifecycle import (
-        OwnerLiveness,
-        ProcessBirthIdentity,
-        owner_liveness,
-    )
-
-    try:
-        birth = ProcessBirthIdentity.from_dict(process_birth)
-    except (TypeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            "live database owner process identity is malformed"
-        ) from exc
-    if owner_liveness(birth) is not OwnerLiveness.ALIVE:
-        raise ConfiguredBoardError("live database owner process is not alive")
-    return replace(
-        program,
-        store_generation=live_generation,
-        schema_revision=live_schema,
-    )
-
-def _sealed_plan_bound_coordinator_environment(
-    environment: Mapping[str, str],
-) -> dict[str, str]:
-    """Strip every startup/loader knob after trusted HOME revalidation."""
-
-    result = dict(environment)
-    for name in tuple(result):
-        if (
-            name.startswith(("PYTHON", "PYTEST", "LD_", "DYLD_"))
-            or name == "GLIBC_TUNABLES"
-        ):
-            result.pop(name, None)
-    return result
-
-def _configured_sealed_birth_dependencies(
-    pin: AgentImplementationControlPlanePin,
-) -> tuple[Any, str, bool]:
-    """Admit an inherited native fd or seal the reviewed pin before authority."""
-
-    names = (
-        "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_FD",
-        "IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_LAUNCH_JSON",
-        "IPFS_ACCELERATE_AGENT_SEALED_SYSTEM_DEPENDENCY_DIRS_JSON",
-    )
-    present = tuple(bool(str(os.environ.get(name) or "")) for name in names)
-    if any(present):
-        if not all(present):
-            raise ConfiguredBoardError(
-                "sealed native dependency environment is incomplete"
-            )
-        try:
-            launch, system = admit_sealed_native_dependency_environment(
-                os.environ
-            )
-        except ValueError as exc:
-            raise ConfiguredBoardError(
-                "sealed native dependency environment is invalid"
-            ) from exc
-        return launch, system, False
-    raise ConfiguredBoardError(
-        "sealed native dependency lacks independent accepted authority"
-    )
-
-def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
-    """Enter the ASEH owner only from exact bytes in the inherited capsule."""
-
-    values = list(argv)
-    if len(values) != 21 or values[0] != ASEH_SEALED_OWNER_MARKER:
-        raise ConfiguredBoardError("sealed ASEH owner launch grammar is invalid")
-    forbidden_environment = (
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
-        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
-        "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID",
-        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY",
-    )
-    if any(str(os.environ.get(name) or "") for name in forbidden_environment):
-        raise ConfiguredBoardError(
-            "sealed ASEH owner inherited preexisting state authority"
-        )
-    def reject_duplicate_keys(
-        pairs: Sequence[tuple[str, Any]],
-    ) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError("duplicate sealed launch key")
-            result[key] = value
-        return result
-
-    try:
-        pin = parse_accepted_control_plane_pin(values[1])
-        capsule_descriptor = int(values[2])
-        interpreter_descriptor = int(values[3])
-        interpreter = admit_retained_control_plane_interpreter(
-            descriptor=interpreter_descriptor,
-            argv0=values[4],
-            expected_sha256=values[5],
-        )
-        repo_root = Path(values[6])
-        config_path = Path(values[7])
-        implement = {"0": False, "1": True}[values[8]]
-        duration = float(values[9])
-        expected_environment_identity = values[10]
-        native_descriptor = int(values[11])
-        native_payload = json.loads(
-            values[12], object_pairs_hook=reject_duplicate_keys
-        )
-        native_dependency = parse_agent_supervisor_native_dependency_launch(
-            native_payload
-        )
-        if native_dependency.to_json() != values[12]:
-            raise ValueError("native dependency launch is not canonical")
-        system_dependency_directories_json = values[13]
-        qualification_home = Path(values[14])
-        expected_parent_pid = int(values[15])
-        expected_parent_start = int(values[16])
-        expected_parent_boot = values[17]
-        raw_terminal_descriptor = values[18]
-        if (
-            len(raw_terminal_descriptor) > 20
-            or re.fullmatch(r"[0-9]+", raw_terminal_descriptor) is None
-        ):
-            raise ValueError("sealed ASEH owner terminal descriptor is invalid")
-        terminal_descriptor = int(raw_terminal_descriptor)
-        if str(terminal_descriptor) != raw_terminal_descriptor:
-            raise ValueError(
-                "sealed ASEH owner terminal descriptor is not canonical"
-            )
-        terminal_nonce = values[19]
-        raw_terminal_pipe_identity = values[20]
-        if len(raw_terminal_pipe_identity.encode("utf-8")) > 512:
-            raise ValueError("sealed ASEH owner terminal pipe identity is oversized")
-        terminal_pipe_identity = json.loads(raw_terminal_pipe_identity)
-        if (
-            not isinstance(terminal_pipe_identity, list)
-            or len(terminal_pipe_identity) != 9
-            or any(type(value) is not int for value in terminal_pipe_identity)
-            or json.dumps(
-                terminal_pipe_identity,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=True,
-                allow_nan=False,
-            )
-            != raw_terminal_pipe_identity
-        ):
-            raise ValueError(
-                "sealed ASEH owner terminal pipe identity is not canonical"
-            )
-        terminal_stat = os.fstat(terminal_descriptor)
-        observed_terminal_identity = [
-            int(getattr(terminal_stat, field))
-            for field in (
-                "st_dev",
-                "st_ino",
-                "st_mode",
-                "st_uid",
-                "st_gid",
-                "st_nlink",
-                "st_size",
-                "st_mtime_ns",
-                "st_ctime_ns",
-            )
-        ]
-        if (
-            terminal_descriptor < 3
-            or terminal_descriptor
-            in {
-                capsule_descriptor,
-                interpreter_descriptor,
-                native_descriptor,
-            }
-            or re.fullmatch(r"[0-9a-f]{64}", terminal_nonce) is None
-            or terminal_pipe_identity != observed_terminal_identity
-            or not stat.S_ISFIFO(terminal_stat.st_mode)
-            or terminal_stat.st_uid != os.geteuid()
-            or fcntl.fcntl(terminal_descriptor, fcntl.F_GETFL)
-            & os.O_ACCMODE
-            != os.O_WRONLY
-        ):
-            raise ValueError("sealed ASEH owner terminal pipe differs")
-        os.set_inheritable(terminal_descriptor, False)
-        if (
-            fcntl.fcntl(terminal_descriptor, fcntl.F_GETFD)
-            & fcntl.FD_CLOEXEC
-            == 0
-        ):
-            raise ValueError("sealed ASEH owner terminal pipe is inheritable")
-        from .process_security import arm_state_authority_parent_death_signal
-
-        arm_state_authority_parent_death_signal(
-            expected_parent_pid=expected_parent_pid,
-            expected_parent_start_time_ticks=expected_parent_start,
-            expected_boot_id=expected_parent_boot,
-        )
-        admit_trusted_system_dependency_directories(
-            system_dependency_directories_json
-        )
-    except (KeyError, OSError, RuntimeError, ValueError) as exc:
-        raise ConfiguredBoardError(
-            "sealed ASEH owner launch binding is invalid"
-        ) from exc
-    if (
-        not qualification_home.is_absolute()
-        or qualification_home.resolve(strict=True) != qualification_home
-        or qualification_home.parent.name != "qualification-homes"
-    ):
-        raise ConfiguredBoardError("sealed ASEH qualification HOME is invalid")
-    exact_environment = {
-        "PATH": "/usr/bin:/bin",
-        "HOME": str(qualification_home),
-        "LC_ALL": "C.UTF-8",
-        "LANG": "C.UTF-8",
-        "TZ": "UTC",
-        "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(
-            qualification_home
-        ),
-        "XDG_CACHE_HOME": str(qualification_home / ".cache" / "xdg"),
-        "CUDA_CACHE_PATH": str(qualification_home / ".cache" / "cuda"),
-        "CUDA_CACHE_DISABLE": "1",
-    }
-    # Parent forwards verified R45 admission pins into the positive birth env.
-    # Dropping them here is compared as drift and becomes SystemExit(78).
-    admission_path = str(
-        os.environ.get("IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH")
-        or ""
-    )
-    admission_sha256 = str(
-        os.environ.get("IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256")
-        or ""
-    )
-    if admission_path and admission_sha256:
-        exact_environment[
-            "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH"
-        ] = admission_path
-        exact_environment[
-            "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256"
-        ] = admission_sha256
-    if (
-        dict(os.environ) != exact_environment
-        or _identity(exact_environment) != expected_environment_identity
-        or native_dependency.descriptor.descriptor != native_descriptor
-        or verify_agent_supervisor_native_dependency_sealed_fd(
-            native_dependency
-        )
-        != f"/proc/self/fd/{native_descriptor}"
-        or sys.modules.get("duckdb") is not sys.modules.get("_duckdb")
-    ):
-        raise ConfiguredBoardError("sealed ASEH owner environment drifted")
-    if (
-        not math.isfinite(duration) and duration != float("inf")
-    ) or duration <= 0.0:
-        raise ConfiguredBoardError("sealed ASEH owner duration is invalid")
-    if (
-        repo_root != repo_root.resolve(strict=True)
-        or config_path != config_path.resolve(strict=True)
-    ):
-        raise ConfiguredBoardError("sealed ASEH owner paths are not canonical")
-    try:
-        config_path.relative_to(repo_root)
-    except ValueError as exc:
-        raise ConfiguredBoardError(
-            "sealed ASEH owner config escapes its repository"
-        ) from exc
-    verified_path = verify_agent_implementation_sealed_control_plane(
-        pin,
-        capsule_descriptor,
-    )
-    if verified_path != f"/proc/self/fd/{capsule_descriptor}":
-        raise ConfiguredBoardError("sealed ASEH owner capsule path drifted")
-    executable = os.stat("/proc/self/exe")
-    held_interpreter = os.fstat(interpreter.descriptor)
-    if (executable.st_dev, executable.st_ino) != (
-        held_interpreter.st_dev,
-        held_interpreter.st_ino,
-    ):
-        raise ConfiguredBoardError(
-            "sealed ASEH owner did not execute the retained interpreter"
-        )
-
-    try:
-        with os.fdopen(os.dup(capsule_descriptor), "rb") as stream:
-            with zipfile.ZipFile(stream) as archive:
-                names = archive.namelist()
-                if len(names) != len(set(names)):
-                    raise ValueError("capsule archive contains duplicate names")
-                manifest_raw = archive.read(
-                    ".agent-control-plane-manifest.json"
-                )
-                operator_raw = archive.read(ASEH_SEALED_OWNER_OPERATOR)
-        manifest = json.loads(
-            manifest_raw,
-            object_pairs_hook=reject_duplicate_keys,
-        )
-        files = manifest.get("files") if isinstance(manifest, dict) else None
-        expected_digest = (
-            files.get(ASEH_SEALED_OWNER_OPERATOR)
-            if isinstance(files, dict)
-            else None
-        )
-        if (
-            manifest.get("capsule_id") != pin.capsule_id
-            or manifest.get("source_head") != pin.source_head
-            or manifest.get("source_tree") != pin.source_tree
-            or expected_digest
-            != "sha256:" + hashlib.sha256(operator_raw).hexdigest()
-        ):
-            raise ValueError("operator member differs from capsule manifest")
-        operator_code = compile(
-            operator_raw,
-            str(repo_root / ASEH_SEALED_OWNER_OPERATOR),
-            "exec",
-            dont_inherit=True,
-        )
-    except (KeyError, OSError, UnicodeError, ValueError, zipfile.BadZipFile) as exc:
-        raise ConfiguredBoardError(
-            "sealed ASEH owner operator member is invalid"
-        ) from exc
-    operator_module_name = "_aseh_sealed_owner_operator"
-    if operator_module_name in sys.modules:
-        try:
-            os.close(terminal_descriptor)
-        except OSError:
-            pass
-        raise ConfiguredBoardError(
-            "sealed ASEH owner operator module name is already occupied"
-        )
-    operator_module = types.ModuleType(operator_module_name)
-    operator_module.__file__ = str(
-        repo_root / ASEH_SEALED_OWNER_OPERATOR
-    )
-    operator_module.__package__ = ""
-    sys.modules[operator_module_name] = operator_module
-    try:
-        exec(operator_code, operator_module.__dict__)
-        entry = operator_module.__dict__.get("_run_supervisor_owner")
-        if not callable(entry):
-            raise ConfiguredBoardError("sealed ASEH owner entry is absent")
-        # The operator borrows this descriptor.  This scheduler capsule is
-        # its sole closer so that a reused descriptor number cannot be closed
-        # accidentally by two independently unwinding frames.
-        return int(
-            entry(
-                config_path,
-                implement=implement,
-                duration=duration,
-                sealed_control_plane_pin=pin.as_dict(),
-                sealed_control_plane_descriptor=capsule_descriptor,
-                retained_interpreter={
-                    "descriptor": interpreter.descriptor,
-                    "argv0": interpreter.argv0,
-                    "sha256": interpreter.sha256,
-                },
-                native_dependency_launch=native_dependency.as_dict(),
-                system_dependency_directories_json=(
-                    system_dependency_directories_json
-                ),
-                sealed_owner_environment=exact_environment,
-                sealed_owner_terminal_descriptor=terminal_descriptor,
-                sealed_owner_terminal_nonce=terminal_nonce,
-                sealed_owner_terminal_pipe_identity=terminal_pipe_identity,
-            )
-        )
-    finally:
-        removed_module = sys.modules.pop(operator_module_name, None)
-        try:
-            os.close(terminal_descriptor)
-        except OSError:
-            pass
-        if removed_module is not operator_module:
-            raise ConfiguredBoardError(
-                "sealed ASEH owner operator module registration drifted"
-            )

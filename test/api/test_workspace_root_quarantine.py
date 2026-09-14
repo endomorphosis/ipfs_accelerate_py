@@ -16,6 +16,39 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import WorktreePo
 from ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation import (
     QuarantineDenied,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon, PortalTask,
+)
+
+
+def _resource_claim_daemon(
+    repo: Path,
+    *,
+    lane: str,
+) -> PortalImplementationDaemon:
+    return PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / lane / "task_state.json",
+        strategy_path=repo / lane / "strategy.json",
+        events_path=repo / lane / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## PCTDD-",
+        worktree_submodule_paths=("external/ipfs_accelerate",),
+    )
+
+def _resource_claim_task(task_id: str, predicted_path: str) -> PortalTask:
+    return PortalTask(
+        task_id=task_id,
+        title=f"Implement {task_id}",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        outputs=[predicted_path],
+        metadata={"predicted files": predicted_path},
+    )
+
+
 def _git(repo: Path, *args: str) -> str:
     import subprocess
 
@@ -85,34 +118,63 @@ def test_whole_root_retained_and_independent_fresh_pool_allocates(tmp_path):
     assert q.census(repo, root) == before
 
 
-def test_retained_root_denies_ancestor_cleanup_and_allows_disjoint_sibling(tmp_path):
-    from types import SimpleNamespace
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        PortalImplementationDaemon,
+def test_root_census_preserves_existing_native_workspace_quarantine(tmp_path):
+    repo, root, pool, lease, lifecycle, record = seed(tmp_path)
+    receipt = lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
+    )
+    path = lifecycle.quarantine_path_for(lease.path)
+    original = path.read_bytes()
+    before = q.census(repo, root)
+    assert str(path) in {row["path"] for row in before["files"]}
+    frozen = q.freeze(repo, root, expected=before)
+    assert q.verify(repo, root) == frozen
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        pool.release(lease)
+    assert path.read_bytes() == original
+    assert lifecycle.load_quarantine(lease.path) == receipt
+    assert q.verify(repo, root) == frozen
+
+
+@pytest.mark.parametrize("outside", [False, True])
+@pytest.mark.parametrize(
+    "damage", ["nested_shape", "nested_identity", "receipt_identity", "filename", "unknown_file"]
+)
+def test_root_census_rejects_invalid_native_quarantine_before_scope_filter(
+    tmp_path, outside, damage,
+):
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        _canonical_json_bytes,
     )
 
-    repo, root, _, _, _, _ = seed(tmp_path)
-    frozen = q.freeze(repo, root, expected=q.census(repo, root))
-    # An ancestor cleanup can recursively remove a nested retained workspace.
-    # Exercise the native boundary without invoking Git or its cleanup body.
-    daemon = object.__new__(PortalImplementationDaemon)
-    daemon.repo_root = repo
-    daemon._worktree_pool_effective_paths = {}
-    effects = []
-    daemon._cleanup_merged_worktree = lambda *args, **kwargs: (
-        effects.append(args) or {"cleaned": False}
+    repo, root, _, lease, lifecycle, record = seed(tmp_path)
+    if outside:
+        workspace = tmp_path / "outside"
+        workspace.mkdir()
+        record = lifecycle.begin_preparing(
+            task_id="outside-task", attempt=1, lane_id="outside-lane",
+            workspace_path=workspace, branch="attempt/outside", merge_target="main",
+            state_dir=str(tmp_path / "outside-state"),
+        )
+    else:
+        workspace = lease.path
+    receipt = lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
     )
-    daemon._record_event = lambda *args, **kwargs: None
-    for target in (root.parent, root, root / "nested"):
-        with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
-            daemon._cleanup_failed_setup_worktree(
-                target, "attempt/ancestor", task=SimpleNamespace(task_id="other"),
-                attempt=1, implementation_started=False, provider_dispatched=False,
-                exception_result={},
-            )
-        assert effects == []
-    with q.mutation(repo, root.parent / "disjoint-sibling"):
-        assert q.verify(repo, root) == frozen
+    path = lifecycle.quarantine_path_for(workspace)
+    if damage == "nested_shape":
+        receipt["lifecycle_record"].pop("owner")
+    elif damage == "nested_identity":
+        receipt["lifecycle_record"]["record_id"] = "sha256:" + "f" * 64
+    elif damage == "receipt_identity":
+        receipt["quarantine_id"] = "sha256:" + "f" * 64
+    elif damage == "filename":
+        path = path.rename(path.with_name("quarantine-" + "f" * 64 + ".json"))
+    else:
+        path = path.rename(path.with_name("unknown-native-record.json"))
+    path.write_bytes(_canonical_json_bytes(receipt))
+    with pytest.raises(QuarantineDenied):
+        q.census(repo, root)
 
 
 def test_freeze_waits_for_native_mutation_scope_and_then_denies_late_writer(tmp_path):
@@ -149,50 +211,38 @@ def test_freeze_waits_for_native_mutation_scope_and_then_denies_late_writer(tmp_
     assert q.census(repo, root) == before
 
 
-@pytest.mark.parametrize("operation", ["exact_delete", "candidate_delete", "candidate_resume"])
-def test_terminal_record_deletion_preserves_frozen_custody(tmp_path, operation):
+@pytest.mark.parametrize("operation", ["exact_delete", "partial_finalize", "quarantine"])
+def test_native_lifecycle_mutations_preserve_frozen_custody(tmp_path, operation):
     repo, root, _, lease, lifecycle, record = seed(tmp_path)
     terminal = lifecycle.mark_terminal(
         lease.path, lease_id=record.lease_id, expected_fence=record.fence,
-        expected_record=record,
     )
     before = q.census(repo, root)
     frozen = q.freeze(repo, root, expected=before)
     with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
         if operation == "exact_delete":
-            lifecycle.compare_and_delete_observed(terminal)
-        elif operation == "candidate_delete":
-            lifecycle.delete_candidate_observed(
-                terminal, handoff_receipt_id="sha256:" + "a" * 64,
+            lifecycle.compare_and_delete(
+                lease.path, expected_fence=terminal.fence, lease_id=terminal.lease_id,
+            )
+        elif operation == "partial_finalize":
+            lifecycle.repair_partial_finalize(
+                lease.path, expected_terminal=terminal,
+                expected_preterminal_state="preparing",
             )
         else:
-            lifecycle.resume_candidate_observed_delete(
-                terminal, handoff_receipt_id="sha256:" + "a" * 64,
+            lifecycle.quarantine_exact_dead_owner(
+                lease.path, expected_record_id=record.record_id,
+                expected_fence=record.fence, expected_lease_id=record.lease_id,
+                expected_task_id=record.task_id,
+                expected_canonical_task_cid=record.canonical_task_cid,
+                expected_attempt=record.attempt, expected_branch=record.branch,
+                expected_merge_target=record.merge_target,
+                expected_repo_root=record.repo_root,
+                expected_state_dir=record.state_dir,
+                fence_authority={"source": "fixture"},
             )
     assert q.census(repo, root) == before
     assert q.verify(repo, root) == frozen
-
-
-def test_stale_index_healing_preserves_frozen_historical_index(tmp_path):
-    import json
-
-    repo, root, _, lease, lifecycle, record = seed(tmp_path)
-    index = lifecycle.task_index_path_for(
-        canonical_task_cid=record.canonical_task_cid,
-        task_id=record.task_id, attempt=record.attempt,
-    )
-    active = json.loads(index.read_text())
-    lifecycle.mark_terminal(
-        lease.path, lease_id=record.lease_id, expected_fence=record.fence,
-        expected_record=record,
-    )
-    # This reproduces the old crash seam: terminal workspace, old active index.
-    index.write_text(json.dumps(active))
-    before = q.census(repo, root)
-    q.freeze(repo, root, expected=before)
-    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
-        lifecycle.heal_stale_task_indexes()
-    assert q.census(repo, root) == before
 
 
 def test_partial_or_malformed_native_pool_population_never_authorizes_fresh_root(
@@ -208,10 +258,6 @@ def test_partial_or_malformed_native_pool_population_never_authorizes_fresh_root
 def test_native_cross_lane_claim_guard_keeps_expired_resource_reserved(
     tmp_path, monkeypatch
 ):
-    from test.api.test_agent_supervisor_resource_claim_overlap import (
-        _resource_claim_daemon,
-        _resource_claim_task,
-    )
 
     repo, root, _, _, _, _ = seed(tmp_path)
     holder = _resource_claim_daemon(repo, lane="retained-lane")
@@ -278,12 +324,16 @@ def test_all_native_global_maintenance_paths_defer_for_sibling_root(tmp_path):
     assert train._cleanup_abandoned_worktrees() == 0
     daemon = object.__new__(PortalImplementationDaemon)
     daemon.repo_root = sibling
+    daemon._database_attempt_authority = None
+    # This native fork already denies all background peer cleanup because
+    # it lacks canonical peer completion proof; preserve the stronger deny.
     assert (
         daemon._cleanup_already_merged_worktrees()["reason"]
-        == "retained_workspace_scope"
+        == "canonical_peer_cleanup_api_unavailable"
     )
     supervisor = object.__new__(PortalImplementationSupervisor)
     supervisor.config = SimpleNamespace(repo_root=sibling)
+    assert supervisor.reconcile_backlogged_worktrees()["reason"] == "retained_workspace_scope"
     assert (
         supervisor._cleanup_backlogged_worktrees_locked()["reason"]
         == "retained_workspace_scope"
@@ -390,6 +440,7 @@ def test_nested_boundary_rejects_unreadable_or_unbound_parent_custody(
     assert effects == []
 
 
+
 def _fifo_custody_reader(operation, path, repo, root, output, ready):
     ready.set()
     try:
@@ -446,6 +497,8 @@ def test_fifo_custody_population_is_denied_without_waiting_for_writer(
     )
     child.start()
     try:
+        # Match the shared-main fixture: import time is separate from the
+        # unchanged ten-second bound on the actual native custody operation.
         assert ready.wait(timeout=45), "custody reader process failed to initialize"
         child.join(timeout=10)
         assert not child.is_alive(), "native custody read blocked opening a FIFO"
@@ -529,3 +582,110 @@ def test_registry_capacity_denies_new_freeze_before_overwriting_custody(
     assert q.verify(repo, root) == frozen
     # Re-acknowledging existing custody still works at full capacity.
     assert q.freeze(repo, root, expected=frozen["snapshot"]) == frozen
+
+
+@pytest.mark.parametrize("method", ["_run_implementation", "_run_implementation_in_ephemeral_worktree", "_create_seeded_worktree", "_cleanup_failed_setup_worktree", "_cleanup_merged_worktree", "_cleanup_worktree_submodules"])
+def test_native_provider_workspace_entries_deny_before_mutation(tmp_path, method):
+    import inspect
+    repo, root, _, lease, _, _ = seed(tmp_path)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.repo_root = repo
+    daemon.worktree_root = root
+    action = getattr(daemon, method)
+    arguments = {
+        name: lease.path if name == "worktree_path" else None
+        for name, parameter in inspect.signature(action).parameters.items()
+        if parameter.default is inspect.Parameter.empty
+        and parameter.kind not in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
+    }
+    if "worktree_path" in inspect.signature(action).parameters:
+        arguments["worktree_path"] = lease.path
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        action(**arguments)
+    assert q.verify(repo, root) == frozen
+
+
+def test_native_supervisor_rescue_preserves_frozen_workspace_and_branches(tmp_path):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import PortalImplementationSupervisor
+    repo, root, _, lease, _, _ = seed(tmp_path)
+    dirty = lease.path / "unknown-callback-output"
+    dirty.write_text("preserve this callback effect")
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    before_refs = _git(repo, "show-ref")
+    before_head = _git(lease.path, "rev-parse", "HEAD")
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(repo_root=repo)
+    with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+        supervisor._rescue_dirty_worktree(
+            lease.path, branch="attempt/ambiguous", head=before_head,
+            target_ref="HEAD", status_lines=["?? unknown-callback-output"],
+            reason="retained callback fixture",
+        )
+    assert _git(repo, "show-ref") == before_refs
+    assert _git(lease.path, "rev-parse", "HEAD") == before_head
+    assert dirty.read_text() == "preserve this callback effect"
+    assert q.verify(repo, root) == frozen
+
+
+def test_retained_root_denies_ancestor_cleanup_and_allows_disjoint_sibling(tmp_path):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    repo, root, _, _, _, _ = seed(tmp_path)
+    frozen = q.freeze(repo, root, expected=q.census(repo, root))
+    # An ancestor cleanup can recursively remove a nested retained workspace.
+    # Exercise the native boundary without invoking Git or its cleanup body.
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.repo_root = repo
+    daemon._worktree_pool_effective_paths = {}
+    effects = []
+    daemon._cleanup_merged_worktree = lambda *args, **kwargs: (
+        effects.append(args) or {"cleaned": False}
+    )
+    daemon._record_event = lambda *args, **kwargs: None
+    for target in (root.parent, root, root / "nested"):
+        with pytest.raises(QuarantineDenied, match="workspace_root_quarantined"):
+            daemon._cleanup_failed_setup_worktree(
+                target, "attempt/ancestor", task=SimpleNamespace(task_id="other"),
+                attempt=1, exception_result={},
+            )
+        assert effects == []
+    with q.mutation(repo, root.parent / "disjoint-sibling"):
+        assert q.verify(repo, root) == frozen
+
+
+@pytest.mark.parametrize("replacement", ["same_bytes_new_inode", "changed_bytes"])
+def test_root_census_rejects_quarantine_changed_during_strict_read(
+    tmp_path, monkeypatch, replacement,
+):
+    repo, root, _, lease, lifecycle, record = seed(tmp_path)
+    lifecycle.quarantine_current_owner(
+        record, fence_authority={"observation": "unknown"}, reason="retained_unknown",
+    )
+    path = lifecycle.quarantine_path_for(lease.path)
+    original = path.read_bytes()
+    real_read = WorktreeLifecycleStore._load_strict_quarantine_payload
+
+    def changed_read(self, *args, **kwargs):
+        result = real_read(self, *args, **kwargs)
+        if kwargs.get("receipt_path") == path:
+            if replacement == "same_bytes_new_inode":
+                changed = path.with_suffix(".replacement")
+                changed.write_bytes(original)
+                changed.chmod(0o600)
+                changed.replace(path)
+            else:
+                path.write_bytes(original.replace(b"retained_unknown", b"retained_unknowx"))
+        return result
+
+    monkeypatch.setattr(
+        WorktreeLifecycleStore, "_load_strict_quarantine_payload", changed_read,
+    )
+    with pytest.raises(
+        QuarantineDenied, match="workspace_quarantine_lifecycle_quarantine_changed",
+    ):
+        q.census(repo, root)

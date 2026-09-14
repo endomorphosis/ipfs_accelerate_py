@@ -1,0 +1,2436 @@
+"""Focused liveness and maintenance tests for database implementation lanes."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import time
+from contextlib import nullcontext
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    database_task_source as database_task_source_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as implementation_supervisor_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
+    PortalTaskState,
+    current_process_birth,
+    publish_database_daemon_pass_heartbeat,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    DATABASE_AUTHORITY_UNAVAILABLE_REASON,
+    DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+    DATABASE_IDLE_DAEMON_STALL_REASON,
+    SHARED_AUTHORITY_TERMINAL_STATUS,
+    SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND,
+    SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
+    PortalImplementationSupervisor,
+    PortalSupervisorConfig,
+    _run_daemon_main_with_retryable_memory_backoff,
+)
+
+
+def _supervisor(
+    tmp_path,
+    *,
+    lane_index: int = 1,
+    task_prefix: str = "SAWM-",
+) -> PortalImplementationSupervisor:
+    repo = tmp_path / f"repo-{lane_index}"
+    repo.mkdir()
+    state_dir = repo / "state" / f"lane-{lane_index}"
+    state_dir.mkdir(parents=True)
+    state_path = state_dir / "task_state.json"
+    PortalTaskState().save(state_path)
+    program = SimpleNamespace(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_endpoint="quack:127.0.0.1:24068",
+        store_id="control.duckdb",
+        assert_quack_not_demoted=lambda **_kwargs: None,
+    )
+    return PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            database_program=program,
+            task_prefix=task_prefix,
+            task_shard_count=4,
+            task_shard_index=lane_index,
+            strict_task_sharding=True,
+            check_interval=1,
+            daemon_interval=1,
+        )
+    )
+
+
+def _ready_observation(*, same_shard: bool = True) -> dict[str, object]:
+    return {
+        "available": True,
+        "reason": "authoritative_readiness_observed",
+        "task_source_revision": 41,
+        "ready_task_ids": ["SAWM-006"],
+        "same_shard_ready_task_ids": ["SAWM-006"] if same_shard else [],
+        "active_task_ids": [],
+        "same_shard_active_task_ids": [],
+    }
+
+
+def _make_idle_recycle_safe(supervisor, monkeypatch) -> None:
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+
+
+def _configure_ready_stale_idle_watchdog(supervisor, monkeypatch) -> None:
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+
+
+def _write_expired_legacy_cleanup_lease(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    operation: str = "cleanup_backlogged_worktrees",
+    task_id: str = "",
+    branch: str = "",
+    owner_phase: str = "strategy_state_repair",
+    status_retains_phase: bool = False,
+    write_receipt: bool = True,
+    receipt_overrides: dict[str, object] | None = None,
+    extra: dict[str, object] | None = None,
+):
+    owner_state_dir = supervisor.config.repo_root / "legacy-owner-state"
+    owner_state_dir.mkdir()
+    owner_state_path = owner_state_dir / "legacy_lane_task_state.json"
+    owner_state_path.write_text(
+        json.dumps(
+            {
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "active_phase": "",
+                "active_branch": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_status_path = owner_state_dir / "legacy_lane_supervisor_status.json"
+    owner_status = {
+        "schema": ("ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor"),
+        # Model the ordinary SupervisorLoop heartbeat which replaces the
+        # richer maintenance status projection.
+        "status": "running",
+        "updated_at": datetime.now(UTC).isoformat(),
+        "supervisor_pid": os.getpid(),
+        "supervisor_pid_alive": True,
+        "active_worker_count": 0,
+        "active_worker_pids": [],
+        "worker_descendant_count": 0,
+    }
+    if status_retains_phase:
+        owner_status.update(
+            {
+                "status": "agentic_maintenance_started",
+                "last_agentic_maintenance_phase": owner_phase,
+            }
+        )
+    owner_status_path.write_text(json.dumps(owner_status), encoding="utf-8")
+    receipt_now = datetime.now(UTC)
+    if write_receipt:
+        receipt = {
+            "schema": SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
+            "repo_root": str(supervisor.config.repo_root.resolve()),
+            "state_dir": str(owner_state_dir.resolve()),
+            "state_path": str(owner_state_path.resolve()),
+            "state_prefix": "legacy_lane",
+            "supervisor_pid": os.getpid(),
+            "process_birth": current_process_birth().to_dict(),
+            "phase": owner_phase,
+            "status": "completed",
+            "maintenance_started_at": (receipt_now - timedelta(minutes=5)).isoformat(),
+            "updated_at": receipt_now.isoformat(),
+            "completed_at": receipt_now.isoformat(),
+        }
+        receipt.update(dict(receipt_overrides or {}))
+        (owner_state_dir / "legacy_lane_supervisor_maintenance_receipt.json").write_text(
+            json.dumps(receipt), encoding="utf-8"
+        )
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=supervisor.config.repo_root,
+        task_id=task_id,
+        branch=branch,
+        owner_script="",
+        extra={
+            "operation": operation,
+            "started_at": (datetime.now(UTC) - timedelta(days=2)).isoformat(),
+            "state_dir": str(owner_state_dir.resolve()),
+            "state_path": str(owner_state_path.resolve()),
+            **dict(extra or {}),
+        },
+    )
+    lock_path = checkout_mutation_lock_path(supervisor.config.repo_root)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(metadata), encoding="utf-8")
+    return lock_path
+
+
+def _write_external_board_legacy_cleanup_lease(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    write_receipt: bool = True,
+    receipt_status: str = "completed",
+):
+    repo = supervisor.config.repo_root
+    supervisor.config.todo_path.write_text("# SAWM board\n", encoding="utf-8")
+
+    def git(*args: str, cwd=repo) -> None:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    git("init", "-q")
+    git("config", "user.email", "supervisor-tests@example.invalid")
+    git("config", "user.name", "Supervisor Tests")
+    (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+    git("add", "seed.txt", supervisor.config.todo_path.name)
+    git("commit", "-qm", "seed linked worktree")
+    external_worktree = repo.parent / f"{repo.name}-external-board"
+    git(
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        f"external-board-{repo.name}",
+        str(external_worktree),
+    )
+    external_todo = external_worktree / "docs" / "apmc.todo.md"
+    external_todo.parent.mkdir(parents=True)
+    external_todo.write_text("# APMC board\n", encoding="utf-8")
+    state_dir = external_worktree / "state" / "lane-1"
+    state_dir.mkdir(parents=True)
+    state_path = state_dir / "apmc_lane_1_task_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "active_phase": "",
+                "active_branch": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    status_path = state_dir / "apmc_lane_1_supervisor_status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor"
+                ),
+                "status": "running",
+                "updated_at": datetime.now(UTC).isoformat(),
+                "supervisor_pid": os.getpid(),
+                "supervisor_pid_alive": True,
+                "active_worker_count": 0,
+                "active_worker_pids": [],
+                "worker_descendant_count": 0,
+                "repo_root": str(external_worktree.resolve()),
+                "state_path": str(state_path.resolve()),
+                "current_status_path": state_path.relative_to(external_worktree).as_posix(),
+                "state_prefix": "apmc_lane_1",
+                "todo_path": str(external_todo.resolve()),
+                "task_prefix": "## APMC-",
+            }
+        ),
+        encoding="utf-8",
+    )
+    if write_receipt:
+        receipt_now = datetime.now(UTC)
+        receipt_path = state_dir / "apmc_lane_1_supervisor_maintenance_receipt.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema": SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
+                    "repo_root": str(external_worktree.resolve()),
+                    "state_dir": str(state_dir.resolve()),
+                    "state_path": str(state_path.resolve()),
+                    "state_prefix": "apmc_lane_1",
+                    "supervisor_pid": os.getpid(),
+                    "process_birth": current_process_birth().to_dict(),
+                    "phase": "supervisor_check_event",
+                    "status": receipt_status,
+                    "maintenance_started_at": (receipt_now - timedelta(minutes=5)).isoformat(),
+                    "updated_at": receipt_now.isoformat(),
+                    "completed_at": (
+                        receipt_now.isoformat() if receipt_status == "completed" else ""
+                    ),
+                }
+            ),
+            encoding="utf-8",
+        )
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=external_worktree,
+        owner_script="",
+        extra={
+            "operation": "cleanup_backlogged_worktrees",
+            "started_at": (datetime.now(UTC) - timedelta(days=2)).isoformat(),
+            "state_dir": str(state_dir.resolve()),
+            "state_path": str(state_path.resolve()),
+        },
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text(json.dumps(metadata), encoding="utf-8")
+    return lock_path, metadata, status_path
+
+
+def test_database_main_pass_heartbeat_is_current_process_bound(tmp_path) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    heartbeat = publish_database_daemon_pass_heartbeat(
+        state_dir=supervisor.config.state_dir,
+        state_prefix=supervisor.config.state_prefix,
+        sequence=1,
+        result={
+            "unchanged": True,
+            "write_count": 0,
+            "active_task_id": "",
+            "selection_idle_reason": "no_ready_tasks",
+            "provider_result": {"secret": "must-not-be-projected"},
+        },
+        process_instance_id="process:test",
+        owner_session_id="session:test",
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        task_shard_count=4,
+        task_shard_index=1,
+        strict_task_sharding=True,
+    )
+    child = SimpleNamespace(
+        pid=os.getpid(),
+        started_at=datetime.now(UTC).isoformat(),
+        identity_process_birth=current_process_birth(),
+    )
+
+    status = supervisor._database_pass_heartbeat_status(child, now_ts=time.time())
+
+    assert heartbeat["schema"] == DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA
+    assert heartbeat["sequence"] == 1
+    assert "provider_result" not in heartbeat
+    assert status["available"] is True
+    assert status["current_process"] is True
+    assert status["stale"] is False
+
+
+def test_supervisor_maintenance_receipt_survives_ordinary_status_overwrite(
+    tmp_path,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    update_phase, finish = supervisor._begin_supervisor_maintenance_heartbeat("run_once")
+    update_phase("supervisor_check_event")
+    finish("completed")
+    receipt_path = supervisor._supervisor_maintenance_receipt_path()
+    receipt_before = json.loads(receipt_path.read_text(encoding="utf-8"))
+    supervisor._supervisor_status_path().write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor"
+                ),
+                "status": "running",
+                "updated_at": datetime.now(UTC).isoformat(),
+                "supervisor_pid": os.getpid(),
+                "active_worker_count": 0,
+                "active_worker_pids": [],
+                "worker_descendant_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    receipt_after = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+    assert receipt_after == receipt_before
+    assert receipt_after["schema"] == SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA
+    assert receipt_after["phase"] == "supervisor_check_event"
+    assert receipt_after["status"] == "completed"
+    assert receipt_after["completed_at"] == receipt_after["updated_at"]
+    assert receipt_after["process_birth"] == current_process_birth().to_dict()
+
+
+def test_database_watchdog_recycles_stale_idle_child_for_same_shard_ready_work(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "schema": DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
+            "available": True,
+            "current_process": True,
+            "stale": True,
+            "reason": "heartbeat_stale",
+            "age_seconds": 600.0,
+        },
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    maintenance_calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: maintenance_calls.append(True),
+    )
+    child = SimpleNamespace(
+        pid=os.getpid(),
+        started_at=(datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+        identity_process_birth=current_process_birth(),
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, child, {})
+
+    assert decision.action == "recycle"
+    assert decision.reason == DATABASE_IDLE_DAEMON_STALL_REASON
+    assert decision.detail["same_shard_ready_task_ids"] == ["SAWM-006"]
+    assert decision.detail["attempt_budget_consumed"] is False
+    assert decision.detail["provider_invocation_consumed"] is False
+    assert maintenance_calls == []
+
+
+@pytest.mark.parametrize(
+    ("reason", "stale", "active_task_id"),
+    [
+        ("heartbeat_belongs_to_prior_child", False, "SAWM-013"),
+        ("heartbeat_belongs_to_prior_child", True, "SAWM-013"),
+        ("heartbeat_belongs_to_prior_child", True, ""),
+        ("heartbeat_stale", True, "SAWM-013"),
+    ],
+)
+def test_database_watchdog_preserves_native_active_work_despite_old_heartbeat(
+    tmp_path, monkeypatch, reason, stale, active_task_id,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor, "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": ["SAWM-013"],
+            "same_shard_active_task_ids": ["SAWM-013"],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor, "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True, "stale": stale, "reason": reason,
+            "active_task_id": active_task_id,
+        },
+    )
+    # The current child's provider can exist before its local JSON projection
+    # catches up. Native active work must still outrank an old pass heartbeat.
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [12345])
+    requeue_calls = []
+    monkeypatch.setattr(
+        supervisor, "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append(True) or {
+            "attempted": True, "expired_count": 0,
+        },
+        raising=False,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert requeue_calls == []
+
+
+@pytest.mark.parametrize("child_age_seconds", [0, 10000])
+def test_prior_child_active_heartbeat_does_not_override_current_birth_grace(
+    tmp_path, child_age_seconds,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    publish_database_daemon_pass_heartbeat(
+        state_dir=supervisor.config.state_dir,
+        state_prefix=supervisor.config.state_prefix,
+        sequence=1,
+        result={"active_task_id": "SAWM-013"},
+        process_instance_id="process:prior",
+        owner_session_id="session:prior",
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        task_shard_count=4,
+        task_shard_index=1,
+        strict_task_sharding=True,
+    )
+    birth = current_process_birth()
+    child = SimpleNamespace(
+        pid=os.getpid(),
+        identity_process_birth=replace(birth, start_time_ticks=birth.start_time_ticks + 1),
+        started_at=(datetime.now(UTC) - timedelta(seconds=child_age_seconds)).isoformat(),
+    )
+
+    observed = supervisor._database_pass_heartbeat_status(child, now_ts=time.time())
+
+    assert observed["reason"] == "heartbeat_belongs_to_prior_child"
+    assert observed["available"] is False
+    assert observed["current_process"] is False
+    assert observed["stale"] is (child_age_seconds > 0)
+
+
+def test_database_watchdog_oom_preserves_prior_child_stale_claim(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-008",
+        },
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": "stale_active_claim_prior_child_heartbeat",
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+        raising=False,
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert requeue_calls == []
+    assert events == []
+    fields = loop.config.status_extra_fields
+    assert fields["operator_successor_required"] is False
+    assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
+
+
+def test_database_watchdog_does_not_recycle_prior_child_heartbeat_with_live_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {
+            "available": True,
+            "stale": True,
+            "reason": "heartbeat_belongs_to_prior_child",
+            "active_task_id": "SAWM-008",
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [{"pid": 4132019, "cmdline": "grok_cli_runner"}],
+    )
+    requeue_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_requeue_stale_active_database_claims",
+        lambda: requeue_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_STALE_ACTIVE_CLAIM_REASON,
+            "expired_count": 1,
+            "expired_task_ids": ["sha256:task"],
+        },
+        raising=False,
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert requeue_calls == []
+    assert events == []
+
+
+def test_database_watchdog_rearms_idle_blocked_portal_frontier(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": ["SAWM-006", "SAWM-008"],
+            "same_shard_blocked_recoverable_task_ids": ["SAWM-006"],
+        },
+    )
+    rearm_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_rearm_blocked_recoverable_portal_frontier",
+        lambda: rearm_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+            "rearmed_task_ids": ["SAWM-006", "SAWM-008"],
+            "rearm_count": 2,
+        },
+    )
+    maintenance_calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: maintenance_calls.append(True),
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert rearm_calls == [{"ok": True}]
+    assert maintenance_calls == []
+    assert events[0][0] == "idle_blocked_recoverable_portal_frontier"
+    assert events[0][1]["blocked_recoverable_task_ids"] == [
+        "SAWM-006",
+        "SAWM-008",
+    ]
+
+
+def test_database_watchdog_rearms_idle_frontier_when_blocked_probe_is_empty(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": [],
+            "same_shard_blocked_recoverable_task_ids": [],
+        },
+    )
+    rearm_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_rearm_blocked_recoverable_portal_frontier",
+        lambda: rearm_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+            "rearmed_task_ids": ["SAWM-008"],
+            "rearm_count": 1,
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert rearm_calls == [{"ok": True}]
+    assert events[0][0] == "idle_blocked_recoverable_portal_frontier"
+    assert events[0][1]["blocked_recoverable_portal_frontier_rearm"][
+        "rearm_count"
+    ] == 1
+
+
+def test_database_watchdog_rearms_blocked_frontier_when_later_tasks_are_ready(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": True,
+            "reason": "authoritative_readiness_observed",
+            "task_source_revision": 41,
+            "ready_task_ids": ["SAWM-021"],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+            "blocked_recoverable_task_ids": ["SAWM-008", "SAWM-013"],
+            "same_shard_blocked_recoverable_task_ids": ["SAWM-008"],
+        },
+    )
+    rearm_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_rearm_blocked_recoverable_portal_frontier",
+        lambda: rearm_calls.append({"ok": True})
+        or {
+            "attempted": True,
+            "reason": DATABASE_BLOCKED_PORTAL_FRONTIER_REASON,
+            "rearmed_task_ids": ["SAWM-008", "SAWM-013"],
+            "rearm_count": 2,
+        },
+    )
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    child = SimpleNamespace(pid=os.getpid())
+
+    decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+
+    assert decision.action == "continue"
+    assert rearm_calls == [{"ok": True}]
+    assert events[0][0] == "idle_blocked_recoverable_portal_frontier"
+    assert events[0][1]["blocked_recoverable_task_ids"] == [
+        "SAWM-008",
+        "SAWM-013",
+    ]
+
+
+def test_control_plane_update_detects_worktree_file_drift_without_imported_git() -> None:
+    loaded = {
+        "repository_revision": "",
+        "control_plane_tree_id": "",
+        "sources": [
+            {
+                "path": (
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "implementation_supervisor.py"
+                ),
+                "available": True,
+                "sha256": "abc",
+            }
+        ],
+    }
+    current = {
+        "repository_revision": "def" * 10 + "abcd",
+        "control_plane_tree_id": "aaa" * 10 + "aaaa",
+        "sources": [
+            {
+                "path": (
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "implementation_supervisor.py"
+                ),
+                "available": True,
+                "sha256": "xyz",
+            }
+        ],
+    }
+    assert (
+        implementation_supervisor_module._control_plane_update_is_pending(
+            loaded, current
+        )
+        is True
+    )
+    current["sources"][0]["sha256"] = "abc"
+    assert (
+        implementation_supervisor_module._control_plane_update_is_pending(
+            loaded, current
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize("commit_outputs", [False, True])
+def test_database_board_producer_cannot_mutate_markdown(tmp_path, commit_outputs):
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    todo = supervisor.config.todo_path
+    todo.write_text("# Sealed board\n")
+    events = []
+    supervisor._record_event = lambda kind, payload: events.append((kind, payload))
+
+    def mutate():
+        todo.write_text("unaccepted generated card")
+        pytest.fail("database authority reached legacy board callback")
+
+    result = supervisor._run_generated_board_producer(
+        producer="reconciliation-guardrail", commit_outputs=commit_outputs,
+        callback=mutate,
+    )
+    assert result == []
+    assert todo.read_text() == "# Sealed board\n"
+    assert events[-1][1]["reason"] == "immutable_database_authority_projection"
+
+
+def test_sealed_portal_recovery_source_requires_verified_capsule(tmp_path, monkeypatch):
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    pin = SimpleNamespace(source_head="a" * 40, source_tree="b" * 40)
+    supervisor.config.accepted_control_plane_pin = pin
+    supervisor.config.configured_board_live_admission = None
+    assert supervisor._sealed_portal_recovery_source() is None
+    supervisor.config.configured_board_live_admission = pin
+    calls = []
+
+    def verify(admission, **kwargs):
+        calls.append(kwargs)
+        return pin
+
+    monkeypatch.setattr(implementation_supervisor_module,
+                        "verify_configured_board_live_capsule", verify)
+    assert supervisor._sealed_portal_recovery_source() == {
+        "source_head": "a" * 40, "source_tree": "b" * 40,
+    }
+    assert calls[-1]["control_plane_pin"] is pin
+
+    def reject(*args, **kwargs):
+        raise ValueError("capsule source drifted")
+
+    monkeypatch.setattr(implementation_supervisor_module,
+                        "verify_configured_board_live_capsule", reject)
+    with pytest.raises(ValueError, match="capsule source drifted"):
+        supervisor._sealed_portal_recovery_source()
+
+
+def test_database_watchdog_preserves_child_when_readiness_is_unavailable(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda *_args, **_kwargs: {
+            "available": False,
+            "stale": False,
+            "reason": "heartbeat_missing",
+        },
+    )
+    maintenance_calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: maintenance_calls.append(True),
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+
+
+def test_database_watchdog_persistent_authority_loss_is_typed_terminal(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+            "error": "must-not-enter-status",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    decisions = []
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decisions.append(
+            supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        )
+    first, second, third = decisions
+
+    assert first.action == "continue"
+    assert second.action == "continue"
+    assert third.action == "stop"
+    assert third.reason == DATABASE_AUTHORITY_UNAVAILABLE_REASON
+    assert third.status == SHARED_AUTHORITY_TERMINAL_STATUS
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is True
+    assert fields["terminal_kind"] == (
+        SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+    )
+    assert fields["task_completion_authority"] is False
+    assert fields["generation_restart_authorized"] is False
+    assert fields["operator_successor_required"] is True
+    assert fields["database_authority_terminal_guard"]["safe"] is True
+    assert fields["database_authority_terminal_guard"][
+        "attempt_budget_consumed"
+    ] is False
+    assert fields["database_authority_terminal_guard"][
+        "provider_invocation_consumed"
+    ] is False
+    assert "must-not-enter-status" not in json.dumps(fields, sort_keys=True)
+    assert [kind for kind, _detail in events] == [
+        "shared_database_authority_terminal"
+    ]
+
+
+def test_database_watchdog_oom_readiness_is_retryable_not_operator_successor(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "OutOfMemoryException",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    decisions = []
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decisions.append(
+            supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        )
+
+    assert {decision.action for decision in decisions} == {"continue"}
+    fields = loop.config.status_extra_fields
+    assert fields["authoritative_readiness_error_type"] == "OutOfMemoryException"
+    assert fields["operator_successor_required"] is False
+    assert fields["shared_authority_terminal"] is False
+    assert fields["generation_restart_authorized"] is False
+
+
+def test_typed_fail_closed_outer_recovery_backs_off(
+    tmp_path,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=2)
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 5.0
+    supervisor._typed_fail_closed_recovery_count = 1
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 30.0
+    supervisor._typed_fail_closed_recovery_count = 3
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 120.0
+    supervisor._typed_fail_closed_recovery_count = 9
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 600.0
+    supervisor._typed_fail_closed_recovery_count = 0
+    assert supervisor._supervisor_loop_recovery_delay_seconds() == 5.0
+
+
+class OutOfMemoryException(Exception):
+    """Stand-in for duckdb.OutOfMemoryException by class name."""
+
+
+def test_readiness_backoff_counts_only_fresh_authority_failures(
+    tmp_path, monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    supervisor.config = replace(supervisor.config, database_program=SimpleNamespace(
+        authority_mode="embedded", task_source_kind="duckdb", store_id="unused.duckdb",
+    ))
+    now = [100.0]
+    calls = []
+
+    def unavailable_source(*args, **kwargs):
+        calls.append(True)
+        raise OutOfMemoryException("readiness allocation failed")
+
+    monkeypatch.setattr(database_task_source_module, "DatabaseTaskSource", unavailable_source)
+    monkeypatch.setattr(implementation_supervisor_module.time, "monotonic", lambda: now[0])
+
+    fresh = supervisor._authoritative_runnable_work_status()
+    assert fresh["available"] is False
+    assert fresh.get("cached_retryable_backoff") is not True
+    observed = supervisor._database_authority_watchdog_observation(fresh, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 1
+
+    now[0] += 1.0
+    cached = supervisor._authoritative_runnable_work_status()
+    assert cached["cached_retryable_backoff"] is True
+    observed = supervisor._database_authority_watchdog_observation(cached, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 1
+    assert len(calls) == 1
+
+    now[0] = supervisor._readiness_probe_backoff_until + 1.0
+    retried = supervisor._authoritative_runnable_work_status()
+    assert retried.get("cached_retryable_backoff") is not True
+    observed = supervisor._database_authority_watchdog_observation(retried, now_monotonic=now[0])
+    assert observed["unavailable_probe_count"] == 2
+    assert len(calls) == 2
+
+
+def test_sealed_daemon_child_retries_oom_then_stays_alive() -> None:
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise OutOfMemoryException("duckdb buffer")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        ["--once"],
+        sleep=sleeps.append,
+        backoff_seconds=(30.0, 60.0, 120.0),
+    )
+    assert result == 0
+    assert calls["count"] == 3
+    assert sleeps == [30.0, 60.0]
+
+
+def test_sealed_daemon_child_retries_memory_error() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise MemoryError("allocator")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        [],
+        sleep=lambda _delay: None,
+        backoff_seconds=(30.0,),
+    )
+    assert result == 0
+    assert calls["count"] == 2
+
+
+class IOException(Exception):
+    """Stand-in for duckdb.IOException by class name."""
+
+
+def test_sealed_daemon_child_retries_ioexception() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise IOException("quack transport reset")
+        return 0
+
+    result = _run_daemon_main_with_retryable_memory_backoff(
+        main,
+        [],
+        sleep=lambda _delay: None,
+        backoff_seconds=(30.0,),
+    )
+    assert result == 0
+    assert calls["count"] == 2
+    assert "IOException" in implementation_supervisor_module.RETRYABLE_READINESS_ERROR_TYPES
+
+
+def test_sealed_daemon_child_non_retryable_error_fail_closes(caplog) -> None:
+    def main(_argv: list[str]) -> int:
+        raise RuntimeError("pin invalid secret-token-never-log")
+
+    with pytest.raises(RuntimeError, match="pin invalid"):
+        _run_daemon_main_with_retryable_memory_backoff(
+            main,
+            [],
+            sleep=lambda _delay: None,
+        )
+
+    assert "type=RuntimeError function=main line=" in caplog.text
+    assert "secret-token-never-log" not in caplog.text
+    assert "pin invalid" not in caplog.text
+
+
+def test_sealed_daemon_child_systemexit_78_is_not_retried() -> None:
+    calls = {"count": 0}
+
+    def main(_argv: list[str]) -> int:
+        calls["count"] += 1
+        raise SystemExit(78)
+
+    with pytest.raises(SystemExit) as raised:
+        _run_daemon_main_with_retryable_memory_backoff(
+            main,
+            [],
+            sleep=lambda _delay: None,
+        )
+    assert raised.value.code == 78
+    assert calls["count"] == 1
+
+
+def test_database_watchdog_authority_circuit_resets_after_live_query(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    observations = iter(
+        (
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            _ready_observation(same_shard=False),
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: next(observations),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        assert supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        ).action == "continue"
+
+    circuit = loop.config.status_extra_fields[
+        "database_authority_watchdog"
+    ]
+    assert circuit["state"] == "suspect"
+    assert circuit["unavailable_probe_count"] == 1
+
+
+def test_database_watchdog_live_query_clears_pending_terminal_diagnostics(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    observations = iter(
+        (
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            _ready_observation(same_shard=False),
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: next(observations),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [os.getpid()],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        assert supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        ).action == "continue"
+    assert loop.config.status_extra_fields[
+        "shared_authority_terminal_pending"
+    ] is True
+
+    supervisor._last_supervisor_maintenance_at = 0.0
+    assert supervisor._supervisor_loop_watchdog_decision(
+        loop, child, {}
+    ).action == "continue"
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is False
+    assert fields["shared_authority_terminal_pending"] is False
+    assert fields["terminal_kind"] == ""
+    assert fields["database_authority_terminal_guard"] == {}
+    assert fields["operator_successor_required"] is False
+    assert fields["authoritative_readiness_error_type"] == ""
+
+
+def test_database_watchdog_defers_authority_terminal_for_live_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [os.getpid()],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decision = supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        )
+
+    assert decision.action == "continue"
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is False
+    assert fields["shared_authority_terminal_pending"] is True
+    assert fields["terminal_kind"] == (
+        SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+    )
+    assert fields["database_authority_terminal_guard"]["safe"] is False
+    assert "implementation_worker_active" in fields[
+        "database_authority_terminal_guard"
+    ]["blockers"]
+
+
+def test_database_authority_failure_probe_uses_configured_watchdog_cadence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: calls.append(True)
+        or {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+        },
+    )
+    monotonic_now = [100.0]
+    monkeypatch.setattr(
+        implementation_supervisor_module.time,
+        "monotonic",
+        lambda: monotonic_now[0],
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+    monotonic_now[0] = 100.25
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+    monotonic_now[0] = 101.0
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+
+    assert calls == [True, True]
+    assert supervisor._database_authority_unavailable_probe_count == 2
+
+
+def test_database_authority_terminal_guard_does_not_trust_stale_local_flags(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    state = PortalTaskState(
+        active_task_id="SAWM-006",
+        implementation_in_progress=True,
+    )
+
+    guard = supervisor._database_authority_terminal_guard(
+        state=state,
+        child=SimpleNamespace(pid=os.getpid()),
+    )
+
+    assert guard["safe"] is True
+    assert guard["blockers"] == []
+    assert guard["local_active_task_id"] == "SAWM-006"
+    assert guard["local_implementation_in_progress"] is True
+
+
+def test_database_authority_terminal_guard_preserves_orphaned_lock_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = supervisor._repo_merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text("not-a-lease", encoding="utf-8")
+
+    guard = supervisor._database_authority_terminal_guard(
+        state=PortalTaskState(),
+        child=SimpleNamespace(pid=os.getpid()),
+    )
+
+    assert guard["safe"] is True
+    assert guard["blockers"] == []
+    assert guard["preserved_fences"] == [
+        "checkout_mutation_lease_record_unverifiable"
+    ]
+    assert lock_path.read_text(encoding="utf-8") == "not-a-lease"
+
+
+def test_database_watchdog_never_recycles_through_protected_checkout_lock(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = supervisor.config.repo_root / ".git" / "protected.lock"
+    lock_path.parent.mkdir(exist_ok=True)
+    lock_path.write_text(
+        json.dumps(
+            {
+                "lease_id": "lease:protected",
+                "protected_recovery_required": True,
+                "pid": os.getpid(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(supervisor, "_repo_merge_lock_path", lambda: lock_path)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+def test_database_watchdog_preserves_external_board_legacy_cleanup_without_blocking(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    lock_path, metadata, _status_path = _write_external_board_legacy_cleanup_lease(supervisor)
+    original_bytes = lock_path.read_bytes()
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert lock_path.read_bytes() == original_bytes
+    assert json.loads(original_bytes)["lease_id"] == metadata["lease_id"]
+    external = decision.detail["external_legacy_cleanup_lease"]
+    assert external["external_board"] is True
+    assert external["preserved"] is True
+    assert external["reason"] == "external_board_legacy_cleanup_lease_preserved"
+    assert "legacy_checkout_mutation_transaction_active" not in decision.detail["blockers"]
+
+
+@pytest.mark.parametrize("replacement_mode", ("atomic", "same_inode_metadata"))
+def test_database_watchdog_revalidates_external_lease_before_omitting_blocker(
+    tmp_path,
+    monkeypatch,
+    replacement_mode,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    lock_path, external_metadata, _status_path = _write_external_board_legacy_cleanup_lease(
+        supervisor
+    )
+    classify_external = supervisor._external_board_legacy_cleanup_lease_status
+
+    protected_metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=supervisor.config.repo_root,
+        owner_script="",
+        extra={
+            "operation": "merge_branch_to_main",
+            "protected_recovery_required": True,
+        },
+    )
+    if replacement_mode == "same_inode_metadata":
+        protected_metadata = {
+            **external_metadata,
+            "protected_recovery_required": True,
+        }
+
+    def classify_then_replace(metadata, *, now_ts):
+        result = classify_external(metadata, now_ts=now_ts)
+        assert result["external_board"] is True
+        if replacement_mode == "atomic":
+            replacement_path = lock_path.with_name(f".{lock_path.name}.protected")
+            replacement_path.write_text(
+                json.dumps(protected_metadata),
+                encoding="utf-8",
+            )
+            os.replace(replacement_path, lock_path)
+        else:
+            lock_path.write_text(json.dumps(protected_metadata), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        supervisor,
+        "_external_board_legacy_cleanup_lease_status",
+        classify_then_replace,
+    )
+
+    guard = supervisor._idle_database_child_recycle_guard(
+        state=PortalTaskState(),
+        child=SimpleNamespace(pid=os.getpid()),
+        readiness=_ready_observation(),
+        heartbeat={"stale": True, "reason": "heartbeat_stale"},
+    )
+
+    assert guard["safe"] is False
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == protected_metadata
+    assert "legacy_checkout_mutation_transaction_active" in guard["blockers"]
+    external = guard["external_legacy_cleanup_lease"]
+    assert external["external_board"] is False
+    assert external["classified_external_board"] is True
+    assert external["reason"] == "external_board_legacy_cleanup_lease_changed"
+    assert external["lease_revalidation"]["reason"] == "checkout_lease_revalidation_replaced"
+
+
+def test_database_watchdog_same_board_legacy_cleanup_without_receipt_blocks(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        write_receipt=False,
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    "variant",
+    (
+        "ambiguous",
+        "forged",
+        "missing_receipt",
+        "running_receipt",
+        "active_cleanup",
+        "malformed_workers",
+        "symlink",
+        "unverifiable",
+    ),
+)
+def test_database_watchdog_unproved_external_legacy_cleanup_remains_blocking(
+    tmp_path,
+    monkeypatch,
+    variant,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    lock_path, metadata, status_path = _write_external_board_legacy_cleanup_lease(
+        supervisor,
+        write_receipt=variant != "missing_receipt",
+        receipt_status="running" if variant == "running_receipt" else "completed",
+    )
+    if variant == "ambiguous":
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["task_prefix"] = "## SAWM-"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+    elif variant == "forged":
+        metadata["repository_id"] = "repository:forged"
+        lock_path.write_text(json.dumps(metadata), encoding="utf-8")
+    elif variant == "active_cleanup":
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status.update(
+            {
+                "status": "agentic_maintenance_started",
+                "last_agentic_maintenance_phase": "worktree_cleanup",
+            }
+        )
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+    elif variant == "malformed_workers":
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["active_worker_pids"] = 17
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+    elif variant == "symlink":
+        target = lock_path.parent / "external-cleanup-target.json"
+        target.write_bytes(lock_path.read_bytes())
+        lock_path.unlink()
+        lock_path.symlink_to(target)
+    elif variant == "unverifiable":
+        lock_path.write_text("{not-json", encoding="utf-8")
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.is_symlink() or lock_path.exists()
+
+
+def test_external_cleanup_evidence_requires_exact_json_integer_authority_fields(
+    tmp_path,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    lock_path, metadata, status_path = _write_external_board_legacy_cleanup_lease(supervisor)
+    state_path = Path(str(metadata["state_path"]))
+    receipt_path = status_path.with_name("apmc_lane_1_supervisor_maintenance_receipt.json")
+    now_ts = time.time()
+
+    baseline = supervisor._external_board_legacy_cleanup_lease_status(
+        metadata,
+        now_ts=now_ts,
+    )
+    assert baseline["external_board"] is True
+
+    malformed_numbers = (0.9, "0", True, -1)
+    for field_name in ("attempt", "pid"):
+        for malformed in malformed_numbers:
+            candidate = dict(metadata)
+            candidate[field_name] = malformed
+            result = supervisor._external_board_legacy_cleanup_lease_status(
+                candidate,
+                now_ts=now_ts,
+            )
+            assert result["external_board"] is False, (field_name, malformed)
+
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    for field_name in (
+        "supervisor_pid",
+        "active_worker_count",
+        "worker_descendant_count",
+    ):
+        for malformed in malformed_numbers:
+            candidate = dict(status)
+            candidate[field_name] = malformed
+            status_path.write_text(json.dumps(candidate), encoding="utf-8")
+            result = supervisor._external_board_legacy_cleanup_lease_status(
+                metadata,
+                now_ts=now_ts,
+            )
+            assert result["external_board"] is False, (field_name, malformed)
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    task_state = json.loads(state_path.read_text(encoding="utf-8"))
+    for malformed in (False, 0, None, []):
+        candidate = dict(task_state)
+        candidate["active_task_id"] = malformed
+        state_path.write_text(json.dumps(candidate), encoding="utf-8")
+        result = supervisor._external_board_legacy_cleanup_lease_status(
+            metadata,
+            now_ts=now_ts,
+        )
+        assert result["external_board"] is False, ("active_task_id", malformed)
+    state_path.write_text(json.dumps(task_state), encoding="utf-8")
+
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    for malformed in malformed_numbers:
+        candidate = dict(receipt)
+        candidate["supervisor_pid"] = malformed
+        receipt_path.write_text(json.dumps(candidate), encoding="utf-8")
+        result = supervisor._external_board_legacy_cleanup_lease_status(
+            metadata,
+            now_ts=now_ts,
+        )
+        assert result["external_board"] is False, ("receipt_pid", malformed)
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    assert lock_path.exists()
+
+
+def test_live_cleanup_successor_requires_exact_json_integer_authority_fields(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    lock_path = _write_expired_legacy_cleanup_lease(supervisor)
+    metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+    state_path = Path(str(metadata["state_path"]))
+    status_path = state_path.with_name("legacy_lane_supervisor_status.json")
+    receipt_path = state_path.with_name("legacy_lane_supervisor_maintenance_receipt.json")
+    now_ts = time.time()
+
+    baseline = supervisor._expired_legacy_taskless_cleanup_lease_status(
+        metadata,
+        now_ts=now_ts,
+    )
+    assert baseline["eligible"] is True
+
+    malformed_numbers = (0.9, "0", True, -1)
+    for field_name in ("attempt", "pid"):
+        for malformed in malformed_numbers:
+            candidate = dict(metadata)
+            candidate[field_name] = malformed
+            result = supervisor._expired_legacy_taskless_cleanup_lease_status(
+                candidate,
+                now_ts=now_ts,
+            )
+            assert result["eligible"] is False, (field_name, malformed)
+
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    for field_name in (
+        "supervisor_pid",
+        "active_worker_count",
+        "worker_descendant_count",
+    ):
+        for malformed in malformed_numbers:
+            candidate = dict(status)
+            candidate[field_name] = malformed
+            status_path.write_text(json.dumps(candidate), encoding="utf-8")
+            result = supervisor._expired_legacy_taskless_cleanup_lease_status(
+                metadata,
+                now_ts=now_ts,
+            )
+            assert result["eligible"] is False, (field_name, malformed)
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    task_state = json.loads(state_path.read_text(encoding="utf-8"))
+    for malformed in (False, 0, None, []):
+        candidate = dict(task_state)
+        candidate["active_task_id"] = malformed
+        state_path.write_text(json.dumps(candidate), encoding="utf-8")
+        result = supervisor._expired_legacy_taskless_cleanup_lease_status(
+            metadata,
+            now_ts=now_ts,
+        )
+        assert result["eligible"] is False, ("active_task_id", malformed)
+    state_path.write_text(json.dumps(task_state), encoding="utf-8")
+
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    for malformed in malformed_numbers:
+        candidate = dict(receipt)
+        candidate["supervisor_pid"] = malformed
+        receipt_path.write_text(json.dumps(candidate), encoding="utf-8")
+        result = supervisor._expired_legacy_taskless_cleanup_lease_status(
+            metadata,
+            now_ts=now_ts,
+        )
+        assert result["eligible"] is False, ("receipt_pid", malformed)
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def test_cleanup_reclaim_replacement_requires_exact_json_integer_authority_fields(
+    tmp_path,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    metadata = supervisor._legacy_cleanup_reclaim_metadata(
+        reclaimed_from_lease_id="lease:expired-cleanup"
+    )
+
+    baseline = supervisor._legacy_cleanup_reclaim_replacement_status(metadata)
+    assert baseline["resumable"] is True
+
+    for field_name in ("attempt", "pid"):
+        for malformed in (0.9, "0", True, -1):
+            candidate = dict(metadata)
+            candidate[field_name] = malformed
+            result = supervisor._legacy_cleanup_reclaim_replacement_status(candidate)
+            assert result["resumable"] is False, (field_name, malformed)
+
+
+def test_database_watchdog_cas_reclaims_only_expired_legacy_taskless_cleanup(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = _write_expired_legacy_cleanup_lease(supervisor)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == DATABASE_IDLE_DAEMON_STALL_REASON
+    recovery = decision.detail["legacy_taskless_cleanup_lease_recovery"]
+    assert recovery["attempted"] is True
+    assert recovery["reclaimed"] is True
+    assert recovery["replacement_released"] is True
+    assert not lock_path.exists()
+
+
+def test_database_watchdog_retries_reclaim_replacement_after_release_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    lock_path = _write_expired_legacy_cleanup_lease(supervisor)
+    real_release = implementation_supervisor_module.release_checkout_mutation_lease
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "release_checkout_mutation_lease",
+        lambda _lease: False,
+    )
+
+    first = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert first.action == "continue"
+    replacement = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert replacement["operation"] == (
+        implementation_supervisor_module.LEGACY_TASKLESS_CLEANUP_RECLAIM_OPERATION
+    )
+    assert replacement["reclaim_schema"] == (
+        implementation_supervisor_module.LEGACY_TASKLESS_CLEANUP_RECLAIM_SCHEMA
+    )
+    assert replacement["reclaimed_from_lease_id"]
+    assert replacement["reclaimer_process_birth"] == current_process_birth().to_dict()
+
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "release_checkout_mutation_lease",
+        real_release,
+    )
+    second = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert second.action == "recycle"
+    assert (
+        second.detail["legacy_taskless_cleanup_lease_recovery"]["reason"]
+        == "legacy_cleanup_reclaim_replacement_released"
+    )
+    assert not lock_path.exists()
+
+
+def test_database_watchdog_live_cleanup_owner_must_reach_post_cleanup_phase(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        owner_phase="worktree_reconciliation_replay",
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+def test_database_watchdog_reclaims_exact_cleanup_from_inactive_owner(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: False,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        owner_phase="worktree_reconciliation_replay",
+        write_receipt=False,
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert not lock_path.exists()
+
+
+def test_database_watchdog_accepts_reparented_stable_maintenance_birth(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _configure_ready_stale_idle_watchdog(supervisor, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    reparented_birth = current_process_birth().to_dict()
+    reparented_birth["parent_pid"] += 1
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        receipt_overrides={"process_birth": reparented_birth},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert not lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    "variant",
+    (
+        "missing",
+        "forged",
+        "binding",
+        "stale",
+        "pid",
+        "birth",
+        "incomplete",
+        "malformed_workers",
+    ),
+)
+def test_database_watchdog_rejects_invalid_live_owner_maintenance_receipt(
+    tmp_path,
+    monkeypatch,
+    variant,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    write_receipt = variant != "missing"
+    receipt_overrides: dict[str, object] = {}
+    if variant == "forged":
+        receipt_overrides["schema"] = "forged/maintenance-receipt@1"
+    elif variant == "binding":
+        receipt_overrides["state_path"] = str(
+            (supervisor.config.repo_root / "forged-state.json").resolve()
+        )
+    elif variant == "stale":
+        stale_at = datetime.now(UTC) - timedelta(hours=2)
+        receipt_overrides.update(
+            {
+                "maintenance_started_at": (stale_at - timedelta(minutes=5)).isoformat(),
+                "updated_at": stale_at.isoformat(),
+                "completed_at": stale_at.isoformat(),
+            }
+        )
+    elif variant == "pid":
+        receipt_overrides["supervisor_pid"] = os.getpid() + 100_000
+    elif variant == "birth":
+        forged_birth = current_process_birth().to_dict()
+        forged_birth["start_time_ticks"] += 1
+        receipt_overrides["process_birth"] = forged_birth
+    elif variant == "incomplete":
+        receipt_overrides.update({"status": "running", "completed_at": ""})
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        write_receipt=write_receipt,
+        receipt_overrides=receipt_overrides,
+    )
+    if variant == "malformed_workers":
+        status_path = (
+            supervisor.config.repo_root
+            / "legacy-owner-state"
+            / "legacy_lane_supervisor_status.json"
+        )
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["active_worker_pids"] = 17
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("operation", "task_id", "extra"),
+    [
+        ("cleanup_backlogged_worktrees", "SAWM-005", {}),
+        ("merge_branch_to_main", "", {}),
+        (
+            "cleanup_backlogged_worktrees",
+            "",
+            {"protected_recovery_required": True},
+        ),
+    ],
+)
+def test_database_watchdog_never_expires_task_merge_or_protected_lease(
+    tmp_path,
+    monkeypatch,
+    operation,
+    task_id,
+    extra,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = _write_expired_legacy_cleanup_lease(
+        supervisor,
+        operation=operation,
+        task_id=task_id,
+        extra=extra,
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+def test_database_watchdog_preserves_cleanup_lease_for_canonical_active_task(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    active = _ready_observation()
+    active["active_task_ids"] = ["SAWM-005"]
+    active["same_shard_active_task_ids"] = ["SAWM-005"]
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: active,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = _write_expired_legacy_cleanup_lease(supervisor)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+def test_database_watchdog_preserves_cleanup_lease_for_child_descendant(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        _ready_observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_pass_heartbeat_status",
+        lambda _child, now_ts: {"stale": True, "reason": "heartbeat_stale"},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_checkout_lock_owner_is_active",
+        lambda _metadata: True,
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [SimpleNamespace(pid=982451653)],
+    )
+    lock_path = _write_expired_legacy_cleanup_lease(supervisor)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("lane_index", "observation"),
+    [
+        (0, _ready_observation(same_shard=False)),
+        (
+            2,
+            {
+                "available": True,
+                "reason": "authoritative_readiness_observed",
+                "task_source_revision": 43,
+                "ready_task_ids": [],
+                "same_shard_ready_task_ids": [],
+                "active_task_ids": [],
+                "same_shard_active_task_ids": [],
+            },
+        ),
+    ],
+)
+def test_database_watchdog_suppresses_nonessential_lane_maintenance(
+    tmp_path,
+    monkeypatch,
+    lane_index,
+    observation,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=lane_index)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: observation,
+    )
+    maintenance_calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: maintenance_calls.append(True),
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        None,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+
+
+def test_readiness_reuses_a_bounded_read_client_for_actual_task_rows(
+    tmp_path, monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    supervisor = _supervisor(tmp_path, lane_index=0)
+    store = supervisor.config.repo_root / "readiness.duckdb"
+    with database_task_source_module.DatabaseTaskSource(store) as source:
+        source.intent.upsert_goal(goal_cid="goal:test", goal_alias="TEST", title="Test")
+        for index in range(12):
+            source.intent.upsert_task(
+                task_cid=f"task:{index}", task_alias=f"SAWM-{index:03d}",
+                goal_cid="goal:test", status="ready",
+            )
+    supervisor.config = replace(supervisor.config, database_program=SimpleNamespace(
+        authority_mode="embedded", task_source_kind="duckdb", store_id=str(store),
+    ))
+    opened = []
+    real_open = intent_repository.open_duckdb_connection
+
+    def counted_open(*args, **kwargs):
+        connection = real_open(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(intent_repository, "open_duckdb_connection", counted_open)
+    result = supervisor._authoritative_runnable_work_status()
+    assert result["available"] is True
+    assert len(result["ready_task_ids"]) == 12
+    assert len(opened) == 1
+
+
+def test_authoritative_database_readiness_filters_manual_and_home_shard(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    # Production scheduler configs carry the Markdown heading prefix while
+    # canonical database aliases omit the heading marker.  The watchdog must
+    # use the same normalization as DatabaseImplementationDaemon or it cannot
+    # observe ready work and recycle a stalled idle lane.
+    supervisor = _supervisor(
+        tmp_path,
+        lane_index=3,
+        task_prefix="## SAWM-",
+    )
+
+    def task_id_for_lane(lane_index: int) -> str:
+        for ordinal in range(1, 500):
+            task_id = f"SAWM-{ordinal:03d}"
+            digest = hashlib.sha256(task_id.encode("utf-8")).hexdigest()
+            if int(digest[:8], 16) % 4 == lane_index:
+                return task_id
+        raise AssertionError("could not construct deterministic shard fixture")
+
+    home_id = task_id_for_lane(3)
+    other_id = task_id_for_lane(0)
+    tasks = (
+        SimpleNamespace(task_alias=home_id, task_cid=f"task:{home_id}", body={}),
+        SimpleNamespace(task_alias=other_id, task_cid=f"task:{other_id}", body={}),
+        SimpleNamespace(
+            task_alias="SAWM-999",
+            task_cid="task:SAWM-999",
+            body={"completion": "manual"},
+        ),
+    )
+    observed: dict[str, object] = {}
+
+    class FakeDatabaseTaskSource:
+        def __init__(self, target, **kwargs):
+            observed["target"] = target
+            observed.update(kwargs)
+            self.intent = SimpleNamespace(read_session=nullcontext)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return None
+
+        def ready_tasks(self, *, limit):
+            observed["ready_limit"] = limit
+            return SimpleNamespace(tasks=tasks, revision=51, next_cursor="")
+
+        def list_tasks(self, *, status, limit):
+            observed.setdefault("list_statuses", []).append(status)
+            observed["active_status"] = status
+            observed["active_limit"] = limit
+            return SimpleNamespace(tasks=(), revision=52, next_cursor="")
+
+    monkeypatch.setattr(
+        database_task_source_module,
+        "DatabaseTaskSource",
+        FakeDatabaseTaskSource,
+    )
+
+    result = supervisor._authoritative_runnable_work_status()
+
+    assert result["available"] is True
+    assert result["task_source_revision"] == 52
+    assert result["ready_task_ids"] == [home_id, other_id]
+    assert result["same_shard_ready_task_ids"] == [home_id]
+    assert observed["target"] == "quack:127.0.0.1:24068"
+    assert observed["install_schema"] is False
+    assert observed["list_statuses"] == [
+        ("claimed", "in_progress", "running"),
+    ]

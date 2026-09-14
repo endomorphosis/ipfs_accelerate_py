@@ -1554,8 +1554,6 @@ class DoctorWorktreeAdapter:
             "-c",
             "core.fsync=committed",
             "-c",
-            "core.fileMode=false",
-            "-c",
             "gc.auto=0",
             "-c",
             "gc.autoDetach=false",
@@ -1576,6 +1574,7 @@ class DoctorWorktreeAdapter:
             cwd="/",
             timeout=120,
             close_fds=True,
+            start_new_session=True,
             check=False,
         )
         if check and result.returncode:

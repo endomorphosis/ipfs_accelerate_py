@@ -1,0 +1,2439 @@
+# Semantic-Addressed Neuro-Symbolic Program World Model task board
+
+Executable configured-board source for plan revision `SAWM-PLAN-R2`, namespace
+`semantic-addressed-world-model-v1`, task prefix `SAWM-`, goal prefix `SAWM-G`, and root goal
+`SAWM-G000`. The current DuckDB + Quack task/event authority is canonical;
+DuckLake is a non-authoritative history/query projection. Markdown status is
+never task completion evidence.
+
+SAWM-000 is the trusted-manual, operator-only control bootstrap requested by
+the operator. SAWM-001 through SAWM-044 are automatic supervisor tasks. Every
+automatic task runs in an exact-source isolated fenced worktree, settles
+through current lease/fence/resource/validation/proof/merge/event authorities,
+and may not accept its own output.
+
+## Operator-protected path set
+
+`SAWM-CONTROL-PATHS` expands exactly to:
+
+- `.gitignore`
+- `docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md`
+- `docs/architecture/semantic_addressed_world_model.objectives.md`
+- `docs/architecture/semantic_addressed_world_model.todo.md`
+- `docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/overlap_gap_matrix.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/identity_inventory.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/interface_inventory.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json`
+- `docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json`
+- `config/semantic_addressed_world_model_dependencies.seal.json`
+- `config/agent_supervisor_semantic_addressed_world_model_scheduler.json`
+- `scripts/validate_semantic_addressed_world_model_dependencies.py`
+- `scripts/validate_semantic_addressed_world_model_board.py`
+- `scripts/materialize_semantic_addressed_world_model_program.py`
+- `scripts/ops/agent_supervisor/semantic_addressed_world_model.py`
+- `test/api/semantic_world/test_semantic_addressed_world_model_board.py`
+- `benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json`
+
+Only SAWM-000 owns those files. All other task cards refer to that exact set by
+name and treat it as read-only. Benchmark outputs outside
+`benchmark_freeze.json` are implementation-owned only by their named cards.
+
+## Global execution invariants
+
+- Datasets owns canonical semantic/formal meaning; kit owns verified immutable
+  persistence, advisory retrieval, histories and root CAS; accelerate owns
+  operational planning, context, routing, isolated execution and final
+  operational acceptance.
+- Extend landed authorities. Do not create another agent framework, task
+  authority, queue, merge system, context compiler, model router, proof system,
+  event plane, database control plane, semantic index, storage engine or MCP
+  server.
+- Exact identity, model-pinned projection, scoped relation, and authority
+  admission remain distinct. Neural retrieval proposes; exact resolution
+  identifies; symbolic analysis constrains; proof/observation validates;
+  current policy/authority admits; the supervisor decides and records.
+- Every dependency/result selector is rebound during materialization to exact
+  current source/tree/environment/policy/task-revision/CID evidence. An
+  unresolved or stale selector is unschedulable.
+- No learned task promotes without admitted corpus, checkpoint lineage,
+  calibration, held-out/adversarial results and independent admission.
+  `training_unavailable`, unavailable checkpoint/index/hardware/provider and
+  OOD abstention are valid typed outcomes, never simulated capability.
+- Cold package import and CLI discovery perform no network, install,
+  subprocess, socket, database open, repository scan, model load, watcher or
+  environment mutation.
+- Required-mode completion needs independently verified pre/post roots,
+  generation CAS, context/reuse/transition and proof/test/validation receipts.
+  Workers, procedures, models and predictions never approve themselves.
+
+## Dependency waves
+
+```text
+W0   SAWM-000
+W1   SAWM-001
+W2   SAWM-002 | SAWM-003 | SAWM-004
+W3   SAWM-005 | SAWM-007 | SAWM-011 | SAWM-015
+W4   SAWM-006 | SAWM-008 | SAWM-010 | SAWM-012
+W5   SAWM-009 | SAWM-013 | SAWM-017
+W6   SAWM-014 | SAWM-016 | SAWM-018 | SAWM-023
+W7   SAWM-019 | SAWM-020 | SAWM-024
+W8   SAWM-021 | SAWM-022 | SAWM-025
+W9   SAWM-026 | SAWM-027 | SAWM-028 | SAWM-029
+W10  SAWM-030
+W11  SAWM-031 | SAWM-032 | SAWM-033
+W12  SAWM-034
+W13  SAWM-035
+W14  SAWM-036
+W15  SAWM-037
+W16  SAWM-038 | SAWM-039
+W17  SAWM-040
+W18  SAWM-041
+W19  SAWM-042
+W20  SAWM-043
+W21  SAWM-044
+```
+
+## Task records
+
+## SAWM-000 Freeze the R2 program, baseline, seals, and scheduler
+
+- Stable task ID: SAWM-000
+- Status: completed
+- Completion: trusted_manual
+- Completion mode: trusted_manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: control
+- Depends on:
+- Dependencies JSON: []
+- Goal id: SAWM-G011
+- Parent goal ID: SAWM-G010
+- Subgoal ID: SAWM-G011
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: current authoritative accelerator checkout plus exact datasets/kit gitlinks or package copies; every dirty/untracked manifest; prior SAWM artifacts across trees/worktrees/state/DuckDB projections; current DuckDB + Quack schema/capability and DuckLake projection capability; exact Python/dependency/provider probes
+- Outputs: .gitignore, docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md, docs/architecture/semantic_addressed_world_model.objectives.md, docs/architecture/semantic_addressed_world_model.todo.md, docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json, docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/overlap_gap_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/identity_inventory.json, docs/architecture/semantic_addressed_world_model_inventory/interface_inventory.json, docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json, docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json, config/semantic_addressed_world_model_dependencies.seal.json, config/agent_supervisor_semantic_addressed_world_model_scheduler.json, scripts/validate_semantic_addressed_world_model_dependencies.py, scripts/validate_semantic_addressed_world_model_board.py, scripts/materialize_semantic_addressed_world_model_program.py, scripts/ops/agent_supervisor/semantic_addressed_world_model.py, test/api/semantic_world/test_semantic_addressed_world_model_board.py, benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json
+- Outputs JSON: [".gitignore","docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md","docs/architecture/semantic_addressed_world_model.objectives.md","docs/architecture/semantic_addressed_world_model.todo.md","docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json","docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/overlap_gap_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/identity_inventory.json","docs/architecture/semantic_addressed_world_model_inventory/interface_inventory.json","docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json","docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json","config/semantic_addressed_world_model_dependencies.seal.json","config/agent_supervisor_semantic_addressed_world_model_scheduler.json","scripts/validate_semantic_addressed_world_model_dependencies.py","scripts/validate_semantic_addressed_world_model_board.py","scripts/materialize_semantic_addressed_world_model_program.py","scripts/ops/agent_supervisor/semantic_addressed_world_model.py","test/api/semantic_world/test_semantic_addressed_world_model_board.py","benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json"]
+- Predicted files: .gitignore, docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md, docs/architecture/semantic_addressed_world_model.objectives.md, docs/architecture/semantic_addressed_world_model.todo.md, docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json, docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/overlap_gap_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/identity_inventory.json, docs/architecture/semantic_addressed_world_model_inventory/interface_inventory.json, docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json, docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json, docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json, config/semantic_addressed_world_model_dependencies.seal.json, config/agent_supervisor_semantic_addressed_world_model_scheduler.json, scripts/validate_semantic_addressed_world_model_dependencies.py, scripts/validate_semantic_addressed_world_model_board.py, scripts/materialize_semantic_addressed_world_model_program.py, scripts/ops/agent_supervisor/semantic_addressed_world_model.py, test/api/semantic_world/test_semantic_addressed_world_model_board.py, benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json
+- Predicted files JSON: [".gitignore","docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md","docs/architecture/semantic_addressed_world_model.objectives.md","docs/architecture/semantic_addressed_world_model.todo.md","docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json","docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/overlap_gap_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/identity_inventory.json","docs/architecture/semantic_addressed_world_model_inventory/interface_inventory.json","docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json","docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json","docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json","config/semantic_addressed_world_model_dependencies.seal.json","config/agent_supervisor_semantic_addressed_world_model_scheduler.json","scripts/validate_semantic_addressed_world_model_dependencies.py","scripts/validate_semantic_addressed_world_model_board.py","scripts/materialize_semantic_addressed_world_model_program.py","scripts/ops/agent_supervisor/semantic_addressed_world_model.py","test/api/semantic_world/test_semantic_addressed_world_model_board.py","benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json"]
+- Predicted symbols: SAWMProgramSeal@1; SAWMBoardMaterialization@1; configured-board scheduler profile (operator controls, not worker-owned symbols)
+- Public interfaces: SAWMProgramSeal@1, SAWMDependencySeal@1, SAWMBoardMaterialization@1
+- Interfaces: SAWMProgramSeal@1, SAWMDependencySeal@1, SAWMBoardMaterialization@1
+- Preconditions: Operator has inventoried current source without resetting, cleaning, fetching, installing, or discarding user state; prior accepted SAWM history is preserved.
+- Declared effects: Create/reconcile R2 architecture, goal graph, executable board, inventory controls, dependency/source seal, validators, materializer, scheduler profile, protected-path and benchmark freezes; materialize the program and bind the current scheduler authority.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_dependencies.py && PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_board.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_dependencies.py","PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_board.py"]
+- Evidence requirements: exact repository roots/origins/branches/HEADs/tree OIDs/gitlinks/package versions/dirty manifests; prior-SAWM migration/supersession receipt when applicable; dependency seal; board validation; acyclic graph; materialized task/goal counts; current source/environment/provider capability; preflight and dry-run receipts
+- Acceptance: The operator-owned R2 controls are immutable, dependency and board validators pass, the current authoritative task store contains the exact program without rewriting accepted history, scheduler dry-run is fail-closed, and Markdown alone grants no completion.
+- Conflict policy: Exclusive operator control owner for every SAWM-CONTROL-PATHS entry; no implementation worker may edit, rebind, weaken, supersede, or claim these paths.
+- Context budget tokens: 0
+- No-model route: Mandatory: repository/task-store inspection, deterministic serialization, structural validation, exact hashing, and current scheduler probes only.
+- Model fallback: Forbidden for completion or authority; an implementation provider may not author, validate, accept, or revise this operator seal.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Completed is the trusted-manual bootstrap state requested by the operator; the separately materialized control-plane receipt, not this Markdown status, is authoritative.
+- Bundle: semantic-addressed-world-model/control
+- Parallel lane: control
+- Resource class: coordinator
+- Implementation stage: W0
+- Implementation timeout seconds: 3600
+- Provider role: operator-only
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local read-only repository/task-store probes, operator-owned control edits, local DuckDB/Quack materialization, preflight, dry-run and bounded launch; no remote source adoption or production mutation
+- Prohibited effects: no ordinary feature implementation; no implementation-task completion; no accepted-history rewrite; no fabricated clean state/CID/proof/receipt/benchmark/provider result; no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-001 Build the current authority and overlap matrix
+
+- Stable task ID: SAWM-001
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authority-inventory
+- Depends on: SAWM-000
+- Dependencies JSON: ["SAWM-000"]
+- Goal id: SAWM-G011
+- Parent goal ID: SAWM-G010
+- Subgoal ID: SAWM-G011
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: docs/architecture/semantic_addressed_world_model_evidence/SAWM-001-authority-overlap-receipt.json, test/api/semantic_world/test_authority_overlap_runtime.py
+- Outputs JSON: ["docs/architecture/semantic_addressed_world_model_evidence/SAWM-001-authority-overlap-receipt.json","test/api/semantic_world/test_authority_overlap_runtime.py"]
+- Predicted files: docs/architecture/semantic_addressed_world_model_evidence/SAWM-001-authority-overlap-receipt.json, test/api/semantic_world/test_authority_overlap_runtime.py
+- Predicted files JSON: ["docs/architecture/semantic_addressed_world_model_evidence/SAWM-001-authority-overlap-receipt.json","test/api/semantic_world/test_authority_overlap_runtime.py"]
+- Predicted symbols: build_current_sawm_authority_receipt; verify_current_sawm_authority_receipt
+- Public interfaces: SemanticWorldAuthorityOverlapReceipt@1
+- Interfaces: SemanticWorldAuthorityOverlapReceipt@1
+- Preconditions: SAWM-000 seals and protected inventory controls validate; materializer supplies exact current repository and environment bindings.
+- Declared effects: Re-inspect datasets, kit, accelerator, gitlinks, installed copies, task/event stores, schemas, tests and release evidence; emit an execution-time receipt mapping every requested capability to one owner and one gap status.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_authority_overlap_runtime.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_authority_overlap_runtime.py"]
+- Evidence requirements: machine-readable classifications from the closed vocabulary; exact source/test/schema/environment/public-path references; duplicate/stale/historical copy findings; authority-boundary and dependency-direction checks
+- Acceptance: Every desired capability has current-tree evidence or a typed verified gap; no title/class/plan/fixture/report is counted as implementation evidence; DuckDB + Quack authority and non-authoritative DuckLake projections remain explicit.
+- Conflict policy: Read-only inventory of landed authorities; SAWM-000 owns the protected baseline/matrices, while this task alone owns the execution-time reconciliation receipt.
+- Context budget tokens: 16000
+- No-model route: Use rg/Git/package metadata/import-safe AST/schema/test discovery and deterministic matrix validation.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: The receipt describes the exact bound run only and becomes stale on any source, dependency, environment, schema, authority, or policy change.
+- Bundle: semantic-addressed-world-model/authority-inventory
+- Parallel lane: inventory
+- Resource class: cpu-medium
+- Implementation stage: W1
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: low
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-002 Define semantic identity and canonicalization profiles
+
+- Stable task ID: SAWM-002
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-identity
+- Depends on: SAWM-001
+- Dependencies JSON: ["SAWM-001"]
+- Goal id: SAWM-G013
+- Parent goal ID: SAWM-G010
+- Subgoal ID: SAWM-G013
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_identity.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-identity.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_identity.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-identity.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_identity.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-identity.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_identity.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-identity.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py"]
+- Predicted symbols: SemanticObjectEnvelope; CanonicalProgramGraphIdentity; RawExecutionStateIdentity; AbstractExecutionStateIdentity; ProjectionIdentity; SemanticWorldRootIdentity
+- Public interfaces: SemanticObjectEnvelope@1, ProgramWorldCanonicalizationProfile@1, ProjectionIdentity@1
+- Interfaces: SemanticObjectEnvelope@1, ProgramWorldCanonicalizationProfile@1, ProjectionIdentity@1
+- Preconditions: SAWM-001 locates the landed ir_core/content/semantic-state identity authority and verifies adjacent-version extension policy.
+- Declared effects: Add closed deterministic canonicalization profiles for semantic objects, graphs, states, events, traces, projections, relations, transitions and roots without changing landed @1 payloads.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_identity.py"]
+- Evidence requirements: golden canonical bytes/CIDs; duplicate/unknown-field and nonfinite rejection; round-trip/version vectors; model/tokenizer/preprocessor change vectors; timestamp exclusion; raw/abstract distinction
+- Acceptance: Exact bytes determine CIDs; model-dependent projection data never changes semantic-object identity; projection changes change projection identity; irrelevant observations do not perturb semantic identity; existing @1 vectors remain byte-identical.
+- Conflict policy: Datasets is sole semantic identity owner; this task owns only its new versioned files and must extend ir_core/content rather than create a second CID or envelope implementation.
+- Context budget tokens: 24000
+- No-model route: Derive schemas and codecs from landed ir_core/content profiles; generate deterministic vectors and property tests.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Profiles cover only explicitly declared canonical dimensions; unknown codecs, floats, arbitrary objects and unsupported languages fail closed.
+- Bundle: semantic-addressed-world-model/datasets-identity
+- Parallel lane: datasets-contracts-a
+- Resource class: cpu-medium
+- Implementation stage: W2
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-003 Define scoped relation and equivalence claims
+
+- Stable task ID: SAWM-003
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-relations
+- Depends on: SAWM-001
+- Dependencies JSON: ["SAWM-001"]
+- Goal id: SAWM-G013
+- Parent goal ID: SAWM-G010
+- Subgoal ID: SAWM-G013
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_relations.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-relation.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_relations.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-relation.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_relations.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-relation.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_relations.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-relation.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py"]
+- Predicted symbols: ProgramRelationClaim; RelationAuthorityStatus; RelationScope; RelationInvalidation
+- Public interfaces: ScopedProgramRelation@1, RelationValidationReceipt@1
+- Interfaces: ScopedProgramRelation@1, RelationValidationReceipt@1
+- Preconditions: SAWM-001 locates current relation/status/freshness contracts; SAWM-002 need not be accepted because this task writes a disjoint schema, but integration waits for both.
+- Declared effects: Define candidate/asserted/validated/proved/refuted/unknown/stale/superseded scoped relation records with assumptions, theory/policy, environment, evidence, invalidators and authority state.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_relations.py"]
+- Evidence requirements: closed-enum tests; canonical identity vectors; contradiction/refutation/staleness/supersession cases; similarity exclusion; scope/assumption/environment invalidation tests
+- Acceptance: Exact equality, refinement, entailment, contradiction, compatibility and equivalence families remain scoped; neural similarity is never an authoritative relation; contradictions cause conflict/abstention rather than ex falso admission.
+- Conflict policy: Datasets owns semantic relation meaning; no accelerator/kit admission or ANN score is encoded as semantic truth.
+- Context budget tokens: 24000
+- No-model route: Adapt landed claim/evidence/freshness records and prove closed-schema invariants.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: A relation claim is not authorization or safe reuse; proof validity remains delegated to current proof authorities.
+- Bundle: semantic-addressed-world-model/datasets-relations
+- Parallel lane: datasets-contracts-b
+- Resource class: cpu-medium
+- Implementation stage: W2
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-004 Add domain adapters without changing domain identities
+
+- Stable task ID: SAWM-004
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-domain-adapters
+- Depends on: SAWM-001
+- Dependencies JSON: ["SAWM-001"]
+- Goal id: SAWM-G013
+- Parent goal ID: SAWM-G010
+- Subgoal ID: SAWM-G013
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_domain_adapters.py, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_domain_adapters.py","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_domain_adapters.py, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_domain_adapters.py","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py"]
+- Predicted symbols: RepositorySemanticStateAdapter; SemanticCapsuleAdapter; LegalIRAdapter; SecurityIRAdapter; IntentIRAdapter; ProofContextAdapter; DatasetStateAdapter; VFSNamespaceAdapter
+- Public interfaces: ProgramWorldDomainAdapter@1, DomainCapabilityUnavailable@1
+- Interfaces: ProgramWorldDomainAdapter@1, DomainCapabilityUnavailable@1
+- Preconditions: SAWM-001 establishes exact current domain APIs and marks unavailable domains; adapters consume their public identities.
+- Declared effects: Add narrow pure adapters for currently available repository state, capsules, legal/security/intent IR, proof contexts, dataset state and VFS namespace references; return typed unavailability elsewhere.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_domain_adapters.py"]
+- Evidence requirements: identity-preservation tests for each admitted domain; public-API import tests; typed-unavailability cases; no side-effect import tests; unsupported-domain matrix
+- Acceptance: No domain CID or @1 payload changes; adapters retain source authority, scope, freshness and limitations; absent domains are never simulated or reimplemented.
+- Conflict policy: This task is the datasets domain-adapter integration owner only; it may not own VFS storage, scheduling, model invocation, mutable indexes or operational transition acceptance.
+- Context budget tokens: 20000
+- No-model route: Use interface introspection and pure adapters over landed public types with deterministic conformance tests.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Only verified current domains are adapted; future domain support requires a versioned successor and fresh capability evidence.
+- Bundle: semantic-addressed-world-model/datasets-domain-adapters
+- Parallel lane: datasets-contracts-c
+- Resource class: cpu-medium
+- Implementation stage: W2
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: medium
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-005 Define static program-graph contracts
+
+- Stable task ID: SAWM-005
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-static-contracts
+- Depends on: SAWM-002, SAWM-003, SAWM-004
+- Dependencies JSON: ["SAWM-002","SAWM-003","SAWM-004"]
+- Goal id: SAWM-G021
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G021
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_graph.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-graph.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_graph.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-graph.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_graph.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-graph.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_graph.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-graph.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py"]
+- Predicted symbols: ProgramGraphNode; ProgramGraphEdge; ProgramGraphSnapshot; ProgramGraphDelta; ProgramGraphIndexManifest; CallsiteRecord; FunctionSymbolRecord; ContractStateRecord; ProofObligationGraph; StaticSuccessorSet; DynamicFrontierRecord
+- Public interfaces: ProgramGraphNode@1, ProgramGraphEdge@1, ProgramGraphSnapshot@1, ProgramGraphDelta@1
+- Interfaces: ProgramGraphNode@1, ProgramGraphEdge@1, ProgramGraphSnapshot@1, ProgramGraphDelta@1
+- Preconditions: Identity/relation/domain contracts validate; current ir_core, semantic index, program dependency graph and verification surfaces are inventoried.
+- Declared effects: Define versioned closed node/edge vocabularies, canonical ordered sets, immutable snapshots/deltas, callsite/symbol/contract/obligation records, static successors and unresolved dynamic frontier.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_graph.py"]
+- Evidence requirements: schema/golden CID vectors; node/edge closed-enum tests; mutual recursion/cyclic import cases; physical DAG acyclicity; logical-cycle representation; deterministic snapshot/delta tests
+- Acceptance: All required node/edge classes are represented; logical cycles use immutable records; unknown dynamic behavior stays explicit; unchanged subroots are preserved and corrupt references fail closed.
+- Conflict policy: Datasets alone defines graph meaning; no canonical HNSW/cyclic ANN graph, scheduler graph, or operational authority is introduced.
+- Context budget tokens: 32000
+- No-model route: Map landed graph/IR contracts, define adjacent versioned records, canonicalize sets, and run exhaustive schema vectors.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Initial semantics are language-neutral records; construction coverage is separately implemented and incomplete dimensions remain explicit.
+- Bundle: semantic-addressed-world-model/datasets-static-contracts
+- Parallel lane: datasets-static-contracts
+- Resource class: cpu-large
+- Implementation stage: W3
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-006 Implement deterministic static graph construction and invalidation
+
+- Stable task ID: SAWM-006
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-static-analysis
+- Depends on: SAWM-005
+- Dependencies JSON: ["SAWM-005"]
+- Goal id: SAWM-G021
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G021
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program_graph_builder.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program_graph_builder.py","ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program_graph_builder.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/program_graph_builder.py","ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py"]
+- Predicted symbols: ProgramGraphBuilder; ProgramGraphBuildReceipt; ProgramGraphInvalidationPlanner
+- Public interfaces: build_program_graph, compute_program_graph_delta, plan_program_graph_invalidation
+- Interfaces: build_program_graph, compute_program_graph_delta, plan_program_graph_invalidation
+- Preconditions: SAWM-005 contracts validate and exact current Python source/tree/environment bindings are available.
+- Declared effects: Construct AST, symbol, import, call, CFG, data-flow, exception, type/effect, contract, test and proof projections; compute exact deltas and dependency-aware invalidation.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_verification/test_program_graph_builder.py"]
+- Evidence requirements: controlled Python fixtures; deterministic repeated builds; dynamic/reflection unknown frontier; canonical edge ordering; incremental/full parity; changed/unchanged subroot cases; coverage receipt
+- Acceptance: Current-tree graphs are deterministic and conservative; unsupported/dynamic dimensions are marked incomplete; invalidation is precise without unsound omission; no scan occurs at import.
+- Conflict policy: Extend landed datasets software-verification/semantic-index graph meaning; do not duplicate accelerator planning graphs or mutate operational state.
+- Context budget tokens: 32000
+- No-model route: Use Python AST/symbol tables, landed analyzers, deterministic graph algorithms and differential full-vs-incremental tests.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Initial builder supports the admitted Python profile only; reflection/native extensions/external runtime behavior widen the frontier.
+- Bundle: semantic-addressed-world-model/datasets-static-analysis
+- Parallel lane: datasets-static-builder
+- Resource class: cpu-large
+- Implementation stage: W4
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-007 Define dynamic execution-state, event, and trace contracts
+
+- Stable task ID: SAWM-007
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-execution-contracts
+- Depends on: SAWM-002, SAWM-003, SAWM-004
+- Dependencies JSON: ["SAWM-002","SAWM-003","SAWM-004"]
+- Goal id: SAWM-G022
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G022
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_execution.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-execution.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_execution.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-execution.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_execution.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-execution.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_execution.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-execution.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py"]
+- Predicted symbols: StackFrameState; ProgramExecutionState; AbstractProgramState; ProgramEvent; ExecutionTrace; ExecutionTraceSegment; ExecutionObservation; StateAbstractionReceipt
+- Public interfaces: StackFrameState@1, ProgramExecutionState@1, ProgramEvent@1, ExecutionTrace@1
+- Interfaces: StackFrameState@1, ProgramExecutionState@1, ProgramEvent@1, ExecutionTrace@1
+- Preconditions: SAWM identity/relation/domain contracts validate; privacy/environment binding authorities are located.
+- Declared effects: Define bounded stack/state/event/trace/observation records, closed event grammar, exact tree/environment/source bindings, redaction profiles, trace-parent identity and explicit unavailable dimensions.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_execution.py"]
+- Evidence requirements: closed-event/schema vectors; ordered-stack tests; partial/incomplete state; redaction/secrets tests; raw/public separation; timestamp identity vectors; version round trips
+- Acceptance: Events bind exact code/environment; call-stack order and exception/handler state are preserved; redaction never claims full state; exception snapshots are not future execution; predicted/simulated events cannot decode as observations.
+- Conflict policy: Datasets owns execution semantics; no tracer execution, scheduler lifecycle, operational acceptance or storage engine is introduced.
+- Context budget tokens: 32000
+- No-model route: Derive closed contracts from landed semantic-state/IR evidence and property-test canonicalization/redaction invariants.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Contracts allow partial states and bounded abstract heaps; they do not promise raw-memory identity or unsupported-language tracing.
+- Bundle: semantic-addressed-world-model/datasets-execution-contracts
+- Parallel lane: datasets-execution-contracts
+- Resource class: cpu-large
+- Implementation stage: W3
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-008 Implement hermetic execution tracing
+
+- Stable task ID: SAWM-008
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-python-tracing
+- Depends on: SAWM-007
+- Dependencies JSON: ["SAWM-007"]
+- Goal id: SAWM-G022
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G022
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/python_execution_trace.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/python_execution_trace.py","ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/python_execution_trace.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/python_execution_trace.py","ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py"]
+- Predicted symbols: PythonExecutionTracer; TraceCollectionPolicy; TraceRedactor; TraceCancellation
+- Public interfaces: record_python_execution_trace, replay_deterministic_trace
+- Interfaces: record_python_execution_trace, replay_deterministic_trace
+- Preconditions: SAWM-007 contracts validate; exact Python runtime/environment/tree is bound; test network isolation policy is active.
+- Declared effects: Collect admitted call/return/line/exception/handler/yield/await/selected external events with bounded state summaries, exact symbol/callsite/source identity, cancellation and redaction.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_verification/test_python_execution_trace.py"]
+- Evidence requirements: hermetic call/exception/async fixtures; exact binding tests; payload bounds; secret redaction; test-only network denial; cancellation; deterministic promised replay; cold-import side-effect probe
+- Acceptance: No network, socket, installer, subprocess, database, repo scan, watcher or model loads at import; cancellation emits no accepted transition; private raw trace bodies never enter public records.
+- Conflict policy: Extend current supported tracing/verification mechanisms; do not add arbitrary shell tracing, persist operational acceptance or bypass current execution isolation.
+- Context budget tokens: 32000
+- No-model route: Use Python runtime tracing hooks, exact symbol resolution, bounded serializers and hermetic fixtures.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Python only; line/basic-block detail is policy/cost bounded; nondeterministic external effects remain explicit observations or unavailable.
+- Bundle: semantic-addressed-world-model/datasets-python-tracing
+- Parallel lane: datasets-python-tracing
+- Resource class: cpu-large
+- Implementation stage: W4
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-009 Implement abstraction profiles and abstract-state identity
+
+- Stable task ID: SAWM-009
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-abstraction
+- Depends on: SAWM-007, SAWM-008, SAWM-010
+- Dependencies JSON: ["SAWM-007","SAWM-008","SAWM-010"]
+- Goal id: SAWM-G023
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G023
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_abstraction.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-abstraction.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_abstraction.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-abstraction.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_abstraction.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-abstraction.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_abstraction.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-abstraction.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py"]
+- Predicted symbols: StateAbstractionProfile; ProgramStateAbstractor; StateAbstractionReceipt; AbstractionSoundnessResult
+- Public interfaces: StateAbstractionProfile@1, StateAbstractionReceipt@1, abstract_program_state
+- Interfaces: StateAbstractionProfile@1, StateAbstractionReceipt@1, abstract_program_state
+- Preconditions: Dynamic-state and transition contracts plus Python trace fixtures validate; each query family has an explicit transition slice.
+- Declared effects: Define and implement versioned next-call, next-event, inverse-trace and repair abstractions that normalize only declared irrelevant addresses/timestamps/IDs/paths/order/values/heap regions.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_abstraction.py"]
+- Evidence requirements: metamorphic irrelevant-variation cases; adversarial relevant-distinction cases; profile-identity changes; raw/abstract separation; unavailable-dimension propagation; unsound-profile rejection
+- Acceptance: Irrelevant variation canonicalizes while every tested transition-relevant distinction survives; profile changes alter abstract identity; no unproved heap/value omission admits reuse; uncertainty fails closed.
+- Conflict policy: Datasets owns abstraction meaning; accelerate may request but cannot redefine profiles or certify soundness; kit only stores results.
+- Context budget tokens: 40000
+- No-model route: Use dependency/transition slicing, declared normalization functions, metamorphic tests and counterexamples.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Soundness is scoped to admitted profiles, language/runtime/environment and explicit transition slices; unknown relevance widens rather than normalizes.
+- Bundle: semantic-addressed-world-model/datasets-abstraction
+- Parallel lane: datasets-abstraction
+- Resource class: cpu-large
+- Implementation stage: W5
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-010 Define program-transition contracts and admission
+
+- Stable task ID: SAWM-010
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-transition-contracts
+- Depends on: SAWM-002, SAWM-003, SAWM-005, SAWM-007
+- Dependencies JSON: ["SAWM-002","SAWM-003","SAWM-005","SAWM-007"]
+- Goal id: SAWM-G023
+- Parent goal ID: SAWM-G020
+- Subgoal ID: SAWM-G023
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_transition.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-transition.payload.schema.json, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_transition.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-transition.payload.schema.json","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_transition.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-transition.payload.schema.json, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_transition.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-transition.payload.schema.json","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/__init__.py","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py"]
+- Predicted symbols: ProgramTransitionQuery; ProgramTransitionCandidate; ProgramTransitionPrediction; ProgramTransitionObservation; ProgramTransitionAdmission; ProgramTransitionReceipt; TransitionModelProfile; TransitionCalibration; RepairOperator; ProgramGraphDeltaProposal; PatchSketchIR
+- Public interfaces: ProgramTransitionQuery@1, ProgramTransitionPrediction@1, ProgramTransitionObservation@1, ProgramTransitionAdmission@1, RepairOperator@1
+- Interfaces: ProgramTransitionQuery@1, ProgramTransitionPrediction@1, ProgramTransitionObservation@1, ProgramTransitionAdmission@1, RepairOperator@1
+- Preconditions: Identity, relation, static graph and dynamic execution records validate; landed generic transition contracts have been mapped for reuse/adaptation.
+- Declared effects: Define proposal-only domain transition, calibration, repair/operator/delta/sketch records and integrate public datasets exports without changing existing generic or @1 identities.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_transition.py"]
+- Evidence requirements: closed grammar/operator/status tests; prediction-vs-observation type separation; authority-negative tests; candidate current-CID constraints; calibration drift; canonicalize-before-CID; import side-effect probe
+- Acceptance: Predictions cannot prove contracts/postconditions, authorize mutation, suppress validation/review, establish equivalence/observation/completion, or invent hashes; model output can only select/parameterize a bounded candidate.
+- Conflict policy: Explicit datasets shared-export/schema integration owner for SAWM-002/003/005/007/009/010; no other task may edit semantic_state/__init__.py; operational admission remains accelerator-owned.
+- Context budget tokens: 36000
+- No-model route: Reuse landed generic transition types, define a versioned domain extension, closed enums and negative authority tests.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Contracts describe proposals/evidence; they do not implement prediction, execution, proof validation, operational acceptance or durable storage.
+- Bundle: semantic-addressed-world-model/datasets-transition-contracts
+- Parallel lane: datasets-transition-contracts
+- Resource class: cpu-large
+- Implementation stage: W4
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-011 Implement kit verified semantic and projection storage
+
+- Stable task ID: SAWM-011
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: kit-verified-storage
+- Depends on: SAWM-002, SAWM-003, SAWM-004
+- Dependencies JSON: ["SAWM-002","SAWM-003","SAWM-004"]
+- Goal id: SAWM-G031
+- Parent goal ID: SAWM-G030
+- Subgoal ID: SAWM-G031
+- Owning repository: ipfs_kit_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_kit_py/ipfs_kit_py/semantic_world_store/artifacts.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/verified_store.py, ipfs_kit_py/tests/semantic_world_store/test_verified_store.py
+- Outputs JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/artifacts.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/verified_store.py","ipfs_kit_py/tests/semantic_world_store/test_verified_store.py"]
+- Predicted files: ipfs_kit_py/ipfs_kit_py/semantic_world_store/artifacts.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/verified_store.py, ipfs_kit_py/tests/semantic_world_store/test_verified_store.py
+- Predicted files JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/artifacts.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/verified_store.py","ipfs_kit_py/tests/semantic_world_store/test_verified_store.py"]
+- Predicted symbols: SemanticWorldArtifactStore; VerifiedSemanticBlockStore; ProjectionRecord; ProjectionIndexManifest
+- Public interfaces: VerifiedSemanticStore@1, ProjectionRecord@1, ProjectionIndexManifest@1
+- Interfaces: VerifiedSemanticStore@1, ProjectionRecord@1, ProjectionIndexManifest@1
+- Preconditions: SAWM semantic/projection identity profiles validate; current kit CID/IPLD/block/proof-seal/storage authorities are located and capability-probed.
+- Declared effects: Compose existing immutable block and CID verification into a thin semantic-world facade; persist explicit deterministic model-pinned projection records and vector bytes with store-before-reference.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_verified_store.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_verified_store.py"]
+- Evidence requirements: claimed-CID rehash; canonical vector byte vectors; NaN/infinity/dimension/byte-order/model/profile rejection; corrupt-present-block failure; idempotent immutable puts; cold import tests
+- Acceptance: No second storage engine/CID implementation exists; every retrieved block is reverified; projection identity binds every required model/tokenizer/preprocessor/metric/dtype/quantization/privacy field.
+- Conflict policy: Kit owns storage only; it cannot decide equivalence, proof validity, prediction truth, safe reuse or task completion. SAWM-014 owns package export integration.
+- Context budget tokens: 32000
+- No-model route: Compose landed block/IPLD/proof-seal APIs and run deterministic corruption/property vectors.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Optional backends return typed unavailability; local verified storage is sufficient for bootstrap and does not imply distributed replication.
+- Bundle: semantic-addressed-world-model/kit-verified-storage
+- Parallel lane: kit-artifacts
+- Resource class: io-large
+- Implementation stage: W3
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-012 Implement projection indexes and exact resolver
+
+- Stable task ID: SAWM-012
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: kit-projection-resolution
+- Depends on: SAWM-002, SAWM-011
+- Dependencies JSON: ["SAWM-002","SAWM-011"]
+- Goal id: SAWM-G031
+- Parent goal ID: SAWM-G030
+- Subgoal ID: SAWM-G031
+- Owning repository: ipfs_kit_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_kit_py/ipfs_kit_py/semantic_world_store/projections.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/resolver.py, ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py
+- Outputs JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/projections.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/resolver.py","ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py"]
+- Predicted files: ipfs_kit_py/ipfs_kit_py/semantic_world_store/projections.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/resolver.py, ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py
+- Predicted files JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/projections.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/resolver.py","ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py"]
+- Predicted symbols: ProjectionIndex; ProjectionCandidate; ExactProjectionResolver; ResolvedProjectionCandidate
+- Public interfaces: search_projection_index, resolve_projection_candidate, rebuild_projection_index
+- Interfaces: search_projection_index, resolve_projection_candidate, rebuild_projection_index
+- Preconditions: Verified projection storage and index-manifest identities validate; current vector/hybrid/graph/GraphRAG backends are capability-probed.
+- Declared effects: Wrap existing rebuildable indexes and exact resolution; return projection CID, resolved semantic/state CID, score, manifest/model profiles, limitations and authoritative=false.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_projection_resolution.py"]
+- Evidence requirements: advisory flag tests; manifest/projection/vector/object/domain/freshness/environment resolution chain; stale/corrupt/missing/index-unavailable cases; deterministic rebuild; score-not-identity tests
+- Acceptance: Every ANN candidate resolves and rehashes before use; unavailable index/model is typed; backend files are rebuildable artifacts only; similarity never becomes authority or exact reuse.
+- Conflict policy: This task owns kit projection search/resolution only; no semantic relation/admission decision, mutable document identity or canonical cyclic ANN graph.
+- Context budget tokens: 30000
+- No-model route: Adapt landed GraphRAG/vector interfaces, exact CID resolver and deterministic manifest validation.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Search quality is backend/profile scoped and advisory; absence of an index never suppresses exact/raw-source fallback.
+- Bundle: semantic-addressed-world-model/kit-projection-resolution
+- Parallel lane: kit-projections
+- Resource class: io-large
+- Implementation stage: W4
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-013 Implement logical graph snapshots, transition log, and root manifests
+
+- Stable task ID: SAWM-013
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: kit-world-history
+- Depends on: SAWM-005, SAWM-010, SAWM-011, SAWM-012
+- Dependencies JSON: ["SAWM-005","SAWM-010","SAWM-011","SAWM-012"]
+- Goal id: SAWM-G032
+- Parent goal ID: SAWM-G030
+- Subgoal ID: SAWM-G032
+- Owning repository: ipfs_kit_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_kit_py/ipfs_kit_py/semantic_world_store/graph_history.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/world_roots.py, ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py
+- Outputs JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/graph_history.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/world_roots.py","ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py"]
+- Predicted files: ipfs_kit_py/ipfs_kit_py/semantic_world_store/graph_history.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/world_roots.py, ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py
+- Predicted files JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/graph_history.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/world_roots.py","ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py"]
+- Predicted symbols: LogicalProgramGraphStore; ProgramTransitionLog; SemanticWorldSnapshotStore; SemanticWorldRootManifest
+- Public interfaces: append_program_graph_snapshot, append_transition_receipt, build_world_root_manifest
+- Interfaces: append_program_graph_snapshot, append_transition_receipt, build_world_root_manifest
+- Preconditions: Program graph/transition contracts and verified store/resolver validate; all referenced bytes can be persisted before their parent records.
+- Declared effects: Persist immutable node/edge sets, trace segments, observed transitions, predictions/admissions, world snapshots and generation-bearing root manifests while preserving distinct event histories.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_graph_history_and_roots.py"]
+- Evidence requirements: store-before-reference tests; mutual recursion/state-cycle snapshots; repeated-state distinct-history tests; deterministic ordering; delta unchanged-subroot; corrupt/missing reference failure; append idempotency
+- Acceptance: Physical IPLD remains acyclic; logical cycles remain queryable; predictions are distinguishable from admitted observations; roots deterministically bind every referenced immutable subroot.
+- Conflict policy: Kit persists but never accepts semantics. Root current-pointer CAS/recovery/export integration belongs exclusively to SAWM-014.
+- Context budget tokens: 36000
+- No-model route: Build immutable records atop SAWM-011 and canonical graph/transition codecs; exercise cycle and corruption fixtures.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: This task builds immutable histories/manifests only; no mutable current root, operational transition decision, replication or scheduling.
+- Bundle: semantic-addressed-world-model/kit-world-history
+- Parallel lane: kit-history
+- Resource class: io-large
+- Implementation stage: W5
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-014 Qualify root CAS, recovery, replication, and VFS outbox
+
+- Stable task ID: SAWM-014
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: kit-recovery-concurrency
+- Depends on: SAWM-011, SAWM-012, SAWM-013
+- Dependencies JSON: ["SAWM-011","SAWM-012","SAWM-013"]
+- Goal id: SAWM-G033
+- Parent goal ID: SAWM-G030
+- Subgoal ID: SAWM-G033
+- Owning repository: ipfs_kit_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_kit_py/ipfs_kit_py/semantic_world_store/recovery.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/vfs_outbox.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/__init__.py, ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py
+- Outputs JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/recovery.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/vfs_outbox.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/__init__.py","ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py"]
+- Predicted files: ipfs_kit_py/ipfs_kit_py/semantic_world_store/recovery.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/vfs_outbox.py, ipfs_kit_py/ipfs_kit_py/semantic_world_store/__init__.py, ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py
+- Predicted files JSON: ["ipfs_kit_py/ipfs_kit_py/semantic_world_store/recovery.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/vfs_outbox.py","ipfs_kit_py/ipfs_kit_py/semantic_world_store/__init__.py","ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py"]
+- Predicted symbols: SemanticWorldRootRepository; SemanticWorldRecovery; VFSSemanticOutbox; SemanticWorldReplicationAdapter
+- Public interfaces: compare_and_swap_world_root, replay_semantic_world_wal, publish_vfs_semantic_outbox, replicate_semantic_blocks
+- Interfaces: compare_and_swap_world_root, replay_semantic_world_wal, publish_vfs_semantic_outbox, replicate_semantic_blocks
+- Preconditions: Immutable graph/root histories validate; current kit root CAS/WAL/VFS/replication/proof-seal capabilities are exact-source probed.
+- Declared effects: Adapt generation CAS, stale-writer rejection, replay/restart, corruption detection, post-commit VFS outbox and optional replication; integrate one kit semantic_world_store public export.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_kit_py/tests/semantic_world_store/test_recovery_vfs_concurrency.py"]
+- Evidence requirements: ABA/concurrent-writer/stale-generation tests; one-successor invariant; crash-window matrix; idempotent replay; corrupt-present block; VFS post-commit order; restart root; replication identity; typed unavailable replication
+- Acceptance: One expected generation admits at most one successor; stale writers conflict; restart exposes one valid root; durable file mutation never equals supervisor acceptance; replication cannot change identity.
+- Conflict policy: Exclusive kit integration owner for semantic_world_store/__init__.py and root pointer/recovery; extend landed CAS/WAL/VFS rather than add a database, WAL, state owner or acceptance system.
+- Context budget tokens: 40000
+- No-model route: Compose existing root CAS/WAL/VFS/replication primitives and run deterministic concurrency/crash injection.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Replication remains optional/capability-gated; no network is used by ordinary tests and unavailable backends are not simulated.
+- Bundle: semantic-addressed-world-model/kit-recovery-concurrency
+- Parallel lane: kit-recovery
+- Resource class: io-large
+- Implementation stage: W6
+- Implementation timeout seconds: 10800
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-015 Implement accelerator semantic-world operational adapters
+
+- Stable task ID: SAWM-015
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-adapters
+- Depends on: SAWM-002, SAWM-003, SAWM-004
+- Dependencies JSON: ["SAWM-002","SAWM-003","SAWM-004"]
+- Goal id: SAWM-G061
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G061
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_adapters.py, ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_receipts.py, test/api/semantic_world/test_program_world_adapters.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_adapters.py","ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_receipts.py","test/api/semantic_world/test_program_world_adapters.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_adapters.py, ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_receipts.py, test/api/semantic_world/test_program_world_adapters.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_adapters.py","ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_receipts.py","test/api/semantic_world/test_program_world_adapters.py"]
+- Predicted symbols: DatasetsProgramWorldAdapter; KitProgramWorldAdapter; ProgramWorldReuseDecision; ProgramWorldContextReceipt; ExecutionTransitionCompiler; OperationalWorldRootPublisher
+- Public interfaces: SemanticWorldOperationalAdapters@1, ProgramWorldReuseDecision@1, ProgramWorldContextReceipt@1
+- Interfaces: SemanticWorldOperationalAdapters@1, ProgramWorldReuseDecision@1, ProgramWorldContextReceipt@1
+- Preconditions: Datasets identities/relations/adapters and exact accelerator semantic-state/procedure/context owners are verified; kit capabilities are probed and unavailable storage remains typed.
+- Declared effects: Add narrow datasets/kit consumers, typed capability gates, reuse/context receipts, execution-transition compilation and operational root publication requests without redefining semantic identities or storage decisions.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_adapters.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_adapters.py"]
+- Evidence requirements: adapter identity-preservation; exact capability/unavailability cases; no duplicate semantic-state/procedure-world code; proposal-vs-admission separation; cold import; fake kit/datasets authority rejection
+- Acceptance: Accelerate consumes exact datasets identities and kit verified results; ANN remains advisory; operational acceptance uses existing supervisor validation/merge/event authority; unavailable capabilities visibly fall back.
+- Conflict policy: Accelerator adapter owner only; cannot change datasets meaning, kit storage policy, ContextCompiler, shared CLI/MCP registry, task authority or current root directly.
+- Context budget tokens: 28000
+- No-model route: Use typed adapters over located public APIs, deterministic capability probes and receipt conformance tests.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Bootstrap adapters expose only capabilities verified in the bound current tree; later rollout tasks control influence.
+- Bundle: semantic-addressed-world-model/accelerate-adapters
+- Parallel lane: accelerate-adapters
+- Resource class: cpu-medium
+- Implementation stage: W3
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-016 Implement exact state, transition, procedure, and proof reuse gates
+
+- Stable task ID: SAWM-016
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-reuse
+- Depends on: SAWM-009, SAWM-010, SAWM-013, SAWM-015
+- Dependencies JSON: ["SAWM-009","SAWM-010","SAWM-013","SAWM-015"]
+- Goal id: SAWM-G041
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G041
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_reuse.py, test/api/semantic_world/test_program_world_reuse.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_reuse.py","test/api/semantic_world/test_program_world_reuse.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_reuse.py, test/api/semantic_world/test_program_world_reuse.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_reuse.py","test/api/semantic_world/test_program_world_reuse.py"]
+- Predicted symbols: ProgramWorldReuseKey; ProgramWorldReuseGate; ProgramWorldReuseRejection; NegativeMemoryRecord
+- Public interfaces: evaluate_program_world_reuse, explain_program_world_reuse
+- Interfaces: evaluate_program_world_reuse, explain_program_world_reuse
+- Preconditions: Raw/abstract identities, transition contracts, immutable history and operational adapters validate; current procedure/proof/receipt cache authorities are located.
+- Declared effects: Implement exact reuse keys binding state, goal, policy, environment, toolchain, obligations, selections, procedure revision and validation dependencies; record scoped rejection/negative memory.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_reuse.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_reuse.py"]
+- Evidence requirements: exact-hit and single-binding-mismatch matrix; stale/freshness revocation; unsafe abstraction; proof-cache fresh admission; similarity-only rejection; typed unavailable; raw-source fallback; negative memory invalidation
+- Acceptance: Only current exact or independently proof-backed scoped evidence can grant reuse; similarity is context-only; stale/unsafe/incomplete/environment-incompatible evidence fails closed and explains why.
+- Conflict policy: Reuse admission is accelerator operational authority but cannot validate its own proof/relation/procedure/root; use landed caches and procedure authorities rather than duplicate them.
+- Context budget tokens: 32000
+- No-model route: Exact key lookup, current freshness/policy admission and deterministic rejection-reason evaluation.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Relation-based reuse remains within explicit scope/assumptions; a cache hit never suppresses current admission or mandatory validation.
+- Bundle: semantic-addressed-world-model/accelerate-reuse
+- Parallel lane: accelerate-reuse
+- Resource class: cpu-large
+- Implementation stage: W6
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-017 Implement static successor generation and symbolic pruning
+
+- Stable task ID: SAWM-017
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-symbolic-successors
+- Depends on: SAWM-005, SAWM-006, SAWM-010, SAWM-015
+- Dependencies JSON: ["SAWM-005","SAWM-006","SAWM-010","SAWM-015"]
+- Goal id: SAWM-G041
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G041
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_successors.py, ipfs_accelerate_py/agent_supervisor/analysis/program_symbolic_pruning.py, test/api/semantic_world/test_program_symbolic_successors.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_successors.py","ipfs_accelerate_py/agent_supervisor/analysis/program_symbolic_pruning.py","test/api/semantic_world/test_program_symbolic_successors.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_successors.py, ipfs_accelerate_py/agent_supervisor/analysis/program_symbolic_pruning.py, test/api/semantic_world/test_program_symbolic_successors.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_successors.py","ipfs_accelerate_py/agent_supervisor/analysis/program_symbolic_pruning.py","test/api/semantic_world/test_program_symbolic_successors.py"]
+- Predicted symbols: StaticSuccessorPlanner; SymbolicSuccessorPruner; UnresolvedDynamicFrontier; SuccessorDecisionReceipt
+- Public interfaces: generate_static_successors, prune_program_successors
+- Interfaces: generate_static_successors, prune_program_successors
+- Preconditions: Canonical graph construction, transition contracts and operational adapters validate; current type/effect/contract/solver/capability analysis APIs are located.
+- Declared effects: Generate conservative next-call/event candidate sets, then prune only with authoritative types, effects, path conditions, contracts, capabilities, abstract interpretation and solver evidence.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_symbolic_successors.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_symbolic_successors.py"]
+- Evidence requirements: static recall fixtures; dynamic/reflection unknown frontier; type/effect/path/contract pruning reasons; solver unknown/timeout; impossible vs incomplete; stale graph; deterministic stage decision receipts
+- Acceptance: Static possibilities and explicit unknown are preserved unless an authoritative symbolic reason removes them; unknown widens; every selected/skipped/unavailable/rejected/escalated stage is recorded.
+- Conflict policy: Extend landed program dependency/impact/analysis graphs; no second scanner/solver/router, learned authority, or operational mutation.
+- Context budget tokens: 36000
+- No-model route: Conservative static analysis, abstract interpretation and solver-neutral obligation evaluation before retrieval/model routes.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Python/static coverage is bounded; unresolved dispatch, reflection, plugins, native calls and solver unknowns remain frontiers.
+- Bundle: semantic-addressed-world-model/accelerate-symbolic-successors
+- Parallel lane: accelerate-static-symbolic
+- Resource class: cpu-large
+- Implementation stage: W5
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-018 Integrate Tactician and production Hammer
+
+- Stable task ID: SAWM-018
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-proof-search
+- Depends on: SAWM-006, SAWM-010, SAWM-017
+- Dependencies JSON: ["SAWM-006","SAWM-010","SAWM-017"]
+- Goal id: SAWM-G042
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G042
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/program_world_tactician.py, ipfs_accelerate_py/agent_supervisor/proof/program_world_hammer.py, test/api/semantic_world/test_program_world_tactician_hammer.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/proof/program_world_tactician.py","ipfs_accelerate_py/agent_supervisor/proof/program_world_hammer.py","test/api/semantic_world/test_program_world_tactician_hammer.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/program_world_tactician.py, ipfs_accelerate_py/agent_supervisor/proof/program_world_hammer.py, test/api/semantic_world/test_program_world_tactician_hammer.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/proof/program_world_tactician.py","ipfs_accelerate_py/agent_supervisor/proof/program_world_hammer.py","test/api/semantic_world/test_program_world_tactician_hammer.py"]
+- Predicted symbols: ProgramWorldTactician; ProgramWorldHammer; ProgramWorldPremiseCorpus; ProgramWorldProofAdmission
+- Public interfaces: compile_program_world_goals, search_program_world_proof, replay_program_world_countermodel
+- Interfaces: compile_program_world_goals, search_program_world_proof, replay_program_world_countermodel
+- Preconditions: Finite program graph/transition/successor obligations validate; exact landed Tactician, production Hammer, formalization, logic-family, backend and native reconstruction capabilities are probed.
+- Declared effects: Compile transition/repair uncertainties into finite goals and content-addressed premise plans; run current Tactician/Hammer; reconstruct proofs in native kernels or deterministically replay countermodels before admission.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_tactician_hammer.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_tactician_hammer.py"]
+- Evidence requirements: finite obligation inventory; premise corpus CID; tactic plan; proof reconstruction; countermodel replay; timeout/unsupported logic; contradiction/conflict; abstention; no model-authored proof acceptance
+- Acceptance: Only reconstructed/replayed current-tree evidence is admitted; contradictions abstain; unavailability is typed; models may nominate premises/candidates but cannot create proof, countermodel truth or authority.
+- Conflict policy: Exclusive program-world integration over landed proof authorities; no second prover, proof store, tactic engine, logic family or acceptance gate.
+- Context budget tokens: 40000
+- No-model route: Tactician goal decomposition, deterministic premise search, production Hammer, native reconstruction and countermodel replay.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Proof coverage is logic/backend/capability scoped; unknown/timeout/unsupported results abstain and preserve required tests/source.
+- Bundle: semantic-addressed-world-model/accelerate-proof-search
+- Parallel lane: accelerate-proof
+- Resource class: prover-medium
+- Implementation stage: W6
+- Implementation timeout seconds: 10800
+- Provider role: formal-implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-019 Integrate e-graphs, equality saturation, and relation promotion
+
+- Stable task ID: SAWM-019
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-egraph
+- Depends on: SAWM-003, SAWM-017, SAWM-018
+- Dependencies JSON: ["SAWM-003","SAWM-017","SAWM-018"]
+- Goal id: SAWM-G042
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G042
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_egraph.py, test/api/semantic_world/test_program_egraph.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_egraph.py","test/api/semantic_world/test_program_egraph.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_egraph.py, test/api/semantic_world/test_program_egraph.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_egraph.py","test/api/semantic_world/test_program_egraph.py"]
+- Predicted symbols: ProgramEGraphNormalizer; EqualitySaturationPlan; RelationPromotionProposal
+- Public interfaces: normalize_program_fragment, propose_relation_promotion
+- Interfaces: normalize_program_fragment, propose_relation_promotion
+- Preconditions: Scoped relation contracts, symbolic pruning and native proof admission validate; a sound landed rewriter/e-graph capability or typed unavailable result is established.
+- Declared effects: Normalize suitable expressions/fragments/repair alternatives with sound declared rewrites, record saturation bounds and propose scoped equivalence promotion backed by normalization/proof receipts.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_egraph.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_egraph.py"]
+- Evidence requirements: rewrite-rule identity/soundness; deterministic normal form; saturation bounds; nontermination/unsupported construct; false-equivalence negatives; proof receipt; promotion remains independently admitted
+- Acceptance: Only sound normalization or proof can support equivalence promotion; similarity/model output cannot; unsupported/conflicting rules abstain and never justify repair by contradiction.
+- Conflict policy: Operational integration only; datasets remains relation-meaning owner and current proof authority admits. No new global optimizer or unsound rewrite registry.
+- Context budget tokens: 32000
+- No-model route: Canonical rewriting/equality saturation with bounded deterministic rules and proof receipts.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Applies only to explicitly supported pure fragments/theories; effects, concurrency and opaque calls remain outside normalization.
+- Bundle: semantic-addressed-world-model/accelerate-egraph
+- Parallel lane: accelerate-egraph
+- Resource class: cpu-large
+- Implementation stage: W7
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-020 Integrate procedure compilation and trajectory normalization
+
+- Stable task ID: SAWM-020
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-procedures
+- Depends on: SAWM-013, SAWM-015, SAWM-016, SAWM-018
+- Dependencies JSON: ["SAWM-013","SAWM-015","SAWM-016","SAWM-018"]
+- Goal id: SAWM-G043
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G043
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_trajectory.py, ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_procedure_bridge.py, test/api/semantic_world/test_program_world_procedures.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_trajectory.py","ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_procedure_bridge.py","test/api/semantic_world/test_program_world_procedures.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_trajectory.py, ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_procedure_bridge.py, test/api/semantic_world/test_program_world_procedures.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_trajectory.py","ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_procedure_bridge.py","test/api/semantic_world/test_program_world_procedures.py"]
+- Predicted symbols: ProgramWorldTrajectoryNormalizer; ProgramWorldProcedureBridge; ProcedureHole; ProcedurePromotionProposal
+- Public interfaces: normalize_accepted_trajectory, compile_program_world_procedure_candidate, match_program_world_procedure
+- Interfaces: normalize_accepted_trajectory, compile_program_world_procedure_candidate, match_program_world_procedure
+- Preconditions: Immutable accepted transitions, operational receipts, exact reuse and independent proof admission validate; current ProofCarryingProcedureCompiler authority is located.
+- Declared effects: Normalize accepted trajectories, classify families, anti-unify repetitions, compile bounded candidates with preconditions/effects/validation/rollback/holes and request promotion through current authority.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_procedures.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_procedures.py"]
+- Evidence requirements: accepted-only provenance; anti-unification cases; held-out/adversarial generalization; stale procedure; hole validation retention; rollback; independent promotion; future match-before-model route
+- Acceptance: Trajectories/procedures never self-certify; stale or scope-mismatched procedures stop; holes retain exact validation; repeated qualifying tasks route through verified procedures first.
+- Conflict policy: Exclusive bridge to landed procedure compiler/authority; no second procedure store, planning system, provider router or acceptance path.
+- Context budget tokens: 36000
+- No-model route: Trajectory normalization, deterministic family matching, anti-unification and current procedure verification/promotion.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Only accepted, rights/policy-compatible, sufficiently repeated trajectories qualify; unique or ambiguous cases remain episodic memory.
+- Bundle: semantic-addressed-world-model/accelerate-procedures
+- Parallel lane: accelerate-procedures
+- Resource class: cpu-large
+- Implementation stage: W7
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-021 Add deterministic repair operators and bounded CEGIS
+
+- Stable task ID: SAWM-021
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-deterministic-repair
+- Depends on: SAWM-017, SAWM-018, SAWM-019
+- Dependencies JSON: ["SAWM-017","SAWM-018","SAWM-019"]
+- Goal id: SAWM-G042
+- Parent goal ID: SAWM-G040
+- Subgoal ID: SAWM-G042
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_operators.py, ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_cegis.py, test/api/semantic_world/test_program_world_cegis.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_operators.py","ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_cegis.py","test/api/semantic_world/test_program_world_cegis.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_operators.py, ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_cegis.py, test/api/semantic_world/test_program_world_cegis.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_operators.py","ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_world_cegis.py","test/api/semantic_world/test_program_world_cegis.py"]
+- Predicted symbols: ProgramWorldRepairOperatorRegistry; ProgramWorldCEGIS; RepairCandidateScopeGate; RepairCounterexampleRefiner
+- Public interfaces: apply_program_world_repair_operator, synthesize_program_world_repair
+- Interfaces: apply_program_world_repair_operator, synthesize_program_world_repair
+- Preconditions: Static/symbolic pruning, proof/countermodel search and normalization validate; current autonomous repair transaction/scope/protection gates are located.
+- Declared effects: Implement the bounded requested repair-operator vocabulary and analytical/CEGIS refinement over typed patch sketches, counterexamples and proof obligations before general model synthesis.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_cegis.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_cegis.py"]
+- Evidence requirements: operator closed vocabulary; deterministic unique repair; bounded iterations/candidates/time; counterexample refinement; scope/type/effect/proof/test gates; protected path/test weakening/arbitrary execution negatives; repeated failure strategy-change gate
+- Acceptance: Analytical procedures run first; candidates stay in scope and cannot weaken tests/authority/trusted paths; failures preserve evidence and cannot trigger identical model retries without new evidence.
+- Conflict policy: Extend current autonomous repair operators/transaction; no second patch engine, shell executor, validation gate or acceptance authority.
+- Context budget tokens: 40000
+- No-model route: Existing verified procedure, analytical operator, equality normalization and bounded counterexample-guided synthesis.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Operators emit bounded typed patch sketches only; unsupported repairs abstain or become an explicit residual question.
+- Bundle: semantic-addressed-world-model/accelerate-deterministic-repair
+- Parallel lane: accelerate-repair
+- Resource class: prover-medium
+- Implementation stage: W8
+- Implementation timeout seconds: 10800
+- Provider role: formal-implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-022 Integrate semantic context capsules and compression
+
+- Stable task ID: SAWM-022
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-context
+- Depends on: SAWM-015, SAWM-016, SAWM-017, SAWM-020
+- Dependencies JSON: ["SAWM-015","SAWM-016","SAWM-017","SAWM-020"]
+- Goal id: SAWM-G061
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G061
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/context/program_world_context.py, ipfs_accelerate_py/agent_supervisor/context/context_compiler.py, test/api/semantic_world/test_program_world_context.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/context/program_world_context.py","ipfs_accelerate_py/agent_supervisor/context/context_compiler.py","test/api/semantic_world/test_program_world_context.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/context/program_world_context.py, ipfs_accelerate_py/agent_supervisor/context/context_compiler.py, test/api/semantic_world/test_program_world_context.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/context/program_world_context.py","ipfs_accelerate_py/agent_supervisor/context/context_compiler.py","test/api/semantic_world/test_program_world_context.py"]
+- Predicted symbols: ProgramWorldContextPlanner; ProgramWorldContextReceipt; ContextCompiler.compile_program_world; ProgramWorldPrefixReuse
+- Public interfaces: compile_program_world_context, explain_program_world_context
+- Interfaces: compile_program_world_context, explain_program_world_context
+- Preconditions: Operational adapters, exact reuse, symbolic frontiers and procedure matching validate; landed ContextCompiler and semantic compression harness/governor are exact-source bound.
+- Declared effects: Extend the one ContextCompiler with ordered goal/state/procedure/questions/slice/contracts/counterexamples/tests/proofs/transitions/analogues/raw fallback assembly, inclusion/omission receipts and exact prefix/delta reuse.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_context.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_context.py"]
+- Evidence requirements: every included/omitted item reason/authority/freshness/source CID; unresolved question; token budget; expected prefix; raw fallback; required tests/proofs/policy; opaque dimension expansion; deterministic repeat
+- Acceptance: Context is smallest sufficient for named residuals without omitting decision-relevant raw source/tests/proofs/policy/authority; embeddings cannot suppress required material; repeated prefixes/deltas reuse exact bytes.
+- Conflict policy: Exclusive SAWM integration owner for shared context_compiler.py; extend current compiler/harness/governor and do not create a second compiler/compressor/router.
+- Context budget tokens: 40000
+- No-model route: Exact reuse, verified procedure prefix, static slice, proof/test selection, deterministic token accounting and raw-source fallback.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Minimality is scoped to the current unresolved questions and verified dependency slice; uncertain dimensions force expansion.
+- Bundle: semantic-addressed-world-model/accelerate-context
+- Parallel lane: accelerate-context
+- Resource class: cpu-large
+- Implementation stage: W8
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-023 Build and admit the execution-trace corpus
+
+- Stable task ID: SAWM-023
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-trace-corpus
+- Depends on: SAWM-007, SAWM-008, SAWM-009, SAWM-010
+- Dependencies JSON: ["SAWM-007","SAWM-008","SAWM-009","SAWM-010"]
+- Goal id: SAWM-G051
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G051
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/program_trace_corpus.py, ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py, ipfs_datasets_py/tests/fixtures/program_world_trace_corpus.json
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/program_trace_corpus.py","ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py","ipfs_datasets_py/tests/fixtures/program_world_trace_corpus.json"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/program_trace_corpus.py, ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py, ipfs_datasets_py/tests/fixtures/program_world_trace_corpus.json
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus/program_trace_corpus.py","ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py","ipfs_datasets_py/tests/fixtures/program_world_trace_corpus.json"]
+- Predicted symbols: ProgramTraceCorpusManifest; ProgramTraceSplitManifest; ProgramTraceAdmission; ProgramTraceLeakageAudit
+- Public interfaces: build_program_trace_corpus, admit_program_trace_row, audit_program_trace_leakage
+- Interfaces: build_program_trace_corpus, admit_program_trace_row, audit_program_trace_leakage
+- Preconditions: Execution contracts/tracer/abstractions/transitions validate; current corpus rights/privacy/checkpoint-lineage/leakage authorities are located.
+- Declared effects: Materialize admitted first-party hermetic, synthetic, adversarial and observed trace records with repository/commit/task/function/failure/mutant/proof/procedure grouping and six disjoint partitions.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/proof_corpus/test_program_trace_corpus.py"]
+- Evidence requirements: rights/privacy/source lineage per row; training/development/held_out/adversarial/cross_repository/OOD manifests; leakage audit; negative examples; secret/hidden-test/private reasoning/unadmitted source exclusions
+- Acceptance: Every row is rights/privacy admitted and exact-tree bound; related families cannot leak across partitions; model nominations are never labels; absent corpus returns training_unavailable without blocking contracts/baselines.
+- Conflict policy: Datasets owns corpus admission/split semantics; no accelerator checkpoint promotion, kit storage decision or raw private trace publication.
+- Context budget tokens: 32000
+- No-model route: Hermetic traces, static/runtime/proof/test ground truth, synthetic generators and deterministic grouping/leakage audits.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Initial corpus is Python and may be too small for learned promotion; typed training_unavailable is an honest terminal for training only.
+- Bundle: semantic-addressed-world-model/datasets-trace-corpus
+- Parallel lane: datasets-corpus
+- Resource class: cpu-large
+- Implementation stage: W6
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-024 Build the next-call benchmark and deterministic baselines
+
+- Stable task ID: SAWM-024
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-next-call-benchmark
+- Depends on: SAWM-006, SAWM-008, SAWM-023
+- Dependencies JSON: ["SAWM-006","SAWM-008","SAWM-023"]
+- Goal id: SAWM-G051
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G051
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: benchmarks/agent_supervisor/semantic_addressed_world_model/next_call_benchmark.py, test/fixtures/semantic_world/next_call_cases.json, test/api/semantic_world/test_next_call_benchmark.py
+- Outputs JSON: ["benchmarks/agent_supervisor/semantic_addressed_world_model/next_call_benchmark.py","test/fixtures/semantic_world/next_call_cases.json","test/api/semantic_world/test_next_call_benchmark.py"]
+- Predicted files: benchmarks/agent_supervisor/semantic_addressed_world_model/next_call_benchmark.py, test/fixtures/semantic_world/next_call_cases.json, test/api/semantic_world/test_next_call_benchmark.py
+- Predicted files JSON: ["benchmarks/agent_supervisor/semantic_addressed_world_model/next_call_benchmark.py","test/fixtures/semantic_world/next_call_cases.json","test/api/semantic_world/test_next_call_benchmark.py"]
+- Predicted symbols: NextCallBenchmark; StaticCandidateBaseline; CallFrequencyBaseline; LexicalRetrievalBaseline; VectorRetrievalBaseline; LinearRankerBaseline
+- Public interfaces: run_next_call_benchmark, validate_next_call_benchmark_result
+- Interfaces: run_next_call_benchmark, validate_next_call_benchmark_result
+- Preconditions: Static graph builder, tracing and admitted corpus validate; SAWM-000 benchmark freeze is immutable and the controlled case taxonomy/splits are fixed before tuning.
+- Declared effects: Build resolved/dynamic/callback/dispatch/plugin/reflection/exception/recursion/async/OOD cases and deterministic static/frequency/BM25/vector/linear baselines with honest denominators.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_next_call_benchmark.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_next_call_benchmark.py"]
+- Evidence requirements: frozen case/split identity; static candidate recall separately from ranking; top-1/3/5, MRR, coverage, abstention, calibration, OOD rejection, invalid-current-target rate; failures/escalations retained
+- Acceptance: All metrics reproduce from exact fixtures/profile; static recall is never hidden by ranking; wrong-scope/high-similarity/stale/impossible negatives remain; missing vector backend is typed.
+- Conflict policy: Owns next-call benchmark and fixtures only; SAWM-000 owns benchmark freeze, SAWM-025 owns specialist, and no benchmark result grants runtime authority.
+- Context budget tokens: 28000
+- No-model route: Deterministic static/frequency/lexical/vector/linear baselines and exact metric computation.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Benchmark is controlled and Python-first; it does not by itself establish cross-repository production quality.
+- Bundle: semantic-addressed-world-model/accelerate-next-call-benchmark
+- Parallel lane: accelerate-next-call-benchmark
+- Resource class: cpu-large
+- Implementation stage: W7
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: medium
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-025 Implement the call-target ranking specialist
+
+- Stable task ID: SAWM-025
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-call-specialist
+- Depends on: SAWM-017, SAWM-023, SAWM-024
+- Dependencies JSON: ["SAWM-017","SAWM-023","SAWM-024"]
+- Goal id: SAWM-G052
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G052
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_call_ranker.py, test/api/semantic_world/test_program_call_ranker.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_call_ranker.py","test/api/semantic_world/test_program_call_ranker.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_call_ranker.py, test/api/semantic_world/test_program_call_ranker.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_call_ranker.py","test/api/semantic_world/test_program_call_ranker.py"]
+- Predicted symbols: ProgramCallTargetRanker; CallTargetRankingRequest; CallTargetRankingResult; CallTargetOODGate
+- Public interfaces: rank_program_call_targets
+- Interfaces: rank_program_call_targets
+- Preconditions: Conservative successor candidates, admitted corpus and frozen baselines validate; current residual-intelligence/checkpoint/calibration/OOD authorities are located.
+- Declared effects: Implement the smallest qualified proposal-only link ranker over exact static candidates plus unknown, with calibrated top-k, evidence/reason references and abstention.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_call_ranker.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_call_ranker.py"]
+- Evidence requirements: held-out vs baseline metrics; exact current symbol resolution; static possibility preservation; unknown frontier; calibration/coverage/OOD; checkpoint/corpus/profile lineage or training_unavailable; advisory authority-negative tests
+- Acceptance: Only existing candidate symbol CIDs or unknown are ranked; no statically required possibility is erased without symbolic authority; stale/OOD cases reject or abstain; promotion requires measured benefit.
+- Conflict policy: Domain specialist behind current residual-intelligence interfaces; no provider router, checkpoint store, candidate generator, semantic authority or self-promotion.
+- Context budget tokens: 32000
+- No-model route: Use deterministic/linear ranker when it meets frozen gates; exact static ordering remains fallback.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: If no admitted checkpoint/corpus/hardware qualifies, return training_unavailable and retain deterministic baselines.
+- Bundle: semantic-addressed-world-model/accelerate-call-specialist
+- Parallel lane: call-specialist
+- Resource class: accelerator-optional
+- Implementation stage: W8
+- Implementation timeout seconds: 10800
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-026 Build next-event and next-state prediction
+
+- Stable task ID: SAWM-026
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-event-specialist
+- Depends on: SAWM-009, SAWM-010, SAWM-023, SAWM-025
+- Dependencies JSON: ["SAWM-009","SAWM-010","SAWM-023","SAWM-025"]
+- Goal id: SAWM-G053
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G053
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_event_predictor.py, test/api/semantic_world/test_program_event_predictor.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_event_predictor.py","test/api/semantic_world/test_program_event_predictor.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_event_predictor.py, test/api/semantic_world/test_program_event_predictor.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/program_event_predictor.py","test/api/semantic_world/test_program_event_predictor.py"]
+- Predicted symbols: ProgramNextEventPredictor; ProgramStateDeltaPredictor; StructuredEventDecoder; EventPredictionOODGate
+- Public interfaces: predict_next_program_event
+- Interfaces: predict_next_program_event
+- Preconditions: Query-specific abstractions, transition grammar, admitted traces and call-ranker interface validate; observed trace authority and calibration policy are bound.
+- Declared effects: Predict closed-grammar event type, exact existing target where relevant, bounded state delta and terminal candidate; compare every prediction to later observed events without promoting prediction.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_event_predictor.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_event_predictor.py"]
+- Evidence requirements: valid structured output; impossible event rejection; event/target top-k; state-delta agreement; contract consistency; symbolic-invalid rate; calibration/drift/OOD; prediction-vs-observation separation
+- Acceptance: Observed debugger/runtime event remains ground truth; prediction cannot establish observation/proof/completion or suppress validation; drift/OOD/unavailable checkpoint causes abstention/typed unavailability.
+- Conflict policy: Proposal-only specialist over current residual interfaces; no execution simulator, trace authority, graph mutation, model router or admission owner.
+- Context budget tokens: 32000
+- No-model route: Static successor ordering, transition grammar and deterministic statistical baseline before a qualified specialist.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Bounded abstract deltas only; unsupported event/state dimensions remain unavailable and cannot be invented.
+- Bundle: semantic-addressed-world-model/accelerate-event-specialist
+- Parallel lane: transition-specialist-a
+- Resource class: accelerator-optional
+- Implementation stage: W9
+- Implementation timeout seconds: 10800
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-027 Build inverse trace reconstruction
+
+- Stable task ID: SAWM-027
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-inverse-trace
+- Depends on: SAWM-009, SAWM-010, SAWM-023, SAWM-024
+- Dependencies JSON: ["SAWM-009","SAWM-010","SAWM-023","SAWM-024"]
+- Goal id: SAWM-G053
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G053
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/inverse_trace_predictor.py, test/api/semantic_world/test_inverse_trace_predictor.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/inverse_trace_predictor.py","test/api/semantic_world/test_inverse_trace_predictor.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/inverse_trace_predictor.py, test/api/semantic_world/test_inverse_trace_predictor.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/analysis/inverse_trace_predictor.py","test/api/semantic_world/test_inverse_trace_predictor.py"]
+- Predicted symbols: InverseTracePredictor; PredecessorStateCandidate; PredecessorEventCandidate; FailureReproductionEvaluator
+- Public interfaces: rank_inverse_trace_predecessors
+- Interfaces: rank_inverse_trace_predecessors
+- Preconditions: Abstraction/transition contracts, admitted trace corpus and frozen benchmark machinery validate; set-valued semantic evaluation policy is fixed.
+- Declared effects: Rank plausible predecessor state/event sets and nominate missing initialization/arguments/dispatch/prior state/failure inputs/omitted segments; evaluate validity and reproduction utility.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_inverse_trace_predictor.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_inverse_trace_predictor.py"]
+- Evidence requirements: multiple-valid-answer cases; predecessor set recall; failure reproduction; missing-input recovery; ambiguity calibration; false predecessor negatives; OOD/stale/environment mismatch; prediction-only status
+- Acceptance: Evaluation never demands one textual predecessor when several are semantically valid; false candidates cannot become observation or authority; OOD/unavailable capability abstains.
+- Conflict policy: Proposal-only inverse specialist; no trace rewriting, ground-truth labeling by LLM, proof/completion authority or unbounded source generation.
+- Context budget tokens: 32000
+- No-model route: Trace constraints, static predecessor graph, counterexample replay and deterministic retrieval/ranking.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Inverse reconstruction is inherently ambiguous and only nominates bounded candidates under current trace/environment scope.
+- Bundle: semantic-addressed-world-model/accelerate-inverse-trace
+- Parallel lane: transition-specialist-b
+- Resource class: accelerator-optional
+- Implementation stage: W9
+- Implementation timeout seconds: 10800
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-028 Build repair-operator and graph-delta prediction
+
+- Stable task ID: SAWM-028
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-repair-specialist
+- Depends on: SAWM-010, SAWM-021, SAWM-023, SAWM-024
+- Dependencies JSON: ["SAWM-010","SAWM-021","SAWM-023","SAWM-024"]
+- Goal id: SAWM-G053
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G053
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_delta_predictor.py, test/api/semantic_world/test_program_delta_predictor.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_delta_predictor.py","test/api/semantic_world/test_program_delta_predictor.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_delta_predictor.py, test/api/semantic_world/test_program_delta_predictor.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/autonomous_repair/program_delta_predictor.py","test/api/semantic_world/test_program_delta_predictor.py"]
+- Predicted symbols: RepairOperatorRanker; ProgramGraphDeltaPredictor; PatchSketchDecoder; RepairPredictionAdmissionGate
+- Public interfaces: rank_repair_operators, predict_program_graph_delta
+- Interfaces: rank_repair_operators, predict_program_graph_delta
+- Preconditions: Repair/transition contracts, deterministic operators/CEGIS, admitted corpus and frozen benchmark machinery validate; analytical-procedure-first gate is active.
+- Declared effects: Rank bounded repair operators, target symbols, parameters and typed graph/patch sketches only when deterministic analytical routes leave a named residual.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_delta_predictor.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_delta_predictor.py"]
+- Evidence requirements: operator top-k; valid-delta/type/effect/selected-test/proof/accepted-patch/regression metrics; analytical-route precedence; protected path/test weakening/arbitrary execution negatives; calibration/OOD
+- Acceptance: A model never runs when a verified analytical procedure applies; deltas stay typed/bounded/current-tree and pass independent structural/type/effect/test/proof/adversarial/fixed-point gates before acceptance.
+- Conflict policy: Prediction only; existing autonomous repair transaction validates/applies. No arbitrary code/shell decoder, validation suppression, trusted-key edit or model acceptance.
+- Context budget tokens: 36000
+- No-model route: Verified procedure, deterministic repair operator, bounded CEGIS and e-graph normalization.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: The specialist chooses/parameterizes declared candidates; it cannot invent CIDs, arbitrary source, authority or correctness.
+- Bundle: semantic-addressed-world-model/accelerate-repair-specialist
+- Parallel lane: transition-specialist-c
+- Resource class: accelerator-optional
+- Implementation stage: W9
+- Implementation timeout seconds: 10800
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-029 Evaluate GNN, graph-transformer, and TAGSeq-style encoders
+
+- Stable task ID: SAWM-029
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-graph-model-experiments
+- Depends on: SAWM-023, SAWM-024, SAWM-025
+- Dependencies JSON: ["SAWM-023","SAWM-024","SAWM-025"]
+- Goal id: SAWM-G054
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G054
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/evaluation/program_graph_sequence.py, benchmarks/agent_supervisor/semantic_addressed_world_model/graph_sequence_ablation.py, test/api/semantic_world/test_program_graph_sequence.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/evaluation/program_graph_sequence.py","benchmarks/agent_supervisor/semantic_addressed_world_model/graph_sequence_ablation.py","test/api/semantic_world/test_program_graph_sequence.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/evaluation/program_graph_sequence.py, benchmarks/agent_supervisor/semantic_addressed_world_model/graph_sequence_ablation.py, test/api/semantic_world/test_program_graph_sequence.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/evaluation/program_graph_sequence.py","benchmarks/agent_supervisor/semantic_addressed_world_model/graph_sequence_ablation.py","test/api/semantic_world/test_program_graph_sequence.py"]
+- Predicted symbols: GraphSequenceExperiment; TypedGraphNeighborhoodPacker; SparseTypedAttentionMask; ConstrainedGraphDeltaDecoder
+- Public interfaces: run_program_graph_sequence_ablation
+- Interfaces: run_program_graph_sequence_ablation
+- Preconditions: Rights-admitted corpus, frozen deterministic baselines and call specialist validate; license/source/dependency/security/reproducibility review gate is available.
+- Declared effects: Implement fair experimental adapters/ablations for heterogeneous GNN, graph transformer, TAGSeq-style typed neighborhood packing and constrained decoder against simpler/general baselines.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_graph_sequence.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_graph_sequence.py"]
+- Evidence requirements: exact datasets/splits/features/checkpoint/profile; leakage audit; typed attention boundaries; advisory edges; quality/calibration/abstention/cost vs baselines; license/security review; deterministic unavailable outcomes
+- Acceptance: Source graph cycles are preserved; exact CIDs resolve inputs/outputs; no hash prediction; unrelated packed documents isolate; no complex model becomes required without economical held-out safety-qualified benefit.
+- Conflict policy: Experimental adapter only; no external TAGSeq production dependency, canonical graph/index replacement, provider router or mandatory runtime promotion.
+- Context budget tokens: 40000
+- No-model route: Run deterministic and simple learned baselines first; skip unavailable model families with typed reasons.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Experiments may remain unpromoted or training_unavailable; novelty has no weight without measured benefit and safety.
+- Bundle: semantic-addressed-world-model/accelerate-graph-model-experiments
+- Parallel lane: graph-model-experiments
+- Resource class: accelerator-optional
+- Implementation stage: W9
+- Implementation timeout seconds: 14400
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-030 Integrate residual-intelligence corpus, training, and calibration
+
+- Stable task ID: SAWM-030
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-residual-foundry
+- Depends on: SAWM-025, SAWM-026, SAWM-027, SAWM-028, SAWM-029
+- Dependencies JSON: ["SAWM-025","SAWM-026","SAWM-027","SAWM-028","SAWM-029"]
+- Goal id: SAWM-G054
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G054
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_residual_foundry.py, ipfs_accelerate_py/agent_supervisor/evaluation/program_world_calibration.py, test/api/semantic_world/test_program_world_residual_foundry.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_residual_foundry.py","ipfs_accelerate_py/agent_supervisor/evaluation/program_world_calibration.py","test/api/semantic_world/test_program_world_residual_foundry.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_residual_foundry.py, ipfs_accelerate_py/agent_supervisor/evaluation/program_world_calibration.py, test/api/semantic_world/test_program_world_residual_foundry.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/self_improvement/program_world_residual_foundry.py","ipfs_accelerate_py/agent_supervisor/evaluation/program_world_calibration.py","test/api/semantic_world/test_program_world_residual_foundry.py"]
+- Predicted symbols: ProgramWorldResidualFoundry; ProgramWorldTaskFamily; ProgramWorldCheckpointAdmission; ProgramWorldCalibrationMonitor
+- Public interfaces: prepare_program_world_training, evaluate_program_world_checkpoint, admit_program_world_checkpoint
+- Interfaces: prepare_program_world_training, evaluate_program_world_checkpoint, admit_program_world_checkpoint
+- Preconditions: Every specialist/experiment has frozen corpus/split/benchmark results or typed training_unavailable; current residual-intelligence corpus admission/checkpoint lineage/OOD/drift/promotion/rollback authorities are located.
+- Declared effects: Add versioned task families for call ranking, event/state prediction, inverse reconstruction, repair operators and graph deltas; reuse current admitted training/evaluation/calibration/promotion/rollback pipelines.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_residual_foundry.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_residual_foundry.py"]
+- Evidence requirements: corpus/split/rights/privacy/leakage identities; model/tokenizer/preprocessor/checkpoint/quantization/environment/hardware lineage; held-out/adversarial/OOD metrics; calibration/drift; independent promotion/rollback or typed unavailable
+- Acceptance: No learned capability promotes without all lineage, calibration, held-out, abstention, drift and safety evidence; private/hidden/unadmitted rows are rejected; training_unavailable preserves runtime fallbacks.
+- Conflict policy: Exclusive program-world bridge to current residual foundry; no second trainer, corpus authority, checkpoint store, model registry, calibration system or self-promotion.
+- Context budget tokens: 40000
+- No-model route: Validate deterministic baselines and admitted static/runtime/proof labels; skip training when qualified data/checkpoint/hardware is unavailable.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Training and promotion are capability/evidence gated; contracts/instrumentation/baselines remain useful without any learned checkpoint.
+- Bundle: semantic-addressed-world-model/accelerate-residual-foundry
+- Parallel lane: residual-foundry
+- Resource class: accelerator-optional
+- Implementation stage: W10
+- Implementation timeout seconds: 14400
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-031 Integrate model serving, batching, hardware, and quantization
+
+- Stable task ID: SAWM-031
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-model-serving
+- Depends on: SAWM-030
+- Dependencies JSON: ["SAWM-030"]
+- Goal id: SAWM-G054
+- Parent goal ID: SAWM-G050
+- Subgoal ID: SAWM-G054
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/program_world_model_serving.py, ipfs_accelerate_py/agent_supervisor/runtime/program_world_batching.py, test/api/semantic_world/test_program_world_model_serving.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/runtime/program_world_model_serving.py","ipfs_accelerate_py/agent_supervisor/runtime/program_world_batching.py","test/api/semantic_world/test_program_world_model_serving.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/program_world_model_serving.py, ipfs_accelerate_py/agent_supervisor/runtime/program_world_batching.py, test/api/semantic_world/test_program_world_model_serving.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/runtime/program_world_model_serving.py","ipfs_accelerate_py/agent_supervisor/runtime/program_world_batching.py","test/api/semantic_world/test_program_world_model_serving.py"]
+- Predicted symbols: ProgramWorldModelServerAdapter; ProgramWorldInferenceBatcher; ProgramWorldHardwareSelector; QuantizedSpecialistBinding
+- Public interfaces: serve_program_world_specialist, batch_program_world_predictions
+- Interfaces: serve_program_world_specialist, batch_program_world_predictions
+- Preconditions: Residual foundry yields independently admitted checkpoint/profile/calibration or typed unavailability; current model-serving/provider/hardware/resource scheduler APIs are exact-source bound.
+- Declared effects: Package qualified specialists through existing serving/batching/hardware/quantization adapters with exact capability, resource, cancellation, privacy and checkpoint bindings.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_model_serving.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_model_serving.py"]
+- Evidence requirements: cold import; capability probe; exact model/tokenizer/preprocessor/checkpoint/quantization/hardware identity; batch isolation; cancellation; resource accounting; unavailable hardware/checkpoint; prediction advisory labeling
+- Acceptance: No hardware/checkpoint is simulated; unavailable routes are typed; batching cannot mix privacy/tenant/profile/authority scopes; all outputs remain proposal-only and current calibration-bound.
+- Conflict policy: Adapter to current serving/resource/provider authorities only; no second server, scheduler, installer, downloader, model registry or network service.
+- Context budget tokens: 32000
+- No-model route: Use deterministic specialists and local admitted artifacts through current serving APIs; typed unavailability otherwise.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: No model is mandatory; hardware, quantization and batching are enabled only where current capability and qualification receipts admit them.
+- Bundle: semantic-addressed-world-model/accelerate-model-serving
+- Parallel lane: model-serving
+- Resource class: accelerator-optional
+- Implementation stage: W11
+- Implementation timeout seconds: 10800
+- Provider role: residual-intelligence-implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-032 Integrate the Autonomous Meta-Controller
+
+- Stable task ID: SAWM-032
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-meta-controller
+- Depends on: SAWM-016, SAWM-017, SAWM-018, SAWM-020, SAWM-022, SAWM-030
+- Dependencies JSON: ["SAWM-016","SAWM-017","SAWM-018","SAWM-020","SAWM-022","SAWM-030"]
+- Goal id: SAWM-G061
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G061
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/program_world_meta_controller.py, test/api/semantic_world/test_program_world_meta_controller.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/planning/program_world_meta_controller.py","test/api/semantic_world/test_program_world_meta_controller.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/program_world_meta_controller.py, test/api/semantic_world/test_program_world_meta_controller.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/planning/program_world_meta_controller.py","test/api/semantic_world/test_program_world_meta_controller.py"]
+- Predicted symbols: ProgramWorldMetaControllerAdapter; CognitiveAction; CognitiveBudget; InferenceCascadeReceipt
+- Public interfaces: select_program_world_cognitive_action, explain_program_world_escalation
+- Interfaces: select_program_world_cognitive_action, explain_program_world_escalation
+- Preconditions: Exact reuse, symbolic/proof/procedure/context and calibrated residual interfaces validate; current cognitive scheduler/provider/resource/human-review actions and validation reserves are located.
+- Declared effects: Expose exact, proof/receipt, procedure, static/symbolic, retrieval, specialist, local/remote model and human actions in the mandated cascade with named residual questions, decision relevance and protected validation reserves.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_meta_controller.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_meta_controller.py"]
+- Evidence requirements: stage selection/skip/unavailable/reject/escalate receipts; no-question/no-decision-impact/cache-hit/repeated-failure/privacy/reserve/authority-class prohibitions; budget accounting; deterministic-first routing; human terminal
+- Acceptance: A model call is forbidden whenever specified; candidate-empty due to incomplete analysis does not imply impossibility; repeated identical failures need new evidence/strategy; proof/validation reserves cannot be consumed.
+- Conflict policy: Explicit integration into the landed AutonomousMetaController/AdaptivePlanner/formal replanner/provider/resource schedulers; no second cognitive scheduler/router/budget/queue.
+- Context budget tokens: 40000
+- No-model route: Exact lookup, verified procedure, static/abstract/symbolic proof and deterministic synthesis stages are mandatory predecessors.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Stage availability is current-capability scoped; human review remains a truthful terminal and never becomes implicit model approval.
+- Bundle: semantic-addressed-world-model/accelerate-meta-controller
+- Parallel lane: meta-controller
+- Resource class: coordinator
+- Implementation stage: W11
+- Implementation timeout seconds: 10800
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-033 Integrate causal-event federation
+
+- Stable task ID: SAWM-033
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-causal-federation
+- Depends on: SAWM-013, SAWM-014, SAWM-015, SAWM-020
+- Dependencies JSON: ["SAWM-013","SAWM-014","SAWM-015","SAWM-020"]
+- Goal id: SAWM-G063
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G063
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/program_world_causal_federation.py, test/api/semantic_world/test_program_world_causal_federation.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/runtime/program_world_causal_federation.py","test/api/semantic_world/test_program_world_causal_federation.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/program_world_causal_federation.py, test/api/semantic_world/test_program_world_causal_federation.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/runtime/program_world_causal_federation.py","test/api/semantic_world/test_program_world_causal_federation.py"]
+- Predicted symbols: ProgramWorldCausalFederationAdapter; ProgramWorldEventProjection; AffectedSupervisorWakePlan
+- Public interfaces: publish_program_world_event, compute_affected_supervisor_wakes
+- Interfaces: publish_program_world_event, compute_affected_supervisor_wakes
+- Preconditions: Immutable history/root recovery, operational adapters and procedure events validate; current causal-event/outbox/database event/fence/state-owner authorities are located.
+- Declared effects: Publish semantic/proof/retrieval/trace/transition/invalidation updates through current event/outbox and causal-frontier APIs; compute idempotent affected-supervisor wake plans and avoid full scans.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_causal_federation.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_causal_federation.py"]
+- Evidence requirements: causal frontier/order; store/outbox-before-wake; exact event/root/task/fence identity; duplicate/restart/idempotency; stale worker/fence denial; affected-only wake; Quack/DuckDB owner; DuckLake non-authority
+- Acceptance: Only affected supervisors wake; stale/duplicate/out-of-order events cannot publish authority; restart replays exactly once; no direct multi-process DuckDB writer or second event/outbox/state plane exists.
+- Conflict policy: Exclusive program-world federation adapter over landed CausalAbstractionSupervisorFederation and database event/outbox authorities; shared event registries remain current owners.
+- Context budget tokens: 32000
+- No-model route: Dependency/invalidation graph closure, causal frontier comparison and deterministic outbox delivery.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: bootstrap
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Distributed transport requires current Quack capability; typed unavailability may retain one-writer local bootstrap but cannot claim federation.
+- Bundle: semantic-addressed-world-model/accelerate-causal-federation
+- Parallel lane: event-federation
+- Resource class: distributed-coordinator
+- Implementation stage: W11
+- Implementation timeout seconds: 10800
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-034 Activate shadow_write
+
+- Stable task ID: SAWM-034
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-shadow-write
+- Depends on: SAWM-014, SAWM-015, SAWM-022, SAWM-031, SAWM-032, SAWM-033
+- Dependencies JSON: ["SAWM-014","SAWM-015","SAWM-022","SAWM-031","SAWM-032","SAWM-033"]
+- Goal id: SAWM-G062
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G062
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_write.py, test/api/semantic_world/test_program_world_shadow_write.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_write.py","test/api/semantic_world/test_program_world_shadow_write.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_write.py, test/api/semantic_world/test_program_world_shadow_write.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_write.py","test/api/semantic_world/test_program_world_shadow_write.py"]
+- Predicted symbols: ProgramWorldShadowWriter; ShadowWriteReceipt; ShadowParityReport
+- Public interfaces: record_program_world_shadow_artifacts
+- Interfaces: record_program_world_shadow_artifacts
+- Preconditions: Verified roots/recovery, operational/context/model/meta/federation integrations validate in bootstrap; rollout baseline and promotion authority are current.
+- Declared effects: Emit candidate semantic objects, states, projections, context receipts, predictions, transitions and roots alongside existing authoritative behavior without influencing planning/routing/completion.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_shadow_write.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_shadow_write.py"]
+- Evidence requirements: candidate/current behavior parity; missing-binding and corruption cases; write isolation; advisory labels; no decision influence; root/reference verification; restart; metrics with failures retained
+- Acceptance: Shadow artifacts are complete, exact-bound and independently verifiable but cannot influence execution; corruption/missing bindings remain visible; existing behavior stays authoritative.
+- Conflict policy: Owns shadow-write adapter only; current rollout authority changes mode, kit stores bytes, and no candidate may mutate task completion/current root.
+- Context budget tokens: 28000
+- No-model route: Deterministic candidate emission and parity comparison against existing authoritative behavior.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: shadow_write
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Shadow evidence measures readiness only and cannot grant reuse, planning influence, provider routing, completion or promotion.
+- Bundle: semantic-addressed-world-model/accelerate-shadow-write
+- Parallel lane: rollout-shadow-write
+- Resource class: coordinator
+- Implementation stage: W12
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-035 Activate shadow_read
+
+- Stable task ID: SAWM-035
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-shadow-read
+- Depends on: SAWM-034
+- Dependencies JSON: ["SAWM-034"]
+- Goal id: SAWM-G062
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G062
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_read.py, test/api/semantic_world/test_program_world_shadow_read.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_read.py","test/api/semantic_world/test_program_world_shadow_read.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_read.py, test/api/semantic_world/test_program_world_shadow_read.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_shadow_read.py","test/api/semantic_world/test_program_world_shadow_read.py"]
+- Predicted symbols: ProgramWorldShadowReader; HypotheticalReuseDecision; ShadowReadComparison
+- Public interfaces: evaluate_program_world_shadow_reads
+- Interfaces: evaluate_program_world_shadow_reads
+- Preconditions: Shadow-write receipts meet parity/corruption/missing-binding floors; exact/procedure/proof/graph/trace/neural query paths are available or typed unavailable.
+- Declared effects: Query exact, procedure, proof, graph, trace and neural memories; record hypothetical reuse/prediction/routing decisions, false candidates and missed opportunities without changing execution.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_shadow_read.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_shadow_read.py"]
+- Evidence requirements: hypothetical-vs-authoritative decisions; candidate precision/recall; false/missed/stale/similarity-only cases; exact resolution latency; unavailable indexes/checkpoints; no execution influence
+- Acceptance: Every query path is labeled with authority/limitations; neural output only ranks/adds context; hypothetical choices cannot affect planning/routing/completion; false and missed candidates remain in denominators.
+- Conflict policy: Owns shadow-read adapter only; no rollout promotion, admission, context suppression, current-root mutation or second retrieval index.
+- Context budget tokens: 28000
+- No-model route: Exact/procedure/proof/static/graph/trace deterministic query comparison before optional specialists.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: shadow_read
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Shadow-read results are observational evaluation only, including exact hits; guarded influence requires separate qualification.
+- Bundle: semantic-addressed-world-model/accelerate-shadow-read
+- Parallel lane: rollout-shadow-read
+- Resource class: coordinator
+- Implementation stage: W13
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-036 Activate and qualify guarded
+
+- Stable task ID: SAWM-036
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-guarded
+- Depends on: SAWM-014, SAWM-016, SAWM-035
+- Dependencies JSON: ["SAWM-014","SAWM-016","SAWM-035"]
+- Goal id: SAWM-G062
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G062
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_guarded.py, test/api/semantic_world/test_program_world_guarded.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_guarded.py","test/api/semantic_world/test_program_world_guarded.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_guarded.py, test/api/semantic_world/test_program_world_guarded.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_guarded.py","test/api/semantic_world/test_program_world_guarded.py"]
+- Predicted symbols: ProgramWorldGuardedGate; GuardedInfluenceDecision; GuardedQualificationReceipt
+- Public interfaces: evaluate_guarded_program_world_influence
+- Interfaces: evaluate_guarded_program_world_influence
+- Preconditions: Shadow-read qualification meets safety/parity/candidate floors; exact reuse and root recovery validate; independent rollout authorization is available.
+- Declared effects: Allow exact current-state hits, current verified procedures and independently proof-backed scoped relations to influence planning; allow neural candidates only to rank/add context under mandatory source/validation gates.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_guarded.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_guarded.py"]
+- Evidence requirements: allowed/denied authority-class matrix; stale/unsafe abstraction/similarity trap; neural cannot suppress candidates/source/tests/proofs/human review; typed unavailable fallback; rollout authorization; rollback
+- Acceptance: Only sufficient exact/procedural/proof authority influences planning; symbolic pruning needs adequate proof; neural results never remove required material or validation; every denial/fallback is visible.
+- Conflict policy: Owns guarded influence gate only; no self-promotion, learned authority, task completion, root acceptance or policy weakening.
+- Context budget tokens: 30000
+- No-model route: Exact and independently verified evidence governs influence; neural route is optional advisory context/ranking.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: guarded
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Guarded does not require semantic-world receipts for every task and cannot be represented as required dogfooding.
+- Bundle: semantic-addressed-world-model/accelerate-guarded
+- Parallel lane: rollout-guarded
+- Resource class: coordinator
+- Implementation stage: W14
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-037 Activate and enforce required
+
+- Stable task ID: SAWM-037
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-required
+- Depends on: SAWM-014, SAWM-016, SAWM-032, SAWM-036
+- Dependencies JSON: ["SAWM-014","SAWM-016","SAWM-032","SAWM-036"]
+- Goal id: SAWM-G062
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G062
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_required.py, ipfs_accelerate_py/agent_supervisor/validation/program_world_completion_gate.py, test/api/semantic_world/test_program_world_required.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_required.py","ipfs_accelerate_py/agent_supervisor/validation/program_world_completion_gate.py","test/api/semantic_world/test_program_world_required.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_required.py, ipfs_accelerate_py/agent_supervisor/validation/program_world_completion_gate.py, test/api/semantic_world/test_program_world_required.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_required.py","ipfs_accelerate_py/agent_supervisor/validation/program_world_completion_gate.py","test/api/semantic_world/test_program_world_required.py"]
+- Predicted symbols: ProgramWorldRequiredDispatchGate; ProgramWorldRequiredCompletionGate; RequiredTaskWorldBinding; RequiredModeReceiptSet
+- Public interfaces: admit_required_program_world_dispatch, admit_required_program_world_completion
+- Interfaces: admit_required_program_world_dispatch, admit_required_program_world_completion
+- Preconditions: Guarded qualification and independent promotion authorization pass; exact reuse/meta-controller/root generation CAS and existing completion authority are current-tree validated.
+- Declared effects: Require verified pre-root/current state/goal-task revision/context/reuse/prediction-consideration/proof-test-validation/execution-transition/post-root/expected-result generation/dogfood receipts at dispatch and completion.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_required.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_required.py"]
+- Evidence requirements: complete required receipt set; independent approver identities; missing/stale/corrupt/forged/self-approved receipt negatives; pre/post transitive verification; generation conflict; cancelled/failed execution; rollback
+- Acceptance: Dispatch fails closed without verified pre-world; completion fails closed without independently admitted transition and post-root; one worker cannot approve context/transition/procedure/model/proof/root; current completion authority remains canonical.
+- Conflict policy: Exclusive SAWM integration owner for required completion gate; extend current validation/completion/CAS authorities and never mark implementation tasks complete directly.
+- Context budget tokens: 32000
+- No-model route: Exact receipt resolution, transitive root verification, fence/generation comparison and deterministic completion policy.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Required mode activates only after independent rollout authorization; any missing capability/evidence blocks dispatch/completion rather than simulating compliance.
+- Bundle: semantic-addressed-world-model/accelerate-required
+- Parallel lane: rollout-required
+- Resource class: coordinator
+- Implementation stage: W15
+- Implementation timeout seconds: 10800
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-038 Add multi-view and cross-domain projections
+
+- Stable task ID: SAWM-038
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: datasets-multiview
+- Depends on: SAWM-005, SAWM-007, SAWM-009, SAWM-037
+- Dependencies JSON: ["SAWM-005","SAWM-007","SAWM-009","SAWM-037"]
+- Goal id: SAWM-G061
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G061
+- Owning repository: ipfs_datasets_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_views.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-view.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py
+- Outputs JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_views.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-view.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py"]
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_views.py, ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-view.payload.schema.json, ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py
+- Predicted files JSON: ["ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/program_views.py","ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/schemas/program-view.payload.schema.json","ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py"]
+- Predicted symbols: ProgramWorldView; ProgramWorldProjectionRequest; CrossDomainProgramView; MultiViewInvalidation
+- Public interfaces: ProgramWorldView@1, build_program_world_view
+- Interfaces: ProgramWorldView@1, build_program_world_view
+- Preconditions: Static/dynamic/abstraction semantics validate and required-mode task bindings are active; available domain adapters/projection identities are current.
+- Declared effects: Define distinct text/AST/CFG/call/data-flow/symbolic-IR/proof/trace/failure/dataset/legal/security/intent/procedure views with explicit model/profile/source/privacy/freshness/invalidators.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_program_views.py"]
+- Evidence requirements: distinct projection identities; source semantic identity stability; model/profile change; unavailable domains; cross-domain scope; invalidation; non-authoritative projection; exact object resolution
+- Acceptance: Views remain separate and advisory where learned; every projection resolves exact underlying semantics; unavailable domain/profile is typed; changing one view never silently changes canonical domain identity.
+- Conflict policy: Datasets owns view meaning only; kit owns bytes/indexes and accelerate owns use. No undifferentiated vector store or model data in semantic identity.
+- Context budget tokens: 32000
+- No-model route: Pure deterministic structural views and explicit projection requests; optional model-dependent views remain typed unavailable.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Only current admitted domains/language/profile are supported; a view cannot establish equivalence, proof, reuse or completion.
+- Bundle: semantic-addressed-world-model/datasets-multiview
+- Parallel lane: datasets-multiview
+- Resource class: cpu-large
+- Implementation stage: W16
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-039 Add typed controls, CLI, and diagnostics
+
+- Stable task ID: SAWM-039
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: accelerate-control-surface
+- Depends on: SAWM-015, SAWM-022, SAWM-031, SAWM-033, SAWM-037
+- Dependencies JSON: ["SAWM-015","SAWM-022","SAWM-031","SAWM-033","SAWM-037"]
+- Goal id: SAWM-G061
+- Parent goal ID: SAWM-G060
+- Subgoal ID: SAWM-G061
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_service.py, ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py, ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/semantic_state/program_world.py, test/api/semantic_world/test_program_world_controls.py
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_service.py","ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py","ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/semantic_state/program_world.py","test/api/semantic_world/test_program_world_controls.py"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_service.py, ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py, ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/semantic_state/program_world.py, test/api/semantic_world/test_program_world_controls.py
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_service.py","ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py","ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py","ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/semantic_state/program_world.py","test/api/semantic_world/test_program_world_controls.py"]
+- Predicted symbols: ProgramWorldService; SemanticWorldStatusResult; SemanticWorldResolveResult; ProgramWorldCLI; semantic_world_mcp_tools
+- Public interfaces: SemanticWorldService@1; world/graph/state/trace/transition/call-target/repair/relation/projection/reuse/procedure/dogfood/index/benchmark operations
+- Interfaces: SemanticWorldService@1; world/graph/state/trace/transition/call-target/repair/relation/projection/reuse/procedure/dogfood/index/benchmark operations
+- Preconditions: Operational/context/serving/federation/required integrations validate; current Python service, semantic-state CLI and existing MCP adapter registration are exact-source bound.
+- Declared effects: Expose deterministic JSON status/build/verify/resolve/root/graph/state/trace/transition/ranking/relation/projection/reuse/procedure/dogfood/index/benchmark operations through one typed service and thin existing CLI/MCP adapters.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_controls.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_program_world_controls.py"]
+- Evidence requirements: Python/CLI/MCP parity; deterministic JSON; cold import/help; no subprocess from MCP; neural authoritative=false; capability/unavailability diagnostics; path/auth confinement; no server/dashboard; existing command compatibility
+- Acceptance: All transports call one typed Python service; MCP does not shell out; neural results are explicitly advisory; import/help is side-effect free; no second MCP server/network service/dashboard exists.
+- Conflict policy: Exclusive shared accelerator semantic_state __init__/CLI and existing MCP-tool integration owner for SAWM; other tasks must not edit these registries.
+- Context budget tokens: 32000
+- No-model route: Typed service composition, direct adapter calls, deterministic serialization and static command/permission validation.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Only capability-probed operations are exposed; unavailable functionality returns typed deterministic errors rather than simulation.
+- Bundle: semantic-addressed-world-model/accelerate-control-surface
+- Parallel lane: control-surface
+- Resource class: cpu-medium
+- Implementation stage: W16
+- Implementation timeout seconds: 7200
+- Provider role: implementation
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-040 Run the end-to-end acceptance matrix
+
+- Stable task ID: SAWM-040
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: acceptance-e2e
+- Depends on: SAWM-038, SAWM-039
+- Dependencies JSON: ["SAWM-038","SAWM-039"]
+- Goal id: SAWM-G071
+- Parent goal ID: SAWM-G070
+- Subgoal ID: SAWM-G071
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: test/api/semantic_world/test_end_to_end_acceptance.py, test/fixtures/semantic_world/end_to_end_negative_cases.json, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-040-e2e.json
+- Outputs JSON: ["test/api/semantic_world/test_end_to_end_acceptance.py","test/fixtures/semantic_world/end_to_end_negative_cases.json","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-040-e2e.json"]
+- Predicted files: test/api/semantic_world/test_end_to_end_acceptance.py, test/fixtures/semantic_world/end_to_end_negative_cases.json, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-040-e2e.json
+- Predicted files JSON: ["test/api/semantic_world/test_end_to_end_acceptance.py","test/fixtures/semantic_world/end_to_end_negative_cases.json","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-040-e2e.json"]
+- Predicted symbols: SemanticWorldEndToEndScenario; SemanticWorldNegativeScenarioMatrix
+- Public interfaces: run_semantic_world_acceptance_scenario
+- Interfaces: run_semantic_world_acceptance_scenario
+- Preconditions: Required mode, multi-view semantics and typed controls validate on the exact integration tree; all referenced datasets/kit/accelerator capabilities are available or typed unavailable per scenario policy.
+- Declared effects: Exercise all 29 acceptance steps from exact binding/scan/graph/projection/trace through supervisor repair, VFS/outbox/deltas/proofs/tests/transition/root/restart/second-task reuse/procedure, plus required negative variants.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_end_to_end_acceptance.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_end_to_end_acceptance.py"]
+- Evidence requirements: exact argv/environment/tree/root generations; each step receipt; second related task reuse/context savings; corrupted/stale/similarity/abstraction/index/checkpoint/OOD/wrong-target/false-predecessor/proof/replay/CAS/cancel/poison/forge/privacy/repeat-failure negatives
+- Acceptance: Positive flow reaches an independently admitted post-root and reuses exact/procedural/proof evidence on the second task; every negative fails closed; no stale/simulated/similarity-only/self-authorized result enters a root.
+- Conflict policy: Acceptance tests/evidence owner only; cannot patch production features, modify controls, waive typed unavailable prerequisites, self-accept transitions or fabricate live outcomes.
+- Context budget tokens: 40000
+- No-model route: Hermetic fixtures, deterministic procedures/static/proof routes and current typed services; models are not required to prove the matrix.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: The scenario is controlled; release still requires ablation, adversarial, capstone, regressions and transitive final-root evidence.
+- Bundle: semantic-addressed-world-model/acceptance-e2e
+- Parallel lane: acceptance-e2e
+- Resource class: cpu-large
+- Implementation stage: W17
+- Implementation timeout seconds: 14400
+- Provider role: qualification
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local hermetic execution, isolated fenced supervisor worktrees, local DuckDB/Quack/kit storage and immutable evidence only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-041 Run the controlled ablation and efficiency benchmark
+
+- Stable task ID: SAWM-041
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: benchmark-ablation
+- Depends on: SAWM-040
+- Dependencies JSON: ["SAWM-040"]
+- Goal id: SAWM-G072
+- Parent goal ID: SAWM-G070
+- Subgoal ID: SAWM-G072
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: benchmarks/agent_supervisor/semantic_addressed_world_model/ablation.py, test/api/semantic_world/test_semantic_world_ablation.py, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-041-ablation.json
+- Outputs JSON: ["benchmarks/agent_supervisor/semantic_addressed_world_model/ablation.py","test/api/semantic_world/test_semantic_world_ablation.py","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-041-ablation.json"]
+- Predicted files: benchmarks/agent_supervisor/semantic_addressed_world_model/ablation.py, test/api/semantic_world/test_semantic_world_ablation.py, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-041-ablation.json
+- Predicted files JSON: ["benchmarks/agent_supervisor/semantic_addressed_world_model/ablation.py","test/api/semantic_world/test_semantic_world_ablation.py","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-041-ablation.json"]
+- Predicted symbols: SemanticWorldAblationRunner; SemanticWorldEfficiencyMetrics; SemanticWorldSafetyMetrics
+- Public interfaces: run_semantic_world_ablation, validate_semantic_world_ablation
+- Interfaces: run_semantic_world_ablation, validate_semantic_world_ablation
+- Preconditions: End-to-end matrix passes and SAWM-000 benchmark freeze remains unchanged; paired cases, denominators, provider/resource accounting and current baseline are exact-bound before tuning.
+- Declared effects: Compare A-L ladder and report accepted tasks/criteria, all model/specialist calls/tokens/context/retries/prefix reuse/avoided calls/humans/cost/resources/time/failures, retrieval/prediction and safety metrics.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_semantic_world_ablation.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_semantic_world_ablation.py"]
+- Evidence requirements: frozen paired case IDs; every failed/escalated/unavailable/human case in denominators; exact call/token/provider/CPU/GPU/validation/proof accounting; target calculations; raw results; reproducibility; no leakage/oracle replay
+- Acceptance: Safety/authority floors are zero with no coverage loss; intended efficiency targets are measured honestly; misses yield non-promotion, never hidden work or weakened gates; all A-L comparisons retain equal acceptance.
+- Conflict policy: Owns ablation runner/result only; cannot edit benchmark freeze, production code, provider accounting, acceptance criteria or release safety floors.
+- Context budget tokens: 32000
+- No-model route: Deterministic metric aggregation and paired statistical analysis over immutable receipts; benchmark execution follows current routing without forcing models.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Results apply to exact frozen cases/providers/hardware/environment; unavailable dimensions and confidence limits remain explicit.
+- Bundle: semantic-addressed-world-model/benchmark-ablation
+- Parallel lane: benchmark-ablation
+- Resource class: cpu-large
+- Implementation stage: W18
+- Implementation timeout seconds: 14400
+- Provider role: qualification
+- Network policy: deny
+- Risk class: high
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-042 Run adversarial assurance and security qualification
+
+- Stable task ID: SAWM-042
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: adversarial-assurance
+- Depends on: SAWM-040, SAWM-041
+- Dependencies JSON: ["SAWM-040","SAWM-041"]
+- Goal id: SAWM-G071
+- Parent goal ID: SAWM-G070
+- Subgoal ID: SAWM-G071
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: test/api/semantic_world/test_adversarial_assurance.py, test/fixtures/semantic_world/adversarial_campaign.json, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-042-adversarial.json
+- Outputs JSON: ["test/api/semantic_world/test_adversarial_assurance.py","test/fixtures/semantic_world/adversarial_campaign.json","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-042-adversarial.json"]
+- Predicted files: test/api/semantic_world/test_adversarial_assurance.py, test/fixtures/semantic_world/adversarial_campaign.json, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-042-adversarial.json
+- Predicted files JSON: ["test/api/semantic_world/test_adversarial_assurance.py","test/fixtures/semantic_world/adversarial_campaign.json","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-042-adversarial.json"]
+- Predicted symbols: SemanticWorldAdversarialCampaign; SemanticWorldSecurityQualification
+- Public interfaces: run_semantic_world_adversarial_campaign
+- Interfaces: run_semantic_world_adversarial_campaign
+- Preconditions: End-to-end and frozen ablation evidence validate; current Adversarial Assurance, security, privacy, worktree, provider and recovery authorities are bound.
+- Declared effects: Attack forged CIDs/receipts, stale trees/environments, similarity traps, poisoned traces, leakage/injection, model authority, unsafe abstraction/procedures, corrupt indexes, root conflicts, cancellation/rollback/privacy/provider failure and import effects.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_adversarial_assurance.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_adversarial_assurance.py"]
+- Evidence requirements: seed identity and detection for every attack; zero escaped critical defects; path/credential confinement; no secrets/private reasoning/hidden tests/unadmitted rows; crash/recovery/concurrency; provider failure; no mock-as-live; unchanged safety floors
+- Acceptance: Every attack reaches the expected typed rejection/recovery/rollback; no unauthorized mutation/completion/proof/reuse/root occurs; corrupted present data fails closed; cancellation settles without accepted transition.
+- Conflict policy: Qualification campaign owner only; remediation requires a successor task/revision and cannot be hidden inside tests, controls or weaker expectations.
+- Context budget tokens: 36000
+- No-model route: Deterministic mutation/adversarial generators, corruption/crash injection, static security checks and receipt/root verification.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: Campaign coverage is finite and exact-tree scoped; untested threats remain limitations rather than inferred safety.
+- Bundle: semantic-addressed-world-model/adversarial-assurance
+- Parallel lane: adversarial-assurance
+- Resource class: security-review
+- Implementation stage: W19
+- Implementation timeout seconds: 14400
+- Provider role: security-qualification
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-043 Perform the required-mode self-hosted capstone
+
+- Stable task ID: SAWM-043
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: required-capstone
+- Depends on: SAWM-037, SAWM-040, SAWM-041, SAWM-042
+- Dependencies JSON: ["SAWM-037","SAWM-040","SAWM-041","SAWM-042"]
+- Goal id: SAWM-G072
+- Parent goal ID: SAWM-G070
+- Subgoal ID: SAWM-G072
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_negative_memory_explain.py, test/api/semantic_world/test_required_mode_capstone.py, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-043-capstone.json
+- Outputs JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_negative_memory_explain.py","test/api/semantic_world/test_required_mode_capstone.py","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-043-capstone.json"]
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_negative_memory_explain.py, test/api/semantic_world/test_required_mode_capstone.py, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-043-capstone.json
+- Predicted files JSON: ["ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_negative_memory_explain.py","test/api/semantic_world/test_required_mode_capstone.py","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-043-capstone.json"]
+- Predicted symbols: NegativeMemoryInvalidationExplainer; RequiredModeCapstoneReceipt
+- Public interfaces: explain_negative_memory_invalidation
+- Interfaces: explain_negative_memory_invalidation
+- Preconditions: Required rollout is active; end-to-end, ablation and adversarial gates pass; the existing implementation supervisor holds current task/worktree/lease/fence/resource/merge/event authority.
+- Declared effects: Have the supervisor—not the top-level Codex session—implement one bounded negative-memory invalidation explanation enhancement entirely under required semantic-world mode, validate it and publish a new generation root.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_required_mode_capstone.py
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q test/api/semantic_world/test_required_mode_capstone.py"]
+- Evidence requirements: task/goal revision; independent context/reuse/prediction-consideration/proof/test/validation receipts; fenced worktree/commit/merge; pre/post root CIDs and expected/result generations; transition; restart verification; model-call/context accounting; non-self-approval
+- Acceptance: The existing supervisor performs and independently accepts the enhancement; every required receipt verifies; pre/post roots verify transitively after restart; top-level session neither implements nor manually completes the task.
+- Conflict policy: Capstone task exclusively owns its bounded source/test/evidence; operator controls and release report remain protected/separate; worker cannot approve its own context/proof/transition/root.
+- Context budget tokens: 24000
+- No-model route: Exact negative-memory schema/reuse evidence, static analysis, verified procedure and deterministic edit/test route; a model is only for a named unresolved implementation hole.
+- Model fallback: Use the current capability-probed implementation provider only for a named decision-relevant residual after deterministic routes are exhausted; its output is proposal-only and cannot self-approve.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: One bounded enhancement proves the control loop, not universal autonomy; any unavailable required evidence produces a typed non-success terminal.
+- Bundle: semantic-addressed-world-model/required-capstone
+- Parallel lane: required-capstone
+- Resource class: coordinator
+- Implementation stage: W20
+- Implementation timeout seconds: 14400
+- Provider role: implementation
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local source edits, isolated tests, immutable task evidence, and existing merge authority only
+- Prohibited effects: no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2
+
+## SAWM-044 Publish current-tree release, migration, and limitation report
+
+- Stable task ID: SAWM-044
+- Status: todo
+- Completion: automatic
+- Completion mode: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Depends on: SAWM-038, SAWM-039, SAWM-042, SAWM-043
+- Dependencies JSON: ["SAWM-038","SAWM-039","SAWM-042","SAWM-043"]
+- Goal id: SAWM-G072
+- Parent goal ID: SAWM-G070
+- Subgoal ID: SAWM-G072
+- Owning repository: ipfs_accelerate_py
+- Exact inputs: exact SAWM-000 source, dependency, environment, policy, task-revision, and authority seals resolved at materialization; exact accepted result CIDs for declared dependencies
+- Outputs: docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_RELEASE.md, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-044-release.json, test/api/semantic_world/test_release_evidence.py
+- Outputs JSON: ["docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_RELEASE.md","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-044-release.json","test/api/semantic_world/test_release_evidence.py"]
+- Predicted files: docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_RELEASE.md, artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-044-release.json, test/api/semantic_world/test_release_evidence.py
+- Predicted files JSON: ["docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_RELEASE.md","artifacts/agent_supervisor/semantic_addressed_world_model/SAWM-044-release.json","test/api/semantic_world/test_release_evidence.py"]
+- Predicted symbols: SemanticWorldReleaseReport; SemanticWorldMigrationReceipt; SemanticWorldRollbackTarget
+- Public interfaces: SemanticWorldReleaseReport@1
+- Interfaces: SemanticWorldReleaseReport@1
+- Preconditions: All mandatory tasks are accepted or explicitly permitted typed terminals; capstone/root evidence, safety floors, seals and exact current integration tree are available for independent verification.
+- Declared effects: Publish human/machine exact repository/gitlink/dirty/migration/task/commit/interface/identity/graph/corpus/model/test/proof/storage/rollout/benchmark/capstone/blocker/limitation/compatibility/rollback/final-root evidence and migration guidance.
+- Validation: PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_dependencies.py && PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_board.py && PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state ipfs_datasets_py/tests/unit/logic/software_verification ipfs_kit_py/tests/semantic_world_store test/api/semantic_world
+- Validation commands JSON: ["PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_dependencies.py","PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python scripts/validate_semantic_addressed_world_model_board.py","PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. /home/barberb/.local/bin/python -m pytest -q ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state ipfs_datasets_py/tests/unit/logic/software_verification ipfs_kit_py/tests/semantic_world_store test/api/semantic_world"]
+- Evidence requirements: all 27 required report categories; current source/dependency seals; task/goal revisions/terminals; merge outcomes; focused/regression argv/results; models/hardware or unavailability; benchmark denominators; safety floors; final transitive root and generation; rollback target
+- Acceptance: Release is declared only when every mandatory terminal, validator, seal, required receipt, self-hosted capstone and final transitive root passes with zero safety-floor violations and no silent @1 identity change; otherwise report the strongest honest non-release terminal.
+- Conflict policy: Exclusive release/migration/limitation aggregation owner; cannot edit controls/production implementations, reinterpret accepted history, waive blockers, lower gates or fabricate unavailable evidence.
+- Context budget tokens: 36000
+- No-model route: Deterministic receipt/source/tree/task/root traversal, validator/regression execution and report rendering.
+- Model fallback: A model may only help phrase a bounded narrative from already verified machine evidence; it cannot add claims, interpret missing evidence as success, alter status or authorize release.
+- Rollout mode: required
+- Protected paths: SAWM-CONTROL-PATHS
+- Limitations: If any mandatory condition is absent or fails, the report must state non-release/typed blocker and preserve migration/rollback evidence without claiming completion.
+- Bundle: semantic-addressed-world-model/release
+- Parallel lane: release
+- Resource class: coordinator
+- Implementation stage: W21
+- Implementation timeout seconds: 14400
+- Provider role: release-qualification
+- Network policy: deny
+- Risk class: critical
+- Write scope: only the exact outputs/predicted files above in an isolated fenced worktree; shared paths require the named integration ownership in this card
+- External effect scope: local validators/tests/root verification/report writes and existing release evidence authority only; no remote publication unless separately authorized
+- Prohibited effects: no release claim from Markdown/task drain/historical green tests; no omission of failures/humans/unavailable dimensions; no source revision adoption; no protected-control mutation; no dirty-user-tree mutation; no implicit network/install/model download; no credentials or private chain-of-thought; no test/proof/authority weakening; no arbitrary-code deserialization; no worker/model/procedure/prediction/retrieval self-approval
+- Rollback or compensation procedure: Reject and preserve the typed failed attempt; quarantine candidate artifacts and any unpublished root; use existing fenced merge/rollback authority to restore the last accepted tree and generation without deleting history.
+- Board namespace: semantic-addressed-world-model-v1
+- Plan revision: SAWM-PLAN-R2

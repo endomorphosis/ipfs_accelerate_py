@@ -1,0 +1,14 @@
+{
+  "schema": "semantic-addressed-world-model/native-dependency-launch-authorization@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "status": "accepted",
+  "scope": "configured-board-live-control-plane",
+  "dependency_id": "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",
+  "payload_sha256": "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",
+  "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+  "authority_basis": "operator-owned protected control inside the accepted immutable source capsule",
+  "inspection_is_authority": false,
+  "authorization_may_claim_task_completion": false,
+  "authorization_id": "sha256:a8d030a674cf084ac672a1860498b6ae68e7162bc2267ae7b6746102c56941a8"
+}

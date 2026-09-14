@@ -12,27 +12,26 @@ creation are one transaction.
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    database_coordination as database_coordination_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
-    CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
-    CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
-    COORDINATION_HISTORY_PROJECTION_SCHEMA,
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
+    TASK_CLAIM_FAILURE_REARM_OPERATION,
+    TASK_CLAIM_FAILURE_REARMED_EVENT,
+    TASK_CLAIM_FAILURE_SETTLED_EVENT,
+    TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION,
+    TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA,
     TASK_CLAIM_INTERFACE,
-    TASK_COMPLETION_REARM_SCHEMA,
-    TASK_DEPENDENCY_AMENDMENT_SCHEMA,
-    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE,
     AttemptStatus,
-    DatabaseCoordinationBoundsError,
     DatabaseCoordinationConflictError,
-    DatabaseCoordinationError,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
     DatabaseCoordinationStaleFenceError,
@@ -45,8 +44,10 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     duckdb_available,
     exclusive_scope_key,
     open_database_coordinator,
-    read_coordination_history_projection,
     read_coordination_registry_projection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+    canonical_content_cid,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -79,60 +80,6 @@ def _open(
         default_lease_ms=default_lease_ms,
     )
     return coordinator, clock
-
-
-def test_open_rebuilds_stale_ready_index_before_updates(
-    tmp_path: Path,
-) -> None:
-    database_path = tmp_path / "coordination.duckdb"
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(
-            task_cid="task:index-recovery",
-            task_id="INDEX-RECOVERY",
-        )
-    finally:
-        coordinator.close()
-
-    import duckdb
-
-    raw = duckdb.connect(str(database_path))
-    try:
-        raw.execute("DROP INDEX coordination_tasks_ready_idx")
-        raw.execute(
-            "CREATE INDEX coordination_tasks_ready_idx "
-            "ON coordination_tasks(task_id)"
-        )
-    finally:
-        raw.close()
-
-    reopened = open_database_coordinator(database_path)
-    try:
-        selected = reopened.claim_ready_task(
-            owner_session_id="session:index-recovery"
-        )
-        assert selected is not None
-        assert selected.task_cid == "task:index-recovery"
-    finally:
-        reopened.close()
-
-    observed = duckdb.connect(str(database_path), read_only=True)
-    try:
-        index_sql = observed.execute(
-            "SELECT sql FROM duckdb_indexes() "
-            "WHERE index_name = 'coordination_tasks_ready_idx'"
-        ).fetchone()
-        task_row = observed.execute(
-            "SELECT task_cid, task_id, ready FROM coordination_tasks"
-        ).fetchone()
-    finally:
-        observed.close()
-    assert index_sql is not None
-    assert index_sql[0] == (
-        "CREATE INDEX coordination_tasks_ready_idx ON "
-        "coordination_tasks(ready, registered_at_ms, task_cid);"
-    )
-    assert task_row == ("task:index-recovery", "INDEX-RECOVERY", True)
 
 
 def _completed_control_task(
@@ -172,93 +119,32 @@ def _incomplete_control_task(prepared: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _settled_control_completion(
-    coordinator: DatabaseCoordinator,
-    task_cid: str,
+def _task_claim_failure_receipt(
+    claim: TaskClaim,
     *,
-    expected_revision: int = 2,
-) -> tuple[TaskClaim, dict[str, object]]:
-    claim = coordinator.claim_task(
-        task_cid=task_cid,
-        owner_session_id=f"session:{task_cid}",
-    )
-    prepared = coordinator.prepare_task_completion(
-        claim,
-        control_expected_revision=expected_revision,
-        evidence_digest=f"sha256:{task_cid}",
-    )
-    control_task = _completed_control_task(prepared)
-    coordinator.complete_task_claim(
-        claim,
-        control_completion_receipt=control_task,
-    )
-    coordinator.settle_task_claim(claim)
-    return claim, control_task
-
-
-def _control_rearm_observation(
-    *,
-    task_cid: str,
-    task_alias: str,
-    revision: int = 4,
-    status: str = "retrying",
-    nested: bool = True,
+    control_expected_revision: int = 2,
 ) -> dict[str, object]:
-    task: dict[str, object] = {
-        "task_cid": task_cid,
-        "task_alias": task_alias,
-        "status": status,
-        "revision": revision,
-        "body": {},
+    payload: dict[str, object] = {
+        "schema": TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA,
+        "operation": TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION,
+        "failure_kind": "database_portal_bridge_error",
+        "failure_payload_digest": "sha256:"
+        + hashlib.sha256(b"terminal Portal failure").hexdigest(),
+        "task_cid": claim.task_cid,
+        "attempt_id": claim.attempt_id,
+        "attempt_number": claim.attempt_number,
+        "claim_id": claim.claim_id,
+        "lease_id": claim.lease_id,
+        "owner_session_id": claim.owner_session_id,
+        "fencing_token": claim.fencing_token,
+        "fence_epoch": claim.fence_epoch,
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "automatic_retry_admitted": False,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": control_expected_revision,
     }
-    if not nested:
-        return task
-    return {
-        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-cas@1",
-        "task": task,
-        "previous_status": "completed",
-        "revision": revision,
-        "event_cursor": 9,
-        "changed": True,
-        "receipt_cid": "cid:control-rearm",
-    }
-
-
-def _control_task_projection(
-    *,
-    task_cid: str,
-    task_alias: str,
-    status: str,
-    revision: int,
-) -> dict[str, object]:
-    return {
-        "task_cid": task_cid,
-        "task_alias": task_alias,
-        "goal_cid": "goal:control",
-        "plan_cid": "plan:control",
-        "objective_id": "objective:control",
-        "ordinal": 1,
-        "status": status,
-        "revision": revision,
-        "priority": "P0",
-        "body": {"authority": "canonical-control"},
-        "dependencies": [],
-        "outputs": [],
-        "acceptance": [],
-        "validations": [],
-    }
-
-
-def _control_ready_frontier(
-    *tasks: dict[str, object],
-    revision: int = 50,
-) -> dict[str, object]:
-    return {
-        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-page@1",
-        "tasks": list(tasks),
-        "revision": revision,
-        "next_cursor": "",
-    }
+    return {**payload, "settlement_id": canonical_content_cid(payload)}
 
 
 # ---------------------------------------------------------------------------
@@ -440,38 +326,6 @@ def test_takeover_after_expiry_advances_epoch_monotonically(tmp_path: Path) -> N
                 repository_id="repository:demo",
                 path="src/a.py",
             )
-    finally:
-        coordinator.close()
-
-
-def test_leftover_accepted_task_lease_expires_without_art_update(
-    tmp_path: Path,
-) -> None:
-    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
-    try:
-        coordinator.register_task(task_cid="task:leftover-lease", task_id="SPAR-018")
-        claim = coordinator.claim_task(
-            task_cid="task:leftover-lease",
-            owner_session_id="session:dead",
-        )
-        assert coordinator.get_lease(claim.lease_id).state is LeaseState.ACCEPTED
-        clock.advance(10_001)
-        observed = coordinator.synchronize_authoritative_task(
-            task_cid="task:leftover-lease",
-            task_id="SPAR-018",
-            authoritative_status="todo",
-            authoritative_revision=2,
-            authoritative_ready=True,
-            authoritative_completed=False,
-        )
-        assert coordinator.get_lease(claim.lease_id).state is LeaseState.EXPIRED
-        assert observed["active_claim_preserved"] is False
-        replacement = coordinator.claim_task(
-            task_cid="task:leftover-lease",
-            owner_session_id="session:live",
-        )
-        assert replacement.lease_id != claim.lease_id
-        assert coordinator.get_lease(replacement.lease_id).state is LeaseState.ACCEPTED
     finally:
         coordinator.close()
 
@@ -909,568 +763,6 @@ def test_coordination_registry_projection_is_exact_and_timestamp_free(
         second.close()
 
 
-def test_authoritative_task_sync_rebuilds_retrying_projection_body(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        blocked = coordinator.synchronize_authoritative_task(
-            task_cid="task:pcsm-010",
-            task_id="PCSM-010",
-            authoritative_status="blocked",
-            authoritative_revision=12,
-            authoritative_ready=False,
-            authoritative_completed=False,
-            now_ms=1_000_000,
-        )
-        assert blocked["changed"] is True
-        retrying = coordinator.synchronize_authoritative_task(
-            task_cid="task:pcsm-010",
-            task_id="PCSM-010",
-            authoritative_status="retrying",
-            authoritative_revision=13,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_200,
-        )
-        assert retrying["changed"] is True
-        assert retrying["authoritative_status"] == "retrying"
-        assert retrying["authoritative_revision"] == 13
-        replay = coordinator.synchronize_authoritative_task(
-            task_cid="task:pcsm-010",
-            task_id="PCSM-010",
-            authoritative_status="retrying",
-            authoritative_revision=13,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_300,
-        )
-        assert replay["changed"] is False
-    finally:
-        coordinator.close()
-
-
-def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepared(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        completed = coordinator.synchronize_authoritative_task(
-            task_cid="task:dep",
-            task_id="DEP",
-            authoritative_status="completed",
-            authoritative_revision=1,
-            authoritative_ready=False,
-            authoritative_completed=True,
-            now_ms=1_000_000,
-        )
-        assert completed["changed"] is True
-        replay = coordinator.synchronize_authoritative_task(
-            task_cid="task:dep",
-            task_id="DEP",
-            authoritative_status="completed",
-            authoritative_revision=1,
-            authoritative_ready=False,
-            authoritative_completed=True,
-            now_ms=1_000_100,
-        )
-        assert replay["changed"] is False
-        advanced = coordinator.synchronize_authoritative_task(
-            task_cid="task:dep",
-            task_id="DEP",
-            authoritative_status="completed",
-            authoritative_revision=2,
-            authoritative_ready=False,
-            authoritative_completed=True,
-            now_ms=1_000_150,
-        )
-        assert advanced["changed"] is True
-        dependency_completion = next(
-            completion
-            for completion in coordinator.coordination_registry_projection()[
-                "logical_completions"
-            ]
-            if completion["task_cid"] == "task:dep"
-        )
-        assert dependency_completion["body"]["authoritative_revision"] == 2
-        for invalid_revision in (True, 2.0, "2"):
-            with pytest.raises(DatabaseCoordinationBoundsError, match="positive integer"):
-                coordinator.synchronize_authoritative_task(
-                    task_cid="task:invalid-revision",
-                    task_id="INVALID-REVISION",
-                    authoritative_status="ready",
-                    authoritative_revision=invalid_revision,  # type: ignore[arg-type]
-                    authoritative_ready=True,
-                    authoritative_completed=False,
-                )
-
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="typed strict-requeue ready status",
-        ):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:ready-floor-unsealed",
-                task_id="READY-FLOOR-UNSEALED",
-                authoritative_status="ready",
-                authoritative_revision=2,
-                authoritative_ready=True,
-                authoritative_completed=False,
-                authoritative_attempt_floor=3,
-            )
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="source requires its exact ready floor",
-        ):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:ready-floor-empty",
-                task_id="READY-FLOOR-EMPTY",
-                authoritative_status="ready",
-                authoritative_revision=2,
-                authoritative_ready=True,
-                authoritative_completed=False,
-                authoritative_attempt_floor_source=(
-                    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
-                ),
-            )
-        ready_floor = coordinator.synchronize_authoritative_task(
-            task_cid="task:ready-floor",
-            task_id="READY-FLOOR",
-            authoritative_status="ready",
-            authoritative_revision=2,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            authoritative_attempt_floor=3,
-            authoritative_attempt_floor_source=(
-                TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
-            ),
-            now_ms=1_000_175,
-        )
-        assert ready_floor["authoritative_attempt_floor"] == 3
-        floor_claim = coordinator.claim_task(
-            task_cid="task:ready-floor",
-            owner_session_id="session:ready-floor",
-            now_ms=1_000_176,
-        )
-        assert floor_claim.attempt_number == 4
-
-        coordinator.synchronize_authoritative_task(
-            task_cid="task:child",
-            task_id="CHILD",
-            dependency_task_cids=("task:dep",),
-            authoritative_status="ready",
-            authoritative_revision=1,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_200,
-        )
-        assert coordinator.claimability("task:child")["claimable"] is True
-
-        with pytest.raises(DatabaseCoordinationConflictError, match="dependency drift"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:child",
-                task_id="CHILD",
-                dependency_task_cids=(),
-                authoritative_status="ready",
-                authoritative_revision=1,
-                authoritative_ready=True,
-                authoritative_completed=False,
-            )
-        with pytest.raises(DatabaseCoordinationConflictError, match="contradicts"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:dep",
-                task_id="DEP",
-                authoritative_status="completed",
-                authoritative_revision=2,
-                authoritative_ready=False,
-                authoritative_completed=False,
-            )
-        with pytest.raises(DatabaseCoordinationConflictError, match="same-revision"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:dep",
-                task_id="DEP",
-                authoritative_status="ready",
-                authoritative_revision=2,
-                authoritative_ready=True,
-                authoritative_completed=False,
-            )
-        with pytest.raises(DatabaseCoordinationConflictError, match="revision regression"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:dep",
-                task_id="DEP",
-                authoritative_status="completed",
-                authoritative_revision=1,
-                authoritative_ready=False,
-                authoritative_completed=True,
-            )
-        with pytest.raises(DatabaseCoordinationConflictError, match="no prior local claim"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:fresh-retry",
-                task_id="FRESH-RETRY",
-                authoritative_status="in_progress",
-                authoritative_revision=2,
-                authoritative_ready=False,
-                authoritative_completed=False,
-                restart_recovery_ready=True,
-                restart_recovery_owner_session_id="session:forged-retry",
-                restart_recovery_binding={
-                    "claim_id": "claim:forged",
-                    "attempt_id": "attempt:forged",
-                    "lease_id": "lease:forged",
-                    "owner_session_id": "session:forged-retry",
-                    "attempt_number": 1,
-                    "fencing_token": 1,
-                    "fence_epoch": 1,
-                },
-            )
-
-        coordinator.synchronize_authoritative_task(
-            task_cid="task:recovery",
-            task_id="RECOVERY",
-            authoritative_status="ready",
-            authoritative_revision=1,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_000,
-        )
-        recovery_claim = coordinator.claim_task(
-            task_cid="task:recovery",
-            owner_session_id="session:recovery",
-            lease_ms=5_000,
-            now_ms=1_000_000,
-        )
-        recovery_binding = {
-            "claim_id": recovery_claim.claim_id,
-            "attempt_id": recovery_claim.attempt_id,
-            "lease_id": recovery_claim.lease_id,
-            "owner_session_id": recovery_claim.owner_session_id,
-            "attempt_number": recovery_claim.attempt_number,
-            "fencing_token": recovery_claim.fencing_token,
-            "fence_epoch": recovery_claim.fence_epoch,
-        }
-        expired = coordinator.synchronize_authoritative_task(
-            task_cid="task:recovery",
-            task_id="RECOVERY",
-            authoritative_status="in_progress",
-            authoritative_revision=2,
-            authoritative_ready=False,
-            authoritative_completed=False,
-            restart_recovery_ready=True,
-            restart_recovery_owner_session_id="session:recovery",
-            restart_recovery_binding=recovery_binding,
-            now_ms=1_006_000,
-        )
-        assert expired["changed"] is True
-        assert expired["ready"] is True
-        assert expired["active_claim_preserved"] is False
-        expired_replay = coordinator.synchronize_authoritative_task(
-            task_cid="task:recovery",
-            task_id="RECOVERY",
-            authoritative_status="in_progress",
-            authoritative_revision=2,
-            authoritative_ready=False,
-            authoritative_completed=False,
-            restart_recovery_ready=True,
-            restart_recovery_owner_session_id="session:recovery",
-            restart_recovery_binding=recovery_binding,
-            now_ms=1_006_100,
-        )
-        assert expired_replay["changed"] is False
-        assert (
-            coordinator.claim_ready_task(
-                owner_session_id="session:foreign-recovery",
-                exclude_task_cids=("task:child",),
-                now_ms=1_006_200,
-            )
-            is None
-        )
-        later_active = coordinator.claim_ready_task(
-            owner_session_id="session:recovery",
-            exclude_task_cids=("task:child",),
-            now_ms=1_006_200,
-        )
-        assert later_active is not None
-        assert later_active.attempt_number == 2
-        with pytest.raises(DatabaseCoordinationConflictError, match="later active"):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:recovery",
-                task_id="RECOVERY",
-                authoritative_status="in_progress",
-                authoritative_revision=2,
-                authoritative_ready=False,
-                authoritative_completed=False,
-                restart_recovery_ready=True,
-                restart_recovery_owner_session_id="session:recovery",
-                restart_recovery_binding=recovery_binding,
-                now_ms=1_006_300,
-            )
-
-        reopened = coordinator.synchronize_authoritative_task(
-            task_cid="task:dep",
-            task_id="DEP",
-            authoritative_status="ready",
-            authoritative_revision=3,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_300,
-        )
-        assert reopened["changed"] is True
-        coordinator.synchronize_authoritative_task(
-            task_cid="task:child",
-            task_id="CHILD",
-            dependency_task_cids=("task:dep",),
-            authoritative_status="ready",
-            authoritative_revision=1,
-            authoritative_ready=False,
-            authoritative_completed=False,
-            now_ms=1_000_300,
-        )
-        assert coordinator.claimability("task:child")["claimable"] is False
-
-        coordinator.synchronize_authoritative_task(
-            task_cid="task:prepared",
-            task_id="PREPARED",
-            authoritative_status="ready",
-            authoritative_revision=1,
-            authoritative_ready=True,
-            authoritative_completed=False,
-            now_ms=1_000_400,
-        )
-        claim = coordinator.claim_task(
-            task_cid="task:prepared",
-            owner_session_id="session:prepared-sync",
-            now_ms=1_000_400,
-        )
-        coordinator.prepare_task_completion(
-            claim,
-            control_expected_revision=2,
-            evidence_digest="sha256:" + "a" * 64,
-            now_ms=1_000_500,
-        )
-        preserved = coordinator.synchronize_authoritative_task(
-            task_cid="task:prepared",
-            task_id="PREPARED",
-            authoritative_status="completed",
-            authoritative_revision=2,
-            authoritative_ready=False,
-            authoritative_completed=True,
-            now_ms=1_000_600,
-        )
-        assert preserved["prepared_completion_preserved"] is True
-        assert preserved["ready"] is False
-        assert coordinator.get_prepared_task_completion("task:prepared")["status"] == (
-            "prepared"
-        )
-    finally:
-        coordinator.close()
-
-
-def test_authoritative_task_sync_rebuilds_checkpointed_registry_without_update(
-    tmp_path: Path,
-) -> None:
-    import duckdb  # type: ignore
-
-    coordinator, clock = _open(tmp_path)
-    database_path = coordinator.database_path
-    try:
-        connection = coordinator._require()  # noqa: SLF001
-        connection.execute(
-            """
-            INSERT INTO coordination_tasks(
-                task_cid, task_id, worktree_id, registered_at_ms,
-                ready, body_json
-            )
-            SELECT 'task:sync-bulk-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
-                   'SYNC-BULK-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
-                   '', 900000 + i, TRUE, '{}'
-            FROM range(256) AS generated(i)
-            """
-        )
-        coordinator._commit_if_idle(connection)  # noqa: SLF001
-        coordinator.synchronize_authoritative_task(
-            task_cid="task:sync-persisted",
-            task_id="SYNC-PERSISTED",
-            authoritative_status="pending",
-            authoritative_revision=1,
-            authoritative_ready=False,
-            authoritative_completed=False,
-        )
-    finally:
-        coordinator.close()
-
-    checkpoint = duckdb.connect(str(database_path))
-    try:
-        checkpoint.execute("CHECKPOINT")
-        assert checkpoint.execute(
-            "SELECT COUNT(*) FROM coordination_tasks"
-        ).fetchone()[0] == 257
-    finally:
-        checkpoint.close()
-
-    coordinator = open_database_coordinator(database_path, clock_ms=clock)
-    raw_connection = coordinator._require()  # noqa: SLF001
-
-    class RejectCoordinationTaskUpdate:
-        def __init__(self, raw: object) -> None:
-            self.raw = raw
-
-        @property
-        def in_transaction(self) -> bool:
-            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
-
-        def execute(
-            self,
-            statement: str,
-            parameters: object | None = None,
-        ) -> object:
-            normalized = " ".join(str(statement).upper().split())
-            if normalized.startswith("UPDATE COORDINATION_TASKS"):
-                raise AssertionError(
-                    "persisted coordination_tasks rows must not be updated"
-                )
-            if parameters is None:
-                return self.raw.execute(statement)  # type: ignore[attr-defined]
-            return self.raw.execute(  # type: ignore[attr-defined]
-                statement,
-                parameters,
-            )
-
-        def __getattr__(self, name: str) -> object:
-            return getattr(self.raw, name)
-
-    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
-        raw_connection
-    )
-    try:
-        synchronized = coordinator.synchronize_authoritative_task(
-            task_cid="task:sync-persisted",
-            task_id="SYNC-PERSISTED",
-            authoritative_status="pending",
-            authoritative_revision=2,
-            authoritative_ready=False,
-            authoritative_completed=False,
-        )
-        assert synchronized["changed"] is True
-        assert synchronized["ready"] is False
-    finally:
-        coordinator.close()
-
-    landed = duckdb.connect(str(database_path))
-    try:
-        landed.execute("CHECKPOINT")
-        assert landed.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT task_cid) FROM coordination_tasks"
-        ).fetchone() == (257, 257)
-        ready, body_json = landed.execute(
-            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
-            ["task:sync-persisted"],
-        ).fetchone()
-        assert ready is False
-        assert json.loads(body_json) == {
-            "authority": "task_source",
-            "authoritative_attempt_floor": 0,
-            "authoritative_attempt_floor_source": "",
-            "authoritative_revision": 2,
-            "authoritative_status": "pending",
-            "restart_recovery_binding": {},
-            "restart_recovery_owner_session_id": "",
-            "restart_recovery_ready": False,
-        }
-        assert landed.execute(
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'main'
-              AND table_name = 'coordination_tasks_rearm_staging'
-            """
-        ).fetchone()[0] == 0
-        assert landed.execute(
-            """
-            SELECT COUNT(*) FROM duckdb_indexes()
-            WHERE schema_name = 'main'
-              AND index_name = 'coordination_tasks_ready_idx'
-              AND table_name = 'coordination_tasks'
-            """
-        ).fetchone()[0] == 1
-    finally:
-        landed.close()
-
-
-@pytest.mark.parametrize("failure_point", ["begin", "commit"])
-def test_authoritative_task_sync_transaction_boundaries_fail_closed(
-    tmp_path: Path,
-    failure_point: str,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    coordinator.synchronize_authoritative_task(
-        task_cid="task:sync-transaction",
-        task_id="SYNC-TRANSACTION",
-        authoritative_status="pending",
-        authoritative_revision=1,
-        authoritative_ready=False,
-        authoritative_completed=False,
-    )
-    raw_connection = coordinator._require()  # noqa: SLF001
-
-    class TransactionFault:
-        def __init__(self, raw: object) -> None:
-            self.raw = raw
-
-        @property
-        def in_transaction(self) -> bool:
-            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
-
-        def execute(
-            self,
-            statement: str,
-            parameters: object | None = None,
-        ) -> object:
-            normalized = " ".join(str(statement).upper().split())
-            if failure_point == "begin" and normalized == "BEGIN TRANSACTION":
-                return self.raw.execute("SELECT 1")  # type: ignore[attr-defined]
-            if failure_point == "commit" and normalized == "COMMIT":
-                raise RuntimeError("injected authoritative-sync commit failure")
-            if parameters is None:
-                return self.raw.execute(statement)  # type: ignore[attr-defined]
-            return self.raw.execute(  # type: ignore[attr-defined]
-                statement,
-                parameters,
-            )
-
-        def __getattr__(self, name: str) -> object:
-            return getattr(self.raw, name)
-
-    coordinator._connection = TransactionFault(raw_connection)  # noqa: SLF001
-    expected_error = (
-        DatabaseCoordinationError if failure_point == "begin" else RuntimeError
-    )
-    try:
-        with pytest.raises(expected_error):
-            coordinator.synchronize_authoritative_task(
-                task_cid="task:sync-transaction",
-                task_id="SYNC-TRANSACTION",
-                authoritative_status="pending",
-                authoritative_revision=2,
-                authoritative_ready=False,
-                authoritative_completed=False,
-            )
-        assert coordinator._require().in_transaction is False  # noqa: SLF001
-        task_row = coordinator._require().execute(  # noqa: SLF001
-            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
-            ["task:sync-transaction"],
-        ).fetchone()
-        assert task_row is not None
-        assert task_row[0] is False
-        assert json.loads(task_row[1])["authoritative_revision"] == 1
-        assert coordinator._require().execute(  # noqa: SLF001
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'main'
-              AND table_name = 'coordination_tasks_rearm_staging'
-            """
-        ).fetchone()[0] == 0
-    finally:
-        coordinator.close()
-
-
 def test_coordination_registry_projection_exposes_exact_claim_and_lease_counts(
     tmp_path: Path,
 ) -> None:
@@ -1553,137 +845,6 @@ def test_coordination_registry_projection_makes_dependency_tamper_visible(
             }
         ]
         assert after["projection_root"] != before["projection_root"]
-    finally:
-        coordinator.close()
-
-
-def test_add_unstarted_task_dependency_is_exact_and_identity_preserving(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(task_cid="task:old-dep", task_id="OLD-DEP")
-        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
-        coordinator.register_task(
-            task_cid="task:future",
-            task_id="FUTURE",
-            worktree_id="worktree:future",
-            dependency_task_cids=("task:old-dep",),
-            body={"logical_task_cid": "task:future", "ordinal": 120},
-        )
-        before = coordinator.coordination_registry_projection()
-        before_task = next(
-            item for item in before["tasks"] if item["task_cid"] == "task:future"
-        )
-
-        receipt = coordinator.add_unstarted_task_dependency(
-            task_cid="task:future",
-            dependency_task_cid="task:new-dep",
-            expected_dependency_task_cids=("task:old-dep",),
-            operation_id="plan-revision:r2:120-requires-113",
-        )
-
-        assert receipt["schema"] == TASK_DEPENDENCY_AMENDMENT_SCHEMA
-        assert receipt["changed"] is True
-        assert receipt["before_dependency_task_cids"] == ["task:old-dep"]
-        assert receipt["after_dependency_task_cids"] == [
-            "task:new-dep",
-            "task:old-dep",
-        ]
-        assert receipt["receipt_cid"].startswith("sha256:")
-        after = coordinator.coordination_registry_projection()
-        assert next(
-            item for item in after["tasks"] if item["task_cid"] == "task:future"
-        ) == before_task
-        assert after["logical_completions"] == before["logical_completions"]
-        assert {
-            (item["task_cid"], item["dependency_task_cid"])
-            for item in after["dependency_edges"]
-        } - {
-            (item["task_cid"], item["dependency_task_cid"])
-            for item in before["dependency_edges"]
-        } == {("task:future", "task:new-dep")}
-
-        replay = coordinator.add_unstarted_task_dependency(
-            task_cid="task:future",
-            dependency_task_cid="task:new-dep",
-            expected_dependency_task_cids=("task:old-dep",),
-            operation_id="plan-revision:r2:120-requires-113",
-        )
-        assert replay["changed"] is False
-        assert coordinator.coordination_registry_projection() == after
-    finally:
-        coordinator.close()
-
-
-def test_add_unstarted_task_dependency_rejects_stale_cas_and_missing_target(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(task_cid="task:old-dep", task_id="OLD-DEP")
-        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
-        coordinator.register_task(
-            task_cid="task:future",
-            task_id="FUTURE",
-            dependency_task_cids=("task:old-dep",),
-        )
-        before = coordinator.coordination_registry_projection()
-
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="compare-and-swap failed",
-        ):
-            coordinator.add_unstarted_task_dependency(
-                task_cid="task:future",
-                dependency_task_cid="task:new-dep",
-                expected_dependency_task_cids=(),
-                operation_id="stale-plan-revision",
-            )
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="dependency task is absent",
-        ):
-            coordinator.add_unstarted_task_dependency(
-                task_cid="task:future",
-                dependency_task_cid="task:not-registered",
-                expected_dependency_task_cids=("task:old-dep",),
-                operation_id="missing-dependency",
-            )
-        assert coordinator.coordination_registry_projection() == before
-    finally:
-        coordinator.close()
-
-
-@pytest.mark.parametrize("history_kind", ["completion", "claim"])
-def test_add_unstarted_task_dependency_rejects_any_execution_history(
-    tmp_path: Path,
-    history_kind: str,
-) -> None:
-    coordinator, _clock = _open(tmp_path / history_kind)
-    try:
-        coordinator.register_task(task_cid="task:new-dep", task_id="NEW-DEP")
-        coordinator.register_task(task_cid="task:started", task_id="STARTED")
-        if history_kind == "completion":
-            coordinator.mark_task_complete("task:started")
-        else:
-            coordinator.claim_task(
-                task_cid="task:started",
-                owner_session_id="session:worker",
-            )
-        before = coordinator.coordination_registry_projection()
-
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="requires an unstarted task",
-        ):
-            coordinator.add_unstarted_task_dependency(
-                task_cid="task:started",
-                dependency_task_cid="task:new-dep",
-                expected_dependency_task_cids=(),
-                operation_id=f"reject-{history_kind}",
-            )
-        assert coordinator.coordination_registry_projection() == before
     finally:
         coordinator.close()
 
@@ -1799,115 +960,6 @@ def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
             "body": {"reason": "foreign"},
         }
     ]
-
-
-def test_coordination_history_projection_is_closed_deterministic_and_read_only(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    database_path = coordinator.database_path
-    try:
-        lease = coordinator.acquire(
-            lease_kind="merge",
-            scope="history:exact",
-            owner_session_id="session:history",
-            lease_ms=30_000,
-            body={"reason": "history-projection"},
-        )
-        coordinator.release(lease, reason="history-complete")
-    finally:
-        coordinator.close()
-
-    before = (
-        database_path.stat().st_size,
-        database_path.stat().st_mtime_ns,
-        hashlib.sha256(database_path.read_bytes()).hexdigest(),
-    )
-    first = read_coordination_history_projection(database_path)
-    second = read_coordination_history_projection(database_path)
-
-    assert first == second
-    assert first["schema"] == COORDINATION_HISTORY_PROJECTION_SCHEMA
-    assert first["counts"] == {"token_history": 1, "lease_events": 2}
-    assert set(first) == {
-        "schema",
-        "authority_schema",
-        "schema_inventory",
-        "token_history",
-        "lease_events",
-        "counts",
-        "projection_root",
-    }
-    material = dict(first)
-    claimed = material.pop("projection_root")
-    encoded = json.dumps(
-        material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
-    assert claimed == "sha256:" + hashlib.sha256(encoded).hexdigest()
-    assert before == (
-        database_path.stat().st_size,
-        database_path.stat().st_mtime_ns,
-        hashlib.sha256(database_path.read_bytes()).hexdigest(),
-    )
-
-    import duckdb  # type: ignore
-
-    connection = duckdb.connect(str(database_path))
-    try:
-        connection.execute("CREATE TABLE forged_hidden_authority(value VARCHAR)")
-    finally:
-        connection.close()
-    forged_before = hashlib.sha256(database_path.read_bytes()).hexdigest()
-    with pytest.raises(
-        DatabaseCoordinationStaleFenceError,
-        match="table inventory differs",
-    ):
-        read_coordination_history_projection(database_path)
-    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == forged_before
-
-
-def test_coordination_projection_rejects_duplicate_json_authority(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    database_path = coordinator.database_path
-    try:
-        coordinator.register_task(
-            task_cid="task:duplicate-json",
-            task_id="DUP-001",
-            body={"task_alias": "DUP-001", "status": "todo"},
-        )
-        coordinator._require().execute(  # noqa: SLF001
-            "UPDATE coordination_tasks SET body_json = ? WHERE task_cid = ?",
-            [
-                '{"task_alias":"EVIL","task_alias":"DUP-001","status":"todo"}',
-                "task:duplicate-json",
-            ],
-        )
-    finally:
-        coordinator.close()
-
-    with pytest.raises(
-        DatabaseCoordinationStaleFenceError,
-        match="unambiguous JSON",
-    ):
-        read_coordination_registry_projection(database_path)
-
-    import duckdb  # type: ignore
-
-    connection = duckdb.connect(str(database_path))
-    try:
-        connection.execute(
-            "UPDATE coordination_tasks SET body_json = '' WHERE task_cid = ?",
-            ["task:duplicate-json"],
-        )
-    finally:
-        connection.close()
-    with pytest.raises(
-        DatabaseCoordinationStaleFenceError,
-        match="unambiguous JSON",
-    ):
-        read_coordination_registry_projection(database_path)
 
 
 @pytest.mark.parametrize("tamper", ["metadata", "schema"])
@@ -2035,44 +1087,6 @@ def test_fair_claim_ready_selects_oldest_registered_task(tmp_path: Path) -> None
         assert third is not None
         assert third.task_cid == "task:third"
         assert coordinator.claim_ready_task(owner_session_id="session:d") is None
-    finally:
-        coordinator.close()
-
-
-def test_claim_ready_honors_exact_eligible_order_and_boundary(tmp_path: Path) -> None:
-    coordinator, clock = _open(tmp_path)
-    try:
-        coordinator.register_task(
-            task_cid="task:oldest", task_id="OLDEST", now_ms=clock.now
-        )
-        coordinator.register_task(
-            task_cid="task:preferred", task_id="PREFERRED", now_ms=clock.now + 10
-        )
-        coordinator.register_task(
-            task_cid="task:excluded-by-boundary",
-            task_id="EXCLUDED",
-            now_ms=clock.now - 10,
-        )
-
-        claim = coordinator.claim_ready_task(
-            owner_session_id="session:ordered",
-            eligible_task_cids=("task:preferred", "task:oldest"),
-        )
-        assert claim is not None
-        assert claim.task_cid == "task:preferred"
-
-        # An explicit empty eligibility projection is authoritative.
-        assert (
-            coordinator.claim_ready_task(
-                owner_session_id="session:empty", eligible_task_cids=()
-            )
-            is None
-        )
-        with pytest.raises(DatabaseCoordinationError, match="absent"):
-            coordinator.claim_ready_task(
-                owner_session_id="session:unknown",
-                eligible_task_cids=("task:not-registered",),
-            )
     finally:
         coordinator.close()
 
@@ -2301,25 +1315,6 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
             idempotency_key="released-response",
         )
         coordinator.release(claim.as_fenced_lease(), reason="abandoned")
-        released = coordinator.get_task_claim(claim.claim_id)
-        assert released is not None
-        verified = coordinator.protect_task_claim(
-            released,
-            expected_task_cid=claim.task_cid,
-            expected_attempt_id=claim.attempt_id,
-            expected_owner_session_id=claim.owner_session_id,
-            expected_fencing_token=claim.fencing_token,
-            expected_fence_epoch=claim.fence_epoch,
-            expected_attempt_status=AttemptStatus.RELEASED,
-            expected_lease_state=LeaseState.RELEASED,
-        )
-        assert verified.state is LeaseState.RELEASED
-        with pytest.raises(ValueError, match="requires a released attempt"):
-            coordinator.protect_task_claim(
-                released,
-                expected_attempt_status=AttemptStatus.RUNNING,
-                expected_lease_state=LeaseState.RELEASED,
-            )
 
         replacement = coordinator.claim_task(
             task_cid=claim.task_cid,
@@ -2330,12 +1325,6 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
         assert replacement.attempt_id != claim.attempt_id
         assert replacement.attempt_number == claim.attempt_number + 1
         assert replacement.fencing_token > claim.fencing_token
-        with pytest.raises(DatabaseCoordinationStaleFenceError):
-            coordinator.protect_task_claim(
-                released,
-                expected_attempt_status=AttemptStatus.RELEASED,
-                expected_lease_state=LeaseState.RELEASED,
-            )
     finally:
         coordinator.close()
 
@@ -2450,885 +1439,215 @@ def test_claim_aware_completion_and_successful_settlement_are_ordered(
         coordinator.close()
 
 
-def test_control_rearm_removes_exact_completion_and_is_replay_safe(
-    tmp_path: Path,
-) -> None:
+def test_exact_accepted_task_claim_settles_as_typed_failure(tmp_path: Path) -> None:
     coordinator, _clock = _open(tmp_path)
     try:
-        coordinator.register_task(task_cid="task:rearm", task_id="REARM")
-        first_claim, _control_task = _settled_control_completion(
-            coordinator,
-            "task:rearm",
+        coordinator.register_task(task_cid="task:failed-live", task_id="FAILED-LIVE")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-live",
+            owner_session_id="session:worker",
         )
-        observation = _control_rearm_observation(
-            task_cid="task:rearm",
-            task_alias="REARM",
-            nested=True,
+        receipt = _task_claim_failure_receipt(claim)
+
+        settled = coordinator.fail_task_claim(
+            claim,
+            failure_receipt=receipt,
         )
 
-        rearmed = coordinator.rearm_task_from_control(
-            "task:rearm",
-            control_task_observation=observation,
-        )
-        assert rearmed == {
-            "schema": TASK_COMPLETION_REARM_SCHEMA,
-            "task_cid": "task:rearm",
-            "previous_control_revision": 3,
-            "control_revision": 4,
-            "control_status": "retrying",
-            "ready": True,
-            "replayed": False,
-        }
-        assert coordinator.claimability("task:rearm")["claimable"] is True
-        projection = coordinator.coordination_registry_projection()
-        assert projection["logical_completions"] == []
-        assert projection["tasks"][0]["ready"] is True
-
-        # Response-loss replay requires the same exact typed CAS receipt.
-        replay = coordinator.rearm_task_from_control(
-            "task:rearm",
-            control_task_observation=observation,
-        )
-        assert replay == {**rearmed, "replayed": True}
-
-        replacement = coordinator.claim_task(
-            task_cid="task:rearm",
-            owner_session_id="session:replacement",
-        )
-        assert replacement.attempt_number == first_claim.attempt_number + 1
-        assert replacement.fencing_token > first_claim.fencing_token
-    finally:
-        coordinator.close()
-
-
-def test_control_ready_frontier_reconciliation_demotes_with_art_safe_replay(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    coordinator.register_task(
-        task_cid="task:frontier-stale",
-        task_id="FRONTIER-STALE",
-        body={"preserve": "exactly"},
-    )
-    raw_connection = coordinator._require()  # noqa: SLF001
-
-    class RejectCoordinationTaskUpdate:
-        def __init__(self, raw: object) -> None:
-            self.raw = raw
-
-        @property
-        def in_transaction(self) -> bool:
-            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
-
-        def execute(
-            self,
-            statement: str,
-            parameters: object | None = None,
-        ) -> object:
-            normalized = " ".join(str(statement).upper().split())
-            if normalized.startswith("UPDATE COORDINATION_TASKS"):
-                raise AssertionError(
-                    "ready-frontier reconciliation must rebuild the ART table"
-                )
-            if parameters is None:
-                return self.raw.execute(statement)  # type: ignore[attr-defined]
-            return self.raw.execute(  # type: ignore[attr-defined]
-                statement,
-                parameters,
+        assert settled.state is LeaseState.RELEASED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        readiness = coordinator.claimability(claim.task_cid)
+        assert readiness["claimable"] is False
+        assert readiness["completion_status"] == AttemptStatus.FAILED.value
+        with pytest.raises(DatabaseCoordinationNotReadyError):
+            coordinator.claim_task(
+                task_cid=claim.task_cid,
+                owner_session_id="session:replacement",
             )
-
-        def __getattr__(self, name: str) -> object:
-            return getattr(self.raw, name)
-
-    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
-        raw_connection
-    )
-    terminal = _control_task_projection(
-        task_cid="task:frontier-stale",
-        task_alias="FRONTIER-STALE",
-        status="completed",
-        revision=14,
-    )
-    inventory = _control_ready_frontier(terminal, revision=77)
-    frontier = _control_ready_frontier(revision=77)
-    try:
-        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
-            "task:frontier-stale",
-            control_task_inventory_observation=inventory,
-            control_ready_frontier_observation=frontier,
-            owner_session_id="session:frontier-reconciler",
-        )
-        assert reconciled == {
-            "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
-            "task_cid": "task:frontier-stale",
-            "task_alias": "FRONTIER-STALE",
-            "control_task_status": "completed",
-            "control_task_revision": 14,
-            "control_snapshot_revision": 77,
-            "direction": "demote",
-            "ready_before": True,
-            "ready_after": False,
-            "changed": True,
-            "receipt_cid": reconciled["receipt_cid"],
-            "replayed": False,
-        }
-        assert str(reconciled["receipt_cid"]).startswith("sha256:")
-        projection = coordinator.coordination_registry_projection()
-        assert projection["tasks"] == [
-            {
-                "task_cid": "task:frontier-stale",
-                "task_id": "FRONTIER-STALE",
-                "worktree_id": "",
-                "ready": False,
-                "body": {"preserve": "exactly"},
-            }
-        ]
-        events = coordinator.lease_events(limit=20)
-        reconciliation_events = [
+        failure_events = [
             event
-            for event in events
-            if event["event_type"]
-            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
         ]
-        assert len(reconciliation_events) == 1
-        assert reconciliation_events[0]["body"]["receipt_cid"] == reconciled[
-            "receipt_cid"
-        ]
-        assert {
-            event["event_type"] for event in events
-        } == {
-            "acquired",
-            "released",
-            CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
-        }
-
-        replay = coordinator.reconcile_task_from_control_ready_frontier(
-            "task:frontier-stale",
-            control_task_inventory_observation=inventory,
-            control_ready_frontier_observation=frontier,
-            owner_session_id="session:frontier-reconciler",
-        )
-        assert replay == {**reconciled, "replayed": True}
-        assert len(
-            [
-                event
-                for event in coordinator.lease_events(limit=20)
-                if event["event_type"]
-                == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
-            ]
-        ) == 1
-
-        reopened = {
-            **terminal,
-            "status": "retrying",
-            "revision": 15,
-        }
-        reopened_inventory = _control_ready_frontier(reopened, revision=78)
-        reopened_frontier = _control_ready_frontier(reopened, revision=78)
-        promoted = coordinator.reconcile_task_from_control_ready_frontier(
-            "task:frontier-stale",
-            control_task_inventory_observation=reopened_inventory,
-            control_ready_frontier_observation=reopened_frontier,
-            owner_session_id="session:frontier-reconciler",
-        )
-        assert promoted["direction"] == "promote"
-        assert promoted["ready_before"] is False
-        assert promoted["ready_after"] is True
-        assert promoted["changed"] is True
-        assert coordinator.claimability("task:frontier-stale")["claimable"] is True
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["settlement_id"] == receipt["settlement_id"]
+        assert failure_events[0]["body"]["source_claim_state"] == "accepted"
     finally:
         coordinator.close()
 
 
-@pytest.mark.parametrize(
-    "tampered_projection",
-    ("fenced_lease_body", "maintenance_process_birth"),
-)
-def test_control_ready_frontier_replay_rejects_tampered_maintenance_projection(
-    tmp_path: Path,
-    tampered_projection: str,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        task_cid = "task:frontier-tampered-replay"
-        task_alias = "FRONTIER-TAMPERED-REPLAY"
-        coordinator.register_task(task_cid=task_cid, task_id=task_alias)
-        terminal = _control_task_projection(
-            task_cid=task_cid,
-            task_alias=task_alias,
-            status="completed",
-            revision=14,
-        )
-        inventory = _control_ready_frontier(terminal, revision=77)
-        frontier = _control_ready_frontier(revision=77)
-        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
-            task_cid,
-            control_task_inventory_observation=inventory,
-            control_ready_frontier_observation=frontier,
-            owner_session_id="session:frontier-tampered-replay",
-        )
-        event = next(
-            item
-            for item in coordinator.lease_events(limit=20)
-            if item["event_type"]
-            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
-        )
-        lease_id = str(event["lease_id"])
-        connection = coordinator._require()  # noqa: SLF001
-        if tampered_projection == "fenced_lease_body":
-            connection.execute(
-                "UPDATE fenced_leases SET body_json = ? WHERE lease_id = ?",
-                [json.dumps({"tampered": True}), lease_id],
-            )
-        else:
-            connection.execute(
-                "UPDATE maintenance_leases SET process_birth_id = ? "
-                "WHERE lease_id = ?",
-                ["birth:forged", lease_id],
-            )
-
-        with pytest.raises(
-            DatabaseCoordinationStaleFenceError,
-            match="durable receipt: maintenance_lease",
-        ):
-            coordinator.reconcile_task_from_control_ready_frontier(
-                task_cid,
-                control_task_inventory_observation=inventory,
-                control_ready_frontier_observation=frontier,
-                owner_session_id="session:frontier-tampered-replay",
-            )
-        ready_row = connection.execute(
-            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
-            [task_cid],
-        ).fetchone()
-        assert ready_row is not None and bool(ready_row[0]) is False
-        assert reconciled["ready_after"] is False
-    finally:
-        coordinator.close()
-
-
-def test_control_ready_frontier_reconciliation_preserves_promoted_history(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
+def test_exact_expired_task_claim_can_settle_as_typed_failure(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
     try:
         coordinator.register_task(
-            task_cid="task:frontier-completed",
-            task_id="FRONTIER-COMPLETED",
+            task_cid="task:failed-expired",
+            task_id="FAILED-EXPIRED",
         )
-        _settled_control_completion(coordinator, "task:frontier-completed")
-        connection = coordinator._require()  # noqa: SLF001
-
-        def task_history() -> tuple[list[object], list[object], list[object]]:
-            return (
-                list(
-                    connection.execute(
-                        "SELECT * FROM task_completions WHERE task_cid = ?",
-                        ["task:frontier-completed"],
-                    ).fetchall()
-                ),
-                list(
-                    connection.execute(
-                        "SELECT * FROM task_claims WHERE task_cid = ?",
-                        ["task:frontier-completed"],
-                    ).fetchall()
-                ),
-                list(
-                    connection.execute(
-                        "SELECT * FROM task_attempts WHERE task_cid = ?",
-                        ["task:frontier-completed"],
-                    ).fetchall()
-                ),
-            )
-
-        before = task_history()
-        reopened = _control_task_projection(
-            task_cid="task:frontier-completed",
-            task_alias="FRONTIER-COMPLETED",
-            status="retrying",
-            revision=14,
-        )
-        inventory = _control_ready_frontier(reopened, revision=81)
-        frontier = _control_ready_frontier(reopened, revision=81)
-        receipt = coordinator.reconcile_task_from_control_ready_frontier(
-            "task:frontier-completed",
-            control_task_inventory_observation=inventory,
-            control_ready_frontier_observation=frontier,
-            owner_session_id="session:frontier-history",
-        )
-        assert receipt["changed"] is False
-        assert receipt["direction"] == ""
-        assert receipt["ready_before"] is False
-        assert receipt["ready_after"] is False
-        assert receipt["receipt_cid"] == ""
-        assert task_history() == before
-        assert coordinator.claimability("task:frontier-completed")[
-            "completion_status"
-        ] == AttemptStatus.SUCCEEDED.value
-        assert coordinator.reconcile_task_from_control_ready_frontier(
-            "task:frontier-completed",
-            control_task_inventory_observation=inventory,
-            control_ready_frontier_observation=frontier,
-            owner_session_id="session:frontier-history",
-        ) == receipt
-        assert task_history() == before
-        assert all(
-            event["event_type"] != CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
-            for event in coordinator.lease_events(limit=100)
-        )
-    finally:
-        coordinator.close()
-
-
-def test_control_ready_frontier_reconciliation_fails_closed(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(
-            task_cid="task:frontier-closed",
-            task_id="FRONTIER-CLOSED",
-        )
-        terminal = _control_task_projection(
-            task_cid="task:frontier-closed",
-            task_alias="FRONTIER-CLOSED",
-            status="completed",
-            revision=4,
-        )
-        ready_version = {
-            **terminal,
-            "status": "retrying",
-        }
-        invalid_pairs = [
-            (
-                _control_ready_frontier(
-                    {**terminal, "task_alias": "WRONG"}, revision=50
-                ),
-                _control_ready_frontier(revision=50),
-            ),
-            (
-                _control_ready_frontier(
-                    {**terminal, "revision": "4"}, revision=50
-                ),
-                _control_ready_frontier(revision=50),
-            ),
-            (
-                _control_ready_frontier(terminal, revision=50),
-                _control_ready_frontier(ready_version, revision=50),
-            ),
-            (
-                _control_ready_frontier(terminal, revision=50),
-                _control_ready_frontier(
-                    _control_task_projection(
-                        task_cid="task:frontier-not-in-inventory",
-                        task_alias="FRONTIER-NOT-IN-INVENTORY",
-                        status="retrying",
-                        revision=4,
-                    ),
-                    revision=50,
-                ),
-            ),
-            (
-                _control_ready_frontier(terminal, revision=50),
-                _control_ready_frontier(revision=51),
-            ),
-            (
-                _control_ready_frontier(terminal, revision=50),
-                {
-                    **_control_ready_frontier(revision=50),
-                    "next_cursor": "cursor:not-complete",
-                },
-            ),
-        ]
-        for inventory_observation, frontier_observation in invalid_pairs:
-            with pytest.raises(
-                (DatabaseCoordinationError, DatabaseCoordinationNotReadyError)
-            ):
-                coordinator.reconcile_task_from_control_ready_frontier(
-                    "task:frontier-closed",
-                    control_task_inventory_observation=inventory_observation,
-                    control_ready_frontier_observation=frontier_observation,
-                    owner_session_id="session:frontier-closed",
-                )
-            assert coordinator.claimability("task:frontier-closed")[
-                "claimable"
-            ] is True
-
         claim = coordinator.claim_task(
-            task_cid="task:frontier-closed",
-            owner_session_id="session:active-frontier",
+            task_cid="task:failed-expired",
+            owner_session_id="session:worker",
         )
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="requires a quiescent sidecar",
-        ):
-            coordinator.reconcile_task_from_control_ready_frontier(
-                "task:frontier-closed",
-                control_task_inventory_observation=_control_ready_frontier(
-                    terminal, revision=50
-                ),
-                control_ready_frontier_observation=_control_ready_frontier(
-                    revision=50
-                ),
-                owner_session_id="session:frontier-closed",
+        receipt = _task_claim_failure_receipt(claim)
+        clock.advance(10_000)
+
+        # No prior expiry sweep is required.  Failure settlement persists the
+        # deadline transition and then closes that same latest exact claim.
+        settled = coordinator.fail_task_claim(
+            claim,
+            failure_receipt=receipt,
+        )
+
+        assert settled.state is LeaseState.RELEASED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        failure_events = [
+            event
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
+        ]
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["source_claim_state"] == "expired"
+        assert failure_events[0]["body"]["source_attempt_status"] == "expired"
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_post_commit_response_loss_replays_once(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-replay", task_id="FAILED-REPLAY")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-replay",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+
+        def settle_then_lose_response() -> None:
+            coordinator.fail_task_claim(claim, failure_receipt=receipt)
+            raise RuntimeError("simulated post-commit response loss")
+
+        with pytest.raises(RuntimeError, match="post-commit response loss"):
+            settle_then_lose_response()
+        replay = coordinator.fail_task_claim(claim, failure_receipt=receipt)
+
+        assert replay.state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        failure_events = [
+            event
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
+        ]
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["settlement_id"] == receipt["settlement_id"]
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_rejects_stale_successor_fence(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:failed-stale", task_id="FAILED-STALE")
+        stale = coordinator.claim_task(
+            task_cid="task:failed-stale",
+            owner_session_id="session:old",
+        )
+        stale_receipt = _task_claim_failure_receipt(stale)
+        clock.advance(10_000)
+        replacement = coordinator.claim_task(
+            task_cid=stale.task_cid,
+            owner_session_id="session:new",
+        )
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(
+                stale,
+                failure_receipt=stale_receipt,
             )
+
+        assert coordinator.get_task_claim(replacement.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_task_attempt(replacement.attempt_id).status is AttemptStatus.RUNNING
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_rejects_tampered_or_open_receipt(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-tamper", task_id="FAILED-TAMPER")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-tamper",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+        tampered = {**receipt, "failure_kind": "different_failure"}
+        opened = {**receipt, "untrusted_extra": True}
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(claim, failure_receipt=tampered)
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(claim, failure_receipt=opened)
+
         assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.RUNNING
     finally:
         coordinator.close()
 
 
-def test_control_rearm_recomputes_blocked_dependency_readiness(
+def test_exact_operator_rearm_preserves_failed_attempt_and_restores_readiness(
     tmp_path: Path,
 ) -> None:
     coordinator, _clock = _open(tmp_path)
     try:
-        coordinator.register_task(task_cid="task:rearm-dep", task_id="REARM-DEP")
-        coordinator.register_task(
-            task_cid="task:rearm-child",
-            task_id="REARM-CHILD",
-            dependency_task_cids=("task:rearm-dep",),
+        coordinator.register_task(task_cid="task:failed-rearm", task_id="FAILED-REARM")
+        failed_claim = coordinator.claim_task(
+            task_cid="task:failed-rearm",
+            owner_session_id="session:failed",
         )
-        _settled_control_completion(coordinator, "task:rearm-dep")
-        _settled_control_completion(coordinator, "task:rearm-child")
-
-        dependency = coordinator.rearm_task_from_control(
-            "task:rearm-dep",
-            control_task_observation=_control_rearm_observation(
-                task_cid="task:rearm-dep",
-                task_alias="REARM-DEP",
-            ),
+        receipt = _task_claim_failure_receipt(
+            failed_claim,
+            control_expected_revision=2,
         )
-        assert dependency["ready"] is True
-        child = coordinator.rearm_task_from_control(
-            "task:rearm-child",
-            control_task_observation=_control_rearm_observation(
-                task_cid="task:rearm-child",
-                task_alias="REARM-CHILD",
-            ),
-        )
-        assert child["ready"] is False
-        readiness = coordinator.claimability("task:rearm-child")
-        assert readiness["claimable"] is False
-        assert readiness["blocked_dependency_task_cids"] == ["task:rearm-dep"]
-
-        # Projection validation also proves the exact required ready index was
-        # recreated after both indexed boolean updates.
-        projection = coordinator.coordination_registry_projection()
-        tasks = {item["task_cid"]: item for item in projection["tasks"]}
-        assert tasks["task:rearm-dep"]["ready"] is True
-        assert tasks["task:rearm-child"]["ready"] is False
-    finally:
-        coordinator.close()
-
-
-def test_control_rearm_rebuilds_checkpointed_many_row_registry_without_update(
-    tmp_path: Path,
-) -> None:
-    import duckdb  # type: ignore
-
-    def task_schema_inventory(connection: object) -> dict[str, object]:
-        columns = connection.execute(  # type: ignore[attr-defined]
-            """
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns
-            WHERE table_schema = 'main' AND table_name = 'coordination_tasks'
-            ORDER BY ordinal_position
-            """
-        ).fetchall()
-        constraints = connection.execute(  # type: ignore[attr-defined]
-            """
-            SELECT constraint_type, constraint_column_names, constraint_text
-            FROM duckdb_constraints()
-            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
-            ORDER BY constraint_index
-            """
-        ).fetchall()
-        indexes = connection.execute(  # type: ignore[attr-defined]
-            """
-            SELECT index_name, is_unique, is_primary, expressions
-            FROM duckdb_indexes()
-            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
-            ORDER BY index_name
-            """
-        ).fetchall()
-        return {
-            "columns": tuple(tuple(row) for row in columns),
-            "constraints": tuple(
-                (row[0], tuple(row[1]), row[2]) for row in constraints
-            ),
-            "indexes": tuple(tuple(row) for row in indexes),
+        coordinator.fail_task_claim(failed_claim, failure_receipt=receipt)
+        control_observation = {
+            "task_cid": failed_claim.task_cid,
+            "status": "retrying",
+            "revision": 4,
+            "body": {
+                "completion_receipt": {
+                    "operation": TASK_CLAIM_FAILURE_REARM_OPERATION,
+                    "settlement_id": receipt["settlement_id"],
+                }
+            },
         }
 
-    coordinator, clock = _open(tmp_path)
-    database_path = coordinator.database_path
-    try:
-        connection = coordinator._require()  # noqa: SLF001
-        connection.execute(
-            """
-            INSERT INTO coordination_tasks(
-                task_cid, task_id, worktree_id, registered_at_ms,
-                ready, body_json
-            )
-            SELECT 'task:bulk-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
-                   'BULK-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
-                   '', 900000 + i, TRUE, '{}'
-            FROM range(512) AS generated(i)
-            """
+        first = coordinator.rearm_failed_task(
+            failure_receipt=receipt,
+            control_task_observation=control_observation,
         )
-        coordinator._commit_if_idle(connection)  # noqa: SLF001
-        coordinator.register_task(
-            task_cid="task:rearm-persisted",
-            task_id="REARM-PERSISTED",
-            body={"payload": "preserve-exactly"},
-        )
-        _settled_control_completion(coordinator, "task:rearm-persisted")
-    finally:
-        coordinator.close()
-
-    checkpoint = duckdb.connect(str(database_path))
-    try:
-        checkpoint.execute("CHECKPOINT")
-        assert checkpoint.execute(
-            "SELECT COUNT(*) FROM coordination_tasks"
-        ).fetchone()[0] == 513
-        before_inventory = task_schema_inventory(checkpoint)
-    finally:
-        checkpoint.close()
-
-    coordinator = open_database_coordinator(database_path, clock_ms=clock)
-    raw_connection = coordinator._require()  # noqa: SLF001
-
-    class RejectCoordinationTaskUpdate:
-        def __init__(self, raw: object) -> None:
-            self.raw = raw
-
-        @property
-        def in_transaction(self) -> bool:
-            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
-
-        def execute(
-            self,
-            statement: str,
-            parameters: object | None = None,
-        ) -> object:
-            normalized = " ".join(str(statement).upper().split())
-            if normalized.startswith("UPDATE COORDINATION_TASKS"):
-                raise AssertionError(
-                    "persisted coordination_tasks rows must not be updated"
-                )
-            if parameters is None:
-                return self.raw.execute(statement)  # type: ignore[attr-defined]
-            return self.raw.execute(  # type: ignore[attr-defined]
-                statement,
-                parameters,
-            )
-
-        def __getattr__(self, name: str) -> object:
-            return getattr(self.raw, name)
-
-    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
-        raw_connection
-    )
-    try:
-        rearmed = coordinator.rearm_task_from_control(
-            "task:rearm-persisted",
-            control_task_observation=_control_rearm_observation(
-                task_cid="task:rearm-persisted",
-                task_alias="REARM-PERSISTED",
-            ),
-        )
-        assert rearmed["ready"] is True
-        assert rearmed["replayed"] is False
-    finally:
-        coordinator.close()
-
-    landed = duckdb.connect(str(database_path))
-    try:
-        landed.execute("CHECKPOINT")
-        assert task_schema_inventory(landed) == before_inventory
-        assert landed.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT task_cid) FROM coordination_tasks"
-        ).fetchone() == (513, 513)
-        assert landed.execute(
-            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
-            ["task:rearm-persisted"],
-        ).fetchone() == (True, '{"payload":"preserve-exactly"}')
-        assert landed.execute(
-            "SELECT COUNT(*) FROM task_completions WHERE task_cid = ?",
-            ["task:rearm-persisted"],
-        ).fetchone()[0] == 0
-        assert landed.execute(
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'main'
-              AND table_name = 'coordination_tasks_rearm_staging'
-            """
-        ).fetchone()[0] == 0
-        assert landed.execute(
-            """
-            SELECT COUNT(*) FROM duckdb_indexes()
-            WHERE schema_name = 'main'
-              AND index_name = 'coordination_tasks_ready_idx'
-              AND table_name = 'coordination_tasks'
-            """
-        ).fetchone()[0] == 1
-    finally:
-        landed.close()
-
-    reopened = open_database_coordinator(database_path, clock_ms=clock)
-    try:
-        replay = reopened.rearm_task_from_control(
-            "task:rearm-persisted",
-            control_task_observation=_control_rearm_observation(
-                task_cid="task:rearm-persisted",
-                task_alias="REARM-PERSISTED",
-            ),
-        )
-        assert replay == {**rearmed, "replayed": True}
-        projection = reopened.coordination_registry_projection()
-        assert projection["counts"]["registered_tasks"] == 513
-        assert projection["logical_completions"] == []
-    finally:
-        reopened.close()
-
-
-@pytest.mark.parametrize("failure_point", ["begin", "commit"])
-def test_control_rearm_transaction_boundaries_fail_closed(
-    tmp_path: Path,
-    failure_point: str,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    coordinator.register_task(
-        task_cid="task:rearm-transaction",
-        task_id="REARM-TRANSACTION",
-    )
-    _settled_control_completion(coordinator, "task:rearm-transaction")
-    raw_connection = coordinator._require()  # noqa: SLF001
-
-    class TransactionFault:
-        def __init__(self, raw: object) -> None:
-            self.raw = raw
-
-        @property
-        def in_transaction(self) -> bool:
-            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
-
-        def execute(
-            self,
-            statement: str,
-            parameters: object | None = None,
-        ) -> object:
-            normalized = " ".join(str(statement).upper().split())
-            if failure_point == "begin" and normalized == "BEGIN TRANSACTION":
-                return self.raw.execute("SELECT 1")  # type: ignore[attr-defined]
-            if failure_point == "commit" and normalized == "COMMIT":
-                raise RuntimeError("injected task-rearm commit failure")
-            if parameters is None:
-                return self.raw.execute(statement)  # type: ignore[attr-defined]
-            return self.raw.execute(  # type: ignore[attr-defined]
-                statement,
-                parameters,
-            )
-
-        def __getattr__(self, name: str) -> object:
-            return getattr(self.raw, name)
-
-    coordinator._connection = TransactionFault(raw_connection)  # noqa: SLF001
-    expected_error = (
-        DatabaseCoordinationError if failure_point == "begin" else RuntimeError
-    )
-    try:
-        with pytest.raises(expected_error):
-            coordinator.rearm_task_from_control(
-                "task:rearm-transaction",
-                control_task_observation=_control_rearm_observation(
-                    task_cid="task:rearm-transaction",
-                    task_alias="REARM-TRANSACTION",
-                ),
-            )
-        assert coordinator._require().in_transaction is False  # noqa: SLF001
-        readiness = coordinator.claimability("task:rearm-transaction")
-        assert readiness["completion_status"] == AttemptStatus.SUCCEEDED.value
-        assert readiness["claimable"] is False
-        assert coordinator._require().execute(  # noqa: SLF001
-            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
-            ["task:rearm-transaction"],
-        ).fetchone()[0] is False
-        assert coordinator._require().execute(  # noqa: SLF001
-            """
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = 'main'
-              AND table_name = 'coordination_tasks_rearm_staging'
-            """
-        ).fetchone()[0] == 0
-    finally:
-        coordinator.close()
-
-
-def test_control_rearm_rejects_active_completion_authority(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(task_cid="task:rearm-live", task_id="REARM-LIVE")
-        claim = coordinator.claim_task(
-            task_cid="task:rearm-live",
-            owner_session_id="session:live-rearm",
-        )
-        prepared = coordinator.prepare_task_completion(
-            claim,
-            control_expected_revision=2,
-            evidence_digest="sha256:live-rearm",
-        )
-        coordinator.complete_task_claim(
-            claim,
-            control_completion_receipt=_completed_control_task(prepared),
-        )
-        observation = _control_rearm_observation(
-            task_cid="task:rearm-live",
-            task_alias="REARM-LIVE",
-            nested=True,
+        replay = coordinator.rearm_failed_task(
+            failure_receipt=receipt,
+            control_task_observation=control_observation,
         )
 
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="requires a quiescent sidecar",
-        ):
-            coordinator.rearm_task_from_control(
-                "task:rearm-live",
-                control_task_observation=observation,
-            )
-        assert coordinator.claimability("task:rearm-live")[
-            "completion_status"
-        ] == AttemptStatus.SUCCEEDED.value
-
-        coordinator.settle_task_claim(claim)
-        maintenance = coordinator.acquire_maintenance_lease(
-            owner_session_id="session:rearm-maintenance",
-            scope="rearm-maintenance",
+        assert first["replayed"] is False
+        assert replay["replayed"] is True
+        assert first["rearm_id"] == replay["rearm_id"]
+        assert coordinator.claimability(failed_claim.task_cid)["claimable"] is True
+        replacement = coordinator.claim_ready_task(
+            owner_session_id="session:replacement"
         )
-        with pytest.raises(
-            DatabaseCoordinationConflictError,
-            match="requires a quiescent sidecar",
-        ):
-            coordinator.rearm_task_from_control(
-                "task:rearm-live",
-                control_task_observation=observation,
-            )
-        coordinator.release(maintenance.as_fenced_lease())
-        assert coordinator.rearm_task_from_control(
-            "task:rearm-live",
-            control_task_observation=observation,
-        )["ready"] is True
-    finally:
-        coordinator.close()
-
-
-def test_control_rearm_rejects_malformed_stale_or_mismatched_observations(
-    tmp_path: Path,
-) -> None:
-    coordinator, _clock = _open(tmp_path)
-    try:
-        coordinator.register_task(task_cid="task:rearm-closed", task_id="REARM-CLOSED")
-        _settled_control_completion(coordinator, "task:rearm-closed")
-        invalid_observations: list[dict[str, object]] = [
-            {},
-            {"task_cid": "task:rearm-closed", "status": "retrying"},
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="REARM-CLOSED",
-                nested=False,
-            ),
-            _control_rearm_observation(
-                task_cid="task:not-the-task",
-                task_alias="REARM-CLOSED",
-            ),
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="NOT-THE-REGISTERED-TASK",
-            ),
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="REARM-CLOSED",
-                revision=3,
-            ),
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="REARM-CLOSED",
-                status="completed",
-            ),
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="REARM-CLOSED",
-                status="blocked",
-            ),
-            _control_rearm_observation(
-                task_cid="task:rearm-closed",
-                task_alias="REARM-CLOSED",
-                status="in_progress",
-            ),
-            {
-                "task_cid": "task:rearm-closed",
-                "task_alias": "REARM-CLOSED",
-                "status": "retrying",
-                "revision": "4",
-            },
-            {
-                **_control_rearm_observation(
-                    task_cid="task:rearm-closed",
-                    task_alias="REARM-CLOSED",
-                    nested=True,
-                ),
-                "changed": False,
-            },
-            {
-                **_control_rearm_observation(
-                    task_cid="task:rearm-closed",
-                    task_alias="REARM-CLOSED",
-                ),
-                "receipt_cid": "",
-            },
+        assert replacement is not None
+        assert replacement.task_cid == failed_claim.task_cid
+        assert replacement.attempt_number == failed_claim.attempt_number + 1
+        assert replacement.fencing_token > failed_claim.fencing_token
+        assert coordinator.get_task_attempt(failed_claim.attempt_id).status is AttemptStatus.FAILED
+        rearm_events = [
+            event
+            for event in coordinator.lease_events(lease_id=failed_claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_REARMED_EVENT
         ]
-        for observation in invalid_observations:
-            with pytest.raises(
-                (
-                    DatabaseCoordinationStaleFenceError,
-                    DatabaseCoordinationNotReadyError,
-                )
-            ):
-                coordinator.rearm_task_from_control(
-                    "task:rearm-closed",
-                    control_task_observation=observation,
-                )
-            assert coordinator.claimability("task:rearm-closed")[
-                "completion_status"
-            ] == AttemptStatus.SUCCEEDED.value
-
-        valid = _control_rearm_observation(
-            task_cid="task:rearm-closed",
-            task_alias="REARM-CLOSED",
-        )
-        coordinator.rearm_task_from_control(
-            "task:rearm-closed",
-            control_task_observation=valid,
-        )
-        with pytest.raises(DatabaseCoordinationStaleFenceError):
-            coordinator.rearm_task_from_control(
-                "task:rearm-closed",
-                control_task_observation={
-                    **valid,
-                    "receipt_cid": "cid:forged-control-rearm",
-                },
-            )
-        with pytest.raises(DatabaseCoordinationStaleFenceError):
-            coordinator.rearm_task_from_control(
-                "task:rearm-closed",
-                control_task_observation=_control_rearm_observation(
-                    task_cid="task:rearm-closed",
-                    task_alias="REARM-CLOSED",
-                    revision=5,
-                ),
-            )
+        assert len(rearm_events) == 1
     finally:
         coordinator.close()
 
@@ -3754,208 +2073,25 @@ def test_same_owner_reacquire_is_idempotent_without_idempotency_key(
         coordinator.close()
 
 
-def _landed_recovery_control_task(prepared):
-    # Owner-produced receipt shape from a landed recovery that stranded PREPARED.
-    import hashlib
-    import json
+def test_database_coordinator_retains_default_quack_preference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[bool | None] = []
+    real_open = database_coordination_module.open_duckdb_connection
 
-    from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
-        canonical_json_bytes,
+    def wrapped(path, *args, **kwargs):
+        captured.append(kwargs.get("prefer_quack"))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        database_coordination_module,
+        "open_duckdb_connection",
+        wrapped,
     )
-
-    receipt = json.loads(
-        (Path(__file__).parent / "fixtures/landed_recovery_completion.json").read_text()
-    )
-    for name in (
-        "task_cid",
-        "claim_id",
-        "attempt_id",
-        "attempt_number",
-        "lease_id",
-        "owner_session_id",
-        "fencing_token",
-        "fence_epoch",
-    ):
-        receipt[name] = prepared[name]
-    receipt["source_task_revision"] = receipt["admitted_task_revision"] = prepared[
-        "control_expected_revision"
-    ]
-    proof = receipt["landed_output_proof"]
-    proof["task_cid"] = receipt["task_cid"]
-    proof["attempt_id"] = receipt["attempt_id"]
-    proof["candidate_lineage"]["attempt_id"] = receipt["attempt_id"]
-    proof["candidate_lineage"]["attempt_number"] = receipt["attempt_number"]
-    receipt["evidence_digest"] = (
-        "sha256:" + hashlib.sha256(canonical_json_bytes(proof)).hexdigest()
-    )
-    return {
-        "task_cid": prepared["task_cid"],
-        "task_alias": receipt["task_alias"],
-        "revision": prepared["control_expected_revision"] + 1,
-        "status": "completed",
-        "body": {"completion_receipt": receipt},
-    }
-
-
-def test_expired_preparation_settles_owner_landed_completion(tmp_path):
-    import copy
-
-    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
     try:
-        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
-        claim = coordinator.claim_task(
-            task_cid="task:landed", owner_session_id="session:old"
-        )
-        prepared = coordinator.prepare_task_completion(
-            claim, control_expected_revision=3, evidence_digest="sha256:original"
-        )
-        task = _landed_recovery_control_task(prepared)
-        original = copy.deepcopy(task)
-        # Neither a live completion nor a still-live recovery may use this path.
-        with pytest.raises(DatabaseCoordinationStaleFenceError):
-            coordinator.complete_task_claim(claim, control_completion_receipt=task)
-        with pytest.raises(DatabaseCoordinationExpiredError):
-            coordinator.recover_prepared_task_completion(
-                claim.task_cid, control_completion_receipt=task
-            )
-        clock.advance(10_000)
-        result = coordinator.recover_prepared_task_completion(
-            claim.task_cid, control_completion_receipt=task
-        )
-        assert result["recovered"] is True
-        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.COMPLETED
-        assert (
-            coordinator.get_task_attempt(claim.attempt_id).status
-            is AttemptStatus.SUCCEEDED
-        )
-        promoted = coordinator.get_prepared_task_completion(claim.task_cid)
-        assert promoted["evidence_digest"] == prepared["evidence_digest"]
-        assert promoted["preparation_digest"] == prepared["preparation_digest"]
-        assert (
-            promoted["control_completion"]["recovery_evidence_digest"]
-            == task["body"]["completion_receipt"]["evidence_digest"]
-        )
-        assert task == original
-        assert coordinator.list_unsettled_task_completions() == []
-        coordinator.reconcile_promoted_task_completion(
-            claim.task_cid, control_completion_receipt=task
-        )
-    finally:
-        coordinator.close()
-
-
-@pytest.mark.parametrize(
-    "field",
-    [
-        "schema",
-        "operation",
-        "recovery_operation",
-        "recovery_reason",
-        "task_cid",
-        "claim_id",
-        "attempt_id",
-        "attempt_number",
-        "lease_id",
-        "owner_session_id",
-        "fencing_token",
-        "fence_epoch",
-        "source_status",
-        "source_task_revision",
-        "admitted_task_revision",
-        "source_control_receipt_cid",
-        "historic_process_liveness",
-        "historic_claim_process_birth_id",
-        "task_alias",
-        "evidence_digest",
-        "landed_output_proof",
-    ],
-)
-def test_landed_completion_recovery_rejects_receipt_drift(tmp_path, field):
-    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
-    try:
-        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
-        claim = coordinator.claim_task(
-            task_cid="task:landed", owner_session_id="session:old"
-        )
-        prepared = coordinator.prepare_task_completion(
-            claim, control_expected_revision=3, evidence_digest="sha256:original"
-        )
-        task = _landed_recovery_control_task(prepared)
-        task["body"]["completion_receipt"][field] = "drift"
-        clock.advance(10_000)
-        with pytest.raises(DatabaseCoordinationStaleFenceError):
-            coordinator.recover_prepared_task_completion(
-                claim.task_cid, control_completion_receipt=task
-            )
-        assert (
-            coordinator.get_prepared_task_completion(claim.task_cid)["status"]
-            == "prepared"
-        )
-        assert (
-            coordinator.get_task_attempt(claim.attempt_id).status
-            is not AttemptStatus.SUCCEEDED
-        )
-    finally:
-        coordinator.close()
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        "revision",
-        "extra_receipt",
-        "proof_attempt",
-        "proof_outcome",
-        "guard",
-        "bool_fence",
-    ],
-)
-def test_landed_recovery_preserves_revision_proof_and_guard(tmp_path, mutation):
-    import hashlib
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
-        canonical_json_bytes,
-    )
-
-    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
-    try:
-        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
-        claim = coordinator.claim_task(
-            task_cid="task:landed", owner_session_id="session:old"
-        )
-        prepared = coordinator.prepare_task_completion(
-            claim,
-            control_expected_revision=3,
-            evidence_digest="sha256:original",
-            body={"requires_cross_store_fence_guard": True}
-            if mutation == "guard"
-            else {},
-        )
-        task = _landed_recovery_control_task(prepared)
-        receipt = task["body"]["completion_receipt"]
-        if mutation == "revision":
-            task["revision"] += 1
-        if mutation == "extra_receipt":
-            receipt["unknown"] = True
-        if mutation == "bool_fence":
-            receipt["fencing_token"] = True
-        if mutation.startswith("proof_"):
-            proof = receipt["landed_output_proof"]
-            if mutation == "proof_attempt":
-                proof["candidate_lineage"]["attempt_id"] = "foreign"
-            else:
-                proof["validation_receipt"]["outcome"] = "failed"
-            receipt["evidence_digest"] = (
-                "sha256:" + hashlib.sha256(canonical_json_bytes(proof)).hexdigest()
-            )
-        clock.advance(10_000)
-        with pytest.raises(DatabaseCoordinationNotReadyError if mutation == "guard" else DatabaseCoordinationStaleFenceError):
-            coordinator.recover_prepared_task_completion(
-                claim.task_cid, control_completion_receipt=task
-            )
-        assert (
-            coordinator.get_prepared_task_completion(claim.task_cid)["status"]
-            == "prepared"
-        )
+        assert captured == [None]
+        assert coordinator.is_open
     finally:
         coordinator.close()

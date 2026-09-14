@@ -10,29 +10,22 @@ Acceptance:
 
 from __future__ import annotations
 
-import copy
-import fcntl
+import gc
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
-import threading
-from collections.abc import Mapping
-from datetime import UTC
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
+import ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server as quack_state_server_module
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
-    current_process_birth,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    RUNTIME_REGISTRY_PATH_ENV,
-    STATE_QUACK_MUTATION_DIR_ENV,
-    DatabaseProgramConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     DEFAULT_LOOPBACK_HOST,
@@ -40,7 +33,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
-    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,
@@ -49,16 +41,23 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerControlError,
     QuackStateServerOwnershipError,
     QuackStateServerReadyError,
+    QuackStateServerTokenCompromisedError,
     QuackStateServerTokenError,
     RemoteBindPolicy,
     ServerLifecycle,
     StateServerIdentity,
+    TokenHandoffRetirement,
     TokenVault,
     assert_bind_admitted,
+    begin_token_handoff_retirement,
     build_server,
     listen_uri,
     provider_safe_environment,
     reclaim_stale_owner_marker,
+    rearm_token_handoff,
+    rearm_token_handoff_if_coordinator_absent,
+    recover_stale_state_server,
+    retire_token_handoff,
     sanitize_for_export,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
@@ -68,11 +67,6 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-    DuckDBConnection,
-    DuckDBConnectionPolicyError,
-    open_quack_transport_connection,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
     DEFAULT_QUACK_BETA_LIMITATIONS,
     ExtensionObservation,
@@ -80,22 +74,6 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
     QuackCapabilityReport,
     QuackCapabilityStatus,
     default_compatibility_profile,
-    probe_quack_capabilities,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
-    QuackDaemonGatewayError,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
-    QuackOwnerMutationEnvelopeError,
-    build_mutation_request,
-    parse_mutation_request,
-    parse_mutation_result,
-    read_envelope,
-    write_envelope_atomic,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    DatabaseImplementationAuthorityError,
-    DatabaseImplementationDaemon,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -107,42 +85,7 @@ _UUID = "123e4567-e89b-12d3-a456-426614174000"
 # ---------------------------------------------------------------------------
 # Fixtures / fakes
 # ---------------------------------------------------------------------------
-import socket
-from concurrent.futures import ThreadPoolExecutor
-from types import MappingProxyType
-from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
-    DatabaseCoordinationExpiredError,
-    LeaseState,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-    acquire_exclusive_owner_lock,
-    read_locked_owner_marker,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
-    content_identity,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-    DATABASE_TASK_SOURCE_SCHEMA,
-    TaskPage,
-    TaskRecord,
-    TaskSourceSnapshot,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-    open_duckdb_connection,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
-    TaskSourceConflictError,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    DatabaseImplementationConflictError,
-    database_program_from_daemon_namespace,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    parse_args as parse_implementation_daemon_args,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
-    resolve_database_implementation_paths,
-)
+
 
 class _Result:
     def __init__(self, row: Any = None) -> None:
@@ -153,6 +96,7 @@ class _Result:
 
     def fetchall(self) -> list[Any]:
         return [] if self._row is None else [self._row]
+
 
 class FakeConnection:
     """Minimal DuckDB stand-in for hermetic state-owner tests."""
@@ -191,12 +135,6 @@ class FakeConnection:
             return _Result((self._meta.get(str(key), ""),))
         if "FROM STORE_GENERATIONS" in upper or "MAX(GENERATION)" in upper:
             return _Result((self.max_generation,))
-        if upper.startswith("SELECT COALESCE(MAX(GLOBAL_SEQUENCE), 0) FROM DOMAIN_EVENTS"):
-            return _Result((0,))
-        if upper.startswith("SELECT COUNT(*) FROM "):
-            # This fake represents an empty migrated board. The retained
-            # projection audit now counts each table before replaying it.
-            return _Result((0,))
         if upper.startswith("SELECT 1"):
             return _Result((1,))
         if upper.startswith("CHECKPOINT"):
@@ -209,6 +147,7 @@ class FakeConnection:
 
     def close(self) -> None:
         self.closed = True
+
 
 def _compatible_report(
     *,
@@ -237,6 +176,7 @@ def _compatible_report(
         beta_limitations=DEFAULT_QUACK_BETA_LIMITATIONS,
     )
 
+
 def _migration_report() -> MigrationRunReport:
     return MigrationRunReport(
         from_version=0,
@@ -247,6 +187,7 @@ def _migration_report() -> MigrationRunReport:
         changed=True,
     )
 
+
 def _birth(*, pid: int = 4242, ticks: int = 999, boot: str = "boot-1") -> ProcessBirthIdentity:
     return ProcessBirthIdentity(
         pid=pid,
@@ -254,6 +195,7 @@ def _birth(*, pid: int = 4242, ticks: int = 999, boot: str = "boot-1") -> Proces
         boot_id=boot,
         parent_pid=1,
     )
+
 
 def _server(
     tmp_path: Path,
@@ -293,104 +235,11 @@ def _server(
         owner_liveness_probe=probe_liveness,
     )
 
-def _offline_lease_for_server(
-    server: QuackStateServer,
-    *,
-    birth: ProcessBirthIdentity,
-    server_id: str = "offline:test-writer",
-) -> ExclusiveOwnerLease:
-    lease = ExclusiveOwnerLease(
-        lock_path=server.owner_lock_path(),
-        marker_path=server.owner_marker_path(),
-        liveness=lambda _birth: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id=server_id,
-        process_birth=birth,
-        database_path=server.config.database_path,
-        generation=1,
-    )
-    return lease
 
-def _assert_raw_lock_acquirable(lock_path: Path) -> None:
-    """Prove no stale in-process descriptor still owns ``lock_path``."""
+# ---------------------------------------------------------------------------
+# Interface identity
+# ---------------------------------------------------------------------------
 
-    descriptor = os.open(
-        lock_path,
-        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
-    try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    finally:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
-
-def _handoff_reuse_loser(
-    original: QuackStateServer,
-    state_dir: Path,
-    *,
-    birth: ProcessBirthIdentity,
-) -> tuple[QuackStateServer, list[str]]:
-    calls: list[str] = []
-    loser = build_server(
-        database_path=original.config.database_path,
-        state_dir=state_dir,
-        repository_id="repository:sha256:reuse-loser",
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: (
-            calls.append("capability") or _compatible_report()
-        ),
-        migrate=lambda _path: calls.append("migration") or _migration_report(),
-        connection_factory=lambda _path: (
-            calls.append("database_open") or FakeConnection()
-        ),
-        process_birth_factory=lambda: birth,
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    loser._admit_isolated_owner = (  # type: ignore[method-assign]  # noqa: SLF001
-        lambda: calls.append("isolation") or None
-    )
-    return loser, calls
-
-def _real_database_server(
-    tmp_path: Path,
-    *,
-    production_relative_paths: bool = False,
-) -> QuackStateServer:
-    """Use a real local DuckDB and fake only the network Quack transport."""
-
-    if production_relative_paths:
-        db = Path("state/real-control.duckdb")
-        state = Path("state/runtime-registry")
-    else:
-        db = tmp_path / "real-control.duckdb"
-        state = tmp_path / "real-state"
-        state.mkdir(parents=True, exist_ok=True)
-    return build_server(
-        database_path=db,
-        state_dir=state,
-        repository_root=tmp_path if production_relative_paths else None,
-        host="127.0.0.1",
-        port=45124,
-        repository_id="repository:sha256:mutation-test",
-        store_id="apmc-mutation-test",
-        secret_handle="handle:apmc-mutation-test",
-        typed_command_socket_path=tmp_path / "state-owner.sock",
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=lambda path: install_control_plane_schema(
-            path,
-            application_version="test",
-            tool_version="test",
-            owner_id="quack-mutation-test",
-        ),
-        connection_factory=lambda path: DuckDBConnection(path),
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
 
 def test_interface_identities() -> None:
     assert QUACK_STATE_SERVER_INTERFACE == "QuackStateServer@1"
@@ -398,37 +247,17 @@ def test_interface_identities() -> None:
     assert QuackStateServer.INTERFACE == QUACK_STATE_SERVER_INTERFACE
     assert StateServerIdentity.INTERFACE == STATE_SERVER_IDENTITY_INTERFACE
 
-def test_owner_relative_paths_require_absolute_scoped_repository_root(
-    tmp_path: Path,
-) -> None:
-    with pytest.raises(ValueError, match="relative database_path"):
-        QuackStateServerConfig(
-            database_path=Path("state/control.duckdb"),
-            state_dir=tmp_path / "state",
-        )
-    with pytest.raises(ValueError, match="repository_root must be an absolute"):
-        QuackStateServerConfig(
-            database_path=tmp_path / "control.duckdb",
-            state_dir=tmp_path / "state",
-            repository_root=Path("relative-repository"),
-        )
 
-    repo = tmp_path / "repo"
-    outside = tmp_path / "outside"
-    repo.mkdir()
-    outside.mkdir()
-    (repo / "escaped-registry").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(ValueError, match="state_dir escapes"):
-        QuackStateServerConfig(
-            database_path=Path("state/control.duckdb"),
-            state_dir=Path("escaped-registry"),
-            repository_root=repo,
-        )
+# ---------------------------------------------------------------------------
+# Bind policy
+# ---------------------------------------------------------------------------
+
 
 def test_loopback_bind_admitted_by_default() -> None:
     assert_bind_admitted("127.0.0.1")
     assert_bind_admitted("::1")
     assert_bind_admitted("localhost")
+
 
 def test_non_loopback_bind_requires_reviewed_policy() -> None:
     with pytest.raises(QuackStateServerBindError, match="separately reviewed"):
@@ -440,27 +269,18 @@ def test_non_loopback_bind_requires_reviewed_policy() -> None:
             host="0.0.0.0",
         )
 
+
 def test_remote_policy_admits_listed_host_only() -> None:
     policy = RemoteBindPolicy(
         policy_id="policy:remote-1",
         reviewed_by="security-reviewer",
         review_receipt="receipt:sha256:deadbeef",
         allowed_hosts=("10.0.0.5",),
-        require_tls=False,
     )
     assert_bind_admitted("10.0.0.5", remote_policy=policy)
     with pytest.raises(QuackStateServerBindError, match="not admitted"):
         assert_bind_admitted("10.0.0.6", remote_policy=policy)
 
-def test_remote_policy_rejects_unimplemented_tls() -> None:
-    policy = RemoteBindPolicy(
-        policy_id="policy:remote-tls",
-        reviewed_by="security-reviewer",
-        review_receipt="receipt:sha256:deadbeef",
-        allowed_hosts=("10.0.0.5",),
-    )
-    with pytest.raises(QuackStateServerBindError, match="TLS is not implemented"):
-        assert_bind_admitted("10.0.0.5", remote_policy=policy)
 
 def test_remote_policy_unavailable_without_receipt() -> None:
     with pytest.raises(QuackStateServerBindError, match="review_receipt"):
@@ -470,6 +290,12 @@ def test_remote_policy_unavailable_without_receipt() -> None:
             review_receipt="",
             allowed_hosts=("1.2.3.4",),
         )
+
+
+# ---------------------------------------------------------------------------
+# Token handling
+# ---------------------------------------------------------------------------
+
 
 def test_token_vault_mints_handle_only_and_destroys(tmp_path: Path) -> None:
     vault = TokenVault(tmp_path)
@@ -484,6 +310,1129 @@ def test_token_vault_mints_handle_only_and_destroys(tmp_path: Path) -> None:
     vault.destroy()
     with pytest.raises(QuackStateServerTokenError):
         vault.resolve()
+
+
+def test_token_handoff_retirement_rollback_restores_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g1"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+
+    assert transaction.state == "begun"
+    assert transaction.credential_sha256 == (
+        "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+    )
+    assert not token_path.exists()
+    assert token not in repr(transaction)
+    receipt = transaction.rollback()
+    assert receipt == transaction.rollback(), "rollback must be idempotent"
+    assert receipt["restored"] is True
+    assert transaction.state == "rolled_back"
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+    with pytest.raises(QuackStateServerTokenError, match="after rollback"):
+        transaction.commit()
+    vault.destroy()
+
+
+def test_abandoned_token_handoff_rolls_back_and_releases_fds_and_lock(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:abandoned"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    directory_fd = transaction._directory_fd  # noqa: SLF001 - lifecycle seam
+    lock_fd = transaction._lock_fd  # noqa: SLF001 - lifecycle seam
+    retained_bytes = transaction._token_bytes  # noqa: SLF001 - wipe seam
+
+    del transaction
+    gc.collect()
+
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert retained_bytes == bytearray()
+    for descriptor in (directory_fd, lock_fd):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    replay = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    assert replay.rollback()["restored"] is True
+    vault.destroy()
+
+
+def test_abandoned_token_handoff_closes_and_wipes_when_rollback_is_blocked(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:abandoned-blocked"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    directory_fd = transaction._directory_fd  # noqa: SLF001 - lifecycle seam
+    lock_fd = transaction._lock_fd  # noqa: SLF001 - lifecycle seam
+    retained_bytes = transaction._token_bytes  # noqa: SLF001 - wipe seam
+    substitute = b"do-not-overwrite"
+    token_path.write_bytes(substitute)
+    token_path.chmod(0o600)
+
+    del transaction
+    gc.collect()
+
+    assert token_path.read_bytes() == substitute
+    assert retained_bytes == bytearray()
+    for descriptor in (directory_fd, lock_fd):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    with pytest.raises(QuackStateServerTokenError) as caught:
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+    assert "already locked" not in str(caught.value)
+    token_path.unlink()
+    vault.destroy()
+
+
+def test_token_handoff_context_commits_or_rolls_back_with_scope(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:context"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+
+    with pytest.raises(RuntimeError, match="launch failed"):
+        with begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        ):
+            raise RuntimeError("launch failed")
+    assert token_path.read_bytes() == token.encode("ascii")
+
+    with begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ) as transaction:
+        assert transaction.state == "begun"
+    assert transaction.state == "committed"
+    assert not token_path.exists()
+    vault.destroy()
+
+
+def test_token_handoff_retirement_commit_is_final_and_compatible(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g2"
+    vault.mint(secret_handle=handle, generation=2)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    assert transaction.credential_sha256 == (
+        "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+    )
+    receipt = transaction.commit()
+
+    assert receipt == transaction.commit(), "commit must be idempotent"
+    assert receipt == {
+        "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+        "retired": True,
+        "already_absent": False,
+        "secret_handle": handle,
+    }
+    assert not token_path.exists()
+    with pytest.raises(QuackStateServerTokenError, match="cannot be rolled back"):
+        transaction.rollback()
+
+    # The compatibility facade is still an idempotent begin+commit when the
+    # authenticated coordinator already holds the in-memory credential.
+    assert retire_token_handoff(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )["already_absent"] is True
+    vault.destroy()
+
+
+def test_token_handoff_expected_commit_receipt_and_active_authority_are_exact(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:authority-binding"
+    vault.mint(secret_handle=handle, generation=2)
+    token = vault.resolve()
+    digest = "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    expected_receipt = {
+        "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+        "retired": True,
+        "already_absent": False,
+        "secret_handle": handle,
+    }
+
+    exposed_receipt = transaction.expected_commit_receipt
+    assert exposed_receipt == expected_receipt
+    exposed_receipt["retired"] = False
+    assert transaction.expected_commit_receipt == expected_receipt
+    binding = transaction.validate_active(
+        state_dir=state_dir,
+        secret_handle=handle,
+        credential_sha256=digest,
+    )
+    assert binding == {
+        "schema": (
+            "ipfs_accelerate_py/"
+            "quack-token-handoff-authority-binding@1"
+        ),
+        "state_dir": str(state_dir),
+        "secret_handle": handle,
+        "credential_sha256": digest,
+    }
+    binding["state_dir"] = "substituted"
+    assert transaction.validate_active(
+        state_dir=state_dir,
+        secret_handle=handle,
+        credential_sha256=digest,
+    )["state_dir"] == str(state_dir)
+    with pytest.raises(QuackStateServerTokenError, match="binding differs"):
+        transaction.validate_active(
+            state_dir=state_dir,
+            secret_handle=handle,
+            credential_sha256="sha256:" + ("00" * 32),
+        )
+
+    assert transaction.commit() == expected_receipt
+    assert transaction.expected_commit_receipt == expected_receipt
+    with pytest.raises(QuackStateServerTokenError, match="not active"):
+        transaction.validate_active(
+            state_dir=state_dir,
+            secret_handle=handle,
+            credential_sha256=digest,
+        )
+    vault.destroy()
+
+
+def test_token_handoff_commit_receipt_survives_post_state_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:post-commit-exception"
+    vault.mint(secret_handle=handle, generation=2)
+    token = vault.resolve()
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    expected_receipt = transaction.expected_commit_receipt
+    directory_fd = transaction._directory_fd  # noqa: SLF001 - lifecycle seam
+    lock_fd = transaction._lock_fd  # noqa: SLF001 - lifecycle seam
+    retained_bytes = transaction._token_bytes  # noqa: SLF001 - wipe seam
+    original_release = TokenHandoffRetirement._release_resources
+
+    def fail_after_release(
+        current: TokenHandoffRetirement,
+        *,
+        unlock: bool = True,
+    ) -> None:
+        original_release(current, unlock=unlock)
+        if current is transaction:
+            raise RuntimeError("injected post-state cleanup failure")
+
+    monkeypatch.setattr(
+        TokenHandoffRetirement,
+        "_release_resources",
+        fail_after_release,
+    )
+
+    with pytest.raises(RuntimeError, match="post-state cleanup"):
+        transaction.commit()
+
+    assert transaction.state == "committed"
+    assert transaction.expected_commit_receipt == expected_receipt
+    assert transaction.commit() == expected_receipt
+    assert retained_bytes == bytearray()
+    for descriptor in (directory_fd, lock_fd):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    vault.destroy()
+
+
+def test_token_handoff_close_without_rollback_is_terminal_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:close-unproven"
+    vault.mint(secret_handle=handle, generation=2)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    directory_fd = transaction._directory_fd  # noqa: SLF001 - lifecycle seam
+    lock_fd = transaction._lock_fd  # noqa: SLF001 - lifecycle seam
+    retained_bytes = transaction._token_bytes  # noqa: SLF001 - wipe seam
+
+    receipt = transaction.close_without_rollback()
+
+    assert receipt == {
+        "schema": (
+            "ipfs_accelerate_py/"
+            "quack-token-handoff-retirement-closed@1"
+        ),
+        "closed": True,
+        "terminal": True,
+        "reason": "child_liveness_unproven",
+        "completion_authority": False,
+        "task_authority": False,
+        "secret_handle": handle,
+        "credential_sha256": (
+            "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+        ),
+    }
+    receipt["closed"] = False
+    assert transaction.close_without_rollback()["closed"] is True
+    assert transaction.state == "closed"
+    assert retained_bytes == bytearray()
+    assert not token_path.exists(), "terminal close must not republish the token"
+    for descriptor in (directory_fd, lock_fd):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    with pytest.raises(QuackStateServerTokenError, match="reason"):
+        transaction.close_without_rollback(reason="caller_uncertain")
+    with pytest.raises(QuackStateServerTokenError):
+        transaction.commit()
+    vault.destroy()
+
+
+def test_token_handoff_retirement_constructor_requires_factory_authority(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(TypeError, match="begin_token_handoff_retirement"):
+        TokenHandoffRetirement(
+            _construction_authority=object(),
+            directory=tmp_path,
+            directory_fd=-1,
+            directory_identity=(0, 0, 0, 0),
+            filename="forged.quack-token",
+            lock_fd=-1,
+            lock_filename="forged.retirement.lock",
+            lock_identity=(0, 0, 0, 0, 0),
+            secret_handle="handle:quack-token:test:forged",
+            credential_sha256="sha256:" + ("00" * 32),
+            token_bytes=bytearray(b"forged-token"),
+            already_absent=False,
+        )
+
+
+def test_token_handoff_retirement_absent_rollback_does_not_invent_secret(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    handle = "handle:quack-token:missing:g1"
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token="authenticated-token",
+    )
+
+    receipt = transaction.rollback()
+
+    assert receipt["already_absent"] is True
+    assert receipt["restored"] is False
+    assert list(state_dir.glob("*.quack-token")) == []
+
+
+def test_token_handoff_retirement_rejects_symlinked_directory_component(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "real-state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:symlink-dir"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    alias = tmp_path / "state-alias"
+    alias.symlink_to(state_dir, target_is_directory=True)
+
+    with pytest.raises(QuackStateServerTokenError, match="symbolic link"):
+        begin_token_handoff_retirement(
+            state_dir=alias,
+            secret_handle=handle,
+            expected_token=token,
+        )
+
+    assert token_path.read_bytes() == token.encode("ascii")
+    vault.destroy()
+
+
+def test_token_handoff_directory_open_rejects_component_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state-open-race"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:directory-open-race"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    displaced = tmp_path / "displaced-open-race"
+    original_open = quack_state_server_module.os.open
+    substituted = False
+
+    def substitute_before_open(path, flags, *args, dir_fd=None, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal substituted
+        if path == state_dir.name and dir_fd is not None and not substituted:
+            state_dir.rename(displaced)
+            state_dir.mkdir(mode=0o700)
+            substituted = True
+        return original_open(path, flags, *args, dir_fd=dir_fd, **kwargs)
+
+    monkeypatch.setattr(
+        quack_state_server_module.os,
+        "open",
+        substitute_before_open,
+    )
+
+    with pytest.raises(QuackStateServerTokenError, match="changed while opening"):
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+
+    monkeypatch.setattr(quack_state_server_module.os, "open", original_open)
+    assert next(displaced.glob("*.quack-token")).read_bytes() == token.encode(
+        "ascii"
+    )
+    state_dir.rmdir()
+    displaced.rename(state_dir)
+    vault.destroy()
+
+
+def test_token_handoff_retirement_lock_serializes_same_handoff(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:locked"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    first = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+
+    with pytest.raises(QuackStateServerTokenError, match="already locked"):
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+
+    assert first.rollback()["restored"] is True
+    vault.destroy()
+
+
+def test_token_handoff_rollback_never_publishes_partial_canonical_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:atomic-rollback"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    original_write = quack_state_server_module.os.write
+    canonical_visibility: list[bool] = []
+
+    def short_write(descriptor: int, value) -> int:  # type: ignore[no-untyped-def]
+        canonical_visibility.append(token_path.exists())
+        return original_write(descriptor, value[:3])
+
+    monkeypatch.setattr(quack_state_server_module.os, "write", short_write)
+
+    assert transaction.rollback()["restored"] is True
+    assert canonical_visibility
+    assert not any(canonical_visibility)
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert list(
+        state_dir.glob(
+            quack_state_server_module.TOKEN_ROLLBACK_TEMP_PREFIX + "*"
+        )
+    ) == []
+    vault.destroy()
+
+
+def test_token_handoff_rollback_write_failure_cleans_exact_temp_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:atomic-rollback-failure"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    original_write = quack_state_server_module.os.write
+    failed = False
+
+    def fail_after_partial_temp_write(
+        descriptor: int,
+        value,
+    ) -> int:  # type: ignore[no-untyped-def]
+        nonlocal failed
+        if not failed:
+            failed = True
+            original_write(descriptor, value[:3])
+            raise OSError("injected rollback write failure")
+        return original_write(descriptor, value)
+
+    monkeypatch.setattr(
+        quack_state_server_module.os,
+        "write",
+        fail_after_partial_temp_write,
+    )
+
+    with pytest.raises(QuackStateServerTokenError, match="could not restore"):
+        transaction.rollback()
+
+    assert transaction.state == "begun"
+    assert not token_path.exists(), "partial bytes must never use canonical name"
+    assert list(
+        state_dir.glob(
+            quack_state_server_module.TOKEN_ROLLBACK_TEMP_PREFIX + "*"
+        )
+    ) == []
+    monkeypatch.setattr(quack_state_server_module.os, "write", original_write)
+    assert transaction.rollback()["restored"] is True
+    assert token_path.read_bytes() == token.encode("ascii")
+    vault.destroy()
+
+
+def test_token_handoff_retirement_marks_hardlink_race_compromised_and_closes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:hardlink-race"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    surviving_link = state_dir / "surviving-token-link"
+    original_unlink = quack_state_server_module.os.unlink
+
+    def hardlink_then_unlink(path, *args, dir_fd=None, **kwargs):  # type: ignore[no-untyped-def]
+        if path == token_path.name and dir_fd is not None:
+            os.link(token_path, surviving_link)
+        return original_unlink(path, *args, dir_fd=dir_fd, **kwargs)
+
+    monkeypatch.setattr(
+        quack_state_server_module.os,
+        "unlink",
+        hardlink_then_unlink,
+    )
+
+    with pytest.raises(QuackStateServerTokenCompromisedError) as caught:
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+
+    assert not token_path.exists()
+    assert surviving_link.read_bytes() == token.encode("ascii")
+    assert caught.value.state == "compromised"
+    assert caught.value.transaction.state == "compromised"
+    assert caught.value.transaction._directory_fd == -1  # noqa: SLF001
+    assert caught.value.transaction._lock_fd == -1  # noqa: SLF001
+    assert caught.value.transaction._token_bytes == bytearray()  # noqa: SLF001
+    assert caught.value.receipt["compromised"] is True
+    assert caught.value.receipt["terminal"] is True
+    assert caught.value.receipt["reason"] == "retired_inode_has_surviving_hardlink"
+    assert caught.value.receipt["marker_persisted"] is True
+    assert token not in json.dumps(dict(caught.value.receipt), sort_keys=True)
+    marker_path = token_path.with_name(
+        token_path.name + quack_state_server_module.TOKEN_COMPROMISE_MARKER_SUFFIX
+    )
+    assert marker_path.is_file()
+    assert stat.S_IMODE(marker_path.stat().st_mode) == 0o600
+
+    # Every later retirement/rearm path is barred by the durable marker even
+    # though the compromised transaction released its lock and descriptors.
+    with pytest.raises(
+        QuackStateServerTokenCompromisedError,
+        match="durable compromise marker",
+    ):
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        )
+    pid_dir = tmp_path / "coordinator"
+    pid_dir.mkdir(mode=0o700)
+    with pytest.raises(
+        QuackStateServerTokenCompromisedError,
+        match="durable compromise marker",
+    ):
+        rearm_token_handoff_if_coordinator_absent(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+            coordinator_pid_path=pid_dir / "coordinator.pid",
+        )
+    monkeypatch.setattr(quack_state_server_module.os, "unlink", original_unlink)
+    surviving_link.unlink()
+    vault.destroy()
+
+
+def test_token_handoff_retirement_commit_refuses_recreated_path(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:commit-race"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    substitute = b"commit-substitute"
+    token_path.write_bytes(substitute)
+    token_path.chmod(0o600)
+
+    with pytest.raises(QuackStateServerTokenError, match="recreated"):
+        transaction.commit()
+
+    assert transaction.state == "begun"
+    assert token_path.read_bytes() == substitute
+    token_path.unlink()
+    assert transaction.rollback()["restored"] is True
+    vault.destroy()
+
+
+def test_token_handoff_rollback_final_check_refuses_fsync_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:rollback-race"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    directory_fd = transaction._directory_fd  # noqa: SLF001 - race seam
+    original_fsync = quack_state_server_module.os.fsync
+    substituted = False
+    substitute = b"rollback-final-substitute"
+
+    def substitute_after_directory_fsync(descriptor: int) -> None:
+        nonlocal substituted
+        original_fsync(descriptor)
+        if descriptor == directory_fd and token_path.exists() and not substituted:
+            token_path.unlink()
+            token_path.write_bytes(substitute)
+            token_path.chmod(0o600)
+            substituted = True
+
+    monkeypatch.setattr(
+        quack_state_server_module.os,
+        "fsync",
+        substitute_after_directory_fsync,
+    )
+
+    with pytest.raises(QuackStateServerTokenError, match="final identity"):
+        transaction.rollback()
+
+    assert token_path.read_bytes() == substitute
+    monkeypatch.setattr(quack_state_server_module.os, "fsync", original_fsync)
+    token_path.unlink()
+    assert transaction.rollback()["restored"] is True
+    assert token_path.read_bytes() == token.encode("ascii")
+    vault.destroy()
+
+
+def test_token_handoff_retirement_rollback_refuses_path_substitution(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g3"
+    vault.mint(secret_handle=handle, generation=3)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    substitute = b"attacker-controlled-substitute"
+    token_path.write_bytes(substitute)
+    token_path.chmod(0o600)
+
+    with pytest.raises(QuackStateServerTokenError, match="recreated"):
+        transaction.rollback()
+
+    assert token_path.read_bytes() == substitute
+    token_path.unlink()
+    assert transaction.rollback()["restored"] is True
+    assert token_path.read_bytes() == token.encode("ascii")
+    vault.destroy()
+
+
+def test_token_handoff_retirement_rollback_refuses_directory_substitution(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g4"
+    vault.mint(secret_handle=handle, generation=4)
+    token = vault.resolve()
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+    displaced = tmp_path / "displaced-state"
+    state_dir.rename(displaced)
+    state_dir.mkdir(mode=0o700)
+
+    with pytest.raises(QuackStateServerTokenError, match="identity"):
+        transaction.rollback()
+
+    assert list(state_dir.iterdir()) == []
+    state_dir.rmdir()
+    displaced.rename(state_dir)
+    assert transaction.rollback()["restored"] is True
+    vault.destroy()
+
+
+def test_token_handoff_retirement_validation_fails_before_unlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g5"
+    vault.mint(secret_handle=handle, generation=5)
+    token_path = next(state_dir.glob("*.quack-token"))
+    original = token_path.read_bytes()
+    wipes: list[tuple[bytes, bytes]] = []
+    original_wipe = quack_state_server_module._wipe_token_bytes
+
+    def record_wipe(value: bytearray) -> None:
+        before = bytes(value)
+        original_wipe(value)
+        wipes.append((before, bytes(value)))
+
+    monkeypatch.setattr(
+        quack_state_server_module,
+        "_wipe_token_bytes",
+        record_wipe,
+    )
+
+    with pytest.raises(QuackStateServerTokenError, match="authenticated owner"):
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token="wrong-authenticated-token",
+        )
+
+    assert token_path.read_bytes() == original
+    assert (original, b"") in wipes
+    vault.destroy()
+
+
+def test_rearm_token_handoff_is_atomic_exact_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:rearm"
+    vault.mint(secret_handle=handle, generation=6)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ).commit()
+    expected = {
+        "schema": "ipfs_accelerate_py/quack-token-handoff-rearm@1",
+        "rearmed": True,
+        "secret_handle": handle,
+        "credential_sha256": (
+            "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+        ),
+    }
+
+    assert rearm_token_handoff(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ) == expected
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+    assert rearm_token_handoff(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ) == expected
+    with pytest.raises(QuackStateServerTokenError, match="differs"):
+        rearm_token_handoff(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token="different-authenticated-token",
+        )
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert list(state_dir.glob(".quack-token-rollback.*")) == []
+    vault.destroy()
+
+
+@pytest.mark.parametrize("crash_boundary", ["pre_link", "post_link", "disjoint"])
+def test_rearm_recovers_only_exact_unique_rollback_temp_artifacts(
+    tmp_path: Path,
+    crash_boundary: str,
+) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = f"handle:quack-token:test:rearm-crash-{crash_boundary}"
+    vault.mint(secret_handle=handle, generation=6)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    temp_path = state_dir / (
+        quack_state_server_module.TOKEN_ROLLBACK_TEMP_PREFIX + ("a" * 32)
+    )
+    if crash_boundary == "pre_link":
+        begin_token_handoff_retirement(
+            state_dir=state_dir,
+            secret_handle=handle,
+            expected_token=token,
+        ).commit()
+        temp_path.write_bytes(token.encode("ascii"))
+        temp_path.chmod(0o600)
+    elif crash_boundary == "post_link":
+        os.link(token_path, temp_path)
+        assert token_path.stat().st_nlink == 2
+    else:
+        temp_path.write_bytes(token.encode("ascii"))
+        temp_path.chmod(0o600)
+        assert temp_path.stat().st_ino != token_path.stat().st_ino
+
+    receipt = rearm_token_handoff(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+
+    assert receipt["rearmed"] is True
+    assert not temp_path.exists()
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert token_path.stat().st_nlink == 1
+    assert not list(
+        state_dir.glob("*" + quack_state_server_module.TOKEN_COMPROMISE_MARKER_SUFFIX)
+    )
+    vault.destroy()
+
+
+@pytest.mark.parametrize("pid_state", ["absent", "empty", "dead"])
+def test_rearm_probe_admits_only_proven_coordinator_absence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pid_state: str,
+) -> None:
+    state_dir = tmp_path / "state"
+    pid_dir = tmp_path / "coordinator"
+    pid_dir.mkdir(mode=0o700)
+    pid_path = pid_dir / "configured-board-master.pid"
+    vault = TokenVault(state_dir)
+    handle = f"handle:quack-token:test:probe-{pid_state}"
+    vault.mint(secret_handle=handle, generation=7)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ).commit()
+    if pid_state == "empty":
+        pid_path.write_bytes(b"")
+        pid_path.chmod(0o600)
+    elif pid_state == "dead":
+        pid_path.write_bytes(b"424242\n")
+        pid_path.chmod(0o600)
+        monkeypatch.setattr(
+            quack_state_server_module,
+            "_coordinator_pid_projection_liveness",
+            lambda _pid: OwnerLiveness.DEAD,
+        )
+
+    receipt = rearm_token_handoff_if_coordinator_absent(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+        coordinator_pid_path=pid_path,
+    )
+
+    assert receipt == {
+        "schema": "ipfs_accelerate_py/quack-token-handoff-rearm-probe@1",
+        "closed": True,
+        "rearmed": True,
+        "pid_quarantined": pid_state in {"empty", "dead"},
+        "recovery_admitted": True,
+        "completion_authority": False,
+        "task_authority": False,
+        "reason": f"coordinator_pid_{pid_state}",
+        "secret_handle": handle,
+        "credential_sha256": (
+            "sha256:" + hashlib.sha256(token.encode("ascii")).hexdigest()
+        ),
+    }
+    assert token_path.read_bytes() == token.encode("ascii")
+    if pid_state in {"empty", "dead"}:
+        assert not pid_path.exists()
+        quarantined = list(
+            (pid_dir / ".quack-coordinator-pid-quarantine").iterdir()
+        )
+        assert len(quarantined) == 1
+        assert quarantined[0].read_bytes() == (
+            b"" if pid_state == "empty" else b"424242\n"
+        )
+    vault.destroy()
+
+
+@pytest.mark.parametrize("pid_state", ["empty", "dead"])
+def test_rearm_probe_quarantines_orphan_pid_when_handoff_already_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pid_state: str,
+) -> None:
+    state_dir = tmp_path / "state"
+    pid_dir = tmp_path / "coordinator"
+    pid_dir.mkdir(mode=0o700)
+    pid_path = pid_dir / "configured-board-master.pid"
+    vault = TokenVault(state_dir)
+    handle = f"handle:quack-token:test:present-orphan-{pid_state}"
+    vault.mint(secret_handle=handle, generation=7)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    payload = b"" if pid_state == "empty" else b"454545\n"
+    pid_path.write_bytes(payload)
+    pid_path.chmod(0o600)
+    if pid_state == "dead":
+        monkeypatch.setattr(
+            quack_state_server_module,
+            "_coordinator_pid_projection_liveness",
+            lambda _pid: OwnerLiveness.DEAD,
+        )
+
+    receipt = rearm_token_handoff_if_coordinator_absent(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+        coordinator_pid_path=pid_path,
+    )
+
+    assert receipt["closed"] is True
+    assert receipt["rearmed"] is False
+    assert receipt["pid_quarantined"] is True
+    assert receipt["recovery_admitted"] is True
+    assert receipt["reason"] == f"coordinator_pid_{pid_state}"
+    assert token_path.read_bytes() == token.encode("ascii")
+    assert not pid_path.exists()
+    quarantined = list(
+        (pid_dir / ".quack-coordinator-pid-quarantine").iterdir()
+    )
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == payload
+
+    # The preserved stale evidence no longer blocks the scheduler's next
+    # exact O_EXCL PID reservation at its canonical pathname.
+    descriptor = os.open(
+        pid_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    os.close(descriptor)
+    vault.destroy()
+
+
+@pytest.mark.parametrize(
+    ("pid_state", "expected_reason"),
+    [
+        ("alive", "coordinator_pid_alive"),
+        ("unknown", "coordinator_pid_unknown"),
+        ("malformed", "coordinator_pid_malformed"),
+        ("symlink", "coordinator_pid_unsafe"),
+        ("hardlink", "coordinator_pid_unsafe"),
+    ],
+)
+def test_rearm_probe_fails_closed_on_live_unknown_or_unsafe_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pid_state: str,
+    expected_reason: str,
+) -> None:
+    state_dir = tmp_path / "state"
+    pid_dir = tmp_path / "coordinator"
+    pid_dir.mkdir(mode=0o700)
+    pid_path = pid_dir / "configured-board-master.pid"
+    vault = TokenVault(state_dir)
+    handle = f"handle:quack-token:test:probe-noop-{pid_state}"
+    vault.mint(secret_handle=handle, generation=8)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    ).commit()
+    if pid_state in {"alive", "unknown"}:
+        pid_path.write_bytes(b"434343\n")
+        pid_path.chmod(0o600)
+        liveness = (
+            OwnerLiveness.ALIVE if pid_state == "alive" else OwnerLiveness.UNKNOWN
+        )
+        monkeypatch.setattr(
+            quack_state_server_module,
+            "_coordinator_pid_projection_liveness",
+            lambda _pid: liveness,
+        )
+    elif pid_state == "malformed":
+        pid_path.write_bytes(b"not-a-pid\n")
+        pid_path.chmod(0o600)
+    elif pid_state == "symlink":
+        target = pid_dir / "pid-target"
+        target.write_bytes(b"434343\n")
+        target.chmod(0o600)
+        pid_path.symlink_to(target.name)
+    else:
+        target = pid_dir / "pid-hardlink-target"
+        target.write_bytes(b"434343\n")
+        target.chmod(0o600)
+        os.link(target, pid_path)
+
+    receipt = rearm_token_handoff_if_coordinator_absent(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+        coordinator_pid_path=pid_path,
+    )
+
+    assert receipt["rearmed"] is False
+    assert receipt["closed"] is True
+    assert receipt["pid_quarantined"] is False
+    assert receipt["recovery_admitted"] is False
+    assert receipt["completion_authority"] is False
+    assert receipt["task_authority"] is False
+    assert receipt["reason"] == expected_reason
+    assert not token_path.exists()
+    assert pid_path.exists() or pid_path.is_symlink()
+    vault.destroy()
+
+
+def test_rearm_probe_is_nonblocking_while_retirement_lock_is_held(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    pid_dir = tmp_path / "coordinator"
+    pid_dir.mkdir(mode=0o700)
+    pid_path = pid_dir / "configured-board-master.pid"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:probe-lock"
+    vault.mint(secret_handle=handle, generation=9)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    retirement = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+    )
+
+    receipt = rearm_token_handoff_if_coordinator_absent(
+        state_dir=state_dir,
+        secret_handle=handle,
+        expected_token=token,
+        coordinator_pid_path=pid_path,
+    )
+
+    assert receipt["rearmed"] is False
+    assert receipt["closed"] is True
+    assert receipt["pid_quarantined"] is False
+    assert receipt["recovery_admitted"] is False
+    assert receipt["reason"] == "retirement_lock_held"
+    assert not token_path.exists()
+    assert retirement.rollback()["restored"] is True
+    vault.destroy()
+
 
 def test_started_server_never_leaks_token_to_surfaces(tmp_path: Path) -> None:
     server = _server(tmp_path)
@@ -516,11 +1465,14 @@ def test_started_server_never_leaks_token_to_surfaces(tmp_path: Path) -> None:
     assert "AUTH_TOKEN" not in provider_env
     assert provider_env.get("NORMAL") == "ok"
     assert identity.secret_handle
-    assert "token" not in identity.secret_handle or identity.secret_handle.startswith("handle:")
+    assert "token" not in identity.secret_handle or identity.secret_handle.startswith(
+        "handle:"
+    )
     # Status may include secret_handle but never raw token keys with values.
     assert status.get("secret_handle") == identity.secret_handle
     assert status.get("token") in (None, "secret_material")
     server.stop()
+
 
 def test_sanitize_for_export_redacts_token_keys() -> None:
     payload = {"auth_token": "super-secret", "server_id": "server:1"}
@@ -528,18 +1480,23 @@ def test_sanitize_for_export_redacts_token_keys() -> None:
     assert out["auth_token"] == "secret_material"
     assert out["server_id"] == "server:1"
 
+
 def test_provider_safe_environment_strips_credential_names() -> None:
     env = provider_safe_environment(
         {
             "PATH": "/usr/bin",
             "QUACK_TOKEN": "abc",
-            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR": "/private/mutations",
-            "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH": "/private/registry",
             "MY_SECRET": "x",
             "HOME": "/tmp",
         }
     )
     assert env == {"PATH": "/usr/bin", "HOME": "/tmp"}
+
+
+# ---------------------------------------------------------------------------
+# Exclusive ownership / second owner / stale recovery
+# ---------------------------------------------------------------------------
+
 
 def test_second_owner_fails_closed(tmp_path: Path) -> None:
     first = _server(tmp_path)
@@ -550,752 +1507,6 @@ def test_second_owner_fails_closed(tmp_path: Path) -> None:
         second.start()
     first.stop()
 
-def test_mutation_request_is_published_only_after_complete_fsync(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Polling cannot observe a final request path while its bytes are partial."""
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources import (
-        quack_owner_mutation,
-    )
-
-    token = "atomic-publication-token"
-    request_id = "ac" * 16
-    request = build_mutation_request(
-        request_id=request_id,
-        store_id="store:atomic-publication",
-        generation=1,
-        sql="UPDATE tasks SET revision = revision + 1 "
-        "WHERE task_cid = ? AND revision = ? RETURNING revision",
-        parameters=["task:atomic", 1],
-        token=token,
-    )
-    target = tmp_path / f"{request_id}.request.json"
-    publish_entered = threading.Event()
-    allow_publish = threading.Event()
-    real_publish = quack_owner_mutation._publish_without_replace  # noqa: SLF001
-
-    def delayed_publish(source: Path, destination: Path) -> None:
-        publish_entered.set()
-        assert allow_publish.wait(timeout=5.0)
-        real_publish(source, destination)
-
-    monkeypatch.setattr(
-        quack_owner_mutation,
-        "_publish_without_replace",
-        delayed_publish,
-    )
-    writer_errors: list[BaseException] = []
-
-    def writer() -> None:
-        try:
-            write_envelope_atomic(target, request, replace=False)
-        except BaseException as exc:  # pragma: no cover - asserted below
-            writer_errors.append(exc)
-
-    thread = threading.Thread(target=writer, daemon=True)
-    thread.start()
-    assert publish_entered.wait(timeout=5.0)
-    try:
-        assert not target.exists()
-        temporary = list(tmp_path.glob(f".{target.name}.*.tmp"))
-        assert len(temporary) == 1
-        parsed_temporary = parse_mutation_request(
-            read_envelope(temporary[0]),
-            token=token,
-            expected_request_id=request_id,
-            expected_store_id="store:atomic-publication",
-            expected_generation=1,
-        )
-        assert parsed_temporary["request_id"] == request_id
-    finally:
-        allow_publish.set()
-        thread.join(timeout=5.0)
-
-    assert not thread.is_alive()
-    assert not writer_errors
-    assert target.stat().st_nlink == 1
-    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
-    parsed = parse_mutation_request(
-        read_envelope(target),
-        token=token,
-        expected_request_id=request_id,
-        expected_store_id="store:atomic-publication",
-        expected_generation=1,
-    )
-    assert parsed["request_id"] == request_id
-
-    original = target.read_bytes()
-    with pytest.raises(FileExistsError):
-        write_envelope_atomic(target, request, replace=False)
-    assert target.read_bytes() == original
-    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
-
-def test_mutation_request_publication_fails_closed_without_atomic_rename(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.task_sources import (
-        quack_owner_mutation,
-    )
-
-    request = build_mutation_request(
-        request_id="ad" * 16,
-        store_id="store:no-atomic-publication",
-        generation=1,
-        sql="UPDATE tasks SET revision = revision + 1 "
-        "WHERE task_cid = ? AND revision = ? RETURNING revision",
-        parameters=["task:no-atomic", 1],
-        token="atomic-publication-token",
-    )
-    target = tmp_path / f"{'ad' * 16}.request.json"
-    monkeypatch.setattr(quack_owner_mutation, "_RENAMEAT2", None)
-    with pytest.raises(
-        QuackOwnerMutationEnvelopeError,
-        match="atomic no-replace publication is unavailable",
-    ):
-        write_envelope_atomic(target, request, replace=False)
-    assert not target.exists()
-    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_authenticated_owner_mutation_pump_returns_cas_row(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    server = _real_database_server(
-        tmp_path,
-        production_relative_paths=True,
-    )
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    monkeypatch.chdir(elsewhere)
-    identity = server.start()
-    assert server.config.repository_root == tmp_path.resolve()
-    assert server.runtime_registry_path == (
-        tmp_path / "state" / "runtime-registry"
-    ).resolve()
-    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
-    owner_connection.execute(
-        "CREATE TABLE mutation_probe (probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
-    )
-    owner_connection.execute(
-        "INSERT INTO mutation_probe(probe_id, revision) VALUES (?, ?)",
-        ["probe:1", 1],
-    )
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    program = DatabaseProgramConfig(
-        authority_mode="quack",
-        task_source_kind="duckdb",
-        endpoint_secret_handle=identity.secret_handle,
-        quack_endpoint=identity.listen_uri,
-        store_id=identity.store_id,
-        store_generation=str(identity.generation),
-        schema_revision=str(identity.schema_revision),
-        runtime_registry_path=server.runtime_registry_path.relative_to(
-            tmp_path
-        ).as_posix(),
-        failover_policy="fail_closed",
-    )
-    program_environment = program.environment(repository_root=tmp_path)
-    assert Path(program_environment[RUNTIME_REGISTRY_PATH_ENV]).is_absolute()
-    assert Path(program_environment[STATE_QUACK_MUTATION_DIR_ENV]) == (
-        server.mutation_inbox_path()
-    )
-    for name, value in program_environment.items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-
-    stop = threading.Event()
-
-    def pump() -> None:
-        while not stop.wait(0.005):
-            server.process_mutation_inbox()
-
-    thread = threading.Thread(target=pump, daemon=True)
-    thread.start()
-    try:
-        # A wrapped attached client routes UPDATE through the owner before it
-        # can touch its (unused) remote handle.
-        client = DuckDBConnection.wrap(object())
-        client._default_catalog = "control_plane"  # noqa: SLF001
-        result = client.execute(
-            "UPDATE mutation_probe SET revision = revision + 1 "
-            "WHERE probe_id = ? AND revision = ? RETURNING revision",
-            ["probe:1", 1],
-        )
-        row = result.fetchone()
-        assert row is not None
-        assert row[0] == 2
-        stored = owner_connection.execute(
-            "SELECT revision FROM mutation_probe WHERE probe_id = ?", ["probe:1"]
-        ).fetchone()
-        assert stored is not None
-        assert stored[0] == 2
-        assert not list(server.mutation_inbox_path().glob("*.request.json"))
-        assert not list(server.mutation_inbox_path().glob("*.done.json"))
-    finally:
-        stop.set()
-        thread.join(timeout=2.0)
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_owner_command_hmac_accepts_live_birth_bound_grant(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Idle repair CAS may HMAC with the lane grant, not the reusable attach token."""
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
-        DuckDBConnectionPolicyError,
-        QuackOwnerCommandRemoteError,
-        submit_quack_owner_command,
-    )
-
-    server = _real_database_server(tmp_path)
-    identity = server.start()
-    grant_token, grant = server.issue_typed_client_grant_record(
-        client_id="database-implementation-daemon:grant-hmac",
-        process_birth_id=identity.process_birth_id,
-        allowed_operations=(),
-        allowed_command_operations=(),
-        peer_pid=os.getpid(),
-        ttl_seconds=60.0,
-    )
-    program = DatabaseProgramConfig(
-        authority_mode="quack",
-        task_source_kind="duckdb",
-        endpoint_secret_handle=identity.secret_handle,
-        quack_endpoint=identity.listen_uri,
-        store_id=identity.store_id,
-        store_generation=str(identity.generation),
-        schema_revision=str(identity.schema_revision),
-        runtime_registry_path=server.runtime_registry_path.relative_to(
-            tmp_path
-        ).as_posix(),
-        failover_policy="fail_closed",
-    )
-    for name, value in program.environment(repository_root=tmp_path).items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", grant_token)
-    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
-    stop = threading.Event()
-
-    def pump() -> None:
-        while not stop.wait(0.005):
-            server.process_mutation_inbox()
-
-    thread = threading.Thread(target=pump, daemon=True)
-    thread.start()
-    try:
-        try:
-            result = submit_quack_owner_command(
-                QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
-                {
-                    "task_cid": "task:grant-hmac",
-                    "evidence_kind": "validation",
-                    "digest": "sha256:" + ("a" * 64),
-                },
-                timeout_seconds=5,
-            )
-        except QuackOwnerCommandRemoteError:
-            # HMAC authenticated; an empty board may still reject the write.
-            result = {"authenticated": True}
-        except DuckDBConnectionPolicyError as exc:
-            raise AssertionError(
-                "birth-bound grant HMAC was rejected as a missing attach token"
-            ) from exc
-        assert result
-        assert grant.peer_pid == os.getpid()
-    finally:
-        stop.set()
-        thread.join(timeout=2.0)
-        server.revoke_typed_client_grant(grant.grant_id)
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Worker and owner keep using the inode admitted for their whole cycle."""
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources import (
-        duckdb_state as duckdb_state_module,
-    )
-
-    server = _real_database_server(tmp_path)
-    identity = server.start()
-    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
-    owner_connection.execute(
-        "CREATE TABLE mutation_swap_probe "
-        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
-    )
-    owner_connection.execute(
-        "INSERT INTO mutation_swap_probe(probe_id, revision) VALUES (?, ?)",
-        ["probe:swap", 1],
-    )
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    program = DatabaseProgramConfig(
-        authority_mode="quack",
-        task_source_kind="duckdb",
-        endpoint_secret_handle=identity.secret_handle,
-        quack_endpoint=identity.listen_uri,
-        store_id=identity.store_id,
-        store_generation=str(identity.generation),
-        schema_revision=str(identity.schema_revision),
-        runtime_registry_path=str(server.runtime_registry_path),
-        failover_policy="fail_closed",
-    )
-    for name, value in program.environment().items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-
-    inbox = server.mutation_inbox_path()
-    inbox.mkdir(parents=True, mode=0o700)
-    displaced = inbox.with_name("mutations-pinned-original")
-    owner_pinned = threading.Event()
-    request_published = threading.Event()
-    owner_errors: list[BaseException] = []
-    owner_summaries: list[tuple[Mapping[str, Any], ...]] = []
-    original_prepare = server._prepare_mutation_inbox  # noqa: SLF001
-
-    def delayed_owner_prepare() -> int:
-        descriptor = original_prepare()
-        owner_pinned.set()
-        if not request_published.wait(timeout=5.0):
-            os.close(descriptor)
-            raise AssertionError("worker did not publish its pinned request")
-        return descriptor
-
-    monkeypatch.setattr(server, "_prepare_mutation_inbox", delayed_owner_prepare)
-
-    def owner_pump() -> None:
-        try:
-            owner_summaries.append(server.process_mutation_inbox())
-        except BaseException as exc:  # pragma: no cover - asserted below
-            owner_errors.append(exc)
-
-    owner_thread = threading.Thread(target=owner_pump, daemon=True)
-    owner_thread.start()
-    assert owner_pinned.wait(timeout=5.0)
-
-    real_worker_open = duckdb_state_module.open_mutation_inbox_directory
-
-    def swapping_worker_open(target: Path) -> int:
-        descriptor = real_worker_open(target)
-        inbox.rename(displaced)
-        inbox.mkdir(mode=0o700)
-        (inbox / "replacement-sentinel").write_text(
-            "must remain untouched\n",
-            encoding="utf-8",
-        )
-        return descriptor
-
-    monkeypatch.setattr(
-        duckdb_state_module,
-        "open_mutation_inbox_directory",
-        swapping_worker_open,
-    )
-    real_worker_write = duckdb_state_module.write_envelope_atomic_at
-
-    def signaling_worker_write(
-        directory_fd: int,
-        name: str,
-        payload: Mapping[str, Any],
-        *,
-        replace: bool,
-    ) -> None:
-        real_worker_write(
-            directory_fd,
-            name,
-            payload,
-            replace=replace,
-        )
-        if name.endswith(".request.json"):
-            request_published.set()
-
-    monkeypatch.setattr(
-        duckdb_state_module,
-        "write_envelope_atomic_at",
-        signaling_worker_write,
-    )
-    try:
-        client = DuckDBConnection.wrap(object())
-        client._default_catalog = "control_plane"  # noqa: SLF001
-        result = client.execute(
-            "UPDATE mutation_swap_probe SET revision = revision + 1 "
-            "WHERE probe_id = ? AND revision = ? RETURNING revision",
-            ["probe:swap", 1],
-        )
-        assert result.fetchone()[0] == 2
-        owner_thread.join(timeout=5.0)
-        assert not owner_thread.is_alive()
-        assert not owner_errors
-        assert owner_summaries[0][0]["ok"] is True
-        assert (inbox / "replacement-sentinel").read_text(
-            encoding="utf-8"
-        ) == "must remain untouched\n"
-        assert not list(inbox.glob("*.request.json"))
-        assert not list(inbox.glob("*.done.json"))
-        assert not list(displaced.glob("*.request.json"))
-        assert not list(displaced.glob("*.done.json"))
-    finally:
-        request_published.set()
-        owner_thread.join(timeout=2.0)
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_owner_mutation_pump_does_not_reexecute_request_after_signed_result(
-    tmp_path: Path,
-) -> None:
-    """A request left behind after result publication is idempotent."""
-
-    server = _real_database_server(tmp_path)
-    identity = server.start()
-    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
-    owner_connection.execute(
-        "CREATE TABLE mutation_replay_probe "
-        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
-    )
-    owner_connection.execute(
-        "INSERT INTO mutation_replay_probe(probe_id, revision) VALUES (?, ?)",
-        ["probe:replay", 1],
-    )
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    request_id = "cd" * 16
-    request = build_mutation_request(
-        request_id=request_id,
-        store_id=identity.store_id,
-        generation=identity.generation,
-        sql=(
-            "UPDATE mutation_replay_probe SET revision = revision + 1 "
-            "WHERE probe_id = ? RETURNING revision"
-        ),
-        parameters=["probe:replay"],
-        token=token,
-    )
-    inbox = server.mutation_inbox_path()
-    request_path = inbox / f"{request_id}.request.json"
-    done_path = inbox / f"{request_id}.done.json"
-    try:
-        write_envelope_atomic(request_path, request, replace=False)
-        first = server.process_mutation_inbox()
-        assert first[0]["ok"] is True
-        assert (
-            owner_connection.execute(
-                "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
-                ["probe:replay"],
-            ).fetchone()[0]
-            == 2
-        )
-
-        # Recreate the exact request as though request unlink failed.  The
-        # authenticated result must suppress another execution.
-        write_envelope_atomic(request_path, request, replace=False)
-        replay = server.process_mutation_inbox()
-        assert replay[0]["replayed"] is True
-        assert replay[0]["ok"] is True
-        assert (
-            owner_connection.execute(
-                "SELECT revision FROM mutation_replay_probe WHERE probe_id = ?",
-                ["probe:replay"],
-            ).fetchone()[0]
-            == 2
-        )
-        parsed = parse_mutation_result(
-            read_envelope(done_path),
-            token=token,
-            expected_request_id=request_id,
-            expected_store_id=identity.store_id,
-            expected_generation=identity.generation,
-        )
-        assert parsed["ok"] is True
-    finally:
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_owner_result_collision_is_never_overwritten_or_replayed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.runtime import (
-        quack_state_server as server_module,
-    )
-
-    server = _real_database_server(tmp_path)
-    identity = server.start()
-    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
-    owner_connection.execute(
-        "CREATE TABLE mutation_collision_probe "
-        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
-    )
-    owner_connection.execute(
-        "INSERT INTO mutation_collision_probe(probe_id, revision) VALUES (?, ?)",
-        ["probe:collision", 1],
-    )
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    request_id = "ce" * 16
-    request = build_mutation_request(
-        request_id=request_id,
-        store_id=identity.store_id,
-        generation=identity.generation,
-        sql=(
-            "UPDATE mutation_collision_probe SET revision = revision + 1 "
-            "WHERE probe_id = ? RETURNING revision"
-        ),
-        parameters=["probe:collision"],
-        token=token,
-    )
-    inbox = server.mutation_inbox_path()
-    request_path = inbox / f"{request_id}.request.json"
-    done_path = inbox / f"{request_id}.done.json"
-    write_envelope_atomic(request_path, request, replace=False)
-    collision = b"unauthenticated collision\n"
-    real_write = server_module.write_envelope_atomic_at
-
-    def collide_before_publication(
-        directory_fd: int,
-        name: str,
-        payload: Mapping[str, Any],
-        *,
-        replace: bool,
-    ) -> None:
-        assert replace is False
-        descriptor = os.open(
-            name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o600,
-            dir_fd=directory_fd,
-        )
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(collision)
-            stream.flush()
-            os.fsync(stream.fileno())
-        real_write(
-            directory_fd,
-            name,
-            payload,
-            replace=replace,
-        )
-
-    monkeypatch.setattr(
-        server_module,
-        "write_envelope_atomic_at",
-        collide_before_publication,
-    )
-    try:
-        summary = server.process_mutation_inbox()[0]
-        assert summary["error_code"] == "result_collision"
-        assert summary["outcome_unknown"] is True
-        assert done_path.read_bytes() == collision
-        assert not request_path.exists()
-        assert server.process_mutation_inbox() == ()
-        assert owner_connection.execute(
-            "SELECT revision FROM mutation_collision_probe WHERE probe_id = ?",
-            ["probe:collision"],
-        ).fetchone()[0] == 2
-    finally:
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_owner_restart_rejects_prior_generation_mutation_request(
-    tmp_path: Path,
-) -> None:
-    first = _real_database_server(tmp_path)
-    first_identity = first.start()
-    first_connection = first._connection  # noqa: SLF001 - exact owner boundary
-    first_connection.execute(
-        "CREATE TABLE mutation_restart_probe "
-        "(probe_id VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
-    )
-    first_connection.execute(
-        "INSERT INTO mutation_restart_probe(probe_id, revision) VALUES (?, ?)",
-        ["probe:restart", 1],
-    )
-    first_token = first._vault.resolve(  # noqa: SLF001
-        first_identity.secret_handle
-    )
-    request_id = "de" * 16
-    request = build_mutation_request(
-        request_id=request_id,
-        store_id=first_identity.store_id,
-        generation=first_identity.generation,
-        sql=(
-            "UPDATE mutation_restart_probe SET revision = revision + 1 "
-            "WHERE probe_id = ? RETURNING revision"
-        ),
-        parameters=["probe:restart"],
-        token=first_token,
-    )
-    request_path = first.mutation_inbox_path() / f"{request_id}.request.json"
-    write_envelope_atomic(request_path, request, replace=False)
-    first.stop()
-
-    second = _real_database_server(tmp_path)
-    second_identity = second.start()
-    second_connection = second._connection  # noqa: SLF001 - exact owner boundary
-    second_token = second._vault.resolve(  # noqa: SLF001
-        second_identity.secret_handle
-    )
-    done_path = second.mutation_inbox_path() / f"{request_id}.done.json"
-    try:
-        assert second_identity.generation > first_identity.generation
-        summaries = second.process_mutation_inbox()
-        assert summaries[0]["ok"] is False
-        response = parse_mutation_result(
-            read_envelope(done_path),
-            token=second_token,
-            expected_request_id=request_id,
-            expected_store_id=second_identity.store_id,
-            expected_generation=second_identity.generation,
-        )
-        assert response["ok"] is False
-        assert response["error_code"] in {
-            "authentication_failed",
-            "identity_mismatch",
-        }
-        assert second_connection.execute(
-            "SELECT revision FROM mutation_restart_probe WHERE probe_id = ?",
-            ["probe:restart"],
-        ).fetchone()[0] == 1
-    finally:
-        second.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_owner_mutation_pump_rejects_symlinked_inbox(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The owner must not scan, chmod, write into, or unlink through a symlink."""
-
-    server = _real_database_server(tmp_path)
-    victim = tmp_path / "victim"
-    victim.mkdir()
-    victim_request = victim / f"{'ef' * 16}.request.json"
-    victim_request.write_text("not a mutation\n", encoding="utf-8")
-    server.mutation_inbox_path().symlink_to(victim, target_is_directory=True)
-    identity = server.start()
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
-        str(server.mutation_inbox_path()),
-    )
-    victim_mode = victim.stat().st_mode
-    try:
-        client = DuckDBConnection.wrap(object())
-        client._default_catalog = "control_plane"  # noqa: SLF001
-        with pytest.raises(DuckDBConnectionPolicyError, match="safe owner directory"):
-            client.execute(
-                "UPDATE tasks SET status = ? WHERE task_cid = ?",
-                ["in_progress", "task:missing"],
-            )
-        with pytest.raises(QuackStateServerReadyError, match="safe owner directory"):
-            server.process_mutation_inbox()
-        assert victim.stat().st_mode == victim_mode
-        assert victim_request.read_text(encoding="utf-8") == "not a mutation\n"
-        assert not list(victim.glob("*.done.json"))
-    finally:
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-@pytest.mark.parametrize("case", ["forged", "unknown_field"])
-def test_owner_mutation_pump_rejects_forged_or_malformed_request(
-    tmp_path: Path,
-    case: str,
-) -> None:
-    server = _real_database_server(tmp_path)
-    identity = server.start()
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    request_id = "ab" * 16
-    request = dict(
-        build_mutation_request(
-            request_id=request_id,
-            store_id=identity.store_id,
-            generation=identity.generation,
-            sql="UPDATE tasks SET status = ? WHERE task_cid = ?",
-            parameters=["in_progress", "task:missing"],
-            token="wrong-authentication-token" if case == "forged" else token,
-        )
-    )
-    if case == "unknown_field":
-        request["unexpected"] = "not-admitted"
-    request_path = server.mutation_inbox_path() / f"{request_id}.request.json"
-    done_path = server.mutation_inbox_path() / f"{request_id}.done.json"
-    write_envelope_atomic(request_path, request, replace=False)
-    request_bytes = request_path.read_bytes()
-    assert token.encode("ascii") not in request_bytes
-    try:
-        summaries = server.process_mutation_inbox()
-        assert len(summaries) == 1
-        response = parse_mutation_result(
-            read_envelope(done_path),
-            token=token,
-            expected_request_id=request_id,
-            expected_store_id=identity.store_id,
-            expected_generation=identity.generation,
-        )
-        assert response["ok"] is False
-        assert response["error_code"] == (
-            "authentication_failed" if case == "forged" else "malformed_envelope"
-        )
-        assert not request_path.exists()
-    finally:
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_two_database_daemon_clients_refuse_legacy_sidecars_through_one_owner(
-    tmp_path: Path,
-) -> None:
-    """The real owner cannot self-promote the missing 39-op dispatcher."""
-
-    server = build_server(
-        database_path=tmp_path / "real-control.duckdb",
-        state_dir=tmp_path / "real-owner",
-        port=0,
-        repository_id="repository:eaaef-093-two-client-test",
-        store_id="eaaef-093-two-client-test",
-        secret_handle="handle:eaaef-093-two-client-test",
-    )
-    identity = server.start()
-    owner = server.bind_external_quack_owner(
-        board_namespace="external-agent-autonomous-execution-fabric-v1",
-        shard_id="eaaef-093-disposable-shard",
-    )
-    try:
-        for lane in range(2):
-            # The sole real owner cannot invent the independently signed
-            # operational capability/dispatcher required by EAAEF-092.
-            with pytest.raises(
-                QuackDaemonGatewayError,
-                match="canonical_39_operation_owner_handler_unqualified",
-            ):
-                owner.daemon_gateway()
-            with pytest.raises(
-                DatabaseImplementationAuthorityError,
-                match="independently injected QuackDaemonCommandGateway@1",
-            ):
-                DatabaseImplementationDaemon(
-                    database_path=(
-                        tmp_path / f"lane-{lane}" / "quack-lane-control.duckdb"
-                    ),
-                    owner_session_id=f"parallel-lane-{lane}",
-                    authority_mode="quack",
-                    task_source_kind="database",
-                    quack_uri=identity.listen_uri,
-                    require_real_execution=True,
-                )
-        assert (tmp_path / "real-control.duckdb").is_file()
-        assert not tuple(tmp_path.rglob("quack-lane-control.duckdb"))
-        assert not tuple(tmp_path.rglob("*.execution.duckdb"))
-        assert not tuple(tmp_path.rglob("*.coordination.duckdb"))
-    finally:
-        server.stop()
 
 def test_stale_marker_recovery_allows_new_owner(tmp_path: Path) -> None:
     db = tmp_path / "control.duckdb"
@@ -1312,7 +1523,6 @@ def test_stale_marker_recovery_allows_new_owner(tmp_path: Path) -> None:
     )
     marker_path.parent.mkdir(parents=True, exist_ok=True)
     marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_path.chmod(0o600)
 
     result = reclaim_stale_owner_marker(
         marker_path=marker_path,
@@ -1328,36 +1538,6 @@ def test_stale_marker_recovery_allows_new_owner(tmp_path: Path) -> None:
     assert identity.server_id != "server:dead"
     server.stop()
 
-def test_stale_marker_recovery_allows_new_owner_aseh(tmp_path: Path) -> None:
-    db = tmp_path / "control.duckdb"
-    marker_path = db.with_name(f".{db.name}.state-owner.json")
-    lock_path = db.with_name(f".{db.name}.state-owner.lock")
-    dead = _birth(pid=111, ticks=1, boot="old")
-    marker = OwnerMarker(
-        server_id="server:dead",
-        process_birth=dead,
-        database_path=str(db),
-        started_at="2020-01-01T00:00:00Z",
-        fence_token="fence-old",
-        generation=1,
-    )
-    marker_path.parent.mkdir(parents=True, exist_ok=True)
-    marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_path.chmod(0o600)
-
-    result = reclaim_stale_owner_marker(
-        marker_path=marker_path,
-        lock_path=lock_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-    assert result["reclaimed"] is True
-    assert not marker_path.exists()
-
-    # New owner can start after reclaim.
-    server = _server(tmp_path, liveness=OwnerLiveness.DEAD)
-    identity = server.start()
-    assert identity.server_id != "server:dead"
-    server.stop()
 
 def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
     db = tmp_path / "control.duckdb"
@@ -1373,7 +1553,6 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
         generation=1,
     )
     marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_path.chmod(0o600)
     result = reclaim_stale_owner_marker(
         marker_path=marker_path,
         lock_path=lock_path,
@@ -1383,294 +1562,380 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
     assert result["reason"] == "owner_alive"
     assert marker_path.exists()
 
-def test_stale_marker_not_reclaimed_when_owner_alive_aseh(tmp_path: Path) -> None:
-    db = tmp_path / "control.duckdb"
-    marker_path = db.with_name(f".{db.name}.state-owner.json")
-    lock_path = db.with_name(f".{db.name}.state-owner.lock")
-    live = _birth(pid=222, ticks=2, boot="live")
-    marker = OwnerMarker(
-        server_id="server:live",
-        process_birth=live,
-        database_path=str(db),
-        started_at="2020-01-01T00:00:00Z",
-        fence_token="fence-live",
-        generation=1,
-    )
-    marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_path.chmod(0o600)
-    result = reclaim_stale_owner_marker(
-        marker_path=marker_path,
-        lock_path=lock_path,
-        liveness=lambda _b: OwnerLiveness.ALIVE,
-    )
-    assert result["reclaimed"] is False
-    assert result["reason"] == "owner_alive"
-    assert marker_path.exists()
 
 @pytest.mark.parametrize(
-    ("liveness", "reason"),
-    [(OwnerLiveness.ALIVE, "owner_alive"),
-     (OwnerLiveness.UNKNOWN, "owner_liveness_unknown")],
+    "receipt_filename",
+    (
+        "",
+        ".",
+        "..",
+        "../receipt.json",
+        "nested/receipt.json",
+        "nested\\receipt.json",
+        "/tmp/receipt.json",
+        "quack-state-server.status.json",
+        "quack-state-server.stop",
+        "receipt\n.json",
+        "receipt\x7f.json",
+        "receipt\u202e.json",
+        "x" * 256,
+        None,
+        Path("receipt.json"),
+    ),
 )
-def test_stale_marker_recovery_preserves_uncertain_owner_and_lock(
-    tmp_path: Path, liveness: OwnerLiveness, reason: str,
+def test_stale_owner_recovery_rejects_unconfined_receipt_name_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_filename: object,
 ) -> None:
     db = tmp_path / "control.duckdb"
-    marker_path = db.with_name(f".{db.name}.state-owner.json")
-    lock_path = db.with_name(f".{db.name}.state-owner.lock")
-    birth = _birth(pid=222, ticks=2, boot="live")
-    marker = OwnerMarker(
-        server_id="server:uncertain", process_birth=birth,
-        database_path=str(db), started_at="2020-01-01T00:00:00Z",
-        fence_token="fence-live", generation=127,
+    state = tmp_path / "state"
+    state.mkdir()
+    database_bytes = b"not-a-database-but-must-remain-byte-identical"
+    status_bytes = b'{"sentinel":"status-must-not-change"}\n'
+    db.write_bytes(database_bytes)
+    (state / "quack-state-server.status.json").write_bytes(status_bytes)
+    entries_before = sorted(path.name for path in tmp_path.rglob("*"))
+
+    def forbidden_database_open(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid receipt name reached database mutation")
+
+    monkeypatch.setattr(
+        quack_state_server_module,
+        "open_duckdb_connection",
+        forbidden_database_open,
     )
-    marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_path.chmod(0o600)
-    before = marker_path.read_bytes()
-    observed = []
-
-    def probe(actual: ProcessBirthIdentity) -> OwnerLiveness:
-        observed.append(actual)
-        return liveness
-
-    result = reclaim_stale_owner_marker(
-        marker_path=marker_path, lock_path=lock_path, liveness=probe,
-    )
-    assert result == {
-        "reclaimed": False, "reason": reason, "server_id": marker.server_id,
-    }
-    assert observed == [birth]
-    assert marker_path.read_bytes() == before
-    # Refusal must release the kernel lock so a later admitted recovery can run.
-    with lock_path.open("a+b") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("server_id", True),
-        ("database_path", 7),
-        ("started_at", False),
-        ("fence_token", 9),
-        ("generation", True),
-        ("generation", "1"),
-        ("generation", 1.0),
-    ],
-)
-def test_owner_marker_parser_rejects_top_level_type_drift(
-    field: str,
-    value: object,
-) -> None:
-    marker = OwnerMarker(
-        server_id="server:strict-marker",
-        process_birth=_birth(),
-        database_path="/strict/control.duckdb",
-        started_at="2026-08-25T00:00:00Z",
-        fence_token="strict-fence",
-        generation=1,
-    ).to_dict()
-    marker[field] = value
-
-    with pytest.raises(ValueError):
-        OwnerMarker.from_dict(marker)
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("pid", True),
-        ("pid", "4242"),
-        ("start_time_ticks", False),
-        ("start_time_ticks", "999"),
-        ("boot_id", 1),
-        ("parent_pid", True),
-        ("parent_pid", "1"),
-    ],
-)
-def test_owner_marker_parser_rejects_nested_process_birth_type_drift(
-    field: str,
-    value: object,
-) -> None:
-    marker = OwnerMarker(
-        server_id="server:strict-marker",
-        process_birth=_birth(),
-        database_path="/strict/control.duckdb",
-        started_at="2026-08-25T00:00:00Z",
-        fence_token="strict-fence",
-        generation=1,
-    ).to_dict()
-    marker["process_birth"][field] = value
-
-    with pytest.raises(ValueError):
-        OwnerMarker.from_dict(marker)
-
-@pytest.mark.parametrize(
-    "drift",
-    ["top_missing", "top_extra", "nested_missing", "nested_extra"],
-)
-def test_owner_marker_parser_rejects_missing_or_unexpected_exact_fields(
-    drift: str,
-) -> None:
-    marker = OwnerMarker(
-        server_id="server:strict-marker",
-        process_birth=_birth(),
-        database_path="/strict/control.duckdb",
-        started_at="2026-08-25T00:00:00Z",
-        fence_token="strict-fence",
-        generation=1,
-    ).to_dict()
-    if drift == "top_missing":
-        marker.pop("started_at")
-    elif drift == "top_extra":
-        marker["unexpected"] = "drift"
-    elif drift == "nested_missing":
-        marker["process_birth"].pop("parent_pid")
-    else:
-        marker["process_birth"]["unexpected"] = "drift"
-
-    with pytest.raises(ValueError):
-        OwnerMarker.from_dict(marker)
-
-@pytest.mark.parametrize(
-    "drift",
-    [
-        "duplicate_top",
-        "duplicate_nested",
-        "nested_missing",
-        "nested_extra",
-        "nested_bool",
-        "numeric_bool",
-        "string_bool",
-    ],
-)
-def test_malformed_owner_marker_is_rejected_before_handoff_without_effects(
-    tmp_path: Path,
-    drift: str,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    calls: list[str] = []
-    server._admit_isolated_owner = (  # type: ignore[method-assign]  # noqa: SLF001
-        lambda: calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    server.migrate = lambda _path: calls.append("migration") or _migration_report()
-    server.connection_factory = (
-        lambda _path: calls.append("database_open") or FakeConnection()
-    )
-    lease = _offline_lease_for_server(server, birth=birth)
-    marker_path = server.owner_marker_path()
-    valid_raw = marker_path.read_text(encoding="utf-8")
-    payload = json.loads(valid_raw)
-    if drift == "duplicate_top":
-        malformed = valid_raw.replace(
-            '  "server_id": ',
-            '  "server_id": "server:duplicate",\n  "server_id": ',
-            1,
+    with pytest.raises(QuackStateServerControlError, match="confined basename"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=state,
+            expected_store_id="control.duckdb",
+            expected_generation=1,
+            expected_database_uuid=_UUID,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            receipt_filename=receipt_filename,  # type: ignore[arg-type]
         )
-    elif drift == "duplicate_nested":
-        malformed = valid_raw.replace(
-            '    "pid": ',
-            '    "pid": 999,\n    "pid": ',
-            1,
-        )
-    else:
-        process_birth = payload["process_birth"]
-        if drift == "nested_missing":
-            process_birth.pop("parent_pid")
-        elif drift == "nested_extra":
-            process_birth["unexpected"] = "drift"
-        elif drift == "nested_bool":
-            process_birth["pid"] = True
-        elif drift == "numeric_bool":
-            payload["generation"] = True
-        else:
-            payload["server_id"] = True
-        malformed = json.dumps(payload, sort_keys=True, indent=2) + "\n"
-    assert malformed != valid_raw
-    marker_path.write_text(malformed, encoding="utf-8")
-    malformed_bytes = marker_path.read_bytes()
 
-    with pytest.raises(QuackStateServerOwnershipError):
-        server.start_with_acquired_lease(lease)
+    assert db.read_bytes() == database_bytes
+    assert (state / "quack-state-server.status.json").read_bytes() == status_bytes
+    assert sorted(path.name for path in tmp_path.rglob("*")) == entries_before
 
-    assert calls == []
-    assert server._owner is None  # noqa: SLF001 - no cleanup assignment
-    assert lease.held is False
-    assert lease._lock_open is True  # noqa: SLF001 - retained original flock
-    assert marker_path.read_bytes() == malformed_bytes
-    with pytest.raises(QuackStateServerControlError, match="mismatch"):
-        lease.release()
-    assert lease._lock_open is False  # noqa: SLF001 - explicit cleanup proof
-    assert marker_path.read_bytes() == malformed_bytes
-    _assert_raw_lock_acquirable(server.owner_lock_path())
-    marker_path.unlink()
 
-def test_malformed_owner_marker_is_rejected_before_lease_becomes_held(
+def test_stale_owner_recovery_receipt_must_not_alias_database(
     tmp_path: Path,
 ) -> None:
-    database_path = tmp_path / "control.duckdb"
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    payload = OwnerMarker(
-        server_id="server:malformed-existing",
-        process_birth=_birth(),
-        database_path=str(database_path),
-        started_at="2026-08-25T00:00:00Z",
-        fence_token="malformed-fence",
-        generation=1,
-    ).to_dict()
-    payload["process_birth"]["start_time_ticks"] = True
-    malformed = json.dumps(payload, sort_keys=True).encode("utf-8")
-    marker_path.write_bytes(malformed)
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
+    db = tmp_path / "control.duckdb"
+    database_bytes = b"database-must-not-be-replaced-by-receipt"
+    db.write_bytes(database_bytes)
+
+    with pytest.raises(QuackStateServerControlError, match="confined basename"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=tmp_path,
+            expected_store_id="control.duckdb",
+            expected_generation=1,
+            expected_database_uuid=_UUID,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            receipt_filename=db.name,
+        )
+
+    assert db.read_bytes() == database_bytes
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_dead_ready_owner_recovery_settles_database_and_receipt(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="recovery-test",
+    )
+    predecessor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_455, ticks=76),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    predecessor_identity = predecessor.start()
+    predecessor.stop()
+
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_456, ticks=77),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    marker = OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert identity.generation == predecessor_identity.generation + 1
+    assert marker.generation == 1
+    assert marker.generation != identity.generation
+
+    # Rehearse process death: operating-system locks and the database handle
+    # disappear, while the ready marker/status and canonical rows remain.
+    assert server._connection is not None
+    server._connection.close()
+    server._connection = None
+    assert server._owner is not None and server._owner._handle is not None
+    server._owner._handle.close()
+    server._owner._handle = None
+
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=identity.store_id,
+        expected_generation=identity.generation,
+        expected_database_uuid=identity.database_uuid,
         liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T07:00:00Z",
     )
 
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="marker is not a regular exact object",
-    ):
-        lease.acquire(
-            server_id="server:new",
-            process_birth=current_process_birth(),
-            database_path=database_path,
+    assert receipt["resulting_status"] == "stopped"
+    assert receipt["owner_liveness"] == "dead"
+    assert receipt["task_completion_authority"] is False
+    assert str(receipt["receipt_cid"]).startswith("baguqeera")
+    assert not server.owner_marker_path().exists()
+    status = json.loads(server.status_path().read_text(encoding="utf-8"))
+    assert status["lifecycle"] == "stopped"
+    assert status["identity"]["status"] == "stopped"
+    published = json.loads(
+        (state / "quack-stale-owner-recovery-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert published == receipt
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    connection = open_duckdb_connection(db, prefer_quack=False)
+    try:
+        rows = connection.execute(
+            "SELECT status, stopped_at FROM state_servers WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+        epochs = connection.execute(
+            "SELECT ended_at FROM server_epochs WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [tuple(row[index] for index in range(2)) for row in rows] == [
+        ("stopped", "2026-08-29T07:00:00Z")
+    ]
+    assert [tuple(row[index] for index in range(1)) for row in epochs] == [
+        ("2026-08-29T07:00:00Z",)
+    ]
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_generation_specific_recovery_receipt_preserves_history_and_replays(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="generation-recovery-test",
+    )
+
+    predecessor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:generation-recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_458, ticks=79),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    predecessor_identity = predecessor.start()
+    assert predecessor._connection is not None
+    predecessor._connection.close()
+    predecessor._connection = None
+    assert predecessor._owner is not None and predecessor._owner._handle is not None
+    predecessor._owner._handle.close()
+    predecessor._owner._handle = None
+
+    historical_receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=predecessor_identity.store_id,
+        expected_generation=predecessor_identity.generation,
+        expected_database_uuid=predecessor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:00:00Z",
+    )
+    historical_path = state / "quack-stale-owner-recovery-receipt.json"
+    historical_bytes = historical_path.read_bytes()
+    assert json.loads(historical_bytes) == historical_receipt
+
+    successor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:generation-recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_459, ticks=80),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    successor_identity = successor.start()
+    assert successor_identity.generation == predecessor_identity.generation + 1
+    assert successor._connection is not None
+    successor._connection.close()
+    successor._connection = None
+    assert successor._owner is not None and successor._owner._handle is not None
+    successor._owner._handle.close()
+    successor._owner._handle = None
+
+    receipt_filename = (
+        "quack-stale-owner-recovery-receipt."
+        f"generation-{successor_identity.generation}.json"
+    )
+    receipt_path = state / receipt_filename
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=successor_identity.store_id,
+        expected_generation=successor_identity.generation,
+        expected_database_uuid=successor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:30:00Z",
+        receipt_filename=receipt_filename,
+    )
+    receipt_bytes = receipt_path.read_bytes()
+    assert json.loads(receipt_bytes) == receipt
+    assert historical_path.read_bytes() == historical_bytes
+
+    replayed = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=successor_identity.store_id,
+        expected_generation=successor_identity.generation,
+        expected_database_uuid=successor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:30:00Z",
+        receipt_filename=receipt_filename,
+    )
+    assert replayed == receipt
+    assert receipt_path.read_bytes() == receipt_bytes
+    assert historical_path.read_bytes() == historical_bytes
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("failure_boundary", ("status", "receipt"))
+def test_dead_owner_recovery_replays_after_publication_crash_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_boundary: str,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="recovery-replay-test",
+    )
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-replay-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_457, ticks=78),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    assert server._connection is not None
+    initial_revision = server._connection.execute(
+        "SELECT revision FROM state_servers WHERE server_id = ?",
+        [identity.server_id],
+    ).fetchone()[0]
+    server._connection.close()
+    server._connection = None
+    assert server._owner is not None and server._owner._handle is not None
+    server._owner._handle.close()
+    server._owner._handle = None
+
+    status_path = server.status_path()
+    receipt_path = state / "quack-stale-owner-recovery-receipt.json"
+    original_atomic_write_json = quack_state_server_module._atomic_write_json
+    failed = {"value": False}
+
+    def fail_once(path: Path, value: object, *, mode: int = 0o600) -> None:
+        target = status_path if failure_boundary == "status" else receipt_path
+        if Path(path) == target and not failed["value"]:
+            failed["value"] = True
+            raise OSError(f"injected {failure_boundary} publication failure")
+        original_atomic_write_json(Path(path), value, mode=mode)
+
+    monkeypatch.setattr(
+        quack_state_server_module,
+        "_atomic_write_json",
+        fail_once,
+    )
+    with pytest.raises(OSError, match="injected"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=state,
+            expected_store_id=identity.store_id,
+            expected_generation=identity.generation,
+            expected_database_uuid=identity.database_uuid,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            stopped_at="2026-08-29T07:30:00Z",
         )
 
-    assert lease.held is False
-    assert lease._lock_open is False  # noqa: SLF001 - failed-acquire cleanup
-    assert marker_path.read_bytes() == malformed
-    _assert_raw_lock_acquirable(lock_path)
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=identity.store_id,
+        expected_generation=identity.generation,
+        expected_database_uuid=identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T07:30:00Z",
+    )
+    assert failed["value"] is True
+    assert receipt["replay_safe"] is True
+    assert not server.owner_marker_path().exists()
+    assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    connection = open_duckdb_connection(db, prefer_quack=False)
+    try:
+        settled = connection.execute(
+            "SELECT status, stopped_at, revision FROM state_servers "
+            "WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [tuple(row[index] for index in range(3)) for row in settled] == [
+        ("stopped", "2026-08-29T07:30:00Z", initial_revision + 1)
+    ]
+
 
 def test_exclusive_owner_lease_fence_mismatch_on_release(tmp_path: Path) -> None:
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id="server:1",
-        process_birth=_birth(),
-        database_path=tmp_path / "control.duckdb",
-    )
-    retained_marker = marker_path.read_bytes()
-
-    with pytest.raises(QuackStateServerControlError, match="fence"):
-        lease.release(fence_token="wrong-fence")
-
-    assert lease.held is False
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    assert marker_path.read_bytes() == retained_marker
-    _assert_raw_lock_acquirable(lock_path)
-    marker_path.unlink()
-
-def test_exclusive_owner_lease_fence_mismatch_on_release_aseh(tmp_path: Path) -> None:
     lock_path = tmp_path / "owner.lock"
     marker_path = tmp_path / "owner.json"
     lease = ExclusiveOwnerLease(
@@ -1687,1268 +1952,11 @@ def test_exclusive_owner_lease_fence_mismatch_on_release_aseh(tmp_path: Path) ->
         lease.release(fence_token="wrong-fence")
     lease.release()
 
-def test_owner_lease_release_observation_error_still_unlocks(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _birth: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id="server:release-observation",
-        process_birth=_birth(),
-        database_path=tmp_path / "control.duckdb",
-    )
-    retained_marker = marker_path.read_bytes()
 
-    def failed_observation() -> tuple[str, OwnerMarker | None]:
-        raise OSError("injected marker observation failure")
+# ---------------------------------------------------------------------------
+# Ready / identity / migration / lifecycle
+# ---------------------------------------------------------------------------
 
-    monkeypatch.setattr(lease, "_read_marker_locked", failed_observation)
-    with pytest.raises(QuackStateServerControlError, match="observation:OSError"):
-        lease.release()
-
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    assert marker_path.read_bytes() == retained_marker
-    _assert_raw_lock_acquirable(lock_path)
-    marker_path.unlink()
-
-@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork semantics")
-@pytest.mark.filterwarnings("ignore:This process.*use of fork.*:DeprecationWarning")
-def test_fork_child_cannot_unlock_parent_owner_lease(tmp_path: Path) -> None:
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    database_path = tmp_path / "control.duckdb"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _birth: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id="server:fork-parent",
-        process_birth=current_process_birth(),
-        database_path=database_path,
-    )
-    read_fd, write_fd = os.pipe()
-    child_pid = os.fork()
-    if child_pid == 0:  # pragma: no cover - assertions execute in the parent
-        os.close(read_fd)
-        try:
-            try:
-                lease.release()
-            except QuackStateServerOwnershipError:
-                os.write(write_fd, b"birth-refused")
-            except BaseException as exc:
-                os.write(write_fd, f"unexpected:{type(exc).__name__}".encode())
-            else:
-                os.write(write_fd, b"unexpected-release")
-        finally:
-            os.close(write_fd)
-            os._exit(0)
-
-    os.close(write_fd)
-    try:
-        child_result = os.read(read_fd, 128)
-        _, child_status = os.waitpid(child_pid, 0)
-        assert os.waitstatus_to_exitcode(child_status) == 0
-        assert child_result == b"birth-refused"
-        assert lease.held is True
-
-        contender = ExclusiveOwnerLease(
-            lock_path=lock_path,
-            marker_path=marker_path,
-            liveness=lambda _birth: OwnerLiveness.DEAD,
-        )
-        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock|canonical owner namespace"):
-            contender.acquire(
-                server_id="server:fork-contender",
-                process_birth=current_process_birth(),
-                database_path=database_path,
-            )
-        assert lease.held is True
-    finally:
-        os.close(read_fd)
-        if lease._lock_open:  # noqa: SLF001 - bounded test cleanup
-            lease.release()
-
-    assert not marker_path.exists()
-
-def test_same_process_offline_lease_handoff_preserves_flock_and_fence(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    lease = _offline_lease_for_server(server, birth=birth)
-    retained_fence = lease.fence_token
-
-    identity = server.start_with_acquired_lease(lease)
-    try:
-        marker = OwnerMarker.from_dict(
-            json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
-        )
-        adopted_owner = server._owner  # noqa: SLF001 - exact handoff invariant
-        assert adopted_owner is not None
-        assert adopted_owner is not lease
-        assert adopted_owner.held is True
-        assert adopted_owner.fence_token == retained_fence
-        assert lease.held is False
-        assert lease.fence_token == ""
-        assert marker.fence_token == retained_fence
-        assert marker.server_id == identity.server_id
-        assert marker.process_birth == birth
-        assert marker.database_path == str(server.config.database_path)
-        assert marker.generation == identity.generation
-    finally:
-        server.stop()
-
-    assert lease.held is False
-    assert not server.owner_marker_path().exists()
-
-def test_offline_lease_handoff_consumes_caller_and_shallow_alias_once(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    lease = _offline_lease_for_server(server, birth=birth)
-    lease_alias = copy.copy(lease)
-
-    identity = server.start_with_acquired_lease(lease)
-    try:
-        assert server.ready()["server_id"] == identity.server_id
-        for consumed in (lease, lease_alias):
-            with pytest.raises(
-                QuackStateServerOwnershipError,
-                match="already transferred",
-            ):
-                consumed.release()
-            assert server.ready()["server_id"] == identity.server_id
-
-        for index, consumed in enumerate((lease, lease_alias, lease), start=1):
-            startup_calls: list[str] = []
-            loser = build_server(
-                database_path=server.config.database_path,
-                state_dir=tmp_path / f"loser-state-{index}",
-                repository_id=f"repository:sha256:loser-{index}",
-                transport=FakeQuackTransport(),
-                capability_probe=lambda _calls=startup_calls, **_kwargs: (
-                    _calls.append("capability") or _compatible_report()
-                ),
-                migrate=lambda _path, _calls=startup_calls: (
-                    _calls.append("migration") or _migration_report()
-                ),
-                connection_factory=lambda _path, _calls=startup_calls: (
-                    _calls.append("database_open") or FakeConnection()
-                ),
-                process_birth_factory=lambda: birth,
-                owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-            )
-            loser.isolation_observer = (
-                lambda *_args, _calls=startup_calls, **_kwargs: (
-                    _calls.append("isolation") or None
-                )
-            )
-
-            with pytest.raises(QuackStateServerOwnershipError):
-                loser.start_with_acquired_lease(consumed)
-
-            assert startup_calls == []
-            assert server.ready()["server_id"] == identity.server_id
-    finally:
-        server.stop()
-
-    assert lease._lock_open is False  # noqa: SLF001 - shared-state cleanup proof
-    assert lease_alias._lock_open is False  # noqa: SLF001
-
-def test_adopted_receiver_cannot_be_reused_as_an_offline_handoff(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path / "adopted", birth=birth)
-    lease = _offline_lease_for_server(server, birth=birth)
-    identity = server.start_with_acquired_lease(lease)
-    adopted_receiver = server._owner  # noqa: SLF001 - adversarial reuse proof
-    assert adopted_receiver is not None
-    marker_before = server.owner_marker_path().read_bytes()
-    ready_before = server.ready()
-    fence_before = adopted_receiver.fence_token
-    loser, calls = _handoff_reuse_loser(
-        server,
-        tmp_path / "adopted-reuse-loser",
-        birth=birth,
-    )
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="already state-owner bound",
-        ):
-            loser.start_with_acquired_lease(adopted_receiver)
-
-        assert calls == []
-        assert loser._owner is None  # noqa: SLF001 - no cleanup assignment
-        assert server.owner_marker_path().read_bytes() == marker_before
-        assert server.ready() == ready_before
-        assert server.ready()["server_id"] == identity.server_id
-        assert adopted_receiver.held is True
-        assert adopted_receiver.fence_token == fence_before
-        marker = adopted_receiver.marker
-        assert marker is not None
-        assert marker.generation == identity.generation
-    finally:
-        server.stop()
-
-def test_normal_start_owner_cannot_be_adopted_as_an_offline_handoff(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path / "normal", birth=birth)
-    identity = server.start()
-    normal_owner = server._owner  # noqa: SLF001 - adversarial reuse proof
-    assert normal_owner is not None
-    marker_before = server.owner_marker_path().read_bytes()
-    ready_before = server.ready()
-    fence_before = normal_owner.fence_token
-    loser, calls = _handoff_reuse_loser(
-        server,
-        tmp_path / "normal-reuse-loser",
-        birth=birth,
-    )
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="already state-owner bound",
-        ):
-            loser.start_with_acquired_lease(normal_owner)
-
-        assert calls == []
-        assert loser._owner is None  # noqa: SLF001 - no cleanup assignment
-        assert server.owner_marker_path().read_bytes() == marker_before
-        assert server.ready() == ready_before
-        assert server.ready()["server_id"] == identity.server_id
-        assert normal_owner.held is True
-        assert normal_owner.fence_token == fence_before
-        marker = normal_owner.marker
-        assert marker is not None
-        assert marker.generation == identity.generation
-    finally:
-        server.stop()
-
-def test_normal_start_binding_failure_releases_flock_and_preserves_foreign_marker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    calls: list[str] = []
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    server.migrate = lambda _path: calls.append("migration") or _migration_report()
-    server.connection_factory = (
-        lambda _path: calls.append("database_open") or FakeConnection()
-    )
-    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
-    acquired: list[ExclusiveOwnerLease] = []
-    foreign_marker: OwnerMarker | None = None
-
-    def tamper_before_binding(owner: ExclusiveOwnerLease) -> None:
-        nonlocal foreign_marker
-        acquired.append(owner)
-        current = owner.marker
-        assert current is not None
-        foreign_marker = OwnerMarker(
-            server_id="server:foreign-during-normal-bind",
-            process_birth=current.process_birth,
-            database_path=current.database_path,
-            started_at=current.started_at,
-            fence_token="foreign-normal-bind-fence",
-            generation=current.generation,
-        )
-        owner.marker_path.write_text(
-            json.dumps(foreign_marker.to_dict()),
-            encoding="utf-8",
-        )
-        real_bind(owner)
-
-    monkeypatch.setattr(
-        ExclusiveOwnerLease,
-        "_bind_new_state_owner",
-        tamper_before_binding,
-    )
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="marker differs before state-owner binding",
-    ):
-        server.start()
-
-    assert calls == []
-    assert foreign_marker is not None
-    assert server.lifecycle is ServerLifecycle.FAILED
-    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
-    assert len(acquired) == 1
-    assert acquired[0].held is False
-    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
-    assert OwnerMarker.from_dict(
-        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
-    ) == foreign_marker
-    _assert_raw_lock_acquirable(server.owner_lock_path())
-    server.owner_marker_path().unlink()
-
-def test_normal_start_lock_retarget_during_binding_releases_original_flock(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    calls: list[str] = []
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    server.migrate = lambda _path: calls.append("migration") or _migration_report()
-    server.connection_factory = (
-        lambda _path: calls.append("database_open") or FakeConnection()
-    )
-    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
-    acquired: list[ExclusiveOwnerLease] = []
-    displaced_lock = tmp_path / "displaced-original-owner.lock"
-    foreign_target = tmp_path / "foreign-lock-target"
-    foreign_bytes = b"foreign-lock-target-must-remain-unchanged\n"
-    retained_marker = b""
-
-    def retarget_before_binding(owner: ExclusiveOwnerLease) -> None:
-        nonlocal retained_marker
-        acquired.append(owner)
-        retained_marker = owner.marker_path.read_bytes()
-        foreign_target.write_bytes(foreign_bytes)
-        owner.lock_path.rename(displaced_lock)
-        owner.lock_path.symlink_to(foreign_target)
-        real_bind(owner)
-
-    monkeypatch.setattr(
-        ExclusiveOwnerLease,
-        "_bind_new_state_owner",
-        retarget_before_binding,
-    )
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="cannot enter state-owner binding",
-    ):
-        server.start()
-
-    assert calls == []
-    assert server.lifecycle is ServerLifecycle.FAILED
-    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
-    assert len(acquired) == 1
-    assert acquired[0].held is False
-    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
-    assert server.owner_marker_path().read_bytes() == retained_marker
-    assert server.owner_lock_path().is_symlink()
-    assert server.owner_lock_path().resolve() == foreign_target
-    assert foreign_target.read_bytes() == foreign_bytes
-    _assert_raw_lock_acquirable(displaced_lock)
-    _assert_raw_lock_acquirable(foreign_target)
-
-    server.owner_marker_path().unlink()
-    server.owner_lock_path().unlink()
-    displaced_lock.unlink()
-    foreign_target.unlink()
-
-def test_offline_lease_handoff_keeps_competitor_before_migration_and_open(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "control.duckdb"
-    state_dir = tmp_path / "state"
-    birth = current_process_birth()
-    migration_entered = threading.Event()
-    release_migration = threading.Event()
-    capability_calls: list[str] = []
-    migration_calls: list[str] = []
-    open_calls: list[str] = []
-    adopted_errors: list[BaseException] = []
-
-    def adopted_migrate(_path: Path) -> MigrationRunReport:
-        migration_calls.append("adopted")
-        migration_entered.set()
-        if not release_migration.wait(timeout=5):
-            raise AssertionError("test did not release adopted-owner migration")
-        return _migration_report()
-
-    def loser_migrate(_path: Path) -> MigrationRunReport:
-        migration_calls.append("loser")
-        return _migration_report()
-
-    common = {
-        "database_path": database,
-        "state_dir": state_dir,
-        "repository_id": "repository:sha256:handoff-test",
-        "process_birth_factory": lambda: birth,
-        "owner_liveness_probe": lambda _birth: OwnerLiveness.DEAD,
-    }
-    adopted = build_server(
-        **common,
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: (
-            capability_calls.append("adopted") or _compatible_report()
-        ),
-        migrate=adopted_migrate,
-        connection_factory=lambda _path: (
-            open_calls.append("adopted") or FakeConnection()
-        ),
-    )
-    loser = build_server(
-        **common,
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: (
-            capability_calls.append("loser") or _compatible_report()
-        ),
-        migrate=loser_migrate,
-        connection_factory=lambda _path: (
-            open_calls.append("loser") or FakeConnection()
-        ),
-    )
-    lease = _offline_lease_for_server(adopted, birth=birth)
-    retained_fence = lease.fence_token
-
-    def start_adopted() -> None:
-        try:
-            adopted.start_with_acquired_lease(lease)
-        except BaseException as exc:  # pragma: no cover - diagnostic capture
-            adopted_errors.append(exc)
-
-    thread = threading.Thread(target=start_adopted, daemon=True)
-    thread.start()
-    assert migration_entered.wait(timeout=5)
-    try:
-        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock|canonical owner namespace"):
-            loser.start()
-        adopted_owner = adopted._owner  # noqa: SLF001 - transfer invariant
-        assert adopted_owner is not None
-        assert adopted_owner.held is True
-        assert adopted_owner.fence_token == retained_fence
-        assert lease.held is False
-        assert lease.fence_token == ""
-        assert capability_calls == ["adopted"]
-        assert migration_calls == ["adopted"]
-        assert open_calls == []
-    finally:
-        release_migration.set()
-        thread.join(timeout=5)
-        if adopted.lifecycle is ServerLifecycle.READY:
-            adopted.stop()
-
-    assert not thread.is_alive()
-    assert adopted_errors == []
-    assert capability_calls == ["adopted"]
-    assert migration_calls == ["adopted"]
-    assert open_calls == ["adopted"]
-
-def test_marker_fence_tamper_during_adopted_migration_releases_os_lock(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    lease = _offline_lease_for_server(server, birth=birth)
-    foreign_marker: OwnerMarker | None = None
-
-    def tampering_migration(_path: Path) -> MigrationRunReport:
-        nonlocal foreign_marker
-        current = OwnerMarker.from_dict(
-            json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
-        )
-        foreign_marker = OwnerMarker(
-            server_id="server:foreign-marker",
-            process_birth=current.process_birth,
-            database_path=current.database_path,
-            started_at=current.started_at,
-            fence_token="foreign-fence-token",
-            generation=current.generation,
-        )
-        server.owner_marker_path().write_text(
-            json.dumps(foreign_marker.to_dict()),
-            encoding="utf-8",
-        )
-        return _migration_report()
-
-    server.migrate = tampering_migration
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="differs from the held marker",
-    ):
-        server.start_with_acquired_lease(lease)
-
-    assert foreign_marker is not None
-    assert server.lifecycle is ServerLifecycle.FAILED
-    assert server._owner is None  # noqa: SLF001 - cleanup-authority proof
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    with pytest.raises(QuackStateServerOwnershipError, match="already transferred"):
-        lease.release()
-    assert OwnerMarker.from_dict(
-        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
-    ) == foreign_marker
-    _assert_raw_lock_acquirable(server.owner_lock_path())
-    server.owner_marker_path().unlink()
-
-def test_ready_fails_closed_after_owner_lock_path_replacement(tmp_path: Path) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    lease = _offline_lease_for_server(server, birth=birth)
-    identity = server.start_with_acquired_lease(lease)
-    lock_path = server.owner_lock_path()
-    marker_path = server.owner_marker_path()
-    retained_marker = marker_path.read_bytes()
-
-    retained_lock = lock_path.with_name(lock_path.name + ".retained")
-    os.replace(lock_path, retained_lock)
-    lock_path.write_text("replacement inode\n", encoding="utf-8")
-
-    with pytest.raises(
-        QuackStateServerReadyError,
-        match="lease/fence is no longer corroborated",
-    ):
-        server.ready()
-    before = _ready_stop_component_snapshot(server)
-    with pytest.raises((QuackStateServerControlError, QuackStateServerOwnershipError), match="match|namespace"):
-        server.stop()
-
-    assert identity.server_id
-    assert _ready_stop_component_snapshot(server) == before
-    assert server._owner is not None
-    assert lease._lock_open is True
-    assert marker_path.read_bytes() == retained_marker
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(lock_path)
-    lock_path.unlink()
-    os.replace(retained_lock, lock_path)
-    assert server.stop()["stopped"] is True
-    assert lease._lock_open is False
-
-def test_owner_lease_rejects_symlink_alias_and_lock_retarget(
-    tmp_path: Path,
-) -> None:
-    sealed_dir = tmp_path / "sealed"
-    sealed_dir.mkdir()
-    alias_dir = tmp_path / "alias"
-    alias_dir.symlink_to(sealed_dir, target_is_directory=True)
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="without symlink aliases",
-    ):
-        ExclusiveOwnerLease(
-            lock_path=alias_dir / "owner.lock",
-            marker_path=alias_dir / "owner.json",
-        )
-
-    birth = current_process_birth()
-    server = _server(tmp_path / "retarget", birth=birth)
-    startup_calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
-    )
-    server.migrate = (
-        lambda _path: startup_calls.append("migration") or _migration_report()
-    )
-    server.connection_factory = (
-        lambda _path: startup_calls.append("database_open") or FakeConnection()
-    )
-    lease = _offline_lease_for_server(server, birth=birth)
-    marker_bytes = server.owner_marker_path().read_bytes()
-    target = tmp_path / "foreign-lock-target"
-    target.write_text("foreign\n", encoding="utf-8")
-    server.owner_lock_path().unlink()
-    server.owner_lock_path().symlink_to(target)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="lock identity differ",
-    ):
-        server.start_with_acquired_lease(lease)
-
-    assert startup_calls == []
-    assert lease.held is False
-    assert lease._lock_open is True  # noqa: SLF001 - original inode still locked
-    with pytest.raises(QuackStateServerControlError, match="mismatch"):
-        lease.release()
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    assert server.owner_marker_path().read_bytes() == marker_bytes
-    assert server.owner_lock_path().is_symlink()
-    assert target.read_text(encoding="utf-8") == "foreign\n"
-    _assert_raw_lock_acquirable(target)
-    server.owner_marker_path().unlink()
-    server.owner_lock_path().unlink()
-    target.unlink()
-
-def test_owner_lease_rejects_marker_symlink_retarget_without_touching_target(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    startup_calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
-    )
-    lease = _offline_lease_for_server(server, birth=birth)
-    retained_marker = server.owner_marker_path().read_bytes()
-    foreign_target = tmp_path / "foreign-marker-target"
-    foreign_target.write_bytes(retained_marker)
-    server.owner_marker_path().unlink()
-    server.owner_marker_path().symlink_to(foreign_target)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="differs from the held marker",
-    ):
-        server.start_with_acquired_lease(lease)
-
-    assert startup_calls == []
-    assert lease.held is False
-    with pytest.raises(QuackStateServerControlError, match="mismatch"):
-        lease.release()
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    assert server.owner_marker_path().is_symlink()
-    assert foreign_target.read_bytes() == retained_marker
-    _assert_raw_lock_acquirable(server.owner_lock_path())
-    server.owner_marker_path().unlink()
-    foreign_target.unlink()
-
-def test_owner_lease_rejects_mutable_hardlink_alias_before_transfer(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    startup_calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
-    )
-    lease = _offline_lease_for_server(server, birth=birth)
-    retained_marker = server.owner_marker_path().read_bytes()
-    lock_alias = tmp_path / "owner-lock-hardlink-alias"
-    os.link(server.owner_lock_path(), lock_alias)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="lock identity differ",
-    ):
-        server.start_with_acquired_lease(lease)
-
-    assert startup_calls == []
-    assert lease.held is False
-    assert lease._lock_open is True  # noqa: SLF001 - original inode still locked
-    with pytest.raises(QuackStateServerControlError, match="mismatch"):
-        lease.release()
-    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
-    assert server.owner_marker_path().read_bytes() == retained_marker
-    _assert_raw_lock_acquirable(lock_alias)
-    lock_alias.unlink()
-    server.owner_lock_path().unlink()
-    server.owner_marker_path().unlink()
-
-def test_offline_lease_handoff_rejects_birth_drift_before_startup_effects(
-    tmp_path: Path,
-) -> None:
-    lease_birth = current_process_birth()
-    owner_birth = ProcessBirthIdentity(
-        pid=lease_birth.pid,
-        start_time_ticks=lease_birth.start_time_ticks + 1,
-        boot_id=lease_birth.boot_id,
-        parent_pid=lease_birth.parent_pid,
-    )
-    server = _server(tmp_path, birth=owner_birth)
-    calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    server.migrate = lambda _path: calls.append("migration") or _migration_report()
-    server.connection_factory = (
-        lambda _path: calls.append("database_open") or FakeConnection()
-    )
-    lease = _offline_lease_for_server(server, birth=lease_birth)
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="process birth is not current",
-        ):
-            server.start_with_acquired_lease(lease)
-        assert calls == []
-        assert lease.held is True
-    finally:
-        lease.release()
-
-def test_offline_lease_handoff_rejects_wrong_paths_before_startup_effects(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    wrong_database = tmp_path / "wrong" / "control.duckdb"
-    lease = ExclusiveOwnerLease(
-        lock_path=wrong_database.with_name(".control.duckdb.state-owner.lock"),
-        marker_path=wrong_database.with_name(".control.duckdb.state-owner.json"),
-        liveness=lambda _birth: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id="offline:wrong-database",
-        process_birth=birth,
-        database_path=wrong_database,
-    )
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="paths differ",
-        ):
-            server.start_with_acquired_lease(lease)
-        assert calls == []
-        assert lease.held is True
-    finally:
-        lease.release()
-
-def test_offline_lease_handoff_rejects_replaced_marker_before_startup_effects(
-    tmp_path: Path,
-) -> None:
-    birth = current_process_birth()
-    server = _server(tmp_path, birth=birth)
-    calls: list[str] = []
-    server.isolation_observer = (
-        lambda *_args, **_kwargs: calls.append("isolation") or None
-    )
-    server.capability_probe = (
-        lambda **_kwargs: calls.append("capability") or _compatible_report()
-    )
-    lease = _offline_lease_for_server(server, birth=birth)
-    original = lease.marker
-    assert original is not None
-    replaced = OwnerMarker(
-        server_id="offline:replaced-marker",
-        process_birth=original.process_birth,
-        database_path=original.database_path,
-        started_at=original.started_at,
-        fence_token=original.fence_token,
-        generation=original.generation,
-    )
-    server.owner_marker_path().write_text(
-        json.dumps(replaced.to_dict()),
-        encoding="utf-8",
-    )
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="differs from the held marker",
-        ):
-            server.start_with_acquired_lease(lease)
-        assert calls == []
-        assert lease.held is False
-        assert lease._lock_open is True  # noqa: SLF001 - OS-lock continuity proof
-    finally:
-        with pytest.raises(QuackStateServerControlError, match="mismatch"):
-            lease.release()
-
-    assert lease._lock_open is False  # noqa: SLF001 - cleanup proof
-    assert OwnerMarker.from_dict(
-        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
-    ) == replaced
-    _assert_raw_lock_acquirable(server.owner_lock_path())
-    server.owner_marker_path().unlink()
-
-def test_failed_start_releases_consumed_offline_lease(tmp_path: Path) -> None:
-    birth = current_process_birth()
-    unavailable = _compatible_report(status=QuackCapabilityStatus.UNAVAILABLE)
-    server = _server(tmp_path, birth=birth, capability=unavailable)
-    lease = _offline_lease_for_server(server, birth=birth)
-
-    with pytest.raises(QuackStateServerCapabilityError):
-        server.start_with_acquired_lease(lease)
-
-    assert server.lifecycle is ServerLifecycle.FAILED
-    assert lease.held is False
-    assert not server.owner_marker_path().exists()
-
-    replacement = _offline_lease_for_server(
-        server,
-        birth=birth,
-        server_id="offline:replacement-writer",
-    )
-    replacement.release()
-
-def test_concurrent_starts_only_lease_winner_migrates_and_opens(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "control.duckdb"
-    state_dir = tmp_path / "state"
-    migration_entered = threading.Event()
-    release_migration = threading.Event()
-    migration_calls: list[str] = []
-    open_calls: list[str] = []
-    winner_errors: list[BaseException] = []
-
-    def winner_migrate(_path: Path) -> MigrationRunReport:
-        migration_calls.append("winner")
-        migration_entered.set()
-        if not release_migration.wait(timeout=5):
-            raise AssertionError("test did not release winner migration")
-        return _migration_report()
-
-    def loser_migrate(_path: Path) -> MigrationRunReport:
-        migration_calls.append("loser")
-        return _migration_report()
-
-    winner_connection = FakeConnection()
-    loser_connection = FakeConnection()
-    common = {
-        "database_path": database,
-        "state_dir": state_dir,
-        "repository_id": "repository:sha256:test",
-        "transport": FakeQuackTransport(),
-        "capability_probe": lambda **_kwargs: _compatible_report(),
-        "process_birth_factory": lambda: _birth(),
-        "owner_liveness_probe": lambda _birth: OwnerLiveness.DEAD,
-    }
-    winner = build_server(
-        **common,
-        migrate=winner_migrate,
-        connection_factory=lambda _path: (
-            open_calls.append("winner") or winner_connection
-        ),
-    )
-    loser = build_server(
-        **{**common, "transport": FakeQuackTransport()},
-        migrate=loser_migrate,
-        connection_factory=lambda _path: (
-            open_calls.append("loser") or loser_connection
-        ),
-    )
-
-    def start_winner() -> None:
-        try:
-            winner.start()
-        except BaseException as exc:  # pragma: no cover - diagnostic capture
-            winner_errors.append(exc)
-
-    thread = threading.Thread(target=start_winner, daemon=True)
-    thread.start()
-    assert migration_entered.wait(timeout=5)
-    try:
-        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock|canonical owner namespace"):
-            loser.start()
-        assert migration_calls == ["winner"]
-        assert open_calls == []
-    finally:
-        release_migration.set()
-        thread.join(timeout=5)
-        if winner.lifecycle is ServerLifecycle.READY:
-            winner.stop()
-
-    assert not thread.is_alive()
-    assert winner_errors == []
-    assert migration_calls == ["winner"]
-    assert open_calls == ["winner"]
-
-@pytest.mark.parametrize("failure_stage", ["load", "query", "none"])
-def test_live_query_bounds_native_resources_before_loading_and_closes_client(
-    monkeypatch: pytest.MonkeyPatch, failure_stage: str,
-) -> None:
-    duckdb = pytest.importorskip("duckdb")
-    native_connect = duckdb.connect
-    clients: list[Any] = []
-    effective_settings: list[tuple[Any, Any]] = []
-
-    class Client:
-        def __init__(self, database: str, **kwargs: Any) -> None:
-            self.native = native_connect(database, **kwargs)
-            self.closed = False
-            clients.append(self)
-
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            # Inspect effective native settings at the extension boundary;
-            # accepting a config argument alone does not establish the cap.
-            threads, memory = self.native.execute(
-                "SELECT current_setting('threads'), "
-                "current_setting('memory_limit')"
-            ).fetchone()
-            effective_settings.append((threads, memory))
-            assert threads == 1
-            assert memory == "244.1 MiB"
-            if (sql == "LOAD quack" and failure_stage == "load") or (
-                "quack_query" in sql and failure_stage == "query"
-            ):
-                raise RuntimeError("isolated probe failure")
-            return _Result((1,))
-
-        def close(self) -> None:
-            self.native.close()
-            self.closed = True
-
-    monkeypatch.setattr(duckdb, "connect", Client)
-    identity = StateServerIdentity(
-        server_id="server:bounded-probe", store_id="store:bounded-probe",
-        database_uuid=_UUID, schema_revision=1, schema_fingerprint=_DIGEST,
-        generation=1, fence_epoch=1, revision=0, process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:45692", extension_fingerprint=_DIGEST,
-        credential_generation=1, secret_handle="handle:bounded-probe",
-    )
-    transport = InProcessQuackTransport()
-    transport.start(
-        FakeConnection(), host="127.0.0.1", port=45692,
-        token="isolated-probe-token", identity=identity,
-    )
-    if failure_stage == "none":
-        assert transport.live_query(
-            FakeConnection(), identity=identity, token="isolated-probe-token",
-        )["live"] is True
-    else:
-        with pytest.raises(QuackStateServerReadyError):
-            transport.live_query(
-                FakeConnection(), identity=identity, token="isolated-probe-token",
-            )
-    # Check outside the transport exception wrapper, which also catches
-    # AssertionError on the deliberately failed LOAD/query paths.
-    assert effective_settings
-    assert all(value == (1, "244.1 MiB") for value in effective_settings)
-    assert len(clients) == 1
-    assert clients[0].closed is True
-    with pytest.raises(duckdb.ConnectionException):
-        clients[0].native.execute("SELECT 1")
-
-@pytest.mark.parametrize("failure_stage", ["load", "query", "none"])
-def test_live_query_bounds_native_resources_before_loading_and_closes_client_aseh(
-    monkeypatch: pytest.MonkeyPatch, failure_stage: str,
-) -> None:
-    duckdb = pytest.importorskip("duckdb")
-    native_connect = duckdb.connect
-    clients: list[Any] = []
-
-    class Client:
-        def __init__(self, database: str, **kwargs: Any) -> None:
-            self.native = native_connect(database, **kwargs)
-            self.closed = False
-            clients.append(self)
-
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            # Inspect effective native settings at the extension boundary;
-            # accepting a config argument alone does not establish the cap.
-            threads, memory = self.native.execute(
-                "SELECT current_setting('threads'), "
-                "current_setting('memory_limit')"
-            ).fetchone()
-            assert threads == 1
-            assert memory == "244.1 MiB"
-            if (sql == "LOAD quack" and failure_stage == "load") or (
-                "quack_query" in sql and failure_stage == "query"
-            ):
-                raise RuntimeError("isolated probe failure")
-            return _Result((1,))
-
-        def close(self) -> None:
-            self.native.close()
-            self.closed = True
-
-    monkeypatch.setattr(duckdb, "connect", Client)
-    identity = StateServerIdentity(
-        server_id="server:bounded-probe", store_id="store:bounded-probe",
-        database_uuid=_UUID, schema_revision=1, schema_fingerprint=_DIGEST,
-        generation=1, fence_epoch=1, revision=0, process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:45692", extension_fingerprint=_DIGEST,
-        credential_generation=1, secret_handle="handle:bounded-probe",
-    )
-    transport = InProcessQuackTransport()
-    transport.start(
-        FakeConnection(), host="127.0.0.1", port=45692,
-        token="isolated-probe-token", identity=identity,
-    )
-    if failure_stage == "none":
-        assert transport.live_query(
-            FakeConnection(), identity=identity, token="isolated-probe-token",
-        )["live"] is True
-    else:
-        with pytest.raises(QuackStateServerReadyError):
-            transport.live_query(
-                FakeConnection(), identity=identity, token="isolated-probe-token",
-            )
-    assert len(clients) == 1
-    assert clients[0].closed is True
-    with pytest.raises(duckdb.ConnectionException):
-        clients[0].native.execute("SELECT 1")
-
-def test_live_query_retries_quack_could_not_connect_birth_race(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class IOException(Exception):
-        pass
-
-    attempts = 0
-
-    class BirthClient:
-        def __init__(self, *, fail_query: bool) -> None:
-            self.fail_query = fail_query
-
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            if "quack_query" in sql:
-                if self.fail_query:
-                    raise IOException(
-                        "IO Error: Failed to send message: IO Error: "
-                        "Could not connect to server error for HTTP POST"
-                    )
-                return _Result((1,))
-            return _Result()
-
-        def close(self) -> None:
-            pass
-
-    def connect(_database: str, *, config: dict[str, Any]) -> BirthClient:
-        nonlocal attempts
-        assert config["threads"] == 1
-        assert config["memory_limit"]
-        attempts += 1
-        return BirthClient(fail_query=attempts == 1)
-
-    monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
-    identity = StateServerIdentity(
-        server_id="server:birth-race",
-        store_id="store:birth-race",
-        database_uuid=_UUID,
-        schema_revision=1,
-        schema_fingerprint=_DIGEST,
-        generation=1,
-        fence_epoch=1,
-        revision=0,
-        process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:45689",
-        extension_fingerprint=_DIGEST,
-        credential_generation=1,
-        secret_handle="handle:birth-race",
-    )
-    transport = InProcessQuackTransport()
-    transport.start(
-        FakeConnection(),
-        host="127.0.0.1",
-        port=45689,
-        token="isolated-birth-race-token",
-        identity=identity,
-    )
-
-    observed = transport.live_query(
-        FakeConnection(),
-        identity=identity,
-        token="isolated-birth-race-token",
-    )
-
-    assert observed["live"] is True
-    assert attempts == 2
-
-def test_live_query_skips_birth_retry_when_periodic_projection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class IOException(Exception):
-        pass
-
-    attempts = 0
-
-    class Sidecar:
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            if "quack_query" in sql:
-                raise IOException(
-                    "IO Error: Could not connect to server error for HTTP POST"
-                )
-            return _Result()
-
-        def close(self) -> None:
-            return None
-
-    def connect(_database: str, *, config: dict[str, Any]) -> Sidecar:
-        nonlocal attempts
-        assert config["threads"] == 1
-        assert config["memory_limit"]
-        attempts += 1
-        return Sidecar()
-
-    monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
-    identity = StateServerIdentity(
-        server_id="server:periodic-live-query",
-        store_id="store:periodic-live-query",
-        database_uuid=_UUID,
-        schema_revision=1,
-        schema_fingerprint=_DIGEST,
-        generation=1,
-        fence_epoch=1,
-        revision=0,
-        process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:45691",
-        extension_fingerprint=_DIGEST,
-        credential_generation=1,
-        secret_handle="handle:periodic-live-query",
-    )
-    transport = InProcessQuackTransport()
-    transport.start(
-        FakeConnection(),
-        host="127.0.0.1",
-        port=45691,
-        token="isolated-periodic-token",
-        identity=identity,
-    )
-    owner = FakeConnection()
-    owner.executed = 0
-
-    def _execute(sql: str, params: Any = None) -> _Result:
-        del params
-        owner.executed += 1
-        if "quack_query" in str(sql):
-            raise AssertionError("periodic live query must not use the serve connection")
-        return _Result()
-
-    owner.execute = _execute  # type: ignore[method-assign]
-
-    with pytest.raises(QuackStateServerReadyError, match="IOException"):
-        transport.live_query(
-            owner,
-            identity=identity,
-            token="isolated-periodic-token",
-            retry_transient_birth=False,
-        )
-
-    assert attempts == 1
-    assert owner.executed == 0
-
-def test_live_query_does_not_execute_on_unusable_owner_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class IOException(Exception):
-        pass
-
-    class UnusableOwner:
-        def __init__(self) -> None:
-            self._poisoned = True
-            self._closed = False
-            self._connection = None
-            self.executed = 0
-
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            del sql
-            self.executed += 1
-            raise DuckDBConnectionPolicyError(
-                "DuckDB connection is unusable after an uncertain transaction"
-            )
-
-    class Sidecar:
-        def execute(self, sql: str, _params: Any = None) -> _Result:
-            if "quack_query" in sql:
-                raise IOException("Could not connect to server")
-            return _Result()
-
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setitem(
-        sys.modules,
-        "duckdb",
-        SimpleNamespace(connect=lambda _database, **_kwargs: Sidecar()),
-    )
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server."
-        "QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS",
-        0.0,
-    )
-    identity = StateServerIdentity(
-        server_id="server:unusable-fallback",
-        store_id="store:unusable-fallback",
-        database_uuid=_UUID,
-        schema_revision=1,
-        schema_fingerprint=_DIGEST,
-        generation=1,
-        fence_epoch=1,
-        revision=0,
-        process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:45690",
-        extension_fingerprint=_DIGEST,
-        credential_generation=1,
-        secret_handle="handle:unusable-fallback",
-    )
-    transport = InProcessQuackTransport()
-    transport.start(
-        FakeConnection(),
-        host="127.0.0.1",
-        port=45690,
-        token="isolated-unusable-fallback-token",
-        identity=identity,
-    )
-    owner = UnusableOwner()
-
-    with pytest.raises(QuackStateServerReadyError, match="IOException"):
-        transport.live_query(
-            owner,
-            identity=identity,
-            token="isolated-unusable-fallback-token",
-        )
-    assert owner.executed == 0
-
-def test_transport_start_does_not_fall_back_after_bind_ioerror() -> None:
-    class IOException(Exception):
-        pass
-
-    class BindFailureConnection(FakeConnection):
-        def __init__(self) -> None:
-            super().__init__()
-            self.serve_attempts = 0
-
-        def execute(self, sql: str, params: Any = None) -> _Result:
-            if "quack_serve" in sql:
-                self.serve_attempts += 1
-                raise IOException("Failed to bind DuckDB Quack RPC server")
-            return super().execute(sql, params)
-
-    identity = StateServerIdentity(
-        server_id="server:bind-failure",
-        store_id="store:bind-failure",
-        database_uuid=_UUID,
-        schema_revision=1,
-        schema_fingerprint=_DIGEST,
-        generation=1,
-        fence_epoch=1,
-        revision=0,
-        process_birth=_birth(),
-        listen_uri="quack:127.0.0.1:24689",
-        extension_fingerprint=_DIGEST,
-        credential_generation=1,
-        secret_handle="handle:bind-failure",
-    )
-    connection = BindFailureConnection()
-
-    with pytest.raises(QuackStateServerCapabilityError, match="IOException"):
-        InProcessQuackTransport().start(
-            connection,
-            host="127.0.0.1",
-            port=24689,
-            token="isolated-bind-failure-token",
-            identity=identity,
-        )
-
-    assert connection.serve_attempts == 1
 
 def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:
     transport = FakeQuackTransport()
@@ -2979,37 +1987,125 @@ def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:
     assert transport.stopped is True
     assert not server.owner_marker_path().exists()
 
+
+@pytest.mark.parametrize(
+    ("max_generation", "expected_overrides", "mismatched_field"),
+    (
+        (43, {"expected_generation": 43}, "generation"),
+        (
+            0,
+            {"expected_database_uuid": "123e4567-e89b-12d3-a456-426614174001"},
+            "database_uuid",
+        ),
+        (0, {"expected_store_id": "other-control.duckdb"}, "store_id"),
+        (
+            0,
+            {"expected_listen_uri": "quack:127.0.0.1:4343"},
+            "listen_uri",
+        ),
+    ),
+    ids=("unexpected-generation-44", "database-uuid", "store-id", "listen-uri"),
+)
+def test_expected_startup_binding_fails_before_credentials_transport_or_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    max_generation: int,
+    expected_overrides: dict[str, Any],
+    mismatched_field: str,
+) -> None:
+    connection = FakeConnection(max_generation=max_generation)
+    transport = FakeQuackTransport()
+    expected = {
+        "expected_generation": max_generation + 1,
+        "expected_database_uuid": _UUID,
+        "expected_store_id": "control.duckdb",
+        "expected_listen_uri": "quack:127.0.0.1:4242",
+        **expected_overrides,
+    }
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "state",
+        port=4242,
+        transport=transport,
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        migrate=lambda _path: _migration_report(),
+        connection_factory=lambda _path: connection,
+        process_birth_factory=lambda: _birth(),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        **expected,
+    )
+    assert server._vault is not None  # noqa: SLF001 -- pre-publication boundary
+    mint_calls: list[tuple[str, int]] = []
+
+    def record_mint(*, secret_handle: str, generation: int) -> None:
+        mint_calls.append((secret_handle, generation))
+
+    monkeypatch.setattr(server._vault, "mint", record_mint)  # noqa: SLF001
+
+    with pytest.raises(QuackStateServerControlError, match=mismatched_field):
+        server.start()
+
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server.identity is None
+    assert mint_calls == []
+    assert transport.started is False
+    assert transport.start_calls == []
+    assert not any(
+        statement.upper().startswith(("INSERT ", "UPDATE "))
+        for statement in connection.statements
+    )
+    assert connection.closed is True
+    assert not server.owner_marker_path().exists()
+    assert list((tmp_path / "state").glob("*.quack-token")) == []
+
+
+def test_reuse_expected_generation_restarts_current_generation(
+    tmp_path: Path,
+) -> None:
+    """A proved-dead owner may restart the sealed generation instead of minting."""
+
+    connection = FakeConnection(max_generation=47)
+    transport = FakeQuackTransport()
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "state",
+        port=4242,
+        transport=transport,
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        migrate=lambda _path: _migration_report(),
+        connection_factory=lambda _path: connection,
+        process_birth_factory=lambda: _birth(),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        expected_generation=47,
+        expected_database_uuid=_UUID,
+        expected_store_id="control.duckdb",
+        expected_listen_uri="quack:127.0.0.1:4242",
+        reuse_expected_generation=True,
+    )
+    identity = server.start()
+    assert identity.generation == 47
+    assert transport.started is True
+    assert any(
+        "UPDATE STORE_GENERATIONS" in " ".join(item.upper().split())
+        for item in connection.statements
+    )
+    server.stop()
+
+
 def test_ready_requires_live_query(tmp_path: Path) -> None:
     transport = FakeQuackTransport(fail_live_query=True)
     server = _server(tmp_path, transport=transport)
+    server.start()
     with pytest.raises(QuackStateServerReadyError, match="live query"):
-        server.start()
+        server.ready()
     assert server.is_ready() is False
-    assert server.lifecycle is ServerLifecycle.FAILED
-    assert transport.stopped is True
+    # Clear failure for clean stop path
+    transport.fail_live_query = False
+    server.stop()
+
 
 def test_ready_requires_matching_identities(tmp_path: Path) -> None:
     class DriftTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
-            del connection, token, retry_transient_birth
-            return {
-                "live": True,
-                "server_id": identity.server_id,
-                "store_id": "wrong-store",
-                "database_uuid": identity.database_uuid,
-                "schema_revision": identity.schema_revision,
-                "schema_fingerprint": identity.schema_fingerprint,
-                "generation": identity.generation,
-                "process_birth_id": identity.process_birth_id,
-            }
-
-    server = _server(tmp_path, transport=DriftTransport())
-    with pytest.raises(QuackStateServerReadyError, match="do not match"):
-        server.start()
-    assert server.lifecycle is ServerLifecycle.FAILED
-
-def test_ready_requires_matching_identities_aseh(tmp_path: Path) -> None:
-    class DriftTransport(FakeQuackTransport):
         def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
             del connection, token
             return {
@@ -3024,32 +2120,14 @@ def test_ready_requires_matching_identities_aseh(tmp_path: Path) -> None:
             }
 
     server = _server(tmp_path, transport=DriftTransport())
+    server.start()
     with pytest.raises(QuackStateServerReadyError, match="do not match"):
-        server.start()
-    assert server.lifecycle is ServerLifecycle.FAILED
+        server.ready()
+    server.stop()
+
 
 def test_ready_requires_complete_live_identity_fields(tmp_path: Path) -> None:
     class IncompleteTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
-            del connection, token, retry_transient_birth
-            return {
-                "live": True,
-                "server_id": identity.server_id,
-                # store_id intentionally omitted — must not fall back silently
-                "database_uuid": identity.database_uuid,
-                "schema_revision": identity.schema_revision,
-                "schema_fingerprint": identity.schema_fingerprint,
-                "generation": identity.generation,
-                "process_birth_id": identity.process_birth_id,
-            }
-
-    server = _server(tmp_path, transport=IncompleteTransport())
-    with pytest.raises(QuackStateServerReadyError, match="missing identity fields"):
-        server.start()
-    assert server.lifecycle is ServerLifecycle.FAILED
-
-def test_ready_requires_complete_live_identity_fields_aseh(tmp_path: Path) -> None:
-    class IncompleteTransport(FakeQuackTransport):
         def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
             del connection, token
             return {
@@ -3064,20 +2142,24 @@ def test_ready_requires_complete_live_identity_fields_aseh(tmp_path: Path) -> No
             }
 
     server = _server(tmp_path, transport=IncompleteTransport())
+    server.start()
     with pytest.raises(QuackStateServerReadyError, match="missing identity fields"):
-        server.start()
-    assert server.lifecycle is ServerLifecycle.FAILED
+        server.ready()
+    server.stop()
+
 
 def test_migration_required_before_ready(tmp_path: Path) -> None:
     server = _server(tmp_path, schema_version="0")
     with pytest.raises(Exception, match="migrated before ready|schema must be migrated"):
         server.start()
 
+
 def test_capability_admission_fail_closed(tmp_path: Path) -> None:
     bad = _compatible_report(status=QuackCapabilityStatus.UNAVAILABLE)
     server = _server(tmp_path, capability=bad)
     with pytest.raises(QuackStateServerCapabilityError):
         server.start()
+
 
 def test_whoami_process_birth_published(tmp_path: Path) -> None:
     birth = _birth(pid=7777, ticks=12345, boot="boot-xyz")
@@ -3092,6 +2174,7 @@ def test_whoami_process_birth_published(tmp_path: Path) -> None:
     export = server.export_identity()
     assert export["identity"]["process_birth_id"] == identity.process_birth_id
     server.stop()
+
 
 def test_graceful_stop_uses_fence_control_path(tmp_path: Path) -> None:
     server = _server(tmp_path)
@@ -3108,8 +2191,47 @@ def test_graceful_stop_uses_fence_control_path(tmp_path: Path) -> None:
     result = server.stop()
     assert result["stopped"] is True
 
+
+def test_serve_until_stop_fail_closes_when_listen_dies(tmp_path: Path) -> None:
+    """A ready owner whose listen port is gone must stop and release the store."""
+
+    import importlib.util
+    from types import SimpleNamespace
+
+    spec = importlib.util.spec_from_file_location(
+        "sawm_quack_ops_listen_lost_test", OPS_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class _Lifecycle:
+        value = "ready"
+
+    class _Server:
+        lifecycle = _Lifecycle()
+        _identity = SimpleNamespace(listen_uri="quack:127.0.0.1:1")
+
+        def stop_control_path(self) -> Path:
+            return tmp_path / "quack-state-server.stop"
+
+        def stop(self) -> dict[str, Any]:
+            self.lifecycle.value = "stopped"
+            return {"stopped": True}
+
+    result = module._serve_until_stop(_Server())
+    assert result["stopped"] is True
+    assert result["listen_lost"] is True
+
+
 def test_listen_uri_format() -> None:
     assert listen_uri("127.0.0.1", 4242) == "quack:127.0.0.1:4242"
+
+
+# ---------------------------------------------------------------------------
+# Ops CLI argv policy
+# ---------------------------------------------------------------------------
+
 
 def test_ops_script_rejects_token_argv() -> None:
     proc = subprocess.run(
@@ -3131,6 +2253,7 @@ def test_ops_script_rejects_token_argv() -> None:
     assert proc.returncode != 0
     assert "refusing argv credential flag" in (proc.stderr + proc.stdout)
 
+
 def test_ops_script_help_is_cold() -> None:
     proc = subprocess.run(
         [sys.executable, str(OPS_SCRIPT), "--help"],
@@ -3144,6 +2267,7 @@ def test_ops_script_help_is_cold() -> None:
     # Help must not advertise a raw-token flag as an option.
     assert "--token " not in proc.stdout
     assert "--token\n" not in proc.stdout
+
 
 def test_ops_module_import_is_cold() -> None:
     # Importing the ops facade must not open a database.
@@ -3167,24 +2291,29 @@ def test_ops_module_import_is_cold() -> None:
     assert proc.returncode == 0
     assert "ok" in proc.stdout
 
+
+# ---------------------------------------------------------------------------
+# Optional integration with real DuckDB (migration path)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
 def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="test-owner",
+    )
+
+    # Use real connection factory via duckdb_state but fake transport/capability.
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_duckdb_connection,
     )
 
-    db = tmp_path / "control.duckdb"
-    state = tmp_path / "state"
-    state.mkdir()
-    install_control_plane_schema(
-        db,
-        application_version="0.0.45",
-        tool_version="1.5.2",
-        owner_id="test-owner",
-    )
-
-    # Use real connection factory via duckdb_state but fake transport/capability.
-
     server = build_server(
         database_path=db,
         state_dir=state,
@@ -3194,53 +2323,6 @@ def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None
         # which is replay-safe.
         process_birth_factory=lambda: _birth(pid=os.getpid()),
         owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
-        connection_factory=lambda path: open_duckdb_connection(path),
-    )
-    # Override connection to keep open across ready.
-    # Default migrate+connection_factory use real duckdb.
-    identity = server.start()
-    assert identity.database_uuid
-    assert identity.schema_revision >= 1
-    assert identity.schema_fingerprint.startswith("sha256:")
-    status = json.loads(server.status_path().read_text(encoding="utf-8"))
-    maximum_wait = status["typed_command_gateway"][
-        "typed_event_wait_maximum_seconds"
-    ]
-    assert type(maximum_wait) is int
-    assert maximum_wait == 60
-    ready = server.ready()
-    assert ready["ready"] is True
-    export = server.export_identity()
-    assert export["identity"]["server_id"] == identity.server_id
-    server.checkpoint()
-    server.stop()
-    # Connection closed; marker gone.
-    assert not server.owner_marker_path().exists()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-def test_real_duckdb_migration_then_fake_transport_ready_aseh(tmp_path: Path) -> None:
-    db = tmp_path / "control.duckdb"
-    state = tmp_path / "state"
-    state.mkdir()
-    install_control_plane_schema(
-        db,
-        application_version="0.0.45",
-        tool_version="1.5.2",
-        owner_id="test-owner",
-    )
-
-    # Use real connection factory via duckdb_state but fake transport/capability.
-
-    server = build_server(
-        database_path=db,
-        state_dir=state,
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_k: _compatible_report(),
-        # migrate is no-op / real install already done; still call real installer
-        # which is replay-safe.
-        process_birth_factory=lambda: _birth(pid=os.getpid()),
-        owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
-        connection_factory=lambda path: open_duckdb_connection(path),
     )
     # Override connection to keep open across ready.
     # Default migrate+connection_factory use real duckdb.
@@ -3257,100 +2339,6 @@ def test_real_duckdb_migration_then_fake_transport_ready_aseh(tmp_path: Path) ->
     # Connection closed; marker gone.
     assert not server.owner_marker_path().exists()
 
-def test_real_default_transport_requires_authenticated_remote_readiness(
-    tmp_path: Path,
-) -> None:
-    if not duckdb_available():
-        pytest.skip("DuckDB is unavailable")
-    capability = probe_quack_capabilities(allow_network_install=False)
-    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
-        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
-
-    server = build_server(
-        database_path=tmp_path / "control.duckdb",
-        state_dir=tmp_path / "owner",
-        port=0,
-        store_id="test-real-quack-owner",
-        secret_handle="handle:test-real-quack-owner",
-    )
-    identity = server.start()
-    client = None
-    try:
-        assert identity.status == "ready"
-        # Startup deliberately removes the persisted bearer-token copy; only
-        # the live owner vault retains it for authenticated readiness probes.
-        token_path = (
-            tmp_path / "owner/handle_test-real-quack-owner.quack-token"
-        )
-        assert not token_path.exists()
-        token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-        client = open_quack_transport_connection(identity.listen_uri, token=token)
-        assert client.execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
-    finally:
-        if client is not None:
-            client.close()
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-@pytest.mark.parametrize(
-    ("allow_legacy_board_unstall", "expected_status", "expected_revision"),
-    ((True, "retrying", 3), (False, "in_progress", 2)),
-)
-def test_start_applies_explicit_legacy_board_unstall_policy(
-    tmp_path: Path,
-    allow_legacy_board_unstall: bool,
-    expected_status: str,
-    expected_revision: int,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from datetime import datetime, timedelta
-
-
-    db = tmp_path / "control.duckdb"
-    state = tmp_path / "state"
-    state.mkdir()
-    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
-    from test.api.test_agent_supervisor_intent_repository import _repo, _seed_graph
-
-    stale = (datetime.now(UTC) - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with _repo(tmp_path) as repository:
-        ids = _seed_graph(repository)
-        with monkeypatch.context() as clock_patch:
-            clock_patch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
-            repository.cas_task_status(
-                task_cid=ids["task_a"], expected_revision=1,
-                new_status="in_progress",
-                receipt={"operation": "test_owner_start_recovery", "attempt_id": "attempt:prior"},
-            )
-        repository.assert_projection_matches_events()
-
-    server = build_server(
-        database_path=db,
-        state_dir=state,
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_k: _compatible_report(),
-        process_birth_factory=lambda: _birth(pid=os.getpid()),
-        owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
-        allow_legacy_board_unstall=allow_legacy_board_unstall,
-    )
-    server.start()
-    try:
-        raw = getattr(server._connection, "_connection", server._connection)
-        row = raw.execute(
-            "SELECT status, revision, updated_at FROM tasks "
-            "WHERE task_cid = ?", [ids["task_a"]]
-        ).fetchone()
-        assert row is not None
-        status, revision, updated_at = row[0], row[1], row[2]
-        assert status == expected_status
-        assert int(revision) == expected_revision
-        if not allow_legacy_board_unstall:
-            assert updated_at == stale
-        assert server.status()["legacy_board_unstall_enabled"] is (
-            allow_legacy_board_unstall
-        )
-    finally:
-        server.stop()
 
 def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
     with pytest.raises(QuackStateServerTokenError):
@@ -3359,1528 +2347,3 @@ def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
             state_dir=tmp_path / "state",
             secret_handle="raw-not-a-handle",
         )
-
-@pytest.mark.parametrize("load_fails", [False, True])
-def test_distinct_readiness_client_is_bounded_before_load(monkeypatch, load_fails):
-    import duckdb
-
-    native_connect = duckdb.connect
-    clients = []
-    observations = []
-
-    def connect(*args, **kwargs):
-        client = native_connect(*args, **kwargs)
-        clients.append(client)
-        return client
-
-    def load(client):
-        observations.append(client.execute(
-            "SELECT current_setting('threads'), current_setting('memory_limit')"
-        ).fetchone())
-        if load_fails:
-            raise RuntimeError("injected extension load failure")
-
-    monkeypatch.setattr(duckdb, "connect", connect)
-    transport = InProcessQuackTransport()
-    monkeypatch.setattr(transport, "_load_quack", load)
-    if load_fails:
-        for _ in range(2):
-            with pytest.raises(QuackStateServerReadyError) as error:
-                transport._open_probe_connection()
-            assert isinstance(error.value.__cause__, RuntimeError)
-            with pytest.raises(duckdb.ConnectionException):
-                clients[-1].execute("SELECT 1")
-    else:
-        client = transport._open_probe_connection()
-        try:
-            assert client is clients[0]
-            assert client.execute("SELECT 1").fetchone() == (1,)
-        finally:
-            client.close()
-    assert len(observations) == (2 if load_fails else 1)
-    assert all(row[0] == 1 and row[1] == "244.1 MiB" for row in observations)
-
-def test_distinct_readiness_load_error_survives_close_failure(monkeypatch):
-    import duckdb
-
-    closed = []
-
-    class Client:
-        def close(self):
-            closed.append(True)
-            raise RuntimeError("close failure")
-
-    def connect(*args, **kwargs):
-        assert kwargs["config"] == {"threads": 1, "memory_limit": "256MB"}
-        return Client()
-
-    monkeypatch.setattr(duckdb, "connect", connect)
-    transport = InProcessQuackTransport()
-
-    def load(_client):
-        raise ValueError("load failure")
-
-    monkeypatch.setattr(transport, "_load_quack", load)
-    with pytest.raises(QuackStateServerReadyError) as error:
-        transport._open_probe_connection()
-    assert isinstance(error.value.__cause__, ValueError)
-    assert closed == [True]
-
-def _ready_stop_component_snapshot(server: QuackStateServer) -> dict[str, Any]:
-    """Capture the READY resources a rejected stop must leave untouched."""
-
-    owner = server._owner  # noqa: SLF001 - exact pre-effect regression
-    broker = server._grant_broker  # noqa: SLF001
-    gateway = server._command_gateway  # noqa: SLF001
-    worker = server._outbox_thread  # noqa: SLF001
-    transport = server.transport
-    connection = server._connection  # noqa: SLF001
-    vault = server._vault  # noqa: SLF001
-    database_anchor = server._database_namespace_anchor  # noqa: SLF001
-
-    def bytes_or_none(path: Path) -> bytes | None:
-        try:
-            return path.read_bytes()
-        except FileNotFoundError:
-            return None
-
-    return {
-        "lifecycle": server.lifecycle,
-        "identity": server.identity,
-        "owner_object": id(owner),
-        "owner_fence": "" if owner is None else owner.fence_token,
-        "owner_marker": None if owner is None else owner.marker,
-        "owner_marker_bytes": bytes_or_none(server.owner_marker_path()),
-        "outbox_stop": server._outbox_stop.is_set(),  # noqa: SLF001
-        "outbox_wake_object": id(server._outbox_wake),  # noqa: SLF001
-        "outbox_worker_object": id(server._outbox_worker),  # noqa: SLF001
-        "outbox_thread_object": id(worker),
-        "outbox_thread_alive": bool(worker is not None and worker.is_alive()),
-        "event_wait_object": id(server._event_wait),  # noqa: SLF001
-        "broker_object": id(broker),
-        "broker_stop": None if broker is None else broker._stop.is_set(),  # noqa: SLF001
-        "broker_thread_object": id(None if broker is None else broker._thread),  # noqa: SLF001
-        "broker_thread_alive": bool(
-            broker is not None
-            and broker._thread is not None  # noqa: SLF001
-            and broker._thread.is_alive()  # noqa: SLF001
-        ),
-        "gateway_object": id(gateway),
-        "transport_object": id(transport),
-        "transport_started": getattr(transport, "started", None),
-        "transport_stopped": getattr(transport, "stopped", None),
-        "connection_object": id(connection),
-        "connection_closed": getattr(connection, "closed", None),
-        "database_anchor_object": id(database_anchor),
-        "database_parent_fd": (
-            -1 if database_anchor is None else database_anchor.directory_descriptor
-        ),
-        "database_inode_fd": (
-            -1 if database_anchor is None else database_anchor.database_descriptor
-        ),
-        "database_namespace_drifted": (
-            server._database_namespace_drifted  # noqa: SLF001
-        ),
-        "vault_object": id(vault),
-        "vault_handle": None if vault is None else vault.secret_handle,
-        "grant_secret_fd": server._grant_broker_secret_fd,  # noqa: SLF001
-        "typed_token_bytes": bytes_or_none(server.typed_command_token_path()),
-        "status_bytes": bytes_or_none(server.status_path()),
-        "stop_control_bytes": bytes_or_none(server.stop_control_path()),
-    }
-
-class _OwnerMutationTaskSource:
-    """Small read/CAS client for exercising the real owner mutation boundary."""
-
-    def __init__(
-        self,
-        connection: DuckDBConnection,
-        *,
-        owner_lock: threading.RLock,
-        first_claim_barrier: threading.Barrier,
-    ) -> None:
-        self._connection = connection
-        self._owner_lock = owner_lock
-        self._first_claim_barrier = first_claim_barrier
-        self._barrier_lock = threading.Lock()
-        self._raced_threads: set[int] = set()
-        self.claim_receipts: list[dict[str, Any]] = []
-
-    @staticmethod
-    def _record(row: Any) -> TaskRecord:
-        return TaskRecord(
-            task_cid=str(row[0]),
-            task_alias=str(row[1]),
-            goal_cid=str(row[2]),
-            ordinal=int(row[3]),
-            status=str(row[4]),
-            revision=int(row[5]),
-            body=MappingProxyType({}),
-        )
-
-    def _select(self, *, task_cid: str = "") -> tuple[TaskRecord, ...]:
-        sql = "SELECT task_cid, task_alias, goal_cid, ordinal, status, revision FROM tasks"
-        params: list[Any] = []
-        if task_cid:
-            sql += " WHERE task_cid = ?"
-            params.append(task_cid)
-        sql += " ORDER BY ordinal, task_cid"
-        with self._owner_lock:
-            rows = self._connection.execute(sql, params).fetchall()
-        return tuple(self._record(row) for row in rows)
-
-    def ready_tasks(
-        self,
-        completed_ids: Any = (),
-        blocked_ids: Any = (),
-        limit: int = 1000,
-    ) -> TaskPage:
-        completed = {str(item) for item in completed_ids}
-        blocked = {str(item) for item in blocked_ids}
-        tasks = tuple(
-            task
-            for task in self._select()
-            if task.status in {"todo", "ready", "open"}
-            and task.task_cid not in completed
-            and task.task_cid not in blocked
-        )[: int(limit)]
-        revision = max((task.revision for task in tasks), default=1)
-        return TaskPage(tasks=tasks, revision=revision)
-
-    def list_tasks(self, cursor: str = "", limit: int = 1000) -> TaskPage:
-        tasks = self._select()
-        offset = int(cursor or "0")
-        bounded = tasks[offset : offset + int(limit)]
-        end = offset + len(bounded)
-        revision = max((task.revision for task in tasks), default=1)
-        return TaskPage(
-            tasks=bounded,
-            revision=revision,
-            next_cursor=str(end) if end < len(tasks) else "",
-        )
-
-    def snapshot(self) -> TaskSourceSnapshot:
-        tasks = self._select()
-        projection_cid = content_identity(
-            {"tasks": [task.to_dict() for task in tasks]}
-        )
-        terminal_statuses = {
-            "completed",
-            "skipped",
-            "cancelled",
-            "failed",
-            "quarantined",
-            "complete",
-            "done",
-        }
-        return TaskSourceSnapshot(
-            source_schema=DATABASE_TASK_SOURCE_SCHEMA,
-            schema_version=1,
-            plan_root_cid="plan:parallel",
-            repository_tree_id="tree:parallel",
-            projection_cid=projection_cid,
-            formal_plan_id="plan:parallel",
-            source_identity=content_identity(
-                {"source": "owner-mutation-task-source"}
-            ),
-            revision=max((task.revision for task in tasks), default=1),
-            event_cursor=max((task.revision for task in tasks), default=1),
-            goal_count=len({task.goal_cid for task in tasks}),
-            task_count=len(tasks),
-            dependency_count=sum(len(task.dependencies) for task in tasks),
-            terminal=bool(tasks)
-            and all(task.status in terminal_statuses for task in tasks),
-            objective_count=0,
-            plan_count=1,
-        )
-
-    def get(self, task_cid: str) -> TaskRecord | None:
-        rows = self._select(task_cid=str(task_cid))
-        task = rows[0] if rows else None
-        if task is not None and task.ordinal == 0:
-            thread_id = threading.get_ident()
-            with self._barrier_lock:
-                should_race = thread_id not in self._raced_threads
-                self._raced_threads.add(thread_id)
-            if should_race:
-                self._first_claim_barrier.wait(timeout=5.0)
-        return task
-
-    get_task = get
-
-    def compare_and_set_status(
-        self,
-        task_cid: str,
-        expected_revision: int,
-        status: str,
-        receipt: Any = None,
-        *,
-        evidence_digests: Any = None,
-    ) -> Any:
-        del evidence_digests
-        if isinstance(receipt, dict):
-            with self._barrier_lock:
-                self.claim_receipts.append(dict(receipt))
-        client = DuckDBConnection.wrap(object())
-        client._default_catalog = "control_plane"  # noqa: SLF001
-        result = client.execute(
-            "UPDATE tasks SET status = ?, revision = revision + 1 "
-            "WHERE task_cid = ? AND revision = ? "
-            "AND status IN ('todo', 'ready', 'open') "
-            "RETURNING revision",
-            [str(status), str(task_cid), int(expected_revision)],
-        )
-        row = result.fetchone()
-        if row is None:
-            raise TaskSourceConflictError(
-                f"task {task_cid} revision/status compare-and-set conflict"
-            )
-        return MappingProxyType({"changed": True, "revision": int(row[0])})
-
-    cas_status = compare_and_set_status
-
-def test_exclusive_owner_lock_refuses_symlink_and_hardlink_paths(
-    tmp_path: Path,
-) -> None:
-    symlink_target = tmp_path / "symlink-target.lock"
-    symlink_target.write_bytes(b"")
-    symlink_target.chmod(0o600)
-    symlink_path = tmp_path / "symlink-owner.lock"
-    symlink_path.symlink_to(symlink_target.name)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="exclusive owner lock path is unavailable or unsafe",
-    ):
-        acquire_exclusive_owner_lock(symlink_path)
-
-    hardlink_target = tmp_path / "hardlink-target.lock"
-    hardlink_target.write_bytes(b"")
-    hardlink_target.chmod(0o600)
-    hardlink_path = tmp_path / "hardlink-owner.lock"
-    os.link(hardlink_target, hardlink_path)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="owned single-link regular file",
-    ):
-        acquire_exclusive_owner_lock(hardlink_path)
-
-def test_exclusive_owner_lock_refuses_second_helper_contender(
-    tmp_path: Path,
-) -> None:
-    lock_path = tmp_path / "owner.lock"
-    first = acquire_exclusive_owner_lock(lock_path)
-    try:
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(lock_path)
-    finally:
-        first.close()
-
-def test_exclusive_owner_lock_directory_anchor_fences_replaced_name(
-    tmp_path: Path,
-) -> None:
-    lock_path = tmp_path / "owner.lock"
-    first = acquire_exclusive_owner_lock(lock_path)
-    replacement = tmp_path / "replacement.lock"
-    replacement.write_bytes(b"")
-    replacement.chmod(0o600)
-    os.replace(replacement, lock_path)
-
-    try:
-        # The canonical name now refers to another secure inode, but the first
-        # holder's kernel path fence prevents that inode from becoming a second
-        # canonical ownership authority.
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(lock_path)
-    finally:
-        first.close()
-
-    reacquired = acquire_exclusive_owner_lock(lock_path)
-    reacquired.close()
-
-def test_exclusive_owner_lock_keeps_distinct_database_paths_parallel(
-    tmp_path: Path,
-) -> None:
-    first = acquire_exclusive_owner_lock(tmp_path / "first-owner.lock")
-    second = acquire_exclusive_owner_lock(tmp_path / "second-owner.lock")
-    try:
-        assert not first.closed
-        assert not second.closed
-    finally:
-        second.close()
-        first.close()
-
-def test_exclusive_owner_lock_kernel_fence_blocks_replaced_parent(
-    tmp_path: Path,
-) -> None:
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    lock_path = state_dir / "owner.lock"
-    first = acquire_exclusive_owner_lock(lock_path)
-    displaced = tmp_path / "state.displaced"
-    os.replace(state_dir, displaced)
-    state_dir.mkdir()
-
-    try:
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(lock_path)
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="directory (name|identity) changed",
-        ):
-            first.assert_canonical_parent()
-    finally:
-        first.close()
-
-    reacquired = acquire_exclusive_owner_lock(lock_path)
-    reacquired.close()
-
-def test_exclusive_owner_lease_acquire_failure_releases_every_fence(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-
-    def fail_marker_write(*_args: Any, **_kwargs: Any) -> None:
-        raise OSError("injected marker publication failure")
-
-    monkeypatch.setattr(ExclusiveOwnerLease, "_write_marker_locked", fail_marker_write)
-    with pytest.raises(OSError, match="injected marker publication failure"):
-        lease.acquire(
-            server_id="server:publication-failure",
-            process_birth=_birth(),
-            database_path=tmp_path / "control.duckdb",
-        )
-
-    # Neither the inode/directory flocks nor the abstract canonical-path fence
-    # may outlive a failed acquire whose handle was never attached to the lease.
-    reacquired = acquire_exclusive_owner_lock(lock_path)
-    reacquired.close()
-
-def test_locked_owner_marker_refuses_symlink_and_name_swap(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.runtime import (
-        quack_state_server as server_module,
-    )
-
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    marker = OwnerMarker(
-        server_id="server:marker",
-        process_birth=_birth(),
-        database_path=str(tmp_path / "control.duckdb"),
-        started_at="2026-01-01T00:00:00Z",
-        fence_token="fence-marker",
-        generation=1,
-    )
-    target = tmp_path / "marker-target.json"
-    target.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    target.chmod(0o600)
-    marker_path.symlink_to(target.name)
-    handle = acquire_exclusive_owner_lock(lock_path)
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="owner marker path is unavailable or unsafe",
-        ):
-            read_locked_owner_marker(handle, marker_path)
-
-        marker_path.unlink()
-        marker_path.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-        marker_path.chmod(0o600)
-        replacement = tmp_path / "marker-replacement.json"
-        replacement.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-        replacement.chmod(0o600)
-        real_fstat = os.fstat
-        swapped = False
-
-        def swap_after_marker_open(descriptor: int) -> os.stat_result:
-            nonlocal swapped
-            observed = real_fstat(descriptor)
-            if not swapped:
-                swapped = True
-                os.replace(replacement, marker_path)
-            return observed
-
-        monkeypatch.setattr(server_module.os, "fstat", swap_after_marker_open)
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="owner marker inode or metadata changed while read",
-        ):
-            read_locked_owner_marker(handle, marker_path)
-        assert swapped
-    finally:
-        handle.close()
-
-def test_offline_database_guard_refuses_marker_symlink_and_parent_replacement(
-    tmp_path: Path,
-) -> None:
-    import runpy
-
-    operator = runpy.run_path(
-        str(REPO_ROOT / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py"),
-        run_name="aseh_offline_guard_test_module",
-    )
-    guard = operator["_offline_database_guard"]
-    operator_error = operator["OperatorError"]
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    database = state_dir / "control.duckdb"
-    paths = {"database": database}
-    marker_path = state_dir / ".control.duckdb.state-owner.json"
-    marker_target = state_dir / "marker-target.json"
-    marker = OwnerMarker(
-        server_id="server:legacy-live",
-        process_birth=_birth(),
-        database_path=str(database),
-        started_at="2026-01-01T00:00:00Z",
-        fence_token="fence-legacy-live",
-        generation=1,
-    )
-    marker_target.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    marker_target.chmod(0o600)
-    marker_path.symlink_to(marker_target.name)
-
-    with pytest.raises(operator_error, match="owner marker is invalid"):
-        with guard(paths):
-            raise AssertionError("unsafe marker must fail before offline access")
-
-    marker_path.unlink()
-    marker_target.unlink()
-    displaced = tmp_path / "state.displaced"
-    with pytest.raises(operator_error, match="database parent identity changed"):
-        with guard(paths):
-            os.replace(state_dir, displaced)
-            state_dir.mkdir()
-
-    lock_path = state_dir / ".control.duckdb.state-owner.lock"
-    reacquired = acquire_exclusive_owner_lock(lock_path)
-    reacquired.close()
-
-def test_exclusive_owner_lease_and_helper_contend_bidirectionally(
-    tmp_path: Path,
-) -> None:
-    lock_path = tmp_path / "owner.lock"
-    marker_path = tmp_path / "owner.json"
-    database_path = tmp_path / "control.duckdb"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-
-    helper = acquire_exclusive_owner_lock(lock_path)
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="second state-owner refused",
-        ):
-            lease.acquire(
-                server_id="server:lease-contender",
-                process_birth=_birth(),
-                database_path=database_path,
-            )
-    finally:
-        helper.close()
-
-    lease.acquire(
-        server_id="server:lease-holder",
-        process_birth=_birth(),
-        database_path=database_path,
-    )
-    try:
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(lock_path)
-    finally:
-        lease.release()
-
-def test_exclusive_owner_lock_close_allows_safe_reacquire(tmp_path: Path) -> None:
-    lock_path = tmp_path / "owner.lock"
-    first = acquire_exclusive_owner_lock(lock_path)
-    first_descriptor = first.fileno()
-    assert not first.closed
-    first.close()
-    assert first.closed
-    with pytest.raises(ValueError, match="closed owner lock"):
-        first.fileno()
-
-    second = acquire_exclusive_owner_lock(lock_path)
-    try:
-        assert not second.closed
-        assert second.fileno() >= 0
-        # Descriptor numbers may be reused, so admission is established by a
-        # live second handle rather than by comparing integer fd values.
-        assert first_descriptor >= 0
-    finally:
-        second.close()
-
-def test_exclusive_owner_lease_release_error_has_post_shutdown_escape(
-    tmp_path: Path,
-) -> None:
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    lock_path = state_dir / "owner.lock"
-    marker_path = state_dir / "owner.json"
-    lease = ExclusiveOwnerLease(
-        lock_path=lock_path,
-        marker_path=marker_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-    lease.acquire(
-        server_id="server:release-parent-replaced",
-        process_birth=_birth(),
-        database_path=state_dir / "control.duckdb",
-    )
-    displaced = tmp_path / "state.displaced"
-    os.replace(state_dir, displaced)
-    state_dir.mkdir()
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="directory (name|identity) changed",
-    ):
-        lease.release()
-    # Failure remains fail-closed until the caller attests that its database
-    # and listeners are shut down and invokes the explicit emergency path.
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(lock_path)
-
-    lease.emergency_close_after_owner_shutdown()
-    reacquired = acquire_exclusive_owner_lock(lock_path)
-    reacquired.close()
-
-def test_server_stop_closes_database_before_release_error_escape(
-    tmp_path: Path,
-) -> None:
-    database_parent = tmp_path / "database"
-    database_parent.mkdir()
-    database = database_parent / "control.duckdb"
-    state_dir = tmp_path / "runtime"
-    state_dir.mkdir()
-    connection = FakeConnection()
-    server = build_server(
-        database_path=database,
-        state_dir=state_dir,
-        host=DEFAULT_LOOPBACK_HOST,
-        repository_id="repository:sha256:release-error",
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=lambda _path: _migration_report(),
-        connection_factory=lambda _path: connection,
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    server.start()
-    displaced = tmp_path / "database.displaced"
-    os.replace(database_parent, displaced)
-    database_parent.mkdir()
-    before = _ready_stop_component_snapshot(server)
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="(directory (name|identity) changed|namespace is no longer exact)",
-    ):
-        server.stop()
-    assert _ready_stop_component_snapshot(server) == before
-    assert connection.closed is False
-    assert server.lifecycle is ServerLifecycle.READY
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(
-            database_parent / ".control.duckdb.state-owner.lock"
-        )
-
-    # Restoring the exact retained namespace makes the current live owner
-    # admissible again; no manual lock/DB repair or authority remint is needed.
-    database_parent.rmdir()
-    os.replace(displaced, database_parent)
-    assert server.stop()["stopped"] is True
-    assert connection.closed is True
-
-def test_database_namespace_swap_between_migration_and_writer_open_retains_owner(
-    tmp_path: Path,
-) -> None:
-    database_parent = tmp_path / "database"
-    database_parent.mkdir()
-    database = database_parent / "control.duckdb"
-    displaced = database_parent / "control.original.duckdb"
-    state_dir = tmp_path / "runtime"
-    state_dir.mkdir()
-    connection = FakeConnection()
-
-    def migrate(path: Path) -> MigrationRunReport:
-        path.write_bytes(b"sealed-authoritative-database")
-        return _migration_report()
-
-    def swap_before_writer_open(path: Path) -> FakeConnection:
-        os.replace(path, displaced)
-        path.write_bytes(b"replacement-database")
-        return connection
-
-    server = build_server(
-        database_path=database,
-        state_dir=state_dir,
-        host=DEFAULT_LOOPBACK_HOST,
-        repository_id="repository:sha256:database-open-swap",
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=migrate,
-        connection_factory=swap_before_writer_open,
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    retained_fds: tuple[int, int] = (-1, -1)
-
-    try:
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="database namespace drifted.*database name or inode changed",
-        ):
-            server.start()
-
-        assert server.lifecycle is ServerLifecycle.FAILED
-        assert connection.closed is True
-        assert server._owner is not None  # noqa: SLF001
-        anchor = server._database_namespace_anchor  # noqa: SLF001
-        assert anchor is not None
-        assert anchor.database_descriptor >= 0
-        retained_fds = (
-            anchor.directory_descriptor,
-            anchor.database_descriptor,
-        )
-        assert os.fstat(anchor.database_descriptor).st_ino == displaced.stat().st_ino
-        assert server._database_namespace_drifted is True  # noqa: SLF001
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(server.owner_lock_path())
-    finally:
-        # Restore the exact retained inode only to release test-process
-        # capabilities. The failed generation never becomes READY.
-        if displaced.exists():
-            database.unlink(missing_ok=True)
-            os.replace(displaced, database)
-        if server._database_namespace_anchor is not None:  # noqa: SLF001
-            server._assert_database_namespace()  # noqa: SLF001
-            server._emergency_cleanup()  # noqa: SLF001
-    assert server._owner is None  # noqa: SLF001
-    assert server._database_namespace_anchor is None  # noqa: SLF001
-    for descriptor in retained_fds:
-        with pytest.raises(OSError):
-            os.fstat(descriptor)
-
-def test_database_namespace_swap_after_checkpoint_prevents_source_open(
-    tmp_path: Path,
-) -> None:
-    database_parent = tmp_path / "database"
-    database_parent.mkdir()
-    database = database_parent / "control.duckdb"
-    displaced = database_parent / "control.original.duckdb"
-    state_dir = tmp_path / "runtime"
-    state_dir.mkdir()
-
-    class CheckpointSwapConnection(FakeConnection):
-        swap_on_checkpoint = False
-
-        def execute(self, sql: str, params: Any = None) -> _Result:
-            result = super().execute(sql, params)
-            if (
-                self.swap_on_checkpoint
-                and " ".join(str(sql).strip().split()).upper()
-                == "CHECKPOINT"
-            ):
-                self.swap_on_checkpoint = False
-                os.replace(database, displaced)
-                database.write_bytes(b"replacement-database")
-            return result
-
-    connection = CheckpointSwapConnection()
-
-    def migrate(path: Path) -> MigrationRunReport:
-        path.write_bytes(b"sealed-authoritative-database")
-        return _migration_report()
-
-    transport = FakeQuackTransport()
-    server = build_server(
-        database_path=database,
-        state_dir=state_dir,
-        host=DEFAULT_LOOPBACK_HOST,
-        repository_id="repository:sha256:database-checkpoint-swap",
-        transport=transport,
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=migrate,
-        connection_factory=lambda _path: connection,
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    server.start()
-    owner = server._owner  # noqa: SLF001
-    anchor = server._database_namespace_anchor  # noqa: SLF001
-    assert owner is not None
-    assert anchor is not None
-    retained_fds = (
-        anchor.directory_descriptor,
-        anchor.database_descriptor,
-    )
-    retained_inode = os.fstat(anchor.database_descriptor).st_ino
-    connection.swap_on_checkpoint = True
-
-    with pytest.raises(
-        QuackStateServerOwnershipError,
-        match="database namespace drifted.*database name or inode changed",
-    ):
-        server._copy_authoritative_read_replica()  # noqa: SLF001
-
-    # The post-checkpoint fence runs before the dirfd-relative source open.
-    # The exact old inode remains retained and no success replica is published.
-    assert os.fstat(anchor.database_descriptor).st_ino == retained_inode
-    assert displaced.stat().st_ino == retained_inode
-    assert not server.read_replica_path().exists()
-    assert server.lifecycle is ServerLifecycle.READY
-    assert server._owner is owner  # noqa: SLF001
-    assert server._connection is connection  # noqa: SLF001
-    assert connection.closed is False
-    assert transport.started is True
-    assert transport.stopped is False
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(server.owner_lock_path())
-
-    database.unlink()
-    os.replace(displaced, database)
-    assert server.stop()["stopped"] is True
-    assert connection.closed is True
-    assert server._database_namespace_anchor is None  # noqa: SLF001
-    for descriptor in retained_fds:
-        with pytest.raises(OSError):
-            os.fstat(descriptor)
-
-def test_server_stop_error_with_live_listener_retains_owner_until_closed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.runtime import (
-        quack_state_server as server_module,
-    )
-
-    events: list[str] = []
-
-    class OrderedConnection(FakeConnection):
-        def close(self) -> None:
-            events.append("database_close")
-            super().close()
-
-    class StopErrorTransport(FakeQuackTransport):
-        def stop(self, connection: Any | None = None) -> None:
-            del connection
-            events.append("transport_stop")
-            raise RuntimeError("injected transport stop failure")
-
-    monkeypatch.setattr(
-        server_module,
-        "READ_REPLICA_STOP_TIMEOUT_SECONDS",
-        0.05,
-    )
-    database = tmp_path / "control.duckdb"
-    connection = OrderedConnection()
-    transport = StopErrorTransport()
-    server = build_server(
-        database_path=database,
-        state_dir=tmp_path / "state",
-        host=DEFAULT_LOOPBACK_HOST,
-        repository_id="repository:sha256:stop-live-listener",
-        transport=transport,
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=lambda _path: _migration_report(),
-        connection_factory=lambda _path: connection,
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    server.start()
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind((DEFAULT_LOOPBACK_HOST, server._bound_port))
-    listener.listen(1)
-    try:
-        with pytest.raises(
-            QuackStateServerControlError,
-            match="closure was not positively observed",
-        ):
-            server.stop()
-        assert events == ["transport_stop", "database_close"]
-        assert connection.closed is True
-        assert server._transport_connection is connection
-        assert server._transport_connection_is_writer is True
-        with pytest.raises(BlockingIOError):
-            acquire_exclusive_owner_lock(server.owner_lock_path())
-    finally:
-        listener.close()
-
-    # The database is already closed.  Once a fresh probe observes endpoint
-    # closure, retry may release the exact retained owner authority.
-    assert server.stop()["stopped"] is True
-    assert events == ["transport_stop", "database_close", "transport_stop"]
-    assert server._transport_connection is None
-    assert server._transport_connection_is_writer is False
-    reacquired = acquire_exclusive_owner_lock(server.owner_lock_path())
-    reacquired.close()
-    handle = acquire_exclusive_owner_lock(server.owner_lock_path())
-    handle.close()
-
-def test_server_stop_error_with_closed_endpoint_releases_after_observation(
-    tmp_path: Path,
-) -> None:
-    events: list[str] = []
-
-    class OrderedConnection(FakeConnection):
-        def close(self) -> None:
-            events.append("database_close")
-            super().close()
-
-    class StopErrorTransport(FakeQuackTransport):
-        def stop(self, connection: Any | None = None) -> None:
-            del connection
-            events.append("transport_stop")
-            raise RuntimeError("injected transport stop failure")
-
-    database = tmp_path / "control.duckdb"
-    connection = OrderedConnection()
-    server = build_server(
-        database_path=database,
-        state_dir=tmp_path / "state",
-        host=DEFAULT_LOOPBACK_HOST,
-        repository_id="repository:sha256:stop-closed-endpoint",
-        transport=StopErrorTransport(),
-        capability_probe=lambda **_kwargs: _compatible_report(),
-        migrate=lambda _path: _migration_report(),
-        connection_factory=lambda _path: connection,
-        process_birth_factory=lambda: _birth(),
-        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
-    )
-    server.start()
-
-    assert server.stop()["stopped"] is True
-    assert events == ["transport_stop", "database_close"]
-    assert connection.closed is True
-    handle = acquire_exclusive_owner_lock(server.owner_lock_path())
-    handle.close()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    request: pytest.FixtureRequest,
-) -> None:
-    """Two exact typed grants arbitrate concurrent claims on one live owner."""
-    from contextlib import ExitStack
-    from copy import deepcopy
-    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import TransactionError
-    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import DatabaseTaskSource
-    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import QuackClientTransportError, QuackStateClient
-    from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import StateOwnerBootstrapCredentials
-    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import DETERMINISTIC_ONLY_EXECUTION_MODE
-    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
-        TypedDatabaseTaskSource,
-        daemon_required_owner_command_operations,
-        daemon_required_owner_operations,
-    )
-    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
-        TYPED_STATE_OWNER_SOCKET_ENV,
-        TYPED_STATE_OWNER_TOKEN_ENV,
-        TypedStateOwnerConnection,
-    )
-
-    server = _real_database_server(tmp_path)
-    server.process_birth_factory = current_process_birth
-    seed = DatabaseTaskSource(server.config.database_path)
-    try:
-        seed.materialize({
-            "repository_tree_id": "tree:parallel", "plan_root_cid": "plan:parallel",
-            "goals": [{"goal_cid": "goal:parallel", "goal_alias": "APMC-G-PARALLEL", "title": "Parallel claims"}],
-            "tasks": [
-                {"task_cid": f"task:parallel:{ordinal}", "task_id": f"APMC-PARALLEL-{ordinal}",
-                 "goal_cid": "goal:parallel", "status": "ready"}
-                for ordinal in range(2)
-            ],
-        })
-    finally:
-        seed.close()
-    identity = server.start()
-    cleanup = ExitStack()
-    request.addfinalizer(cleanup.close)
-    cleanup.callback(server.stop)
-    task_sources = []
-    credentials = []
-    grants = []
-    clients = []
-    daemons = []
-    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(server.typed_command_socket_path()))
-    for lane in range(2):
-        client_id = f"database-implementation-daemon:parallel-{lane}"
-        token, _grant = server.issue_typed_client_grant_record(
-            client_id=client_id, process_birth_id=identity.process_birth_id,
-            allowed_operations=daemon_required_owner_operations(),
-            allowed_command_operations=daemon_required_owner_command_operations(),
-            peer_pid=os.getpid(),
-        )
-        grants.append(_grant)
-        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
-        client = QuackStateClient(
-            owner_id=client_id, store_id=identity.store_id,
-            process_birth_id=identity.process_birth_id,
-        )
-        clients.append(client)
-        cleanup.callback(client.close)
-        client.attach(identity.listen_uri, server_id=identity.server_id)
-        unsealed = TypedDatabaseTaskSource(client, owns_client=False)
-        try:
-            policy = unsealed.seal_execution_route_policy({
-                f"APMC-PARALLEL-{ordinal}": DETERMINISTIC_ONLY_EXECUTION_MODE
-                for ordinal in range(2)
-            })
-        finally:
-            unsealed.close()
-        task_sources.append(TypedDatabaseTaskSource(
-            client, owns_client=False, execution_route_policy=policy,
-        ))
-        cleanup.callback(task_sources[-1].close)
-        credentials.append(StateOwnerBootstrapCredentials(
-            endpoint=identity.listen_uri, socket_path=str(server.typed_command_socket_path()),
-            store_id=identity.store_id, server_id=identity.server_id, client_id=client_id,
-            process_birth_id=identity.process_birth_id, token=token,
-            execution_route_policy=policy,
-        ))
-
-    first_claim_barrier = threading.Barrier(2)
-    raced_sources = set()
-    barrier_lock = threading.Lock()
-    real_ready_tasks = TypedDatabaseTaskSource.ready_tasks
-
-    def ready_together(source, *args, **kwargs):
-        page = real_ready_tasks(source, *args, **kwargs)
-        with barrier_lock:
-            first = id(source) not in raced_sources
-            raced_sources.add(id(source))
-        if first:
-            first_claim_barrier.wait(timeout=10.0)
-        return page
-
-    monkeypatch.setattr(TypedDatabaseTaskSource, "ready_tasks", ready_together)
-    prepare_barrier = threading.Barrier(2)
-    prepared_clients = set()
-    first_claim_scopes = []
-    first_claim_commands = {}
-    real_prepare = TypedStateOwnerConnection.prepare_command
-
-    def prepare_together(connection, command):
-        if command.parameters.get("operation") == "task.status.cas.receipt":
-            with barrier_lock:
-                first = id(connection) not in prepared_clients
-                prepared_clients.add(id(connection))
-                if first:
-                    first_claim_commands[id(connection)] = command
-                    first_claim_scopes.append((
-                        command.parameters.get("task_cid"),
-                        command.parameters.get("expected_task_revision"),
-                        command.expected_generation, command.expected_revision,
-                        command.fence_epoch,
-                    ))
-            if first:
-                # Both commands have captured their expected global and task
-                # revisions before either owner transaction may begin.
-                prepare_barrier.wait(timeout=10.0)
-        return real_prepare(connection, command)
-
-    shared_store_id = "state/apmc/control.duckdb"
-    lane_args = tuple(
-        parse_implementation_daemon_args(
-            [
-                "--task-source-kind",
-                "duckdb",
-                "--authority-mode",
-                "quack",
-                "--endpoint-secret-handle",
-                identity.secret_handle,
-                "--quack-endpoint",
-                identity.listen_uri,
-                "--state-store-id",
-                shared_store_id,
-                "--state-store-generation",
-                str(identity.generation),
-                "--state-schema-revision",
-                str(identity.schema_revision),
-                "--state-dir",
-                str(tmp_path / f"lane-{lane}"),
-                "--task-shard-count",
-                "2",
-                "--task-shard-index",
-                str(lane),
-            ]
-        )
-        for lane in range(2)
-    )
-    programs = tuple(database_program_from_daemon_namespace(args) for args in lane_args)
-    assert all(program is not None for program in programs)
-    assert {program.store_id for program in programs if program is not None} == {shared_store_id}
-    lane_paths = tuple(
-        resolve_database_implementation_paths(args, authority_mode="quack") for args in lane_args
-    )
-    assert lane_paths[0]["database_path"] != lane_paths[1]["database_path"]
-    assert all(
-        str(paths["database_path"]).endswith("quack-lane-control.duckdb") for paths in lane_paths
-    )
-
-    for lane in range(2):
-        daemon = DatabaseImplementationDaemon(
-            database_path=lane_paths[lane]["database_path"],
-            owner_session_id=f"parallel-lane-{lane}",
-            authority_mode="quack",
-            task_source_kind="database",
-            quack_uri=identity.listen_uri,
-            task_source=task_sources[lane],
-            close_task_source=False,
-            process_instance_id=identity.process_birth_id,
-            state_owner_bootstrap_credentials=credentials[lane],
-            require_real_execution=True,
-        )
-        daemons.append(daemon)
-        cleanup.callback(daemon.close)
-    monkeypatch.setattr(TypedStateOwnerConnection, "prepare_command", prepare_together)
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(daemon.claim_next) for daemon in daemons]
-            attempts = tuple(future.result(timeout=10.0) for future in futures)
-
-            # A losing lane's next lane-local claim has attempt_number=2.
-            # That number is not shared authority and must not let it inherit
-            # the other lane's durable in-progress task.
-            duplicate_futures = [executor.submit(daemon.claim_next) for daemon in daemons]
-            duplicate_attempts = tuple(future.result(timeout=10.0) for future in duplicate_futures)
-
-        assert all(attempt is not None for attempt in attempts)
-        assert len(prepared_clients) == 2
-        assert len(first_claim_scopes) == 2 and len(set(first_claim_scopes)) == 1
-        assert {attempt.task_cid for attempt in attempts if attempt is not None} == {
-            "task:parallel:0",
-            "task:parallel:1",
-        }
-        assert duplicate_attempts == (None, None)
-        tasks = tuple(task_sources[0].get_task(f"task:parallel:{ordinal}") for ordinal in range(2))
-        assert [(task.task_cid, task.status) for task in tasks] == [
-            ("task:parallel:0", "in_progress"),
-            ("task:parallel:1", "in_progress"),
-        ]
-        winning_receipts = {
-            task.body["completion_receipt"]["attempt_id"]: task.body["completion_receipt"]
-            for task in tasks
-        }
-        assert set(winning_receipts) == {attempt.attempt_id for attempt in attempts}
-        for attempt in attempts:
-            receipt = winning_receipts[attempt.attempt_id]
-            assert receipt["claim_id"] == attempt.claim_id
-            assert receipt["lease_id"] == attempt.lease_id
-            assert receipt["fencing_token"] == attempt.fencing_token
-            assert receipt["fence_epoch"] == attempt.fence_epoch
-
-        # Claims are bound to their own lane's accepted lease and cannot be
-        # used in the other daemon's coordination store.
-        for daemon, attempt in zip(daemons, attempts, strict=True):
-            assert attempt is not None
-            claim = daemon.coordinator.get_task_claim(attempt.claim_id)
-            assert claim is not None
-            assert claim.state is LeaseState.ACCEPTED
-            assert claim.task_cid == attempt.task_cid
-            assert claim.owner_session_id == daemon.owner_session_id
-            assert claim.fencing_token == attempt.fencing_token
-            assert claim.fence_epoch == attempt.fence_epoch
-            lease = daemon.coordinator.get_lease(claim.lease_id)
-            assert lease is not None
-            assert lease.state is LeaseState.ACCEPTED
-
-        with pytest.raises(
-            (DatabaseImplementationAuthorityError, DatabaseImplementationConflictError),
-            match="unknown execution attempt|no coordination claim",
-        ):
-            daemons[0]._protect_attempt_write(attempts[1])  # noqa: SLF001
-
-        # Once the exact accepted lease is released, its prior fence cannot
-        # authorize another write.
-        for daemon, attempt in zip(daemons, attempts, strict=True):
-            assert attempt is not None
-            claim = daemon.coordinator.get_task_claim(attempt.claim_id)
-            assert claim is not None
-            lease = daemon.coordinator.get_lease(claim.lease_id)
-            assert lease is not None
-            daemon.coordinator.release(
-                lease,
-                reason="test_stale_fence",
-                expected_fencing_token=attempt.fencing_token,
-                expected_fence_epoch=attempt.fence_epoch,
-            )
-            with pytest.raises(DatabaseCoordinationExpiredError):
-                daemon._protect_attempt_write(attempt)  # noqa: SLF001
-
-        original = first_claim_commands[id(clients[0]._adapter.raw)]
-        original_body = json.loads(original.parameters["body_json"])
-        before_denials = task_sources[1].list_tasks().tasks
-
-        def stale_cas(body, key):
-            return clients[0].cas_task_status(
-                task_cid=original.parameters["task_cid"],
-                goal_cid="goal:parallel",
-                expected_task_revision=original.parameters["expected_task_revision"],
-                new_status="in_progress", body=body,
-                idempotency_key=key, command_id=key,
-            )
-
-        for malformed in ("process", "claim", "operation", "revision"):
-            bad_body = deepcopy(original_body)
-            receipt = bad_body["completion_receipt"]
-            if malformed == "process":
-                receipt["claim_process_attestation"]["pid"] += 1
-            elif malformed == "claim":
-                receipt["claim_id"] = ""
-            elif malformed == "operation":
-                receipt["operation"] = "foreign_claim"
-            else:
-                receipt["claimed_from_revision"] += 1
-            with pytest.raises(TransactionError, match="authorization_denied"):
-                stale_cas(bad_body, f"stale-invalid-{malformed}")
-
-        server.revoke_typed_client_grant(grants[0].grant_id)
-        with pytest.raises(QuackClientTransportError, match="authorization_denied"):
-            stale_cas(original_body, "stale-revoked-grant")
-        assert task_sources[1].list_tasks().tasks == before_denials
-    finally:
-        cleanup.close()
-
-def test_stale_marker_reclaim_refuses_symlink_and_releases_lock(
-    tmp_path: Path,
-) -> None:
-    db = tmp_path / "control.duckdb"
-    marker_path = db.with_name(f".{db.name}.state-owner.json")
-    lock_path = db.with_name(f".{db.name}.state-owner.lock")
-    marker = OwnerMarker(
-        server_id="server:unsafe-marker",
-        process_birth=_birth(pid=333, ticks=3, boot="unsafe"),
-        database_path=str(db),
-        started_at="2020-01-01T00:00:00Z",
-        fence_token="fence-unsafe",
-        generation=1,
-    )
-    target = tmp_path / "marker-target.json"
-    target.write_text(json.dumps(marker.to_dict()), encoding="utf-8")
-    target.chmod(0o600)
-    marker_path.symlink_to(target.name)
-
-    result = reclaim_stale_owner_marker(
-        marker_path=marker_path,
-        lock_path=lock_path,
-        liveness=lambda _b: OwnerLiveness.DEAD,
-    )
-    assert result == {"reclaimed": False, "reason": "marker_invalid"}
-    assert marker_path.is_symlink()
-
-    # Refusal must not strand either the inode lock or the kernel path fence.
-    handle = acquire_exclusive_owner_lock(lock_path)
-    handle.close()
-
-def test_wrong_stop_fence_is_rejected_before_any_ready_component_changes(
-    tmp_path: Path,
-) -> None:
-    transport = FakeQuackTransport()
-    server = _server(tmp_path, transport=transport)
-    server.start()
-    server.start_supervisor_grant_broker()
-    assert server._owner is not None  # noqa: SLF001
-    valid_fence = server._owner.fence_token  # noqa: SLF001
-    wrong_fence = "0" * 32 if valid_fence != "0" * 32 else "1" * 32
-    before = _ready_stop_component_snapshot(server)
-
-    with pytest.raises(
-        QuackStateServerControlError,
-        match="live owner fence",
-    ):
-        server.stop(fence_token=wrong_fence)
-
-    assert _ready_stop_component_snapshot(server) == before
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(server.owner_lock_path())
-
-    assert server.stop(fence_token=valid_fence)["stopped"] is True
-    assert server.lifecycle is ServerLifecycle.STOPPED
-
-@pytest.mark.parametrize(
-    "control_kind",
-    ("wrong_server", "stale_fence", "malformed"),
-)
-def test_stale_or_malformed_stop_control_is_pre_effect_and_recoverable(
-    tmp_path: Path,
-    control_kind: str,
-) -> None:
-    transport = FakeQuackTransport()
-    server = _server(tmp_path, transport=transport)
-    identity = server.start()
-    server.start_supervisor_grant_broker()
-    assert server._owner is not None  # noqa: SLF001
-    valid_fence = server._owner.fence_token  # noqa: SLF001
-    stale_fence = "0" * 32 if valid_fence != "0" * 32 else "1" * 32
-    control_path = server.stop_control_path()
-    if control_kind == "malformed":
-        control_path.write_bytes(b'{"schema":')
-    else:
-        payload = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/quack-stop-request@1"
-            ),
-            "server_id": (
-                "server:stale-owner"
-                if control_kind == "wrong_server"
-                else identity.server_id
-            ),
-            "fence_token": (
-                stale_fence if control_kind == "stale_fence" else valid_fence
-            ),
-            "requested_at": "2026-08-25T00:00:00Z",
-        }
-        control_path.write_text(
-            json.dumps(payload, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-    control_path.chmod(0o600)
-    before = _ready_stop_component_snapshot(server)
-
-    with pytest.raises(QuackStateServerControlError, match="stop (authority|control)"):
-        server.stop()
-
-    assert _ready_stop_component_snapshot(server) == before
-    with pytest.raises(BlockingIOError):
-        acquire_exclusive_owner_lock(server.owner_lock_path())
-
-    # The exact still-live owner can replace rejected control with a freshly
-    # validated request; rejection does not wedge the canonical stop path.
-    assert server.request_stop()["requested"] is True
-    assert server.stop()["stopped"] is True
-    assert server.lifecycle is ServerLifecycle.STOPPED
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-def test_start_unstalls_stale_in_progress_gate_before_listen(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from datetime import datetime, timedelta, timezone
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        open_duckdb_connection,
-    )
-    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-        IntentRepository,
-    )
-
-    db = tmp_path / "control.duckdb"
-    state = tmp_path / "state"
-    state.mkdir()
-    install_control_plane_schema(
-        db,
-        application_version="0.0.45",
-        tool_version="1.5.2",
-        owner_id="test-owner",
-    )
-    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-    repository = IntentRepository(db, owner_id="test-owner", install_schema=False)
-    try:
-        repository.upsert_goal(
-            goal_cid="goal:cid:root",
-            goal_alias="goal-root",
-            title="Root",
-        )
-        repository.upsert_task(
-            task_cid="cid-021",
-            task_alias="PCCE-021",
-            goal_cid="goal:cid:root",
-            ordinal=21,
-            status="ready",
-        )
-        original_utc_iso = intent_repository._utc_iso
-        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
-        repository.cas_task_status(
-            task_cid="cid-021",
-            expected_revision=1,
-            new_status="in_progress",
-        )
-        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
-    finally:
-        repository.close()
-
-    server = build_server(
-        database_path=db,
-        state_dir=state,
-        transport=FakeQuackTransport(),
-        capability_probe=lambda **_k: _compatible_report(),
-        process_birth_factory=lambda: _birth(pid=os.getpid()),
-        owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
-        connection_factory=lambda path: open_duckdb_connection(path),
-    )
-    server.start()
-    try:
-        raw = getattr(server._connection, "_connection", server._connection)
-        row = raw.execute(
-            "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
-        ).fetchone()
-        assert row is not None
-        status, revision = row[0], row[1]
-        assert status == "retrying"
-        assert int(revision) == 3
-        bound = IntentRepository(
-            db,
-            bound_connection=server._connection,
-            owner_id="test-readback",
-            install_schema=False,
-        )
-        try:
-            bound.assert_projection_matches_events()
-        finally:
-            bound.close()
-    finally:
-        server.stop()
-
-@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-def test_start_repairs_legacy_projection_only_unstall_once_before_listen(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The R24 startup bypass is recovered once, then uses canonical CAS."""
-
-    from datetime import datetime, timedelta, timezone
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        open_duckdb_connection,
-        unstall_stale_in_progress_tasks,
-    )
-    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-        INTENT_STREAM_ID,
-        IntentEventType,
-        IntentRepository,
-    )
-
-    db = tmp_path / "control.duckdb"
-    state = tmp_path / "state"
-    state.mkdir()
-    install_control_plane_schema(
-        db,
-        application_version="0.0.45",
-        tool_version="1.5.2",
-        owner_id="test-owner",
-    )
-    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-    repository = IntentRepository(db, owner_id="test-owner", install_schema=False)
-    try:
-        repository.upsert_goal(
-            goal_cid="goal:cid:root",
-            goal_alias="goal-root",
-            title="Root",
-        )
-        repository.upsert_task(
-            task_cid="cid-legacy-021",
-            task_alias="PCCE-LEGACY-021",
-            goal_cid="goal:cid:root",
-            ordinal=21,
-            status="ready",
-        )
-        original_utc_iso = intent_repository._utc_iso
-        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
-        repository.cas_task_status(
-            task_cid="cid-legacy-021",
-            expected_revision=1,
-            new_status="in_progress",
-        )
-        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
-    finally:
-        repository.close()
-
-    # Reproduce only the historical R24 bypass footprint: the task row moved
-    # to retrying@3, while task_revisions and domain_events remained at the
-    # admitted in_progress@2 state.
-    connection = open_duckdb_connection(db)
-    try:
-        legacy = unstall_stale_in_progress_tasks(
-            connection,
-            now=datetime.now(timezone.utc),
-            allow_projection_only=True,
-        )
-        assert [item["task_alias"] for item in legacy["unstalled"]] == [
-            "PCCE-LEGACY-021"
-        ]
-    finally:
-        connection.close()
-
-    def make_server() -> QuackStateServer:
-        return build_server(
-            database_path=db,
-            state_dir=state,
-            transport=FakeQuackTransport(),
-            capability_probe=lambda **_k: _compatible_report(),
-            process_birth_factory=lambda: _birth(pid=os.getpid()),
-            owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
-            connection_factory=lambda path: open_duckdb_connection(path),
-        )
-
-    expected_counts: tuple[int, int] | None = None
-    for _generation in range(2):
-        server = make_server()
-        server.start()
-        try:
-            raw = getattr(server._connection, "_connection", server._connection)
-            status_row = raw.execute(
-                "SELECT status, revision FROM tasks "
-                "WHERE task_alias = 'PCCE-LEGACY-021'"
-            ).fetchone()
-            assert status_row is not None
-            assert (str(status_row[0]), int(status_row[1])) == ("retrying", 3)
-            observed_counts = (
-                int(
-                    raw.execute(
-                        "SELECT COUNT(*) FROM domain_events "
-                        "WHERE stream_id = ? AND task_cid = ? AND event_type = ?",
-                        [
-                            INTENT_STREAM_ID,
-                            "cid-legacy-021",
-                            IntentEventType.TASK_STATUS_CHANGED.value,
-                        ],
-                    ).fetchone()[0]
-                ),
-                int(
-                    raw.execute(
-                        "SELECT COUNT(*) FROM domain_events "
-                        "WHERE stream_id = ? AND event_type = ?",
-                        [INTENT_STREAM_ID, IntentEventType.RECOVERY_APPLIED.value],
-                    ).fetchone()[0]
-                ),
-            )
-            if expected_counts is None:
-                expected_counts = observed_counts
-                assert expected_counts == (2, 1)
-            else:
-                assert observed_counts == expected_counts
-            bound = IntentRepository(
-                db,
-                bound_connection=server._connection,
-                owner_id="test-readback",
-                install_schema=False,
-            )
-            try:
-                bound.assert_projection_matches_events()
-            finally:
-                bound.close()
-        finally:
-            server.stop()

@@ -39,62 +39,62 @@ PROVIDER_COMMAND_BINDING_INTERFACE: Final = "ProviderCommandBinding@1"
 # public symbol or a re-export alias.
 CANONICAL_PROVIDER_COMMAND_BINDINGS: Final[Mapping[str, tuple[str, str]]] = {
     "PROVIDER_COMMAND_ENVIRONMENT_SCHEMA": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "PROVIDER_COMMAND_ENVIRONMENT_SCHEMA",
     ),
     "PROVIDER_COMMAND_ENV_WRAPPER_ENV": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "PROVIDER_COMMAND_ENV_WRAPPER_ENV",
     ),
     "PROVIDER_COMMAND_ENV_DIGEST_ENV": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "PROVIDER_COMMAND_ENV_DIGEST_ENV",
     ),
     "PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV",
     ),
     "APPROVED_PROVIDER_COMMAND_ENVIRONMENT_NAMES": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "APPROVED_PROVIDER_COMMAND_ENVIRONMENT_NAMES",
     ),
     "ProviderCommandEnvironment": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "ProviderCommandEnvironment",
     ),
     "ProviderCommandEnvironmentError": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "ProviderCommandEnvironmentError",
     ),
     "sealed_provider_command_environment": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "sealed_provider_command_environment",
     ),
     "project_provider_command_environment": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "project_provider_command_environment",
     ),
     "provider_command_environment_sha256": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "provider_command_environment_sha256",
     ),
     "normalize_required_commands": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "normalize_required_commands",
     ),
     "preflight_required_commands": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "preflight_required_commands",
     ),
     # Re-exported through provider_command_environment (imported there from
     # validation_runtime).  Prefer the command-environment surface so runners
     # only need one binding module.
     "FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV",
     ),
     "FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV": (
-        "ipfs_accelerate_py.agent_supervisor.provider_command_environment",
+        "ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment",
         "FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV",
     ),
 }
@@ -407,7 +407,9 @@ def recover_provider_command_name_error(
 
 
 def preflight_provider_entry_module(
-    module_name: str = "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    module_name: str = (
+        "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner"
+    ),
     *,
     reload: bool = False,
 ) -> ProviderCommandBindingReport:

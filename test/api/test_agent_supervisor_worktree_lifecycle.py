@@ -10,15 +10,9 @@ from pathlib import Path
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
-from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
-    EventCursor,
-)
-from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
-    CampaignLeaseCoordinator,
-)
-from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
-    LearningCheckpointAdapter,
-)
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import CampaignLeaseCoordinator
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import LearningCheckpointAdapter
 from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
     L3ResourceKind,
     LearningCheckpointBinding,
@@ -42,7 +36,6 @@ from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     owner_liveness,
     proc_available,
     read_process_birth,
-    same_process_owner,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -155,6 +148,174 @@ def test_owner_transitions_and_only_owner_may_advance(tmp_path: Path) -> None:
     assert decision.reason == "terminal_record"
 
 
+def test_renew_lease_updates_workspace_and_exact_task_index(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(tmp_path, clock=clock)
+    workspace = tmp_path / "renew"
+    record = store.begin_preparing(
+        task_id="RENEW",
+        canonical_task_cid="cid:renew",
+        attempt=3,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/renew",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 9,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    clock.advance(5.0)
+
+    renewed = store.renew_lease(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+
+    assert renewed.fence == record.fence + 1
+    assert renewed.updated_at == clock.now
+    assert renewed.expires_at == clock.now + store.lease_seconds
+    assert json.loads(
+        store.workspace_path_for(workspace).read_text(encoding="utf-8")
+    ) == renewed.to_dict()
+    assert json.loads(index_path.read_text(encoding="utf-8")) == {
+        "schema": renewed.schema,
+        "workspace_path": renewed.workspace_path,
+        "record_id": renewed.record_id,
+        "task_id": renewed.task_id,
+        "canonical_task_cid": renewed.canonical_task_cid,
+        "attempt": renewed.attempt,
+        "fence": renewed.fence,
+        "lease_id": renewed.lease_id,
+        "state": renewed.state.value,
+    }
+    assert store.require_exact_dead_owner(
+        workspace,
+        expected_record_id=renewed.record_id,
+        expected_fence=renewed.fence,
+        expected_lease_id=renewed.lease_id,
+        expected_task_id=renewed.task_id,
+        expected_canonical_task_cid=renewed.canonical_task_cid,
+        expected_attempt=renewed.attempt,
+        expected_branch=renewed.branch,
+        expected_merge_target=renewed.merge_target,
+        expected_repo_root=renewed.repo_root,
+        expected_state_dir=renewed.state_dir,
+    ) == renewed
+
+
+def test_renew_lease_rejects_mismatched_index_without_writes(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    workspace = tmp_path / "renew-index-mismatch"
+    record = store.begin_preparing(
+        task_id="RENEW-INDEX",
+        canonical_task_cid="cid:renew-index",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/renew-index",
+        merge_target="main",
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    index_payload["fence"] = record.fence + 1
+    index_path.write_text(json.dumps(index_payload), encoding="utf-8")
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(
+        WorktreeLifecycleError,
+        match="task index mismatch",
+    ):
+        store.renew_lease(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+
+
+def test_renew_lease_preserves_race_winner_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path)
+    workspace = tmp_path / "renew-race"
+    record = store.begin_preparing(
+        task_id="RENEW-RACE",
+        canonical_task_cid="cid:renew-race",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/renew-race",
+        merge_target="main",
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    original_load = store._load_strict_workspace_record
+    raced: list[tuple[bytes, bytes]] = []
+
+    def race_after_capture(target: str | Path):
+        captured = original_load(target)
+        if not raced:
+            replacement_payload = captured.to_dict()
+            replacement_payload["lane_id"] = "replacement-lane"
+            record_path.write_text(
+                json.dumps(
+                    replacement_payload,
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            raced.append((record_path.read_bytes(), index_path.read_bytes()))
+        return captured
+
+    monkeypatch.setattr(
+        store,
+        "_load_strict_workspace_record",
+        race_after_capture,
+    )
+
+    with pytest.raises(
+        WorktreeLifecycleError,
+        match="record changed during lease renewal",
+    ):
+        store.renew_lease(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+
+    assert len(raced) == 1
+    assert record_path.read_bytes() == raced[0][0]
+    assert index_path.read_bytes() == raced[0][1]
+
+
 def test_peer_cleanup_skips_preparing_even_when_branch_merged(tmp_path: Path) -> None:
     """Reproduce the 2026-07-28 race: branch tip == merge target, no child yet."""
 
@@ -256,8 +417,14 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         state_dir=str(lane_state),
         owner=dead_owner,
     )
+    dead_record_path = store.workspace_path_for(dead_workspace)
+    dead_index_path = store.task_index_path_for(
+        canonical_task_cid=dead_record.canonical_task_cid,
+        task_id=dead_record.task_id,
+        attempt=dead_record.attempt,
+    )
     other_workspace = tmp_path / "dead-other-lane"
-    store.begin_preparing(
+    other_record = store.begin_preparing(
         task_id="RESTART-OTHER",
         canonical_task_cid="cid:restart-other",
         attempt=1,
@@ -268,8 +435,14 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         state_dir=str(other_state),
         owner=dead_owner,
     )
+    other_record_path = store.workspace_path_for(other_workspace)
+    other_index_path = store.task_index_path_for(
+        canonical_task_cid=other_record.canonical_task_cid,
+        task_id=other_record.task_id,
+        attempt=other_record.attempt,
+    )
     live_workspace = tmp_path / "live-same-lane"
-    store.begin_preparing(
+    live_record = store.begin_preparing(
         task_id="RESTART-LIVE",
         canonical_task_cid="cid:restart-live",
         attempt=1,
@@ -279,10 +452,29 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         merge_target="main",
         state_dir=str(lane_state),
     )
+    live_record_path = store.workspace_path_for(live_workspace)
+    live_index_path = store.task_index_path_for(
+        canonical_task_cid=live_record.canonical_task_cid,
+        task_id=live_record.task_id,
+        attempt=live_record.attempt,
+    )
 
     assert store.evaluate_cleanup(
         workspace_path=dead_workspace
     ).reason == "owner_dead_lease_unexpired"
+    dead_before_wrong_lane = (
+        dead_record_path.read_bytes(),
+        dead_index_path.read_bytes(),
+    )
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            dead_workspace,
+            expected_state_dir="",
+        )
+        is None
+    )
+    assert dead_record_path.read_bytes() == dead_before_wrong_lane[0]
+    assert dead_index_path.read_bytes() == dead_before_wrong_lane[1]
     assert (
         store.reclaim_dead_owner_for_controlled_restart(
             dead_workspace,
@@ -290,258 +482,489 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         )
         is None
     )
-    assert (
-        store.reclaim_dead_owner_for_controlled_restart(
-            dead_workspace,
-            expected_state_dir=lane_state,
-            expected_record_id="sha256:stale-observation",
-            expected_fence=dead_record.fence,
-        )
-        is None
+    assert dead_record_path.read_bytes() == dead_before_wrong_lane[0]
+    assert dead_index_path.read_bytes() == dead_before_wrong_lane[1]
+    other_before = (
+        other_record_path.read_bytes(),
+        other_index_path.read_bytes(),
     )
-    assert (
-        store.reclaim_dead_owner_for_controlled_restart(
-            dead_workspace,
-            expected_state_dir=lane_state,
-            expected_record_id=dead_record.record_id,
-            expected_fence=dead_record.fence + 1,
-        )
-        is None
+    live_before = (
+        live_record_path.read_bytes(),
+        live_index_path.read_bytes(),
     )
 
     recovered = store.reclaim_dead_owners_for_controlled_restart(
         expected_state_dir=lane_state,
+        reclaimer_lease_id="restart-reclaimer-lease",
     )
 
     assert [record.task_id for record in recovered] == ["RESTART-DEAD"]
     terminal = store.load_workspace(dead_workspace)
     assert terminal is not None
+    assert recovered[0] == terminal
     assert terminal.state is WorkspaceLifecycleState.TERMINAL
     assert terminal.fence == dead_record.fence + 1
+    assert terminal.lease_id == "restart-reclaimer-lease"
     assert terminal.expires_at == clock.now
     assert terminal.terminal_reason == "controlled_restart_dead_owner"
+    assert json.loads(dead_index_path.read_text(encoding="utf-8")) == {
+        "schema": terminal.schema,
+        "workspace_path": terminal.workspace_path,
+        "record_id": terminal.record_id,
+        "task_id": terminal.task_id,
+        "canonical_task_cid": terminal.canonical_task_cid,
+        "attempt": terminal.attempt,
+        "fence": terminal.fence,
+        "lease_id": terminal.lease_id,
+        "state": terminal.state.value,
+    }
     assert store.load_workspace(other_workspace).is_nonterminal
     assert store.load_workspace(live_workspace).is_nonterminal
+    assert other_record_path.read_bytes() == other_before[0]
+    assert other_index_path.read_bytes() == other_before[1]
+    assert live_record_path.read_bytes() == live_before[0]
+    assert live_index_path.read_bytes() == live_before[1]
 
 
-def test_same_process_owner_rejects_pid_reuse(tmp_path: Path) -> None:
-    current = current_process_birth()
-    assert same_process_owner(current, current) is True
-    reused = ProcessBirthIdentity(
-        pid=current.pid,
-        start_time_ticks=current.start_time_ticks + 99,
-        boot_id=current.boot_id,
-        parent_pid=current.parent_pid,
-    )
-    assert same_process_owner(reused, current) is False
-    other = ProcessBirthIdentity(
-        pid=current.pid + 1,
-        start_time_ticks=current.start_time_ticks,
-        boot_id=current.boot_id,
-    )
-    assert same_process_owner(other, current) is False
-
-
-@pytest.mark.parametrize("scope", ["other_repository", "other_lane"])
-@pytest.mark.parametrize("index_damage", ["missing", "changed_identity"])
-def test_restart_ignores_unrelated_damaged_indexes(
-    tmp_path: Path, scope: str, index_damage: str,
+def test_controlled_restart_reclaim_preserves_replacement_claim_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = _store(tmp_path, startup_grace_seconds=0.0)
-    state = tmp_path / "state/lane-0"
-    dead = ProcessBirthIdentity(pid=2**30-9, start_time_ticks=1, boot_id="dead-boot")
-    selected = store.begin_preparing(
-        task_id="OWN", canonical_task_cid="cid:own", attempt=1, lane_id="lane-0",
-        workspace_path=tmp_path/"own-workspace", branch="implementation/own",
-        merge_target="main", state_dir=str(state), owner=dead,
-    )
-    foreign_store = store
-    foreign_state = tmp_path/"state/lane-1"
-    if scope == "other_repository":
-        repo = tmp_path/"foreign-repository"; repo.mkdir(); (repo/".git").mkdir()
-        foreign_store = WorktreeLifecycleStore(repo_root=repo, store_dir=store.store_dir)
-        # Even a matching lane path cannot make a foreign repository ours.
-        foreign_state = state
-    foreign = foreign_store.begin_preparing(
-        task_id="FOREIGN", canonical_task_cid="cid:foreign", attempt=1, lane_id="lane-1",
-        workspace_path=tmp_path/"foreign-workspace", branch="implementation/foreign",
-        merge_target="main", state_dir=str(foreign_state), owner=dead,
-    )
-    index = foreign_store.task_index_path_for(
-        canonical_task_cid=foreign.canonical_task_cid, task_id=foreign.task_id, attempt=foreign.attempt)
-    if index_damage == "missing":
-        index.unlink()
-    else:
-        value = json.loads(index.read_text()); value["record_id"] = "foreign-successor"
-        index.write_text(json.dumps(value))
-    workspace = foreign_store.workspace_path_for(foreign.workspace_path)
-    before_record = workspace.read_bytes()
-    before_index = index.read_bytes() if index.exists() else None
-
-    recovered = store.reclaim_dead_owners_for_controlled_restart(expected_state_dir=state)
-
-    assert [r.task_id for r in recovered] == [selected.task_id]
-    assert recovered[0].fence == selected.fence+1
-    assert workspace.read_bytes() == before_record
-    assert (index.read_bytes() if index.exists() else None) == before_index
-
-
-def test_restart_keeps_rejecting_a_damaged_index_in_its_own_lane(tmp_path: Path) -> None:
-    store = _store(tmp_path, startup_grace_seconds=0.0)
-    state = tmp_path/"state/lane-0"
-    record = store.begin_preparing(
-        task_id="OWN", canonical_task_cid="cid:own", attempt=1, lane_id="lane-0",
-        workspace_path=tmp_path/"own-workspace", branch="implementation/own",
-        merge_target="main", state_dir=str(state),
-        owner=ProcessBirthIdentity(pid=2**30-9, start_time_ticks=1, boot_id="dead-boot"),
-    )
-    index = store.task_index_path_for(canonical_task_cid=record.canonical_task_cid,
-                                     task_id=record.task_id, attempt=record.attempt)
-    index.unlink()
-    before = store.workspace_path_for(record.workspace_path).read_bytes()
-    with pytest.raises(OwnershipError, match="lifecycle task index changed before effect"):
-        store.reclaim_dead_owners_for_controlled_restart(expected_state_dir=state)
-    assert store.workspace_path_for(record.workspace_path).read_bytes() == before
-    assert not index.exists()
-
-
-def test_find_nonterminal_for_task_returns_newest_same_repo(
-    tmp_path: Path,
-) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(tmp_path, clock=clock)
-    first = store.begin_preparing(
-        task_id="PCSM-011",
-        canonical_task_cid="cid:pcsm-011",
-        attempt=1,
-        lane_id="lane-0",
-        workspace_path=tmp_path / "ws-first",
-        branch="implementation/pcsm-011-first",
-        merge_target="main",
-        state_dir=str(tmp_path / "state" / "lane-0"),
-    )
-    store.mark_terminal(
-        first.workspace_path,
-        lease_id=first.lease_id,
-        expected_fence=first.fence,
-        reason="done",
-    )
-    clock.advance(5.0)
-    second = store.begin_preparing(
-        task_id="PCSM-011",
-        canonical_task_cid="cid:pcsm-011",
-        attempt=2,
-        lane_id="lane-0",
-        workspace_path=tmp_path / "ws-second",
-        branch="implementation/pcsm-011-second",
-        merge_target="main",
-        state_dir=str(tmp_path / "state" / "lane-0"),
-    )
-    store.begin_preparing(
-        task_id="PCSM-013",
-        attempt=1,
-        lane_id="lane-0",
-        workspace_path=tmp_path / "ws-other",
-        branch="implementation/pcsm-013",
-        merge_target="main",
-        state_dir=str(tmp_path / "state" / "lane-0"),
-    )
-
-    found = store.find_nonterminal_for_task(task_id="PCSM-011")
-    assert found is not None
-    assert found.workspace_path == second.workspace_path
-    assert found.attempt == 2
-    assert store.find_nonterminal_for_task(task_id="PCSM-099") is None
-
-
-def test_controlled_restart_reclaims_dead_owner_in_nested_portal_state_dir(
-    tmp_path: Path,
-) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(
-        tmp_path,
-        lease_seconds=21_600.0,
-        startup_grace_seconds=0.0,
-        clock=clock,
-    )
-    lane_state = tmp_path / "state" / "lane-0"
-    portal_state = lane_state / "pcsm_lane_0_database_portal_attempts" / "abc123"
+    workspace = tmp_path / "controlled-restart-replacement"
+    state_dir = tmp_path / "state" / "lane"
     dead_owner = ProcessBirthIdentity(
-        pid=2**30 - 11,
+        pid=2**30 - 9,
         start_time_ticks=1,
         boot_id="dead-boot",
     )
-    workspace = tmp_path / "portal-nested"
-    record = store.begin_preparing(
-        task_id="PCSM-010",
-        canonical_task_cid="cid:pcsm-010",
+    original = store.begin_preparing(
+        task_id="RESTART-ORIGINAL",
+        canonical_task_cid="cid:restart-original",
         attempt=1,
-        lane_id="lane-0",
+        lane_id="lane",
         workspace_path=workspace,
-        branch="implementation/pcsm-010-nested",
+        branch="implementation/restart-original",
         merge_target="main",
-        state_dir=str(portal_state),
+        state_dir=str(state_dir),
         owner=dead_owner,
     )
+    original_require = store.require_exact_dead_owner
+    replacement_snapshots: list[tuple[Path, bytes, Path, bytes]] = []
 
-    recovered = store.reclaim_dead_owners_for_controlled_restart(
-        expected_state_dir=lane_state,
+    def replace_after_capture(*args, **kwargs):
+        terminal = store.mark_terminal(
+            workspace,
+            lease_id=original.lease_id,
+            expected_fence=original.fence,
+            reason="replacement-race",
+        )
+        assert store.compare_and_delete(
+            workspace,
+            expected_fence=terminal.fence,
+            lease_id=terminal.lease_id,
+        )
+        replacement = store.begin_preparing(
+            task_id=original.task_id,
+            canonical_task_cid=original.canonical_task_cid,
+            attempt=original.attempt,
+            lane_id="replacement-lane",
+            workspace_path=workspace,
+            branch=original.branch,
+            merge_target=original.merge_target,
+            lease_id=f"{original.lease_id}-replacement",
+            state_dir=str(state_dir),
+            owner=ProcessBirthIdentity(
+                pid=2**30 - 11,
+                start_time_ticks=2,
+                boot_id="other-dead-boot",
+            ),
+        )
+        assert replacement.lease_id != original.lease_id
+        replacement_path = store.workspace_path_for(workspace)
+        replacement_index = store.task_index_path_for(
+            canonical_task_cid=replacement.canonical_task_cid,
+            task_id=replacement.task_id,
+            attempt=replacement.attempt,
+        )
+        replacement_snapshots.append(
+            (
+                replacement_path,
+                replacement_path.read_bytes(),
+                replacement_index,
+                replacement_index.read_bytes(),
+            )
+        )
+        return original_require(*args, **kwargs)
+
+    monkeypatch.setattr(
+        store,
+        "require_exact_dead_owner",
+        replace_after_capture,
     )
 
-    assert [item.task_id for item in recovered] == ["PCSM-010"]
-    terminal = store.load_workspace(workspace)
-    assert terminal is not None
-    assert terminal.state is WorkspaceLifecycleState.TERMINAL
-    assert terminal.fence == record.fence + 1
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            workspace,
+            expected_state_dir=state_dir,
+        )
+        is None
+    )
+
+    assert len(replacement_snapshots) == 1
+    record_path, record_bytes, index_path, index_bytes = (
+        replacement_snapshots[0]
+    )
+    assert record_path.read_bytes() == record_bytes
+    assert index_path.read_bytes() == index_bytes
 
 
-def test_same_lane_cleanup_reclaims_dead_owner_before_lease_expiry(
+def test_controlled_restart_reclaim_pins_captured_owner_before_precheck(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(
-        tmp_path,
-        lease_seconds=21_600.0,
-        startup_grace_seconds=0.0,
-        clock=clock,
-    )
-    lane_state = tmp_path / "state" / "lane-1"
-    peer_state = tmp_path / "state" / "lane-2"
-    workspace = tmp_path / "dead-same-lane-cleanup"
-    original = store.begin_preparing(
-        task_id="RESTART-CLEANUP",
-        canonical_task_cid="cid:restart-cleanup",
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "controlled-restart-owner-replacement"
+    state_dir = tmp_path / "state" / "lane"
+    record = store.begin_preparing(
+        task_id="RESTART-OWNER-REPLACEMENT",
+        canonical_task_cid="cid:restart-owner-replacement",
         attempt=1,
-        lane_id="lane-1",
+        lane_id="lane",
         workspace_path=workspace,
-        branch="implementation/restart-cleanup",
+        branch="implementation/restart-owner-replacement",
         merge_target="main",
-        state_dir=str(lane_state),
+        state_dir=str(state_dir),
         owner=ProcessBirthIdentity(
-            pid=2**30 - 13,
+            pid=2**30 - 9,
             start_time_ticks=1,
             boot_id="dead-boot",
         ),
     )
-
-    peer = store.authorize_cleanup(
-        workspace_path=workspace,
-        expected_state_dir=peer_state,
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
     )
-    assert not peer.allowed
-    assert peer.reason == "owner_dead_lease_unexpired"
+    original_require = store.require_exact_dead_owner
+    replacement_snapshots: list[tuple[bytes, bytes]] = []
 
-    decision = store.authorize_cleanup(
-        workspace_path=workspace,
-        expected_state_dir=lane_state,
-        caller_lease_id="lane-reclaimer",
+    def replace_owner_before_precheck(*args, **kwargs):
+        replacement_payload = record.to_dict()
+        replacement_payload["owner"] = ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=2,
+            boot_id="replacement-dead-boot",
+        ).to_dict()
+        record_path.write_text(
+            json.dumps(
+                replacement_payload,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        replacement_snapshots.append(
+            (record_path.read_bytes(), index_path.read_bytes())
+        )
+        return original_require(*args, **kwargs)
+
+    monkeypatch.setattr(
+        store,
+        "require_exact_dead_owner",
+        replace_owner_before_precheck,
     )
-    assert decision.allowed
-    assert decision.reason == "reclaimed_dead_same_lane_owner"
-    assert decision.record is not None
-    assert decision.record.state is WorkspaceLifecycleState.TERMINAL
-    assert decision.record.fence == original.fence + 1
-    assert decision.record.terminal_reason == "owner_dead_same_lane_reclaim"
+
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            workspace,
+            expected_state_dir=state_dir,
+        )
+        is None
+    )
+
+    assert len(replacement_snapshots) == 1
+    assert record_path.read_bytes() == replacement_snapshots[0][0]
+    assert index_path.read_bytes() == replacement_snapshots[0][1]
+
+
+def test_controlled_restart_reclaim_preserves_post_precheck_race_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "controlled-restart-race"
+    state_dir = tmp_path / "state" / "lane"
+    record = store.begin_preparing(
+        task_id="RESTART-RACE",
+        canonical_task_cid="cid:restart-race",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/restart-race",
+        merge_target="main",
+        state_dir=str(state_dir),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 9,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    original_require = store.require_exact_dead_owner
+    raced: list[tuple[bytes, bytes]] = []
+
+    def race_after_precheck(*args, **kwargs):
+        checked = original_require(*args, **kwargs)
+        replacement_payload = checked.to_dict()
+        replacement_payload["owner"] = ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=2,
+            boot_id="replacement-dead-boot",
+        ).to_dict()
+        record_path.write_text(
+            json.dumps(
+                replacement_payload,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raced.append((record_path.read_bytes(), index_path.read_bytes()))
+        return checked
+
+    monkeypatch.setattr(
+        store,
+        "require_exact_dead_owner",
+        race_after_precheck,
+    )
+
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            workspace,
+            expected_state_dir=state_dir,
+        )
+        is None
+    )
+
+    assert len(raced) == 1
+    assert record_path.read_bytes() == raced[0][0]
+    assert index_path.read_bytes() == raced[0][1]
+
+
+def test_partial_finalize_repair_completes_workspace_first_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "partial-finalize"
+    predecessor = store.begin_preparing(
+        task_id="PARTIAL-FINALIZE",
+        canonical_task_cid="cid:partial-finalize",
+        attempt=2,
+        lane_id="dead-lane",
+        workspace_path=workspace,
+        branch="implementation/partial-finalize",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 19,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    predecessor = store.mark_active(
+        workspace,
+        lease_id=predecessor.lease_id,
+        expected_fence=predecessor.fence,
+    )
+    terminal_reason = "prepared-receipt-dead-owner"
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=predecessor.canonical_task_cid,
+        task_id=predecessor.task_id,
+        attempt=predecessor.attempt,
+    )
+    predecessor_index_bytes = index_path.read_bytes()
+    original_atomic_write = lifecycle_module._atomic_write_json
+    crashed: list[Path] = []
+
+    def crash_after_workspace_replace(path: Path, payload) -> None:
+        original_atomic_write(path, payload)
+        if path == record_path and not crashed:
+            crashed.append(path)
+            raise RuntimeError("injected crash after terminal workspace write")
+
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_atomic_write_json",
+        crash_after_workspace_replace,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="injected crash after terminal workspace write",
+    ):
+        store.finalize_exact_dead_owner(
+            workspace,
+            expected_record_id=predecessor.record_id,
+            expected_fence=predecessor.fence,
+            expected_lease_id=predecessor.lease_id,
+            expected_owner=predecessor.owner,
+            expected_task_id=predecessor.task_id,
+            expected_canonical_task_cid=predecessor.canonical_task_cid,
+            expected_attempt=predecessor.attempt,
+            expected_branch=predecessor.branch,
+            expected_merge_target=predecessor.merge_target,
+            expected_repo_root=predecessor.repo_root,
+            expected_state_dir=predecessor.state_dir,
+            reason=terminal_reason,
+            now=1_234.0,
+            retain_terminal=True,
+        )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_atomic_write_json",
+        original_atomic_write,
+    )
+
+    assert crashed == [record_path]
+    partial_record_bytes = record_path.read_bytes()
+    partial = store._load_strict_workspace_record(workspace)
+    assert partial.is_terminal
+    assert partial.fence == predecessor.fence + 1
+    assert partial.owner == predecessor.owner
+    assert partial.lease_id == predecessor.lease_id
+    assert partial.terminal_reason == terminal_reason
+    assert index_path.read_bytes() == predecessor_index_bytes
+
+    repaired = store.repair_partial_finalize(
+        workspace,
+        expected_terminal=partial,
+        expected_preterminal_state=predecessor.state,
+    )
+
+    assert repaired == partial
+    assert record_path.read_bytes() == partial_record_bytes
+    assert json.loads(index_path.read_text(encoding="utf-8")) == (
+        store._task_index_payload(partial)
+    )
+
+
+def test_partial_finalize_repair_preserves_replacement_index_race_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, startup_grace_seconds=0.0)
+    workspace = tmp_path / "partial-finalize-index-race"
+    predecessor = store.begin_preparing(
+        task_id="PARTIAL-FINALIZE-RACE",
+        canonical_task_cid="cid:partial-finalize-race",
+        attempt=1,
+        lane_id="dead-lane",
+        workspace_path=workspace,
+        branch="implementation/partial-finalize-race",
+        merge_target="main",
+        state_dir=str(tmp_path / "state"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 23,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    terminal_reason = "prepared-receipt-dead-owner"
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=predecessor.canonical_task_cid,
+        task_id=predecessor.task_id,
+        attempt=predecessor.attempt,
+    )
+    original_atomic_write = lifecycle_module._atomic_write_json
+    crashed: list[Path] = []
+
+    def crash_after_workspace_replace(path: Path, payload) -> None:
+        original_atomic_write(path, payload)
+        if path == record_path and not crashed:
+            crashed.append(path)
+            raise RuntimeError("injected crash after terminal workspace write")
+
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_atomic_write_json",
+        crash_after_workspace_replace,
+    )
+    with pytest.raises(RuntimeError):
+        store.finalize_exact_dead_owner(
+            workspace,
+            expected_record_id=predecessor.record_id,
+            expected_fence=predecessor.fence,
+            expected_lease_id=predecessor.lease_id,
+            expected_owner=predecessor.owner,
+            expected_task_id=predecessor.task_id,
+            expected_canonical_task_cid=predecessor.canonical_task_cid,
+            expected_attempt=predecessor.attempt,
+            expected_branch=predecessor.branch,
+            expected_merge_target=predecessor.merge_target,
+            expected_repo_root=predecessor.repo_root,
+            expected_state_dir=predecessor.state_dir,
+            reason=terminal_reason,
+            now=1_345.0,
+            retain_terminal=True,
+        )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_atomic_write_json",
+        original_atomic_write,
+    )
+    partial_record_bytes = record_path.read_bytes()
+    partial = store._load_strict_workspace_record(workspace)
+    replacement_index = json.loads(index_path.read_text(encoding="utf-8"))
+    replacement_index["fence"] = predecessor.fence + 7
+    replacement_index["lease_id"] = "replacement-index-winner"
+    original_lock = lifecycle_module.serialized_lock_update
+    raced: list[tuple[bytes, bytes]] = []
+    lock_paths: list[Path] = []
+
+    def replace_index_before_lock(path: Path, **kwargs):
+        lock_paths.append(path)
+        if path == index_path and not raced:
+            index_path.write_text(
+                json.dumps(replacement_index, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            raced.append(
+                (record_path.read_bytes(), index_path.read_bytes())
+            )
+        return original_lock(path, **kwargs)
+
+    monkeypatch.setattr(
+        lifecycle_module,
+        "serialized_lock_update",
+        replace_index_before_lock,
+    )
+
+    with pytest.raises(
+        WorktreeLifecycleError,
+        match="task index mismatch",
+    ):
+        store.repair_partial_finalize(
+            workspace,
+            expected_terminal=partial,
+            expected_preterminal_state=predecessor.state,
+        )
+
+    assert len(raced) == 1
+    assert lock_paths == [index_path, record_path]
+    assert raced[0][0] == partial_record_bytes
+    assert record_path.read_bytes() == raced[0][0]
+    assert index_path.read_bytes() == raced[0][1]
 
 
 def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
@@ -1302,158 +1725,6 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.parametrize("same_workspace", [False, True])
-def test_replace_stale_false_fences_expired_dead_nonterminal_claim(
-    tmp_path: Path,
-    same_workspace: bool,
-) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(
-        tmp_path,
-        lease_seconds=60.0,
-        startup_grace_seconds=0.0,
-        clock=clock,
-    )
-    original_workspace = tmp_path / "worktrees" / "original"
-    original = store.begin_preparing(
-        task_id="NO-STALE-REPLACE",
-        canonical_task_cid="cid:no-stale-replace",
-        attempt=1,
-        lane_id="dead-lane",
-        workspace_path=original_workspace,
-        branch="implementation/no-stale-replace-old",
-        merge_target="main",
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 41,
-            start_time_ticks=1,
-            boot_id="dead-boot",
-        ),
-    )
-    record_path = store.workspace_path_for(original_workspace)
-    index_path = store.task_index_path_for(
-        canonical_task_cid=original.canonical_task_cid,
-        task_id=original.task_id,
-        attempt=original.attempt,
-    )
-    record_before = record_path.read_bytes()
-    index_before = index_path.read_bytes()
-    clock.advance(61.0)
-    candidate = (
-        original_workspace
-        if same_workspace
-        else tmp_path / "worktrees" / "replacement"
-    )
-
-    with pytest.raises(
-        DuplicateAttemptError,
-        match="nonterminal claim replacement disabled",
-    ):
-        store.begin_preparing(
-            task_id=original.task_id,
-            canonical_task_cid=original.canonical_task_cid,
-            attempt=original.attempt,
-            lane_id="retry-lane",
-            workspace_path=candidate,
-            branch="implementation/no-stale-replace-new",
-            merge_target="main",
-            allow_replace_stale=False,
-        )
-
-    assert record_path.read_bytes() == record_before
-    assert index_path.read_bytes() == index_before
-    assert store.load_workspace(original_workspace) == original
-    if not same_workspace:
-        assert store.load_workspace(candidate) is None
-
-
-def test_replace_stale_false_allows_terminal_prior_claim(tmp_path: Path) -> None:
-    store = _store(tmp_path)
-    original_workspace = tmp_path / "worktrees" / "terminal"
-    original = store.begin_preparing(
-        task_id="TERMINAL-REPLACE",
-        canonical_task_cid="cid:terminal-replace",
-        attempt=1,
-        lane_id="old-lane",
-        workspace_path=original_workspace,
-        branch="implementation/terminal-replace-old",
-        merge_target="main",
-    )
-    terminal = store.mark_terminal(
-        original_workspace,
-        lease_id=original.lease_id,
-        expected_fence=original.fence,
-        reason="finished",
-    )
-    replacement_workspace = tmp_path / "worktrees" / "replacement"
-
-    replacement = store.begin_preparing(
-        task_id=terminal.task_id,
-        canonical_task_cid=terminal.canonical_task_cid,
-        attempt=terminal.attempt,
-        lane_id="new-lane",
-        workspace_path=replacement_workspace,
-        branch="implementation/terminal-replace-new",
-        merge_target="main",
-        allow_replace_stale=False,
-    )
-
-    assert replacement.state is WorkspaceLifecycleState.PREPARING
-    assert store.load_workspace(original_workspace) == terminal
-    assert store.load_task_attempt(
-        canonical_task_cid=replacement.canonical_task_cid,
-        task_id=replacement.task_id,
-        attempt=replacement.attempt,
-    ) == replacement
-
-
-def test_replace_stale_true_preserves_legacy_expired_replacement(
-    tmp_path: Path,
-) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(
-        tmp_path,
-        lease_seconds=60.0,
-        startup_grace_seconds=0.0,
-        clock=clock,
-    )
-    original_workspace = tmp_path / "worktrees" / "legacy-original"
-    original = store.begin_preparing(
-        task_id="LEGACY-STALE-REPLACE",
-        canonical_task_cid="cid:legacy-stale-replace",
-        attempt=1,
-        lane_id="old-lane",
-        workspace_path=original_workspace,
-        branch="implementation/legacy-stale-replace-old",
-        merge_target="main",
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 43,
-            start_time_ticks=1,
-            boot_id="dead-boot",
-        ),
-    )
-    clock.advance(61.0)
-    replacement_workspace = tmp_path / "worktrees" / "legacy-replacement"
-
-    replacement = store.begin_preparing(
-        task_id=original.task_id,
-        canonical_task_cid=original.canonical_task_cid,
-        attempt=original.attempt,
-        lane_id="new-lane",
-        workspace_path=replacement_workspace,
-        branch="implementation/legacy-stale-replace-new",
-        merge_target="main",
-        allow_replace_stale=True,
-    )
-
-    assert replacement.state is WorkspaceLifecycleState.PREPARING
-    assert store.load_workspace(original_workspace) == original
-    assert store.load_task_attempt(
-        canonical_task_cid=replacement.canonical_task_cid,
-        task_id=replacement.task_id,
-        attempt=replacement.attempt,
-    ) == replacement
-
-
 def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     tmp_path: Path,
 ) -> None:
@@ -1514,95 +1785,404 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
 
 
-def test_same_lane_dead_owner_cleanup_is_reclaimed_before_expiry(
+def _quarantine_fixture(
     tmp_path: Path,
-) -> None:
+) -> tuple[
+    WorktreeLifecycleStore,
+    Path,
+    object,
+    dict[str, object],
+    dict[str, object],
+]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
     clock = FakeClock(1_000.0)
     store = _store(
         tmp_path,
-        lease_seconds=21_600.0,
+        lease_seconds=10.0,
         startup_grace_seconds=0.0,
         clock=clock,
+        proc_root=proc_root,
     )
-    lane_state = tmp_path / "state" / "lane-1"
-    peer_state = tmp_path / "state" / "lane-2"
-    workspace = tmp_path / "worktrees" / "dead-same-lane"
+    workspace = tmp_path / "worktrees" / "attempt-8"
+    state_dir = tmp_path / "attempt-state-8"
     record = store.begin_preparing(
-        task_id="DEAD-SAME-LANE",
-        canonical_task_cid="cid:dead-same-lane",
-        attempt=1,
-        lane_id="lane-1",
+        task_id="QUARANTINE",
+        canonical_task_cid="cid:quarantine",
+        attempt=8,
+        lane_id=f"{state_dir}:lane",
         workspace_path=workspace,
-        branch="implementation/dead-same-lane",
+        branch="implementation/quarantine-attempt-8",
         merge_target="main",
-        state_dir=str(lane_state),
+        state_dir=str(state_dir),
         owner=ProcessBirthIdentity(
-            pid=2**30 - 15,
+            pid=2**30 - 17,
             start_time_ticks=1,
-            boot_id="dead-boot",
+            boot_id="dead-test-boot",
+            parent_pid=1,
         ),
     )
-
-    peer = store.authorize_cleanup(
-        workspace_path=workspace,
-        expected_state_dir=peer_state,
+    record = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
     )
-    assert not peer.allowed
-    assert peer.reason == "owner_dead_lease_unexpired"
-
-    same_lane = store.authorize_cleanup(
-        workspace_path=workspace,
-        expected_state_dir=lane_state,
-        caller_lease_id="lane-reclaimer",
+    record = store.mark_settling(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
     )
-    assert same_lane.allowed
-    assert same_lane.reason == "reclaimed_dead_same_lane_owner"
-    assert same_lane.record is not None
-    assert same_lane.record.state is WorkspaceLifecycleState.TERMINAL
-    assert same_lane.record.fence == record.fence + 1
+    exact: dict[str, object] = {
+        "expected_record_id": record.record_id,
+        "expected_fence": record.fence,
+        "expected_lease_id": record.lease_id,
+        "expected_task_id": record.task_id,
+        "expected_canonical_task_cid": record.canonical_task_cid,
+        "expected_attempt": record.attempt,
+        "expected_branch": record.branch,
+        "expected_merge_target": record.merge_target,
+        "expected_repo_root": record.repo_root,
+        "expected_state_dir": record.state_dir,
+    }
+    fence_authority: dict[str, object] = {
+        "schema": "test-database-worktree-quarantine-fence@1",
+        "current_attempt": 9,
+        "prior_attempt": 8,
+        "provider_dispatched": False,
+        "evidence_reused": False,
+    }
+    return store, workspace, record, exact, fence_authority
 
 
-def test_controlled_restart_bulk_reclaims_only_exact_dead_lane(
+def test_exact_dead_owner_quarantine_is_immutable_and_denies_lifecycle_reuse(
     tmp_path: Path,
 ) -> None:
-    store = _store(tmp_path, lease_seconds=21_600.0, startup_grace_seconds=0.0)
-    lane_state = tmp_path / "state" / "lane-1"
-    peer_state = tmp_path / "state" / "lane-2"
-    dead_owner = ProcessBirthIdentity(
-        pid=2**30 - 17,
-        start_time_ticks=1,
-        boot_id="dead-boot",
+    store, workspace, record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
     )
-    same_workspace = tmp_path / "worktrees" / "same"
-    peer_workspace = tmp_path / "worktrees" / "peer"
-    store.begin_preparing(
-        task_id="BULK-SAME",
-        attempt=1,
-        lane_id="lane-1",
-        workspace_path=same_workspace,
-        branch="implementation/bulk-same",
-        merge_target="main",
-        state_dir=str(lane_state),
-        owner=dead_owner,
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
     )
-    store.begin_preparing(
-        task_id="BULK-PEER",
-        attempt=1,
-        lane_id="lane-2",
-        workspace_path=peer_workspace,
-        branch="implementation/bulk-peer",
-        merge_target="main",
-        state_dir=str(peer_state),
-        owner=dead_owner,
+    record_bytes = record_path.read_bytes()
+    index_bytes = index_path.read_bytes()
+
+    receipt = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    receipt_bytes = store.quarantine_path_for(workspace).read_bytes()
+    repeated = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
     )
 
-    recovered = store.reclaim_dead_owners_for_controlled_restart(
-        expected_state_dir=lane_state,
-        reason="restart-test",
+    assert repeated == receipt == store.load_quarantine(workspace)
+    assert store.quarantine_path_for(workspace).read_bytes() == receipt_bytes
+    with pytest.raises(WorktreeLifecycleError, match="conflicts"):
+        store.quarantine_exact_dead_owner(
+            workspace,
+            fence_authority={
+                **fence_authority,
+                "current_attempt": 10,
+            },
+            **exact,
+        )
+    assert store.quarantine_path_for(workspace).read_bytes() == receipt_bytes
+    assert receipt["lifecycle_record"] == record.to_dict()
+    assert all(
+        receipt[field] is False
+        for field in (
+            "worktree_deleted",
+            "branch_deleted",
+            "cleanup_allowed",
+            "reuse_allowed",
+            "evidence_reuse_allowed",
+            "terminalized",
+        )
     )
-    assert [item.task_id for item in recovered] == ["BULK-SAME"]
-    assert store.load_workspace(same_workspace).is_terminal
-    assert store.load_workspace(peer_workspace).is_nonterminal
+    for decision in (
+        store.evaluate_cleanup(
+            workspace_path=workspace,
+            caller_lease_id=record.lease_id,
+            expected_state_dir=record.state_dir,
+            now=10_000.0,
+        ),
+        store.evaluate_cleanup(branch=record.branch, now=10_000.0),
+        store.authorize_cleanup(
+            workspace_path=workspace,
+            branch=record.branch,
+            caller_lease_id=record.lease_id,
+            expected_state_dir=record.state_dir,
+        ),
+    ):
+        assert decision.disposition is CleanupDisposition.DENY
+        assert decision.reason == "quarantined_worktree_retained"
+        assert decision.provider_call_allowed is False
+        assert decision.attempt_consumed is False
+
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.mark_terminal(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.renew_lease(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.adopt_dead_owner(
+            workspace,
+            lane_id="replacement",
+            **exact,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.finalize_exact_dead_owner(
+            workspace,
+            expected_owner=record.owner,
+            reason="must-not-terminalize",
+            **exact,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.rebind_workspace(
+            workspace,
+            tmp_path / "worktrees" / "rebound",
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    assert store.reclaim_stale(workspace, now=10_000.0) is None
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            workspace,
+            expected_state_dir=record.state_dir,
+            now=10_000.0,
+        )
+        is None
+    )
+    assert store.compare_and_delete(
+        workspace,
+        expected_fence=record.fence,
+        lease_id=record.lease_id,
+    ) is False
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.begin_preparing(
+            task_id="QUARANTINE",
+            canonical_task_cid="cid:quarantine",
+            attempt=8,
+            lane_id="replacement",
+            workspace_path=workspace,
+            branch=record.branch,
+            merge_target="main",
+        )
+
+    assert record_path.read_bytes() == record_bytes
+    assert index_path.read_bytes() == index_bytes
+    assert store.load_workspace(workspace) == record
+    record_path.unlink()
+    index_path.unlink()
+    missing_record_decision = store.evaluate_cleanup(
+        workspace_path=workspace,
+        branch=record.branch,
+    )
+    assert missing_record_decision.disposition is CleanupDisposition.DENY
+    assert missing_record_decision.reason == "quarantined_worktree_retained"
+    branch_only_decision = store.evaluate_cleanup(branch=record.branch)
+    assert branch_only_decision.disposition is CleanupDisposition.DENY
+    assert branch_only_decision.reason == "quarantined_worktree_retained"
+    qualified_branch_decision = store.evaluate_cleanup(
+        branch=f"refs/heads/{record.branch.removeprefix('refs/heads/')}"
+    )
+    assert qualified_branch_decision.disposition is CleanupDisposition.DENY
+    assert qualified_branch_decision.reason == "quarantined_worktree_retained"
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id=record.task_id,
+            canonical_task_cid=record.canonical_task_cid,
+            attempt=record.attempt,
+            lane_id="lost-index-replacement",
+            workspace_path=tmp_path / "worktrees" / "lost-index-replacement",
+            branch="implementation/quarantine-attempt-8-lost-index",
+            merge_target="main",
+            state_dir=str(tmp_path / "lost-index-replacement-state"),
+        )
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id="RENAMED-QUARANTINE-ALIAS",
+            canonical_task_cid=record.canonical_task_cid,
+            attempt=record.attempt,
+            lane_id="renamed-alias-replacement",
+            workspace_path=tmp_path / "worktrees" / "renamed-alias",
+            branch="implementation/quarantine-renamed-alias",
+            merge_target="main",
+            state_dir=str(tmp_path / "renamed-alias-state"),
+        )
+
+    newer_same_branch = store.begin_preparing(
+        task_id="OTHER-TASK",
+        canonical_task_cid="cid:other-task",
+        attempt=1,
+        lane_id="other-lane",
+        workspace_path=tmp_path / "worktrees" / "other-task",
+        branch=record.branch,
+        merge_target="main",
+        state_dir=str(tmp_path / "other-state"),
+    )
+    assert newer_same_branch.is_nonterminal
+    hidden_by_newer_decision = store.evaluate_cleanup(branch=record.branch)
+    assert hidden_by_newer_decision.disposition is CleanupDisposition.DENY
+    assert hidden_by_newer_decision.reason == "quarantined_worktree_retained"
+
+
+def test_quarantine_requires_fresh_successor_workspace_and_attempt(
+    tmp_path: Path,
+) -> None:
+    store, old_workspace, old_record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
+    )
+    store.quarantine_exact_dead_owner(
+        old_workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    same_attempt_workspace = tmp_path / "worktrees" / "attempt-8-replacement"
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id=old_record.task_id,
+            canonical_task_cid=old_record.canonical_task_cid,
+            attempt=old_record.attempt,
+            lane_id="same-attempt-replacement",
+            workspace_path=same_attempt_workspace,
+            branch="implementation/quarantine-attempt-8-replacement",
+            merge_target="main",
+            state_dir=str(tmp_path / "replacement-state-8"),
+        )
+    assert store.load_workspace(same_attempt_workspace) is None
+    fresh_workspace = tmp_path / "worktrees" / "attempt-9"
+    successor = store.begin_preparing(
+        task_id=old_record.task_id,
+        canonical_task_cid=old_record.canonical_task_cid,
+        attempt=9,
+        lane_id="fresh-lane",
+        workspace_path=fresh_workspace,
+        branch="implementation/quarantine-attempt-9",
+        merge_target="main",
+        state_dir=str(tmp_path / "attempt-state-9"),
+    )
+
+    assert successor.attempt == old_record.attempt + 1
+    assert successor.workspace_path != old_record.workspace_path
+    assert store.load_workspace(old_workspace) == old_record
+    assert store.load_workspace(fresh_workspace) == successor
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.rebind_workspace(
+            fresh_workspace,
+            old_workspace,
+            lease_id=successor.lease_id,
+            expected_fence=successor.fence,
+        )
+
+
+@pytest.mark.parametrize("corruption", ["symlink", "mode", "duplicate_key"])
+def test_quarantine_marker_corruption_fails_cleanup_closed(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    store, workspace, record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
+    )
+    receipt = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    marker = store.quarantine_path_for(workspace)
+    if corruption == "symlink":
+        payload = marker.read_bytes()
+        marker.unlink()
+        target = tmp_path / "attacker-quarantine.json"
+        target.write_bytes(payload)
+        marker.symlink_to(target)
+    elif corruption == "mode":
+        marker.chmod(0o644)
+    else:
+        payload = marker.read_text(encoding="utf-8")
+        marker.write_text(
+            payload.replace(
+                "{\n",
+                '{\n  "schema": "duplicate",\n',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        marker.chmod(0o600)
+
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.load_quarantine(workspace)
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.evaluate_cleanup(
+            workspace_path=workspace,
+            caller_lease_id=record.lease_id,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.evaluate_cleanup(branch=record.branch)
+    assert receipt["terminalized"] is False
+    assert store.load_workspace(workspace) == record
+
+
+def test_quarantine_refuses_alive_owner_and_fence_mismatch(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "live").mkdir()
+    live_store = _store(tmp_path / "live", proc_root=Path("/proc"))
+    live_workspace = tmp_path / "live-workspace"
+    live_record = live_store.begin_preparing(
+        task_id="LIVE",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=live_workspace,
+        branch="implementation/live",
+        merge_target="main",
+        state_dir=str(tmp_path / "live-state"),
+    )
+    live_exact = {
+        "expected_record_id": live_record.record_id,
+        "expected_fence": live_record.fence,
+        "expected_lease_id": live_record.lease_id,
+        "expected_task_id": live_record.task_id,
+        "expected_canonical_task_cid": live_record.canonical_task_cid,
+        "expected_attempt": live_record.attempt,
+        "expected_branch": live_record.branch,
+        "expected_merge_target": live_record.merge_target,
+        "expected_repo_root": live_record.repo_root,
+        "expected_state_dir": live_record.state_dir,
+    }
+    with pytest.raises(OwnershipError, match="still alive"):
+        live_store.quarantine_exact_dead_owner(
+            live_workspace,
+            fence_authority={"schema": "test-fence@1"},
+            **live_exact,
+        )
+    assert live_store.load_quarantine(live_workspace) is None
+
+    store, workspace, _record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path / "mismatch")
+    )
+    exact["expected_fence"] = int(exact["expected_fence"]) + 1
+    with pytest.raises(FenceMismatchError):
+        store.quarantine_exact_dead_owner(
+            workspace,
+            fence_authority=fence_authority,
+            **exact,
+        )
+    assert store.load_quarantine(workspace) is None
 
 
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
@@ -1662,92 +2242,6 @@ def test_owner_may_cleanup_nonterminal_claim(tmp_path: Path) -> None:
     )
     assert decision.allowed
     assert decision.reason == "caller_is_record_owner"
-
-
-def test_reclaim_stale_publishes_terminal_task_index(tmp_path: Path) -> None:
-    clock = FakeClock(1_000.0)
-    store = _store(tmp_path, lease_seconds=10.0, clock=clock)
-    workspace = tmp_path / "stale-index"
-    record = store.begin_preparing(
-        task_id="SPAR-018",
-        canonical_task_cid="cid:spar-018",
-        attempt=1,
-        lane_id="lane-1",
-        workspace_path=workspace,
-        branch="implementation/spar-018",
-        merge_target="main",
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 11,
-            start_time_ticks=1,
-            boot_id="dead-spar-018",
-        ),
-    )
-    clock.advance(11.0)
-    terminal = store.reclaim_stale(workspace, reason="stale_owner_lease_expired")
-    assert terminal is not None
-    assert terminal.is_terminal
-    index = json.loads(
-        store.task_index_path_for(
-            canonical_task_cid="cid:spar-018",
-            task_id="SPAR-018",
-            attempt=1,
-        ).read_text(encoding="utf-8")
-    )
-    assert index["state"] == WorkspaceLifecycleState.TERMINAL.value
-    successor = tmp_path / "successor-018"
-    claimed = store.begin_preparing(
-        task_id="SPAR-018",
-        canonical_task_cid="cid:spar-018",
-        attempt=1,
-        lane_id="lane-1",
-        workspace_path=successor,
-        branch="implementation/spar-018-retry",
-        merge_target="main",
-        allow_replace_stale=False,
-    )
-    assert claimed.workspace_path == str(successor.resolve())
-    assert claimed.state is WorkspaceLifecycleState.PREPARING
-
-
-def test_heal_stale_task_indexes_rewrites_active_index_for_terminal_workspace(
-    tmp_path: Path,
-) -> None:
-    store = _store(tmp_path)
-    workspace = tmp_path / "split-brain"
-    record = store.begin_preparing(
-        task_id="SPAR-018",
-        canonical_task_cid="cid:spar-018",
-        attempt=1,
-        lane_id="lane-1",
-        workspace_path=workspace,
-        branch="implementation/spar-018",
-        merge_target="main",
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 13,
-            start_time_ticks=1,
-            boot_id="dead-split",
-        ),
-    )
-    terminal = store.mark_terminal(
-        workspace,
-        lease_id=record.lease_id,
-        expected_fence=record.fence,
-        reason="stale_owner_lease_expired",
-    )
-    index_path = store.task_index_path_for(
-        canonical_task_cid="cid:spar-018",
-        task_id="SPAR-018",
-        attempt=1,
-    )
-    payload = json.loads(index_path.read_text(encoding="utf-8"))
-    payload["state"] = WorkspaceLifecycleState.ACTIVE.value
-    index_path.write_text(json.dumps(payload), encoding="utf-8")
-    healed = store.heal_stale_task_indexes()
-    assert [item.task_id for item in healed] == ["SPAR-018"]
-    assert json.loads(index_path.read_text(encoding="utf-8"))["state"] == (
-        WorkspaceLifecycleState.TERMINAL.value
-    )
-    assert store.load_workspace(workspace) == terminal
 
 
 def _barrier_worker(

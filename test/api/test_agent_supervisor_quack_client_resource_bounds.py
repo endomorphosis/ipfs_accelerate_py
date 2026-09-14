@@ -35,7 +35,7 @@ def test_quack_client_limits_apply_before_extension_load(monkeypatch):
 
     monkeypatch.setattr(duckdb, "connect", connect)
     with pytest.raises(RuntimeError, match="synthetic extension load failure"):
-        duckdb_state._attach_quack_once("quack:127.0.0.1:45123", "")
+        duckdb_state.open_quack_transport_connection("quack:127.0.0.1:45123", token="")
 
     assert observed["threads"] == 1
     # DuckDB reports decimal 256MB as 244.1 MiB. Compare with a separate

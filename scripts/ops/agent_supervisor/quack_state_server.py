@@ -8,8 +8,8 @@ Cold import and ``--help`` start no process, open no database, and load no
 optional providers. Auth tokens are never accepted on argv; only opaque secret
 handles may be supplied.
 
-``start`` keeps the process alive until a fenced stop request is observed or
-SIGINT/SIGTERM arrives.
+``start`` keeps the process alive until a fenced stop request is observed,
+the listen socket dies, or SIGINT/SIGTERM arrives.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import signal
+import socket
 import sys
 import time
 from pathlib import Path
@@ -92,14 +93,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for status, stop control, and secret-handle token files",
     )
     parser.add_argument(
-        "--repository-root",
-        default=str(_repo_root()),
-        help=(
-            "Absolute repository root used once to seal relative database and "
-            "state paths"
-        ),
-    )
-    parser.add_argument(
         "--host",
         default="127.0.0.1",
         help="Bind host (loopback by default; non-loopback needs reviewed policy)",
@@ -109,20 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Bind port (0 allocates an ephemeral loopback port)",
-    )
-    parser.add_argument(
-        "--container-bind-host",
-        default="",
-        help=(
-            "Container-internal bind host; a distinct non-loopback bind requires "
-            "an admitted isolation receipt"
-        ),
-    )
-    parser.add_argument(
-        "--container-port",
-        type=int,
-        default=0,
-        help="Container-internal port (defaults to the advertised --port)",
     )
     parser.add_argument(
         "--store-id",
@@ -140,19 +119,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Opaque secret handle (never a raw token)",
     )
     parser.add_argument(
-        "--isolation-receipt-json",
-        default=None,
-        help=(
-            "Owner-only canonical isolation receipt under --state-dir; required "
-            "to serve Quack with extension-required external access"
-        ),
-    )
-    parser.add_argument(
-        "--deny-legacy-board-unstall",
-        action="store_true",
-        help="Disable legacy taskboard mutations for dedicated fleet owners",
-    )
-    parser.add_argument(
         "--allow-experimental",
         action="store_true",
         help="Admit experimental Quack capability reports",
@@ -168,8 +134,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit machine-readable JSON on stdout",
     )
 
-    parser.add_argument("--derived-coordination", action="store_true",
-                        help="Enable bounded derived AST/hash/state owner operations")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in _SUBCOMMANDS:
         sub.add_parser(name, help=f"{name} the Quack state-owner")
@@ -202,26 +166,7 @@ def _require_paths(args: argparse.Namespace) -> tuple[Path, Path]:
         raise SystemExit("--database is required")
     if not args.state_dir:
         raise SystemExit("--state-dir is required")
-    root = Path(args.repository_root).expanduser()
-    if not root.is_absolute():
-        raise SystemExit("--repository-root must be absolute")
-    root = root.resolve()
-
-    def _sealed(value: str, *, name: str) -> Path:
-        candidate = Path(value).expanduser()
-        if not candidate.is_absolute():
-            candidate = root / candidate
-        sealed = candidate.resolve()
-        try:
-            sealed.relative_to(root)
-        except ValueError as exc:
-            raise SystemExit(f"--{name} escapes --repository-root") from exc
-        return sealed
-
-    return (
-        _sealed(str(args.database), name="database"),
-        _sealed(str(args.state_dir), name="state-dir"),
-    )
+    return Path(args.database), Path(args.state_dir)
 
 
 def _build_server(args: argparse.Namespace) -> Any:
@@ -235,18 +180,13 @@ def _build_server(args: argparse.Namespace) -> Any:
     return build_server(
         database_path=database,
         state_dir=state_dir,
-        repository_root=Path(args.repository_root),
         host=str(args.host),
         port=int(args.port),
-        container_bind_host=str(args.container_bind_host or ""),
-        container_port=int(args.container_port),
         repository_id=str(args.repository_id or ""),
         store_id=str(args.store_id or "control.duckdb"),
         allow_experimental=bool(args.allow_experimental),
         remote_bind_policy=policy,
         secret_handle=str(args.secret_handle or ""),
-        isolation_receipt_path=args.isolation_receipt_json,
-        allow_legacy_board_unstall=not getattr(args, "deny_legacy_board_unstall", False),
     )
 
 
@@ -260,8 +200,34 @@ def _emit(payload: Mapping[str, Any] | Sequence[Any] | str, *, as_json: bool) ->
         sys.stdout.write("\n")
 
 
+def _listen_uri_reachable(uri: str, *, timeout_seconds: float = 0.2) -> bool:
+    """Return whether a loopback Quack listen URI still accepts TCP."""
+
+    text = str(uri or "").strip()
+    if not text.startswith("quack:"):
+        return False
+    rest = text.split(":", 1)[-1].lstrip("/")
+    if rest.lower().startswith("::1:"):
+        host, port_text = "::1", rest[4:]
+    else:
+        host, sep, port_text = rest.rpartition(":")
+        if not sep:
+            return False
+    try:
+        port = int(port_text)
+    except ValueError:
+        return False
+    if port < 1 or port > 65535:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
 def _serve_until_stop(server: Any) -> dict[str, Any]:
-    """Block while the state-owner is ready; stop on control file or signal."""
+    """Block while the state-owner is ready; stop on control file, signal, or dead listen."""
 
     stop_requested = {"value": False}
 
@@ -273,15 +239,22 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
     previous_term = signal.signal(signal.SIGTERM, _handle_signal)
     try:
         control_path = server.stop_control_path()
+        identity = getattr(server, "_identity", None) or getattr(
+            server, "identity", None
+        )
+        listen = str(getattr(identity, "listen_uri", "") or "")
+        listen_lost = False
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
-            # The exclusive owner is also the sole executor for authenticated,
-            # closed mutation bundles.  Keep each pass bounded so stop and
-            # readiness control remain responsive.
-            server.service_mutation_inbox(max_requests=32)
+            if listen and not _listen_uri_reachable(listen):
+                listen_lost = True
+                break
             time.sleep(0.25)
-        return server.stop()
+        result = server.stop()
+        if listen_lost and isinstance(result, dict):
+            result = {**result, "listen_lost": True}
+        return result
     finally:
         signal.signal(signal.SIGINT, previous_int)
         signal.signal(signal.SIGTERM, previous_term)
@@ -404,8 +377,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         server = _build_server(args)
         if args.command == "start":
             identity = server.start()
-            if args.derived_coordination:
-                server.bind_derived_coordination_service()
             # Emit identity once, then stay alive as the exclusive owner.
             _emit(identity.to_dict(), as_json=True)
             sys.stdout.flush()

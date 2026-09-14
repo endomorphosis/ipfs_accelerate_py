@@ -1,0 +1,612 @@
+{
+  "post_m69_stopped_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:39423edba05f4da14ef7f334eb08bbf122ee8d7a87969f7ba364077324f4f7bb",
+  "post_m68_stopped_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:8123f23a73059764286dc69c9edfbf230b7623b2d7c324a603c983c181d94a9a",
+  "post_m67_listen_down_owner_fenced_stop_restart_successor_materialization_cid": "sha256:6fa11c7a85fd43a7b4ca7d1984a02298bb5f4dc4ee5231e007a6412947ae83b0",
+  "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization_cid": "sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703",
+  "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization_cid": "sha256:3db1716da422a27db4ffb6f07f924310314b8df932af21bdf0b9d901f2e544b2",
+  "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176",
+  "post_m63_operator_source_checkout_bootstrap_successor_materialization_cid": "sha256:ed8dc06b15554c3cd101c197d0654c77649fad67252a0564a63e63c61d0f9d5e",
+  "failed_pre_authoritative_m62_float_bounds_successor_materialization_cid": "sha256:17d068e86e8d00b33c686fbb048350c5281e32e68e8b92c8150fff2186c28632",
+  "post_m61_sealed_credential_ack_startup_grace_successor_materialization_cid": "sha256:caf22df089b0088e9530c533828178aff2f2ca23f4ec2ee2fa6cd38b1e910515",
+  "post_m60_mappingproxy_identity_normalization_successor_materialization_cid": "sha256:3da8076203177ab442e2fc59fe2a6a33571dba4d5328baf486579e5f1cd9e09a",
+  "partial_m59_receipt_failure_recovery_successor_materialization_cid": "sha256:c8ce92862d1cbfddc3b4ebce55242148c17e5a2f0b013d36cf7aafb46653a917",
+  "post_m58_quack_snapshot_row_normalization_successor_materialization_cid": "sha256:7966d5c7bbb909cffe2e6c34c0659d31da9c943b6b11b134c5703f87c5452ef5",
+  "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization_cid": "sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5",
+  "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:ca402f78a63e84a937f1f62ea97ebbccc67264bb2c47c4aaaac3473ec9fb9590",
+  "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:68d8ce25334ca14915eaad83a5eb63b5e03845f11a516423b17a5f144ca84e7a",
+  "live_ready_owner_missing_client_token_vault_restart_successor_materialization_cid": "sha256:fd5d70d8f5f82fe78b4880b2298c8efd1c7bdae2739d6a21933bbab6d24c0c3c",
+  "post_reboot_stale_ready_generation_37_restart_successor_materialization_cid": "sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8",
+  "test_compatibility_and_control_hash_successor_materialization_cid": "sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d",
+  "live_quack_catalog_compatibility_successor_materialization_cid": "sha256:64c4319d273cb9d561a8176c2a152c458e58df10c612c9a9b8235b21ccd4eceb",
+  "post_m49_fenced_worktree_quarantine_recovery_successor_materialization_cid": "sha256:57e54164eb55a8015c9324db6a414981446a2a455c0308cd65f6a8e219563ea9",
+  "post_m48_successor_report_fix_materialization_cid": "sha256:712ace8de59282858a149b8a65457311bf79ccee8abd1907df862f958916e0cc",
+  "post_m47_clean_shutdown_restart_successor_materialization_cid": "sha256:a7b262b976b38eb94646a9d73c595ff49ab9b1f89fa528443745ed964be025f6",
+  "ignored_python_cache_preservation_and_recovery_successor_materialization_cid": "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444",
+  "legacy_no_delta_rescue_recovery_successor_materialization_cid": "sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455",
+  "failed_pre_authoritative_m44_validation_successor_materialization_cid": "sha256:1fece222571aff1238d6e32465cae69f3f766d3e4da303b8775a5df892b95ef7",
+  "post_m43_hardened_procfs_user_manager_restart_successor_materialization_cid": "sha256:36cba6a8006b50d36d8de2ed6cf76d4adf8d688669a8c6414621173409535845",
+  "dead_attempt_lifecycle_recovery_restart_successor_materialization_cid": "sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43",
+  "failed_pre_authoritative_m41_evidence_projection_successor_materialization_cid": "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587",
+  "failed_pre_authoritative_m40_validation_successor_materialization_cid": "sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233",
+  "failed_pre_authoritative_m39_successor_materialization_cid": "sha256:377b6e7269a7025f236642f12aaf92264582f42a1efa4899eb4d6e64b0e41db2",
+  "committed_m38_evidence_reconciliation_successor_materialization_cid": "sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2",
+  "pre_authoritative_custody_restart_successor_materialization_cid": "sha256:664af21f470ada7e4d4bf02313df473ed345c539b122f30036db8c8ee171a8eb",
+  "post_reboot_generation_restart_successor_materialization_cid": "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795",
+  "operator_task_binding_correction_successor_materialization_cid": "sha256:d366f997c8972a3fb9a76ecd386c80f3a33d3001e215ca0f8cb60c0c653f760c",
+  "immutable_authority_identity_normalization_successor_materialization_cid": "sha256:be555c52e0ddf0737b1f3796ab21618e11226c7fae14d176c50d0cb4edfaf5d6",
+  "json_emission_normalization_successor_materialization_cid": "sha256:b9a7f6cefa5ceb6cb90cdf3621e00a31bfa2c0687695173640eabc838bdc0dd7",
+  "live_preflight_contract_successor_materialization_cid": "sha256:c5c86ba2e2c4e8af9f6ed9115a26208a3492053147c58dcc03884ccd694a66b9",
+  "live_preflight_plan_anchor_successor_materialization_cid": "sha256:7ed2ac5bc4b9ca94af6166ce7d5f7dba4a4bf73012290ba36f71e1fac822fb48",
+  "detached_coordinator_pid_recovery_successor_materialization_cid": "sha256:e49534abcd4a4820057029a3781de5c469dd7f3a63723b66c50ff2a28d643afe",
+  "stopped_owner_restart_source_seal_successor_materialization_cid": "sha256:7e504699e5bc073182917e49147fe5bdc7b67b7f0a2a2bcb344379312b530f48",
+  "committed_evidence_verification_successor_materialization_cid": "sha256:618d5f7e1745bf4fdb1c6c0d45551818b2af032407c69415ec330329c2853110",
+  "live_claim_admission_recovery_successor_materialization_cid": "sha256:f766e6f16a88ad50b5810312bacf8fb804474fb5a4e69de8973e728e98c93079",
+  "dead_owner_parallel_resume_successor_materialization_cid": "sha256:d9b697e010382809e78acde0e34c9e1df2607cdf5326b52b719c1601384da4d0",
+  "schema": "semantic-addressed-world-model/dependency-seal@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "root_goal_id": "SAWM-G000",
+  "status": "sealed",
+  "sealed_on_utc_date": "2026-08-28",
+  "seal_scope": "SAWM R2 bootstrap source, dependency identity and control-plane prerequisites",
+  "source_authorities": [
+    {
+      "role": "accelerator_operational_intelligence_and_supervisor",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2",
+      "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "checkout_state": "branch",
+      "branch": "agent/semantic-addressed-world-model-v1",
+      "head": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
+      "tree": "ec160726a9c92436222071e8119730df81eba8a6",
+      "gitlink_path": null,
+      "gitlink_commit": null,
+      "package": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "public_package_path": "ipfs_accelerate_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "operator_protected_sawm_control_paths_only"
+    },
+    {
+      "role": "datasets_semantic_and_formal_authority",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "declared_gitlink_origin": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "branch": null,
+      "head": "b9f5b86199c03e427fd51fcea302479880421ff8",
+      "tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+      "gitlink_path": "ipfs_datasets_py",
+      "gitlink_commit": "b9f5b86199c03e427fd51fcea302479880421ff8",
+      "package": "ipfs_datasets_py",
+      "package_version": "0.2.0",
+      "public_package_path": "ipfs_datasets_py/ipfs_datasets_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "accepted_supervisor_task_worktrees_and_operator_gitlink_integration_only"
+    },
+    {
+      "role": "kit_storage_retrieval_and_durable_graph_authority",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_kit_py",
+      "origin": "/home/barberb/lift_coding/external/ipfs_kit",
+      "declared_gitlink_origin": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "branch": null,
+      "head": "fc9248073e9f67ac59ca607c7736746907b08037",
+      "tree": "b26e05db1b199e7e491b45b686a0845fabbabadb",
+      "gitlink_path": "ipfs_kit_py",
+      "gitlink_commit": "fc9248073e9f67ac59ca607c7736746907b08037",
+      "package": "ipfs_kit_py",
+      "package_version": "0.3.0",
+      "public_package_path": "ipfs_kit_py/ipfs_kit_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "accepted_supervisor_task_worktrees_and_operator_gitlink_integration_only"
+    }
+  ],
+  "preserved_dirty_origins": [
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "head": "5d79bbf8bb61e027fbda76920580cb9d4fd919c1",
+      "tree": "c5ddd043de58349aafac0f9af03c1b018313623d",
+      "clean": false,
+      "admitted_into_sealed_snapshot": false
+    },
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "clean": false,
+      "admitted_into_sealed_snapshot": false
+    },
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_kit",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "clean": true,
+      "admitted_into_sealed_snapshot": true
+    }
+  ],
+  "dependency_files": [
+    {
+      "path": ".gitignore",
+      "sha256": "cd50f2925789f726a01af0c1a27356695b9c2f86ac9755ccfaa9ceaff7ae9606",
+      "git_blob_oid": "3b7c8308efcd8583abe28ef384fa6f799ba52fb6",
+      "role": "exact SAWM control and evidence tracking exceptions"
+    },
+    {
+      "path": ".gitmodules",
+      "sha256": "9b5856970fc61b9c18f7d272c1ed5b9322e5e7df08a8f74a100da2e33852bf90",
+      "git_blob_oid": "44e852ac06856fca74caf0ac4215406040f45897",
+      "role": "gitlink path and declared origin identity"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "97d579283d42b5a0877821f6c6cab2cd1985e11579ffc8854685bef8b05b6bf9",
+      "git_blob_oid": "179882cc1254039920c5a1ab755f383dcb70842d",
+      "role": "accelerator package and dependency declaration"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "c01f5350e472b00edac96c3b3b694a9ece990f74b5e949ed0f64e5fcf34b4085",
+      "git_blob_oid": "abc367db3ab67b10bdf9e3d8b66a6cbcccdb10bd",
+      "role": "protected accelerator runtime and operational validation requirements"
+    },
+    {
+      "path": "requirements-proof-reuse.txt",
+      "sha256": "4809b7012f515cfaea30140a117c86e47ada29f96fff9045eff57e390cf2fc8b",
+      "git_blob_oid": "ee526dc4cbed6119be1c36a50efcf6c14dcd61c2",
+      "role": "proof reuse optional dependency declaration"
+    },
+    {
+      "path": "ipfs_datasets_py/pyproject.toml",
+      "sha256": "e0cd336e89c9a1727c782244b8ea23a401a90a11a22fc85a8c3d20f7cadf2e07",
+      "git_blob_oid": "ec58bcda1a8658fc1c73c0742ef89e2d5f722f7b",
+      "role": "datasets package and dependency declaration"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements.txt",
+      "sha256": "c440bb51092a82bb19e2641e680dbc63d427029c7561e66999843418c4eb11db",
+      "git_blob_oid": "46259a2e149ece83e4be4dd9564481fb59941192",
+      "role": "datasets runtime requirements"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements-theorem-provers.txt",
+      "sha256": "cb22dd5328bca48746c0747e2580a19b1a8602ed008875ad11c0eb650df825b9",
+      "git_blob_oid": "8c95a95a921bddb5bcb34dfaea9023adf9179b5b",
+      "role": "optional theorem-prover declarations; never implicitly installed"
+    },
+    {
+      "path": "ipfs_kit_py/pyproject.toml",
+      "sha256": "0d81184d586607a604a393a4f53fc452a73dc5094f1eaa725b628e727641fe0c",
+      "git_blob_oid": "e2ef88fa956d8056f8dee96668c8890b7354cfe8",
+      "role": "kit package and dependency declaration"
+    },
+    {
+      "path": "ipfs_kit_py/requirements.txt",
+      "sha256": "4083586f56960826ed8944c82b61ffa7e6e94e31b3a7174b3633f34d0c5bca88",
+      "git_blob_oid": "7f9b9c511607293d5ecc3902389c1060118496f9",
+      "role": "kit runtime requirements"
+    }
+  ],
+  "toolchain": {
+    "python_executable": "/home/barberb/.local/bin/python",
+    "python_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "launch_python_executable": "/usr/bin/python3.12",
+    "launch_python_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "pytest_distribution_version": "9.1.1",
+    "duckdb_distribution_version": "1.5.5",
+    "operating_system": "Linux",
+    "machine": "aarch64",
+    "implicit_install_allowed": false,
+    "implicit_model_download_allowed": false
+  },
+  "environment_policy": {
+    "fixed": {
+      "IPFS_DATASETS_AUTO_INSTALL": "0",
+      "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+      "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY": "disabled",
+      "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+      "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "PYTHONHASHSEED": "0",
+      "PYTHONNOUSERSITE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "python_invocation_flags": [
+      "-I",
+      "-S",
+      "-B"
+    ],
+    "duckdb_extension_home": "exact_private_read_only_projection",
+    "secrets_source": "environment_only",
+    "secrets_in_prompt_argv_log_receipt_board_corpus_model": false,
+    "ordinary_test_network": false,
+    "cold_import_side_effects_allowed": false,
+    "arbitrary_code_deserialization_allowed": false
+  },
+  "validation_runtime": {
+    "schema": "semantic-addressed-world-model/validation-runtime@1",
+    "python_executable": "/usr/bin/python3.12",
+    "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_version": "3.12.3",
+    "pythonpath_entries": [
+      "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages-py-multihash",
+      "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages",
+      "/opt/ipfs-accelerate-legal-validation-7ffe92439767/site-packages"
+    ],
+    "ordered_pythonpath_sha256": "sha256:b33b316a356490f3f80be252ccc22ae94163c0c398a1f77548c4f0d10c5bc707",
+    "required_modules": [
+      "packaging",
+      "pytest"
+    ],
+    "delta_deployment": {
+      "root": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf",
+      "schema": "ipfs-accelerate-aseh-wheel-delta-deployment@1",
+      "deployment_body_sha256": "sha256:c7d197d7cce26a2cd28a461220b7b7b848f77650265b84447cafb8e66505b18d",
+      "manifest_entry_count": 4526,
+      "artifacts": [
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/BUILD_CONTRACT.json",
+          "sha256": "sha256:17e20a218f3934bf7b6dd6e80bcba8b76a2f42e85362c49a226547927f5b311e"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/CLOSURE.json",
+          "sha256": "sha256:3c26150daa5697e78405e2da0d9bffb1a91d030aff906811b4f93b4b133ef8e3"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/COLLISIONS.json",
+          "sha256": "sha256:8ad82936c0f6aa14be1066483b92500930ae5520acea9a6ea9652e5cac885fe5"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/DEPLOYMENT.json",
+          "sha256": "sha256:0d557e24f3254e958f8d37ec8d10299b9fdd34e7685621b09dddb84245932cf2"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/DIRECT_REQUIREMENTS.txt",
+          "sha256": "sha256:0842be6780f2cafb759087e506ca11a34ef20df68bbe2dd504a89522ce020633"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/IMPORT_CONTRACT.json",
+          "sha256": "sha256:de9ac3b168124f212df644f391626a6f16808e6aa7f5ab4652fdf7f86bef17ff"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/IMPORT_SMOKE.json",
+          "sha256": "sha256:92315ed765b6740af6baa84d319658c27f678287083e14c508b7edb47d8fb460"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/LOCK.txt",
+          "sha256": "sha256:d3db803570fc0d590187971dcbb6e22514c8b42be93c880993e6dd4c4e3deb86"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/PAYLOAD_MANIFEST.jsonl",
+          "sha256": "sha256:9b3ba6caebcff215c3de2ef00d5b588d059aff92ddc15cd4ffde8eb2dcd766b8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/TREE_AUDIT.json",
+          "sha256": "sha256:22cf8eaad767eb65f74ddc2ea371086031afc11f47e25bc7cf8d9a3320cfd3e8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/VERIFICATION_CONTRACT.json",
+          "sha256": "sha256:bf4e60384438f22c0eb43b6146d341667a23154ef6472a610249f81daf36c295"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/WHEELS.json",
+          "sha256": "sha256:d020ce204068f34678a1d5c5fc65860bc4b759370c3016ebf3c9463da8316d67"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/WHEEL_AUDIT.json",
+          "sha256": "sha256:c1928ca420025ce510d87db9a5cbadb6e97c7050c76b5f568189c0715ccc53c8"
+        }
+      ]
+    },
+    "base_deployment": {
+      "root": "/opt/ipfs-accelerate-legal-validation-7ffe92439767",
+      "schema": "ipfs-accelerate-legal-validation-deployment@1",
+      "deployment_body_sha256": "sha256:566c3806a52b07aa72ee3b6bb4e604e00cde502ac771d3b87fd1ce7fd84d949a",
+      "manifest_entry_count": 28058,
+      "artifacts": [
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/ASYNC_SMOKE.json",
+          "sha256": "sha256:ca2f2289f808cfbc66fbc7cdb5f9af6fddb9d6880417a136da6e3ec4f7e737c7"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/CLOSURE.json",
+          "sha256": "sha256:cf2cf2e6dc17dc5906c834aad3d42d4d123653b458ed290f73c3d9a11c43710a"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/COLLECTION.json",
+          "sha256": "sha256:eda31c90a7a7be79b38f257e926426de86733cf46028bb6ebe6c7e7c5b9d64f8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/DEPLOYMENT.json",
+          "sha256": "sha256:654d64e130c9b8e748ea76c3947eb47cc52bea64adb40f2592f7204dfe503ad0"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/DIRECT_REQUIREMENTS.txt",
+          "sha256": "sha256:d84de7ee9fa44796973e3656680583d1e8a69142018d9b724b666a7d561ffa38"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/IMPORT_SMOKE.json",
+          "sha256": "sha256:45e856c88fbdf3d33b51bca2756284ddf5c0b00fda6f3b6dc737671501cbdfda"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/LOCK.txt",
+          "sha256": "sha256:cc6678e4a724136ae866392b36bf98aa274c28cd3a37ff1a29c2d917449f73a9"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/PAYLOAD_MANIFEST.jsonl",
+          "sha256": "sha256:7ffe92439767e99c849a4f7aad0ee5d64e19ab9f754b5f0915f00571ac51f85a"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/WHEELS.json",
+          "sha256": "sha256:771062b6a93d2e4feb41acf90982cf32009522cb69fb373deb4044b6f3ea6eda"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/WHEEL_AUDIT.json",
+          "sha256": "sha256:01e56d36c78b43f280d70dce8f8364536f448279d6be224df792e23ec64f6fcc"
+        }
+      ]
+    },
+    "project_dependency_preflight_qualification": {
+      "scope": "all_nonoperator_operational_validations",
+      "task_alias_first": "SAWM-001",
+      "task_alias_last": "SAWM-044",
+      "validation_command_count": 46,
+      "requirements_count": 43,
+      "passed": true,
+      "reason": "approved_validation_environment_satisfies_project_dependencies",
+      "missing_count": 0,
+      "incompatible_count": 0,
+      "invalid_count": 0,
+      "source_receipt_id": "9f5beaff8aa5fefb28576d29d5cbc1b5332e8160f03f9cc7ac698edf9872ae10",
+      "path_sensitive": true,
+      "runtime_authority": false,
+      "recompute_required": true
+    },
+    "policy": {
+      "required_owner_uid": 0,
+      "writable_entries_allowed": false,
+      "symlinks_allowed": false,
+      "pyc_allowed": false,
+      "network_allowed": false,
+      "installer_allowed": false,
+      "ambient_user_site_allowed": false,
+      "automatic_install_allowed": false
+    }
+  },
+  "package_dependency_direction": {
+    "accelerate_consumes_datasets_semantics": true,
+    "accelerate_consumes_kit_storage": true,
+    "datasets_may_depend_on_accelerate_operations": false,
+    "kit_may_decide_datasets_semantics": false,
+    "kit_may_decide_accelerate_admission": false,
+    "parallel_authority_implementation_allowed": false
+  },
+  "control_plane": {
+    "authoritative_store": "DuckDB",
+    "exclusive_mutation_owner": "canonical DuckDB writer",
+    "multi_process_query_transport": "Quack read-only replica",
+    "authenticated_mutation_protocol": "closed atomic owner-inbox protocol@2",
+    "canonical_writer_served_through_quack": false,
+    "quack_replica_authoritative": false,
+    "owner_protocol_allows_arbitrary_sql": false,
+    "duckdb_source": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "quack_server_source": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "quack_client_source": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+    "quack_live_at_seal": false,
+    "quack_preflight_required": true,
+    "ducklake_role": "optional_non_authoritative_history_projection",
+    "ducklake_authoritative": false,
+    "markdown_authoritative": false,
+    "worker_self_completion_allowed": false
+  },
+  "quack_extension_pin": {
+    "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension.info",
+    "version": "c154811",
+    "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+    "size": 29708110,
+    "info_sha256": "14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89",
+    "info_size": 161,
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false,
+    "service_external_access_limitation": "canonical_writer_sealed; pinned_extension_preloaded_only_in_locked_read_only_loopback_replica"
+  },
+  "httpfs_extension_pin": {
+    "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension.info",
+    "version": "827222f",
+    "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+    "size": 19861758,
+    "info_sha256": "69f35648f184abd1ffe5a455e1b378eaa287dfe24f0fa04deb475826128c93bd",
+    "info_size": 160,
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false
+  },
+  "configured_board_native_dependency": {
+    "schema": "semantic-addressed-world-model/configured-board-native-dependency@1",
+    "source_path": "/home/barberb/.local/lib/python3.12/site-packages/_duckdb.cpython-312-aarch64-linux-gnu.so",
+    "acceptance": {
+      "schema": "semantic-addressed-world-model/native-dependency-authorization-reference@1",
+      "path": "config/semantic_addressed_world_model_native_dependency.authorization.json",
+      "sha256": "sha256:a01d5330c0fa450bf937fe5b1e91c7629f14d52b8e07a681b767ce1a34b99613",
+      "size": 838,
+      "authorization_id": "sha256:a8d030a674cf084ac672a1860498b6ae68e7162bc2267ae7b6746102c56941a8"
+    },
+    "pin": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",
+      "dependency_id": "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",
+      "module_name": "_duckdb",
+      "public_alias": "duckdb",
+      "distribution_name": "duckdb",
+      "distribution_version": "1.5.5",
+      "engine_version": "v1.5.5",
+      "extension_filename": "_duckdb.cpython-312-aarch64-linux-gnu.so",
+      "python_cache_tag": "cpython-312",
+      "python_soabi": "cpython-312-aarch64-linux-gnu",
+      "platform_name": "linux",
+      "platform_machine": "aarch64",
+      "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+      "payload_sha256": "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",
+      "size_bytes": 54541064,
+      "elf_class_bits": 64,
+      "elf_endianness": "little",
+      "elf_ident_version": 1,
+      "elf_osabi": 3,
+      "elf_abi_version": 0,
+      "elf_object_type": 3,
+      "elf_machine": 183,
+      "elf_object_version": 1,
+      "elf_flags": 0,
+      "elf_dt_needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6"
+      ]
+    },
+    "sealed_memfd_required": true,
+    "ambient_site_import_allowed": false,
+    "ambient_loader_environment_allowed": false
+  },
+  "configured_board_quack_projection": {
+    "schema": "semantic-addressed-world-model/configured-board-quack-projection@1",
+    "source_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension.info",
+    "pin": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.configured-board-duckdb-extension-pin@1",
+      "name": "quack",
+      "engine_version": "v1.5.5",
+      "platform": "linux_arm64",
+      "payload_sha256": "sha256:41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+      "payload_size": 29708110,
+      "info_sha256": "sha256:14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89",
+      "info_size": 161,
+      "projection_id": "sha256:e511ada315cc77080aed2a46fa18dcf71a84a69736831fddbffc342ef086bea3"
+    },
+    "load_policy": "local_load_only",
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false
+  },
+  "source_migration": {
+    "migration_revision": "SAWM-R2-M6",
+    "migration_kind": "bounded_validation_runtime_and_operational_board_command_recovery",
+    "supersession_reason": "source_authority_revision_and_settled_preprovider_task_requeue",
+    "supersession_mode": "source_authority_revision_and_operational_validation_recovery",
+    "prior_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb",
+    "target_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/control.duckdb",
+    "prior_generation": 7,
+    "target_generation": 8,
+    "prior_event_watermark": 121,
+    "prior_event_prefix_sha256": "f07bb22f380f30901d0ca16af4bf6bbc3b544f039fb1f43728828d92a95a3f9e",
+    "prior_control_store_sha256": "e2b8e8a15abe9c2a5b53dd540e9621c11a85f63fcc3799da331bb55e3bfbc408",
+    "prior_materialization_event_watermark": 119,
+    "prior_materialization_projection_cid": "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q",
+    "prior_materialization_receipt_cid": "sha256:7a3800b6ba8cdf722d846bb2fd0bf505b78114cd659f806f7eafe7df81ec71b8",
+    "prior_materialization_receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/migration-receipt.json",
+    "prior_materialization_receipt_file_sha256": "37838a3153c6fa59d6a9a31d8c17fea3bf902f50fed517112ceac23932ad14ea",
+    "prior_migration_count": 5,
+    "target_migration_count": 6,
+    "program_definition_cid": "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72",
+    "plan_root_cid": "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914",
+    "operator_task_cid": "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6",
+    "prior_source_binding_cid": "sha256:81d0fbd74e48c214b5334432cfa0f55e5d6b51a6f5096fa85e323512cf11fb77",
+    "prior_source_head": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
+    "prior_source_tree": "ec160726a9c92436222071e8119730df81eba8a6",
+    "prior_projection_cid": "baguqeeram7gdldpraa6twhuvfbqbeou4gefgmj5szitgb6ij2nmwobx727wq",
+    "prior_plan_revision": 6,
+    "target_plan_revision": 7,
+    "migration_event_watermark": 123,
+    "operational_validation_first_event_watermark": 124,
+    "operational_validation_last_event_watermark": 167,
+    "operational_validation_revision_changes": 44,
+    "target_event_watermark": 168,
+    "target_projection_cid": "baguqeeraztioh4pdrleiio2hzt2dtxh7o7ae2jk237fvcflktepffj6dpuya",
+    "operational_validation_requeue": {
+      "schema": "sawm/operational-validation-requeue-authorization@1",
+      "authorized": true,
+      "authority": "operator_source_migration",
+      "task_alias_first": "SAWM-001",
+      "task_alias_last": "SAWM-044",
+      "task_count": 44,
+      "task_identity_manifest_cid": "sha256:902037a87e711082e57c8dcf002eab669f0dc83c35e9f372ba197a18f8acf1d3",
+      "validation_command_count": 46,
+      "validation_token_from": "/home/barberb/.local/bin/python",
+      "validation_token_to": "python",
+      "recovered_task_alias": "SAWM-001",
+      "recovered_task_cid": "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76",
+      "from_status": "blocked",
+      "from_revision": 5,
+      "operational_status": "blocked",
+      "operational_revision": 6,
+      "to_status": "todo",
+      "to_revision": 7,
+      "reason": "bounded_validation_runtime_and_operational_board_command_recovery",
+      "provider_invocation_count": 0,
+      "effect_claim_count": 0,
+      "implementation_commit_count": 0,
+      "merge_attempt_count": 0,
+      "accepted_definition_changes": 0,
+      "accepted_completion_changes": 0,
+      "operational_validation_revision_changes": 44,
+      "expected_event_watermark": 168,
+      "worker_self_approval": false
+    },
+    "bounded_control_plane_repair_paths": [
+      "requirements.txt",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "test/api/semantic_world/test_semantic_addressed_world_model_board.py"
+    ],
+    "accepted_definition_rewrite_allowed": false,
+    "accepted_completion_replay_allowed": false,
+    "prior_authority_preserved": true
+  },
+  "source_repair_materialization_cid": "sha256:326b6d9185ff9974050333d6c8e011ab3dce8772c322fd1143a27f926b72e468",
+  "source_repair_successor_materialization_cid": "sha256:01935058ca682411743904513524b3eab41369b057151db529af14d46c5c0963",
+  "live_recovery_successor_materialization_cid": "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9",
+  "live_projection_successor_materialization_cid": "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10",
+  "live_provider_retry_successor_materialization_cid": "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e",
+  "declared_output_retry_successor_materialization_cid": "sha256:786dde1f1728b907c3e28e5a09c746842c0a4a5ac0333f3ccb25f5290e8227a8",
+  "quack_refresh_successor_materialization_cid": "sha256:2a6be82b1d160f07ee192b6093eb8fae3518ab2df713155bce98f7fb280e9920",
+  "optional_capability_policy": {
+    "external_provers": "probe_then_typed_unavailable",
+    "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",
+    "model_checkpoint": "require_admitted_lineage_or_training_unavailable",
+    "hardware": "probe_then_typed_unavailable",
+    "provider": "current_capability_probe_only",
+    "codex_provider": "implementation_only_when_current_provider_probe_admits",
+    "simulation_admitted_as_live": false
+  },
+  "validation": {
+    "validator": "scripts/validate_semantic_addressed_world_model_dependencies.py",
+    "expected_result": "all exact paths, hashes, blobs, commits, trees, gitlinks, versions and policy invariants verify",
+    "current_tree_revalidation_required_before_launch": true,
+    "network_required": false,
+    "database_open_required_for_static_seal_validation": false,
+    "seal_mismatch_disposition": "fail_closed"
+  },
+  "limitations": [
+    "The seal binds source and declared dependency identity; it is not proof that optional packages, services, provers, models or hardware are available.",
+    "Protected SAWM control files are expected working-tree additions above the sealed base until the operator-owned bootstrap commit is created.",
+    "Dirty origin checkouts remain preserved and are not clean evidence."
+  ],
+  "stale_owner_restart_successor_materialization_cid": "sha256:31c1c2d5ab7eec94a2acfd137b7f468c56f82cd325adb9f1a447492c32483cb8",
+  "runtime_root_rebind_successor_materialization_cid": "sha256:b3cf8f504196c577b59680581d3f81e6e20b856d7691e9ddcf1d2c107d4c455a",
+  "accepted_source_retry_successor_materialization_cid": "sha256:5e6e324e41d424a4303ef774f91879301041827a6cc7e94d494ee69ea1a0e405",
+  "source_binding_successor_materialization_cid": "sha256:5a7b909f10c6d9163f0e5e1460f3ac067ad7e7c5fe0d72c827d9ece94cd82628",
+  "automatic_stall_recovery_successor_materialization_cid": "sha256:386c6e031daa7e3d3aad125ebe0ca3e0a10ea34e545500a5a61af9b96ec87f91",
+  "native_duckdb_preload_successor_materialization_cid": "sha256:81e35c368ef5951208ebe93d4b7b319f898ae174fae2731204182505cbc0b946",
+  "multi_lane_sidecar_reopen_successor_materialization_cid": "sha256:75325d3da85a0d75bc9255f4af0fdee4843db27dd3f4b4e30ab99ab453a235e8",
+  "multi_lane_successor_materialization_cid": "sha256:d0b30e096c1164b8106386bb0e55d8de0237740ae601e79d1056661da3bdeb25",
+  "live_preflight_receipt_compatibility_successor_materialization_cid": "sha256:d0652e418cc3cc7507fe2abdd465cb9ff5df6570796d38193595a078e7bb8095",
+  "generation_realization_successor_materialization_cid": "sha256:fc698104e314a46e1d65b9ee1ce06e97d0fc0fa83e3d45cf1b4b75ce58cb3d94",
+  "test_isolation_successor_materialization_cid": "sha256:24d19d647e4806dda56a8d76f8eaf60bb1329249e1ca340e5793a4181aee4a7c",
+  "live_catalog_inventory_successor_materialization_cid": "sha256:fcea73db5863fbfc174b7b0e2d9a40683b7f43d8eda2167ee819b0b44f9aa5ff",
+  "portal_completion_persistence_successor_materialization_cid": "sha256:3c7bf10d8a5dde76b96e59bf1efd73f473f3daed4f02ea6ba0bb035fbec978bc"
+}

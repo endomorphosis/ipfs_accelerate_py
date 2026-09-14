@@ -95,32 +95,15 @@ def test_real_fence_guard_preserves_claim_and_lease_at_every_deferred_tick(
 
 
 @pytest.mark.parametrize("stage", [
-    "reconcile_prepared_task_completions", "reconcile_expired_running_attempts",
-    "reconcile_landed_merged_tasks", "reconcile_terminal_portal_failures",
+    "reconcile_prepared_task_completions", "reconcile_terminal_portal_failures",
+    "reconcile_expired_running_attempts", "reconcile_recoverable_portal_failure_rearms",
 ])
 def test_fence_mismatch_at_any_reconciliation_boundary_prevents_dispatch(stage):
     daemon = DatabaseImplementationDaemon.__new__(DatabaseImplementationDaemon)
-    daemon._embedded_writer_lock_handles = {}
-    daemon._require_typed_quack_authority_binding = lambda: None
-    daemon.require_real_execution = True
-    daemon._recover_lost_typed_claim_reservations = lambda: []
-    daemon._quack_transport_preflight = lambda: None
-    for prefix in (
-        "_rearm_blocked_tasks_with_outputs_on_head",
-        "_settle_invalid_metadata_portal_quarantines",
-        "_consume_pending_same_board_merges", "_run_post_merge_recovery",
-        "_consume_bound_pending_merge_train",
-    ):
-        setattr(daemon, prefix, lambda: {})
-    daemon._reopen_unusable_embedded_sidecars = lambda error: pytest.fail(
-        "a task fence diagnostic must not enter sidecar recovery")
     calls = []
     stages = [
-        "reconcile_prepared_task_completions", "reconcile_expired_running_attempts",
-        "reconcile_landed_merged_tasks", "reconcile_blocked_merge_queue_completions",
-        "reconcile_unimplemented_unknown_callback_quarantines",
-        "reconcile_consumed_no_progress_without_effect_quarantines",
-        "reconcile_sandbox_host_failure_quarantines", "reconcile_terminal_portal_failures",
+        "reconcile_prepared_task_completions", "reconcile_terminal_portal_failures",
+        "reconcile_expired_running_attempts", "reconcile_recoverable_portal_failure_rearms",
     ]
     for name in stages:
         def reconcile(name=name):
@@ -155,11 +138,6 @@ def test_plain_stale_fence_still_raises_and_diagnostic_extras_do_not_escape():
     error = DatabaseCoordinationStaleFenceError("caller fence mismatch")
     assert task_fence_mismatch_deferral(error) is None
     daemon = DatabaseImplementationDaemon.__new__(DatabaseImplementationDaemon)
-    daemon._embedded_writer_lock_handles = {}
-    daemon._require_typed_quack_authority_binding = lambda: None
-    daemon._reopen_unusable_embedded_sidecars = lambda error: None
-    daemon._is_quack_attach_contention = lambda error: False
-    daemon._is_quack_transport_unavailable = lambda error: False
     def fail():
         raise error
     daemon._run_once_impl = fail

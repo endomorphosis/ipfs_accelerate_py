@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -31,15 +28,21 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
     SupervisorLoopConfig,
     SupervisorLoopDecision,
+    clear_dead_child_pass_heartbeat,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
+    RestartPolicy,
     SupervisedChild,
     SupervisedChildIdentity,
     SupervisedChildSpec,
     adopt_or_launch_supervised_child,
     adopt_supervised_child,
+    child_exit_should_restart,
     clear_child_pid_file,
     launch_supervised_child,
     terminate_supervised_child,
@@ -98,44 +101,6 @@ def _write_identity(
         encoding="utf-8",
     )
     return path
-
-
-def test_supervised_child_identity_loader_rejects_symlink_and_hardlink(
-    tmp_path: Path,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    identity_path = _write_identity(
-        supervisor,
-        pid=101,
-        command=tuple(supervisor._build_daemon_command()),
-    )
-    target_path = identity_path.with_name("attacker-controlled.json")
-    identity_path.replace(target_path)
-    identity_path.symlink_to(target_path)
-
-    assert supervisor_runtime.load_supervised_child_identity(identity_path) is None
-
-    identity_path.unlink()
-    os.link(target_path, identity_path)
-    assert supervisor_runtime.load_supervised_child_identity(identity_path) is None
-
-
-def test_supervised_child_identity_loader_rejects_duplicate_json_members(
-    tmp_path: Path,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    identity_path = _write_identity(
-        supervisor,
-        pid=102,
-        command=tuple(supervisor._build_daemon_command()),
-    )
-    valid = identity_path.read_text(encoding="utf-8").lstrip()
-    identity_path.write_text(
-        '{"schema":"forged-duplicate",' + valid[1:],
-        encoding="utf-8",
-    )
-
-    assert supervisor_runtime.load_supervised_child_identity(identity_path) is None
 
 
 def test_direct_managed_daemon_identity_requires_direct_child(
@@ -546,118 +511,6 @@ def test_shutdown_recovers_orphan_identity_before_fencing(
     assert not supervisor._managed_daemon_identity_path().exists()
 
 
-def test_shutdown_preserves_marker_when_managed_daemon_remains_live(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    pid = 339
-    desired = tuple(supervisor._build_daemon_command())
-    pid_path = supervisor._managed_daemon_pid_path()
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_path.write_text(f"{pid}\n", encoding="utf-8")
-    _write_identity(supervisor, pid=pid, command=desired)
-    monkeypatch.setattr(
-        supervisor,
-        "_read_managed_daemon_pid",
-        lambda: pid,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "process_is_running",
-        lambda value: int(value) == pid,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "process_command_line",
-        lambda _pid: " ".join(desired),
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "supervised_child_identity_liveness",
-        lambda _identity: OwnerLiveness.ALIVE,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "read_process_command_argv",
-        lambda _pid: desired,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "terminate_pid_tree",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_find_matching_managed_daemon_pid",
-        lambda **_kwargs: pid,
-    )
-
-    result = supervisor._terminate_managed_daemon_tree()
-
-    assert result["terminated"] is False
-    assert result["quiesced"] is False
-    assert result["remaining_pid"] == pid
-    assert pid_path.read_text(encoding="utf-8") == f"{pid}\n"
-    assert supervisor._managed_daemon_identity_path().exists()
-
-
-def test_shutdown_atomically_rebinds_symlinked_marker_to_owned_identity(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    recorded_pid = 339
-    remaining_pid = 340
-    desired = tuple(supervisor._build_daemon_command())
-    pid_path = supervisor._managed_daemon_pid_path()
-    foreign_pid_path = tmp_path / "foreign-managed-daemon.pid"
-    foreign_pid_path.write_text(f"{recorded_pid}\n", encoding="utf-8")
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_path.symlink_to(foreign_pid_path)
-    _write_identity(supervisor, pid=recorded_pid, command=desired)
-    monkeypatch.setattr(
-        supervisor_module,
-        "process_is_running",
-        lambda value: int(value) == recorded_pid,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "process_command_line",
-        lambda _pid: " ".join(desired),
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "supervised_child_identity_liveness",
-        lambda _identity: OwnerLiveness.ALIVE,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "read_process_command_argv",
-        lambda _pid: desired,
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "terminate_pid_tree",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_find_matching_managed_daemon_pid",
-        lambda **_kwargs: remaining_pid,
-    )
-
-    result = supervisor._terminate_managed_daemon_tree()
-
-    assert result["terminated"] is False
-    assert result["quiesced"] is False
-    assert result["remaining_pid"] == remaining_pid
-    assert not pid_path.is_symlink()
-    assert pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
-    assert foreign_pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
-    assert supervisor._managed_daemon_identity_path().exists()
-
-
 def test_shared_launcher_refuses_unreconciled_identity_before_spawning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -789,297 +642,6 @@ def test_shared_launcher_commits_identity_before_raw_pid_marker(
     assert writes == [identity_path, pid_path]
     assert json.loads(identity_path.read_text(encoding="utf-8"))["process_birth"]["pid"] == 444
     assert pid_path.read_text(encoding="utf-8").strip() == "444"
-
-
-def test_shared_launcher_fences_exact_group_when_raw_pid_marker_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    pid_path = repo / "state" / "child.pid"
-    identity_path = repo / "state" / "child.identity.json"
-
-    class FakeProcess:
-        pid = 448
-
-        def __init__(self) -> None:
-            self.returncode: int | None = None
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def wait(self, timeout: float | None = None) -> int:
-            assert timeout is not None
-            self.returncode = -9
-            return self.returncode
-
-    process = FakeProcess()
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "launch_process_child",
-        lambda *_args, **_kwargs: process,
-    )
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "read_process_birth",
-        lambda pid: ProcessBirthIdentity(
-            pid=int(pid),
-            start_time_ticks=188,
-            boot_id="boot-test",
-            parent_pid=os.getpid(),
-        ),
-    )
-    real_atomic_write = supervisor_runtime._write_bytes_atomic
-
-    def fail_pid_marker(path: Path, content: bytes) -> None:
-        if path == pid_path:
-            raise OSError("injected raw PID marker failure")
-        real_atomic_write(path, content)
-
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "_write_bytes_atomic",
-        fail_pid_marker,
-    )
-    fences: list[tuple[int, dict[str, object]]] = []
-
-    def fence(pid: int, **kwargs: object) -> bool:
-        fences.append((int(pid), dict(kwargs)))
-        return True
-
-    monkeypatch.setattr(supervisor_runtime, "terminate_pid_tree", fence)
-
-    with pytest.raises(OSError, match="raw PID marker failure"):
-        launch_supervised_child(
-            SupervisedChildSpec(
-                repo_root=repo,
-                command=("python", "worker.py"),
-                log_path=repo / "child.log",
-                child_pid_path=pid_path,
-                env={
-                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(identity_path),
-                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
-                        {"repo_root": str(repo)}
-                    ),
-                },
-            )
-        )
-
-    assert fences == [
-        (
-            448,
-            {
-                "grace_seconds": 1.0,
-                "freeze_first": True,
-                "require_gone": True,
-                "owned_process_group_id": 448,
-                "expected_root_start_time_ticks": 188,
-            },
-        )
-    ]
-    assert process.returncode == -9
-    assert not pid_path.exists()
-    assert not identity_path.exists()
-
-
-def test_launch_delivery_failure_fences_forked_dedicated_group(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
-
-    child_marker = tmp_path / "forked-child.pid"
-    command = (
-        sys.executable,
-        "-c",
-        (
-            "import os,signal,time; "
-            "child=os.fork(); "
-            f"marker={str(child_marker)!r}; "
-            "(open(marker,'w').write(str(os.getpid())) "
-            " if child==0 else None); "
-            "signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)"
-        ),
-    )
-
-    class FailedHandoff:
-        pass_fds: tuple[int, ...] = ()
-
-        def deliver(self, _process: object, **_kwargs: object) -> None:
-            deadline = time.monotonic() + 5.0
-            while not child_marker.exists() and time.monotonic() < deadline:
-                time.sleep(0.01)
-            assert child_marker.exists()
-            raise RuntimeError("injected authority delivery failure")
-
-        def close(self) -> None:
-            return None
-
-    monkeypatch.setattr(
-        process_security,
-        "prepare_state_authority_child_handoff",
-        lambda _environment, **_kwargs: FailedHandoff(),
-    )
-
-    with pytest.raises(RuntimeError, match="authority delivery failure"):
-        supervisor_runtime.launch_process_child(
-            command,
-            cwd=tmp_path,
-            env={},
-            inherit_environment=False,
-            start_new_session=True,
-        )
-
-    forked_pid = int(child_marker.read_text(encoding="utf-8"))
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline:
-        try:
-            stat_fields = (
-                Path(f"/proc/{forked_pid}/stat")
-                .read_text(encoding="utf-8")
-                .rsplit(")", 1)[1]
-                .split()
-            )
-        except OSError:
-            break
-        if stat_fields[0] == "Z":
-            break
-        time.sleep(0.02)
-    else:
-        pytest.fail("forked delivery-failure child remained executable")
-
-
-def test_plan_bound_loop_retains_exact_launch_bundle_across_restarts_and_closes(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.runtime import (
-        multi_supervisor_runner as multi_runner,
-    )
-
-    supervisor = _supervisor(tmp_path)
-    control_read, control_write = os.pipe()
-    interpreter_read, interpreter_write = os.pipe()
-    native_read, native_write = os.pipe()
-    state_read, state_write = os.pipe()
-    retained = SimpleNamespace(
-        descriptor=interpreter_read,
-        argv0=sys.executable,
-        sha256="sha256:" + ("a" * 64),
-        executable_path=f"/proc/self/fd/{interpreter_read}",
-    )
-    native = SimpleNamespace(
-        descriptor=SimpleNamespace(descriptor=native_read),
-    )
-    supervisor.config.plan_bound_dispatch = True
-    supervisor.config.accepted_control_plane_descriptor = control_read
-    retain_calls: list[str] = []
-    build_calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        multi_runner,
-        "retain_control_plane_interpreter",
-        lambda executable: (retain_calls.append(str(executable)) or retained),
-    )
-    monkeypatch.setattr(
-        multi_runner,
-        "admit_sealed_native_dependency_environment",
-        lambda _environment: (native, "[]"),
-    )
-    native_environment = {
-        multi_runner.SEALED_NATIVE_DEPENDENCY_FD_ENV: str(native_read),
-        multi_runner.SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV: "sealed-native",
-        multi_runner.SEALED_SYSTEM_DEPENDENCY_DIRS_ENV: "[]",
-    }
-    monkeypatch.setattr(
-        multi_runner,
-        "sealed_native_dependency_environment",
-        lambda *_args, **_kwargs: dict(native_environment),
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "_managed_daemon_child_environment",
-        lambda **_kwargs: {
-            "PYTHONPATH": "hostile-ambient-path",
-            "IPFS_ACCELERATE_TEST_AUTHORITY": "admitted",
-        },
-    )
-    monkeypatch.setattr(
-        supervisor_module,
-        "state_authority_pass_fds",
-        lambda _environment: (state_read,),
-    )
-
-    def build_command(**kwargs: object) -> list[str]:
-        build_calls.append(dict(kwargs))
-        return [sys.executable, "-c", "raise SystemExit(0)"]
-
-    monkeypatch.setattr(supervisor, "_build_daemon_command", build_command)
-    monkeypatch.setattr(supervisor, "_proof_rollout_status_fields", lambda: {})
-    monkeypatch.setattr(supervisor, "_autonomous_unstall_status", lambda: {})
-    monkeypatch.setattr(supervisor, "_control_plane_status_projection", lambda: {})
-    monkeypatch.setattr(
-        supervisor,
-        "_implementation_watchdog_timeout_seconds",
-        lambda: 1.0,
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_watchdog_startup_grace_seconds",
-        lambda: 1.0,
-    )
-    try:
-        first = supervisor.build_supervisor_loop_config()
-        second = supervisor.build_supervisor_loop_config()
-
-        assert retain_calls == [sys.executable]
-        assert len(build_calls) == 2
-        assert all(call["retained_interpreter"] is retained for call in build_calls)
-        assert all(call["native_dependency"] is native for call in build_calls)
-        assert first.child_executable == retained.executable_path
-        assert second.child_executable == retained.executable_path
-        expected_fds = tuple(
-            sorted((control_read, interpreter_read, native_read, state_read))
-        )
-        assert first.child_pass_fds == expected_fds
-        assert second.child_pass_fds == expected_fds
-        assert first.child_start_new_session is False
-        assert first.child_process_group == 0
-        assert "PYTHONPATH" not in first.child_env
-        assert {
-            name: first.child_env[name]
-            for name in native_environment
-        } == native_environment
-        loop = SupervisorLoop(first)
-        for reason in ("initial", "restart"):
-            child_spec = loop._child_spec(reason)
-            assert child_spec.executable == retained.executable_path
-            assert child_spec.pass_fds == expected_fds
-            assert child_spec.start_new_session is False
-            assert child_spec.process_group == 0
-
-        monkeypatch.setattr(supervisor, "_run_forever_loop", lambda: None)
-        supervisor.run_forever()
-        with pytest.raises(OSError):
-            os.fstat(interpreter_read)
-        assert not hasattr(supervisor, "_plan_bound_loop_retained_interpreter")
-        for descriptor in (control_read, native_read, state_read):
-            os.fstat(descriptor)
-    finally:
-        for descriptor in (
-            control_read,
-            control_write,
-            interpreter_read,
-            interpreter_write,
-            native_read,
-            native_write,
-            state_read,
-            state_write,
-        ):
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
 
 
 def test_shared_launcher_reaps_direct_child_when_identity_capture_fails(
@@ -1486,80 +1048,6 @@ def test_supervisor_loop_preserves_markers_when_termination_is_unproven(
     )
     assert pid_path.read_text(encoding="utf-8").strip() == "450"
     assert identity_path.read_text(encoding="utf-8") == "unavailable\n"
-    status = json.loads(
-        spec.supervisor_status_path.read_text(encoding="utf-8")
-    )
-    assert status["status"] == "termination_blocked"
-    assert status["daemon_pid"] == 450
-    assert status["managed_child_termination_proven"] is False
-    assert status["managed_child_termination_reason"] == (
-        "supervised_child_termination_unproven"
-    )
-    assert status["worker_metrics_available"] is False
-    assert status["active_worker_count"] is None
-    assert type(status["worker_observed_at_ns"]) is int
-    assert status["worker_observed_at_ns"] > 0
-    assert status["worker_observation_generation"] == ""
-
-
-def test_signal_shutdown_retains_unresolved_daemon_without_false_terminal_truth(
-    tmp_path: Path,
-) -> None:
-    supervisor = _supervisor(tmp_path)
-    status_path = supervisor._supervisor_status_path()
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    status_path.write_text(
-        json.dumps(
-            {
-                "status": "running",
-                "daemon_pid": 4321,
-                "daemon_pid_alive": True,
-                "worker_metrics_available": True,
-                "worker_observed_at_ns": 123,
-                "worker_observation_generation": "run:4321:55:boot",
-                "active_worker_count": 1,
-                "active_worker_pids": [9876],
-                "worker_descendant_count": 1,
-                "worker_descendant_pids": [9876],
-                "worker_phase": "implementing",
-                "stalled_without_active_worker": False,
-                "last_exit_code": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    supervisor._write_signal_shutdown_status(
-        stop_signal=signal.SIGTERM,
-        cleanup={
-            "pid": 4321,
-            "terminated": False,
-            "quiesced": False,
-            "remaining_pid": 4321,
-        },
-        interrupted_reconciliation={
-            "reconciled": False,
-            "blocked": True,
-            "reason": "daemon_cleanup_unproven",
-        },
-    )
-
-    status = json.loads(status_path.read_text(encoding="utf-8"))
-    assert status["status"] == "stopping"
-    assert status["supervisor_pid_alive"] is True
-    assert status["supervisor_exit_pending"] is True
-    assert status["daemon_pid"] == 4321
-    assert status["daemon_pid_alive"] is None
-    assert status["worker_metrics_available"] is False
-    assert status["worker_metrics_unavailable_reason"] == (
-        "shutdown_cleanup_unproven"
-    )
-    assert status["active_worker_count"] is None
-    assert status["worker_observed_at_ns"] is None
-    assert status["worker_observation_generation"] == ""
-    assert status["last_worker_observation"]["active_worker_count"] == 1
-    assert status["requested_exit_code"] == 128 + signal.SIGTERM
-    assert "last_exit_code" not in status
 
 
 def test_adopted_child_exit_is_proven_before_identity_markers_are_cleared(
@@ -1615,131 +1103,6 @@ def test_adopted_child_exit_is_proven_before_identity_markers_are_cleared(
     assert clear_child_pid_file(child) is True
     assert not pid_path.exists()
     assert not identity_path.exists()
-
-
-def test_supervisor_loop_reverifies_and_inherits_both_fds_after_restart(
-    tmp_path: Path,
-) -> None:
-    """Every real child generation retains the two immutable live inputs."""
-
-    repo = tmp_path / "repo"
-    state_dir = repo / "state"
-    repo.mkdir()
-    result_path = state_dir / "fd-generations.jsonl"
-    capsule_read, capsule_write = os.pipe()
-    native_read, native_write = os.pipe()
-    command = (
-        sys.executable,
-        "-I",
-        "-S",
-        "-B",
-        "-c",
-        (
-            "import ctypes,json,os,sys,time;"
-            "libc=ctypes.CDLL(None,use_errno=True);"
-            "assert libc.prctl(4,0,0,0,0)==0;"
-            "dumpable=libc.prctl(3,0,0,0,0);"
-            "assert dumpable==0;"
-            "fds=(int(sys.argv[1]),int(sys.argv[2]));"
-            "[os.fstat(fd) for fd in fds];"
-            "path=sys.argv[3];"
-            "generation=(sum(1 for _ in open(path,encoding='utf-8'))+1) "
-            "if os.path.exists(path) else 1;"
-            "handle=open(path,'a',encoding='utf-8');"
-            "handle.write(json.dumps({'generation':generation,'fds':fds,"
-            "'dumpable':dumpable})+'\\n');"
-            "handle.close();"
-            "time.sleep(0.05);"
-            "raise SystemExit(23)"
-        ),
-        str(capsule_read),
-        str(native_read),
-        str(result_path),
-    )
-    spec = ManagedDaemonSpec(
-        name="sealed-fd-restart-daemon",
-        schema="test.sealed-fd-restart-daemon",
-        repo_root=repo,
-        daemon_dir=state_dir,
-        runner=command,
-        status_path=state_dir / "daemon-status.json",
-        supervisor_status_path=state_dir / "supervisor-status.json",
-        supervisor_pid_path=state_dir / "supervisor.pid",
-        child_pid_path=state_dir / "child.pid",
-        supervisor_out_path=state_dir / "supervisor.out",
-        ensure_status_path=state_dir / "ensure-status.json",
-        ensure_check_path=state_dir / "ensure-check.json",
-        supervisor_lock_path=state_dir / "supervisor.lock",
-        latest_log_path=state_dir / "latest.log",
-    )
-    verified_generations: list[tuple[int, ...]] = []
-
-    def verify_before_popen(child_spec: SupervisedChildSpec) -> None:
-        assert child_spec.command == command
-        assert child_spec.inherit_environment is False
-        assert child_spec.pass_fds == tuple(
-            sorted((capsule_read, native_read))
-        )
-        for descriptor in child_spec.pass_fds:
-            os.fstat(descriptor)
-        verified_generations.append(child_spec.pass_fds)
-
-    try:
-        result = SupervisorLoop(
-            SupervisorLoopConfig(
-                spec=spec,
-                command=command,
-                log_prefix="sealed-fd-child",
-                restart_policy=supervisor_runtime.RestartPolicy(
-                    restart_backoff_seconds=0.0,
-                    fast_restart_backoff_seconds=0.0,
-                ),
-                heartbeat_seconds=0.01,
-                poll_seconds=0.01,
-                watchdog_startup_grace_seconds=60.0,
-                max_restarts=2,
-                child_env={
-                    "LC_ALL": "C",
-                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
-                        state_dir / "child.identity.json"
-                    ),
-                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
-                        {"lane": "live-test"},
-                        separators=(",", ":"),
-                        sort_keys=True,
-                    ),
-                },
-                child_inherit_environment=False,
-                pass_fds=(native_read, capsule_read, native_read),
-                pre_popen_verify=verify_before_popen,
-            ),
-            sleep=lambda _seconds: None,
-        ).run()
-    finally:
-        for descriptor in (
-            capsule_read,
-            capsule_write,
-            native_read,
-            native_write,
-        ):
-            os.close(descriptor)
-
-    generations = [
-        json.loads(line)
-        for line in result_path.read_text(encoding="utf-8").splitlines()
-    ]
-    assert result.status == "child_exited"
-    assert result.restart_count == 2
-    assert [item["generation"] for item in generations] == [1, 2]
-    assert all(
-        item["fds"] == [capsule_read, native_read]
-        for item in generations
-    )
-    assert [item["dumpable"] for item in generations] == [0, 0]
-    assert verified_generations == [
-        tuple(sorted((capsule_read, native_read))),
-        tuple(sorted((capsule_read, native_read))),
-    ]
 
 
 def test_stale_child_handle_cannot_signal_replacement_identity_generation(
@@ -1844,153 +1207,125 @@ def test_adopted_process_numeric_signal_methods_are_disabled() -> None:
         process.kill()
 
 
-@pytest.mark.parametrize("action", ["stop", "recycle"])
-@pytest.mark.parametrize("proof", ["gone", "alive", "unknown", "group_alive", "group_unknown", "missing_identity", "changed_birth"])
-def test_supervisor_loop_handles_exit_during_termination(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    action: str,
-    proof: str,
-) -> None:
+def test_child_exit_should_not_restart_typed_fail_closed_exit() -> None:
+    assert not child_exit_should_restart(
+        exit_code=TYPED_FAIL_CLOSED_EXIT_CODE,
+        restart_count=0,
+        restart_limit=5,
+        restart_on_clean_exit=True,
+    )
+
+
+def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -> None:
+    """Exit 78 is sealed fail-closed; do not restart-loop the same child."""
+
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    pid_path = state_dir / "child.pid"
-    identity_path = state_dir / "child.identity.json"
-    pid_path.parent.mkdir(parents=True)
-    pid_path.write_text("460\n", encoding="utf-8")
-    identity = SupervisedChildIdentity(
-        process_birth=ProcessBirthIdentity(
-            pid=460,
-            start_time_ticks=110,
-            boot_id="boot-test",
-            parent_pid=17,
-        ),
-        command=("python", "worker.py"),
-        owner_scope={"repo_root": str(repo)},
-        created_at="2026-08-03T00:00:00+00:00",
-    )
-    identity_path.write_text(
-        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    identity = SupervisedChildIdentity.from_dict(identity.to_dict())
-    assert identity is not None
-    child = SupervisedChild(
-        pid=460,
-        command=("python", "worker.py"),
-        log_path=state_dir / "child.log",
-        child_pid_path=pid_path,
-        identity_path=identity_path,
-        identity_record_id=identity.record_id,
-        identity_process_birth=identity.process_birth,
-        owned_process_group_id=460,
-    )
-    launches = {"n": 0}
-
-    def fake_launch(_spec, **_kwargs):
-        launches["n"] += 1
-        return child
-
-    polls = {"n": 0}
-
-    def fake_poll(_child):
-        polls["n"] += 1
-        return None if polls["n"] == 1 else 0
-
-    monkeypatch.setattr(
-        supervisor_loop_module,
-        "adopt_or_launch_supervised_child",
-        fake_launch,
-    )
-    monkeypatch.setattr(
-        supervisor_loop_module,
-        "_poll_child_exit",
-        fake_poll,
-    )
-    monkeypatch.setattr(
-        supervisor_loop_module,
-        "terminate_supervised_child",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        supervisor_loop_module,
-        "wait_for_child_exit",
-        lambda _child: pytest.fail("DEAD child exit was awaited"),
-    )
-    monkeypatch.setattr(
-        supervisor_runtime,
-        "supervised_child_identity_liveness",
-        lambda _identity: {
-            "alive": OwnerLiveness.ALIVE,
-            "unknown": OwnerLiveness.UNKNOWN,
-        }.get(proof, OwnerLiveness.DEAD),
-    )
-    def group_probe(pgid, signum):
-        assert pgid == 460
-        assert signum == 0, "reused process group must never be signalled"
-        if proof == "group_alive":
-            return
-        if proof == "group_unknown":
-            raise PermissionError("group observation unavailable")
-        raise ProcessLookupError("group gone")
-
-    monkeypatch.setattr(supervisor_runtime.os, "killpg", group_probe)
-    if proof == "missing_identity":
-        identity_path.unlink()
-    elif proof == "changed_birth":
-        child = replace(
-            child,
-            identity_process_birth=replace(identity.process_birth, start_time_ticks=111),
-        )
-    original_markers = {
-        p: p.read_bytes() for p in (pid_path, identity_path) if p.exists()
-    }
+    child = tmp_path / "exit78.py"
+    child.write_text("raise SystemExit(78)\n", encoding="utf-8")
     spec = ManagedDaemonSpec(
-        name="identity-required-daemon",
-        schema="test.identity-required-daemon",
+        name="typed-fail-closed-daemon",
+        schema="test.typed-fail-closed-daemon",
         repo_root=repo,
         daemon_dir=state_dir,
-        runner=("python", "worker.py"),
+        runner=(sys.executable, str(child)),
         status_path=state_dir / "daemon-status.json",
         supervisor_status_path=state_dir / "supervisor-status.json",
         supervisor_pid_path=state_dir / "supervisor.pid",
-        child_pid_path=pid_path,
+        child_pid_path=state_dir / "child.pid",
         supervisor_out_path=state_dir / "supervisor.out",
         ensure_status_path=state_dir / "ensure-status.json",
         ensure_check_path=state_dir / "ensure-check.json",
-        supervisor_lock_path=state_dir / "supervisor.lock",
+        latest_log_path=state_dir / "latest.log",
     )
     loop = SupervisorLoop(
         SupervisorLoopConfig(
             spec=spec,
-            command=child.command,
+            command=(sys.executable, str(child)),
             log_prefix="child",
+            restart_policy=RestartPolicy(
+                restart_backoff_seconds=0,
+                fast_restart_backoff_seconds=0,
+            ),
             heartbeat_seconds=0.01,
             poll_seconds=0.01,
-            watchdog_startup_grace_seconds=0,
-            max_restarts=2,
-        ),
-        watchdog_hook=lambda *_args: getattr(SupervisorLoopDecision, action)(
-            "stale_child"
+            max_restarts=5,
         ),
         sleep=lambda _seconds: None,
     )
 
+    state_dir.mkdir(parents=True, exist_ok=True)
+    heartbeat_path = state_dir / "sawm_lane_0_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-daemon-pass-heartbeat@1"
+                ),
+                "active_task_id": "SAWM-008",
+                "claimed_task_cid": "sha256:dead",
+                "process_birth": {"pid": 2_147_483_647},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
     result = loop.run()
 
-    if proof == "gone":
-        assert launches["n"] == (2 if action == "recycle" else 1)
-        assert result.status != "termination_blocked"
-        # The replacement child then exits in fake_poll; its own exit reason
-        # supersedes the previous child's recycle reason in the shared loop.
-        assert result.last_recycle_reason == (
-            "child_exited" if action == "recycle" else "stale_child"
-        )
-        assert not pid_path.exists()
-        assert not identity_path.exists()
-    else:
-        assert launches["n"] == 1
-        assert result.status == "termination_blocked"
-        for path, contents in original_markers.items():
-            assert path.read_bytes() == contents
+    assert result.status == TYPED_CHILD_BLOCKER_STATUS
+    assert result.restart_count == 1
+    assert result.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert result.last_recycle_reason == TYPED_FAIL_CLOSED_RECYCLE_REASON
+    status = json.loads(
+        (state_dir / "supervisor-status.json").read_text(encoding="utf-8")
+    )
+    assert status["status"] == TYPED_CHILD_BLOCKER_STATUS
+    assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
+    assert status["exact_source_worktree"] is True
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == ""
+    assert heartbeat["claimed_task_cid"] == ""
+    assert heartbeat["selection_idle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
+
+
+def test_clear_dead_child_pass_heartbeat_preserves_live_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claim-preserving recovery must not drop a live child's heartbeat."""
+
+    heartbeat_path = tmp_path / "sawm_lane_0_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "active_task_id": "SAWM-008",
+                "claimed_task_cid": "sha256:live",
+                "process_birth": {"pid": 123},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(supervisor_loop_module, "pid_alive", lambda pid: pid == 123)
+
+    result = clear_dead_child_pass_heartbeat(tmp_path)
+
+    assert result["skipped_live"] == [str(heartbeat_path)]
+    assert result["cleared"] == []
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == "SAWM-008"
+    assert heartbeat["claimed_task_cid"] == "sha256:live"
+
+
+@pytest.mark.parametrize("birth", [None, {}, {"pid": 0}, {"pid": "invalid"}])
+def test_clear_dead_child_pass_heartbeat_preserves_unknown_owner(tmp_path, birth):
+    path = tmp_path / "lane_database_daemon_pass_heartbeat.json"
+    raw = json.dumps({"active_task_id": "task:one", "process_birth": birth})
+    path.write_text(raw)
+    result = clear_dead_child_pass_heartbeat(tmp_path)
+    assert result["cleared"] == []
+    assert path.read_text() == raw

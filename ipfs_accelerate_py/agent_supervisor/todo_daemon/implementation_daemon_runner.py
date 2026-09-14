@@ -6,662 +6,28 @@ import argparse
 import logging
 import math
 import os
-import re
 import signal
-import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Mapping, Sequence
 
+from ..objectives.scan_receipts import RefillScanResult
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,
 )
-from ..objectives.scan_receipts import RefillScanResult
 from ..runtime.event_log import append_jsonl_event
+from ..runtime.configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+)
+
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS = 300.0
-EAAEF_IMPLEMENTATION_DAEMON_BIRTH_PLAN_INTERFACE = (
-    "EAAEFImplementationDaemonBirthPlan@1"
-)
-
-
-class EAAEFImplementationDaemonBirthError(RuntimeError):
-    """A planned EAAEF daemon birth or its exact dependency join was rejected."""
-
-
-@dataclass(frozen=True)
-class EAAEFImplementationDaemonBirthPlan:
-    """Non-authoritative expectations for one fresh plan-bound child birth.
-
-    This object is deliberately not a launch credential.  Authority remains in
-    the independently signed, hash-pinned source artifacts that are re-opened
-    on both sides of the supervisor/daemon boundary.
-    """
-
-    board_namespace: str
-    source_head: str
-    source_tree: str
-    configuration_root: str
-    accepted_control_plane_capsule_id: str
-    accepted_control_plane_pin_cid: str
-    active_plan_root_cid: str
-    active_plan_revision: int
-    active_plan_revision_cid: str
-    slice_manifest_cid: str
-    slice_id: str
-    lane_id: str
-    task_ids: tuple[str, ...]
-    task_cids: tuple[str, ...]
-    lane_session_id: str
-    lane_generation: int
-    process_instance_id: str
-    process_birth_nonce: str
-    expected_process_uid: int
-    expected_parent_pid: int
-    expected_parent_process_start_time_ticks: int
-    expected_executable_sha256: str
-    launch_argv: tuple[str, ...]
-
-    INTERFACE = EAAEF_IMPLEMENTATION_DAEMON_BIRTH_PLAN_INTERFACE
-
-    def __post_init__(self) -> None:
-        text_fields = (
-            "board_namespace",
-            "source_head",
-            "source_tree",
-            "configuration_root",
-            "accepted_control_plane_capsule_id",
-            "accepted_control_plane_pin_cid",
-            "active_plan_root_cid",
-            "active_plan_revision_cid",
-            "slice_manifest_cid",
-            "slice_id",
-            "lane_id",
-            "lane_session_id",
-            "process_instance_id",
-            "process_birth_nonce",
-            "expected_executable_sha256",
-        )
-        for name in text_fields:
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value or value != value.strip():
-                raise EAAEFImplementationDaemonBirthError(
-                    f"planned EAAEF birth {name} is invalid"
-                )
-        integer_fields = (
-            "active_plan_revision",
-            "lane_generation",
-            "expected_parent_pid",
-            "expected_parent_process_start_time_ticks",
-        )
-        for name in integer_fields:
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise EAAEFImplementationDaemonBirthError(
-                    f"planned EAAEF birth {name} is invalid"
-                )
-        if (
-            isinstance(self.expected_process_uid, bool)
-            or not isinstance(self.expected_process_uid, int)
-            or self.expected_process_uid < 0
-        ):
-            raise EAAEFImplementationDaemonBirthError(
-                "planned EAAEF birth expected_process_uid is invalid"
-            )
-        task_ids = tuple(self.task_ids)
-        task_cids = tuple(self.task_cids)
-        launch_argv = tuple(self.launch_argv)
-        if (
-            not task_ids
-            or len(task_ids) != len(task_cids)
-            or len(set(task_ids)) != len(task_ids)
-            or len(set(task_cids)) != len(task_cids)
-            or any(
-                not isinstance(value, str)
-                or not value
-                or value != value.strip()
-                for value in (*task_ids, *task_cids)
-            )
-        ):
-            raise EAAEFImplementationDaemonBirthError(
-                "planned EAAEF birth task population is invalid"
-            )
-        if (
-            not launch_argv
-            or any(not isinstance(value, str) or "\x00" in value for value in launch_argv)
-        ):
-            raise EAAEFImplementationDaemonBirthError(
-                "planned EAAEF birth launch argv is invalid"
-            )
-        if len(
-            {
-                self.lane_session_id,
-                self.process_instance_id,
-                self.process_birth_nonce,
-            }
-        ) != 3:
-            raise EAAEFImplementationDaemonBirthError(
-                "planned EAAEF birth identities are not distinct"
-            )
-        object.__setattr__(self, "task_ids", task_ids)
-        object.__setattr__(self, "task_cids", task_cids)
-        object.__setattr__(self, "launch_argv", launch_argv)
-
-
-def require_eaaef_implementation_daemon_birth_plan(
-    *,
-    plan: EAAEFImplementationDaemonBirthPlan,
-    source_artifacts: object,
-    now_ms: int,
-) -> None:
-    """Re-open and exact-join every signed source to one planned birth.
-
-    The scalar plan is comparison input only.  It cannot authorize a lane,
-    native module, Quack client, dispatcher, token, path, or process launch.
-    """
-
-    from ..task_sources.eaaef_operational_schema import (
-        EAAEF_OPERATIONAL_PROFILE_ID,
-    )
-    from ..validation.agent_native_dependency_admission import (
-        VerifiedAgentSupervisorNativeDependencyAdmission,
-    )
-    from ..validation.eaaef_lane_gateway_admission import (
-        VerifiedEAAEFContainerDispatcherFactoryQualification,
-        VerifiedEAAEFLaneRuntimeAdmissionV2,
-        VerifiedEAAEFLaneRuntimeSourceArtifacts,
-        VerifiedEAAEFQuackClientFactoryQualification,
-        eaaef_launch_argv_cid,
-    )
-
-    if type(plan) is not EAAEFImplementationDaemonBirthPlan:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF birth requires the exact typed plan expectation"
-        )
-    if type(source_artifacts) is not VerifiedEAAEFLaneRuntimeSourceArtifacts:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF birth requires the exact signed source-artifact bundle"
-        )
-    if isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms < 1:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF birth verification time is invalid"
-        )
-    admission = source_artifacts.admission
-    native_admission = source_artifacts.native_admission
-    quack_qualification = source_artifacts.quack_qualification
-    dispatcher_qualification = source_artifacts.dispatcher_qualification
-    if (
-        type(admission) is not VerifiedEAAEFLaneRuntimeAdmissionV2
-        or type(native_admission)
-        is not VerifiedAgentSupervisorNativeDependencyAdmission
-        or type(quack_qualification)
-        is not VerifiedEAAEFQuackClientFactoryQualification
-        or type(dispatcher_qualification)
-        is not VerifiedEAAEFContainerDispatcherFactoryQualification
-    ):
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF birth source bundle contains a substitute dependency"
-        )
-    try:
-        checked_lane = admission.reverify(now_ms=now_ms)
-        checked_native = native_admission.reverify(now_ms=now_ms)
-        checked_quack = quack_qualification.reverify(now_ms=now_ms)
-        checked_dispatcher = dispatcher_qualification.reverify(now_ms=now_ms)
-    except Exception as exc:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF birth signed source re-verification failed"
-        ) from exc
-
-    launch_argv_cid = eaaef_launch_argv_cid(plan.launch_argv)
-    lane_expectations = {
-        "board_namespace": plan.board_namespace,
-        "source_head": plan.source_head,
-        "source_tree": plan.source_tree,
-        "active_plan_root_cid": plan.active_plan_root_cid,
-        "active_plan_revision": plan.active_plan_revision,
-        "active_plan_revision_cid": plan.active_plan_revision_cid,
-        "slice_manifest_cid": plan.slice_manifest_cid,
-        "slice_id": plan.slice_id,
-        "lane_id": plan.lane_id,
-        "task_ids": list(plan.task_ids),
-        "task_cids": list(plan.task_cids),
-        "lane_session_id": plan.lane_session_id,
-        "lane_generation": plan.lane_generation,
-        "process_instance_id": plan.process_instance_id,
-        "process_birth_nonce": plan.process_birth_nonce,
-        "expected_process_uid": plan.expected_process_uid,
-        "expected_parent_pid": plan.expected_parent_pid,
-        "expected_parent_process_start_time_ticks": (
-            plan.expected_parent_process_start_time_ticks
-        ),
-        "expected_executable_sha256": plan.expected_executable_sha256,
-        "launch_argv_cid": launch_argv_cid,
-    }
-    native_expectations = {
-        **{
-            name: lane_expectations[name]
-            for name in (
-                "board_namespace",
-                "source_head",
-                "source_tree",
-                "active_plan_root_cid",
-                "active_plan_revision",
-                "active_plan_revision_cid",
-                "slice_manifest_cid",
-                "slice_id",
-                "lane_id",
-                "lane_session_id",
-                "lane_generation",
-                "process_instance_id",
-                "process_birth_nonce",
-                "expected_process_uid",
-                "expected_parent_pid",
-                "expected_parent_process_start_time_ticks",
-                "expected_executable_sha256",
-                "launch_argv_cid",
-            )
-        },
-        "configuration_root": plan.configuration_root,
-        "accepted_control_plane_capsule_id": (
-            plan.accepted_control_plane_capsule_id
-        ),
-        "accepted_control_plane_pin_cid": plan.accepted_control_plane_pin_cid,
-    }
-    lane_mismatches = sorted(
-        name
-        for name, expected in lane_expectations.items()
-        if checked_lane[name] != expected
-    )
-    native_mismatches = sorted(
-        name
-        for name, expected in native_expectations.items()
-        if checked_native[name] != expected
-    )
-    capability = checked_lane.operational_capability
-    store_id = str(capability["store_id"] or "")
-    endpoint = str(capability["command_endpoint"] or "")
-    state_schema_revision = str(capability["state_schema_revision"] or "")
-    policy_invalid = (
-        checked_lane["owner_session_id"] == checked_lane["lane_session_id"]
-        # The V2 admission projection deliberately omits the lane-authority
-        # policy scalars after source verification.  Direct-database and SQL
-        # authority remain visible on the independently signed operational
-        # capability; callback/token constraints are reverified by the lane
-        # loader and the qualified factory records below.
-        or capability["direct_database_open"] is not False
-        or capability["arbitrary_sql_enabled"] is not False
-        or checked_native["sealed_descriptor_required"] is not True
-        or checked_native["ambient_loader_environment_allowed"] is not False
-        or checked_native["raw_path_authority"] is not False
-        or checked_native["launch_authority_granted"] is not False
-        or checked_native["admission_cid"]
-        != checked_lane["native_dependency_admission_cid"]
-        or checked_quack.qualification_cid
-        != checked_lane["quack_client_factory_qualification_cid"]
-        or checked_dispatcher.qualification_cid
-        != checked_lane["container_dispatcher_factory_qualification_cid"]
-        or checked_quack["raw_token_argv_enabled"] is not False
-        or checked_quack["raw_token_environment_enabled"] is not False
-        or checked_quack["raw_token_path_enabled"] is not False
-        or checked_dispatcher["caller_callbacks_allowed"] is not False
-        or checked_dispatcher["direct_container_launch_allowed"] is not False
-        or not store_id
-        or "/" in store_id
-        or "\\" in store_id
-        or store_id.endswith((".duckdb", ".ddb"))
-        or not endpoint.startswith("quack:")
-        or state_schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
-    )
-    if lane_mismatches or native_mismatches or policy_invalid:
-        details = ",".join(
-            (
-                *(f"lane.{name}" for name in lane_mismatches),
-                *(f"native.{name}" for name in native_mismatches),
-                *(("signed_policy",) if policy_invalid else ()),
-            )
-        )
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF signed artifacts differ from the planned birth: " + details
-        )
-
-
-_VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN = object()
-
-
-class VerifiedEAAEFImplementationDaemonChildBirth:
-    """Child-side signed sources joined to the current OS process birth."""
-
-    __slots__ = ("plan", "source_artifacts", "process_birth")
-
-    def __init__(
-        self,
-        token: object,
-        *,
-        plan: EAAEFImplementationDaemonBirthPlan,
-        source_artifacts: object,
-        process_birth: object,
-    ) -> None:
-        if token is not _VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN:
-            raise TypeError(
-                "verified EAAEF daemon child births come from the exact loader"
-            )
-        self.plan = plan
-        self.source_artifacts = source_artifacts
-        self.process_birth = process_birth
-
-
-def load_and_verify_eaaef_implementation_daemon_child_birth(
-    repo_root: Path | str,
-    *,
-    plan: EAAEFImplementationDaemonBirthPlan,
-    source_coordinates: object,
-    now_ms: int,
-) -> VerifiedEAAEFImplementationDaemonChildBirth:
-    """Re-open signed sources and join them to the actual child PID/argv birth."""
-
-    from ..validation.eaaef_lane_gateway_admission import (
-        EAAEFLaneRuntimeDependencySourceCoordinates,
-        VerifiedEAAEFLaneRuntimeSourceArtifacts,
-        VerifiedEAAEFProcessBirth,
-        load_and_verify_eaaef_lane_runtime_source_artifacts,
-        verify_eaaef_current_process_birth,
-    )
-
-    # Coordinates are transport-only and never grant authority.  Reject a raw
-    # mapping before any source access; callers must use the closed parser.
-    if type(plan) is not EAAEFImplementationDaemonBirthPlan:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child birth requires the exact typed plan expectation"
-        )
-    if type(source_coordinates) is not EAAEFLaneRuntimeDependencySourceCoordinates:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child birth requires exact parsed source coordinates"
-        )
-    try:
-        source_artifacts = load_and_verify_eaaef_lane_runtime_source_artifacts(
-            repo_root,
-            coordinates=source_coordinates,
-            now_ms=now_ms,
-        )
-    except Exception as exc:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child could not reopen its signed birth sources"
-        ) from exc
-    if type(source_artifacts) is not VerifiedEAAEFLaneRuntimeSourceArtifacts:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child source loader returned a substitute artifact bundle"
-        )
-    require_eaaef_implementation_daemon_birth_plan(
-        plan=plan,
-        source_artifacts=source_artifacts,
-        now_ms=now_ms,
-    )
-    try:
-        process_birth = verify_eaaef_current_process_birth(
-            source_artifacts.admission
-        )
-    except Exception as exc:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child OS process birth differs from signed parent/executable/argv"
-        ) from exc
-    if type(process_birth) is not VerifiedEAAEFProcessBirth:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child process verifier returned a substitute birth"
-        )
-    expected_birth = {
-        "lane_session_id": plan.lane_session_id,
-        "lane_generation": plan.lane_generation,
-        "process_instance_id": plan.process_instance_id,
-        "process_birth_nonce": plan.process_birth_nonce,
-        "process_uid": plan.expected_process_uid,
-        "parent_pid": plan.expected_parent_pid,
-        "parent_process_start_time_ticks": (
-            plan.expected_parent_process_start_time_ticks
-        ),
-        "executable_sha256": plan.expected_executable_sha256,
-    }
-    if any(
-        process_birth[name] != expected
-        for name, expected in expected_birth.items()
-    ):
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF child verified process does not exact-join its planned birth"
-        )
-    return VerifiedEAAEFImplementationDaemonChildBirth(
-        _VERIFIED_EAAEF_IMPLEMENTATION_DAEMON_CHILD_BIRTH_TOKEN,
-        plan=plan,
-        source_artifacts=source_artifacts,
-        process_birth=process_birth,
-    )
-
-
-def build_eaaef_implementation_daemon_runtime_bundle(
-    *,
-    child_birth: VerifiedEAAEFImplementationDaemonChildBirth,
-    native_launch: object,
-    native_module: object,
-    sealed_descriptors: object,
-    authorization_client: object,
-    journal_parent_directory: Path | str,
-    recovery_admissions: Sequence[object] = (),
-    maximum_wait_ms: int = 30_000,
-    poll_interval_ms: int = 10,
-) -> object:
-    """Build the sole exact gateway/dispatcher bundle through state factories."""
-
-    from ...llm_router import AgentSupervisorNativeDependencyLaunch
-    from ..runtime.eaaef_bootstrap_gateway import (
-        EAAEFBootstrapCommandGateway,
-        EAAEFLaneRuntimeDependencyBundle,
-        EAAEFLaneRuntimeDependencyFactory,
-        EAAEFSealedQuackClientDescriptors,
-        create_eaaef_lane_runtime_dependency_factory,
-    )
-    from ..validation.eaaef_bootstrap_gateway_launch import (
-        EAAEFCommandAuthorizationServiceClient,
-    )
-    from .external_agent_container_dispatcher import (
-        ExternalAgentContainerWorkerDispatcher,
-    )
-
-    if type(child_birth) is not VerifiedEAAEFImplementationDaemonChildBirth:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF runtime bundle requires an exact verified child birth"
-        )
-    if (
-        type(native_launch) is not AgentSupervisorNativeDependencyLaunch
-        or type(sealed_descriptors) is not EAAEFSealedQuackClientDescriptors
-        or type(authorization_client) is not EAAEFCommandAuthorizationServiceClient
-    ):
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF runtime bundle requires exact native, sealed, and signer seams"
-        )
-    artifacts = child_birth.source_artifacts
-    try:
-        factory = create_eaaef_lane_runtime_dependency_factory(
-            admission=artifacts.admission,
-            process_birth=child_birth.process_birth,
-            native_admission=artifacts.native_admission,
-            native_launch=native_launch,
-            native_module=native_module,
-            quack_qualification=artifacts.quack_qualification,
-            sealed_descriptors=sealed_descriptors,
-            dispatcher_qualification=artifacts.dispatcher_qualification,
-            authorization_client=authorization_client,
-            journal_parent_directory=journal_parent_directory,
-            recovery_admissions=recovery_admissions,
-            maximum_wait_ms=maximum_wait_ms,
-            poll_interval_ms=poll_interval_ms,
-        )
-        if type(factory) is not EAAEFLaneRuntimeDependencyFactory:
-            raise EAAEFImplementationDaemonBirthError(
-                "EAAEF state factory returned a substitute dependency factory"
-            )
-        bundle = factory.build()
-    except EAAEFImplementationDaemonBirthError:
-        raise
-    except Exception as exc:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF exact runtime dependency factory failed closed"
-        ) from exc
-    if (
-        type(bundle) is not EAAEFLaneRuntimeDependencyBundle
-        or type(bundle.gateway) is not EAAEFBootstrapCommandGateway
-        or type(bundle.container_dispatcher)
-        is not ExternalAgentContainerWorkerDispatcher
-        or bundle.process_birth is not child_birth.process_birth
-    ):
-        try:
-            bundle.close()
-        except Exception:
-            pass
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF state factory returned a substitute runtime dependency bundle"
-        )
-    try:
-        evidence = bundle.gateway.require_production_admission()
-    except Exception as exc:
-        bundle.close()
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF runtime bundle failed exact production re-verification"
-        ) from exc
-    admission = artifacts.admission
-    if (
-        evidence.get("process_birth_cid")
-        != child_birth.process_birth["birth_cid"]
-        or evidence.get("lane_merge_admission_cid")
-        != admission["merge_admission_cid"]
-        or evidence.get("gateway_binding_cid")
-        != admission["gateway_binding_cid"]
-        or evidence.get("plan_r2_enabled") is not False
-        or evidence.get("direct_database_open") is not False
-        or evidence.get("raw_token_available") is not False
-    ):
-        bundle.close()
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF runtime bundle evidence differs from its signed child birth"
-        )
-    return bundle
-
-
-def build_eaaef_database_implementation_daemon_from_runtime_bundle(
-    *,
-    child_birth: VerifiedEAAEFImplementationDaemonChildBirth,
-    runtime_bundle: object,
-    install_schema: bool = True,
-) -> object:
-    """Inject one exact EAAEF bundle into DatabaseImplementationDaemon.
-
-    No caller path, callback, Portal object, mapping, token, environment value,
-    or argv value can enter this constructor seam.  The nominal
-    ``database_path`` is the signed opaque store identity and is never opened
-    in Quack mode.
-    """
-
-    from ..runtime.eaaef_bootstrap_gateway import (
-        EAAEFBootstrapCommandGateway,
-        EAAEFLaneRuntimeDependencyBundle,
-    )
-    from ..task_sources.eaaef_operational_schema import (
-        EAAEF_OPERATIONAL_PROFILE_ID,
-    )
-    from .external_agent_container_dispatcher import (
-        ExternalAgentContainerWorkerDispatcher,
-    )
-    from .implementation_daemon import DatabaseImplementationDaemon
-
-    if type(child_birth) is not VerifiedEAAEFImplementationDaemonChildBirth:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon construction requires an exact verified child birth"
-        )
-    if type(runtime_bundle) is not EAAEFLaneRuntimeDependencyBundle:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon construction requires the exact state runtime bundle"
-        )
-    if type(install_schema) is not bool:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon install_schema selection must be boolean"
-        )
-    gateway = runtime_bundle.gateway
-    dispatcher = runtime_bundle.container_dispatcher
-    artifacts = child_birth.source_artifacts
-    admission = artifacts.admission
-    capability = admission.operational_capability
-    signed_store_id = str(capability["store_id"] or "")
-    signed_endpoint = str(capability["command_endpoint"] or "")
-    signed_schema_revision = str(capability["state_schema_revision"] or "")
-    if (
-        type(gateway) is not EAAEFBootstrapCommandGateway
-        or type(dispatcher) is not ExternalAgentContainerWorkerDispatcher
-        or runtime_bundle.process_birth is not child_birth.process_birth
-        or gateway.capability.content_id != admission["gateway_binding_cid"]
-        or gateway.capability.operational_capability_cid
-        != admission["operational_capability_cid"]
-        or gateway.capability.command_endpoint != signed_endpoint
-        or gateway.capability.state_schema_revision != signed_schema_revision
-        or signed_schema_revision != EAAEF_OPERATIONAL_PROFILE_ID
-        or not signed_store_id
-        or "/" in signed_store_id
-        or "\\" in signed_store_id
-        or signed_store_id.endswith((".duckdb", ".ddb"))
-    ):
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon runtime bundle differs from signed store/schema authority"
-        )
-    try:
-        production = gateway.require_production_admission()
-    except Exception as exc:
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon gateway failed pre-construction re-verification"
-        ) from exc
-    if (
-        production.get("process_birth_cid")
-        != child_birth.process_birth["birth_cid"]
-        or production.get("gateway_binding_cid")
-        != admission["gateway_binding_cid"]
-    ):
-        raise EAAEFImplementationDaemonBirthError(
-            "EAAEF daemon gateway no longer joins the exact process birth"
-        )
-    try:
-        return DatabaseImplementationDaemon(
-            # DatabaseImplementationDaemon currently names this logical
-            # identity `database_path`; under Quack it is never file authority.
-            database_path=signed_store_id,
-            coordination_path=None,
-            execution_path=None,
-            owner_session_id=str(admission["lane_session_id"]),
-            process_instance_id=str(admission["process_instance_id"]),
-            authority_mode="quack",
-            task_source_kind="duckdb",
-            quack_uri=signed_endpoint,
-            state_schema_revision=signed_schema_revision,
-            markdown_path=None,
-            state_path=None,
-            strategy_path=None,
-            events_path=None,
-            pid_path=None,
-            queue_path=None,
-            provider_fn=dispatcher.run_provider,
-            effect_fn=dispatcher.apply_effect,
-            validation_fn=dispatcher.validate_effect,
-            require_real_execution=True,
-            task_source=None,
-            coordinator=None,
-            quack_command_gateway=gateway,
-            install_schema=install_schema,
-        )
-    except Exception:
-        # A failed constructor cannot own the qualified clients.
-        runtime_bundle.close()
-        raise
 
 
 def daemon_pass_is_idle(result: Mapping[str, Any]) -> bool:
@@ -690,95 +56,8 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "source_digest",
         "wake_kinds",
         "requirement_id",
-        "control_plane_error",
-        "declared_output_rearm",
-        "merge_quarantine_settlement",
-        "post_merge_recovery",
-        "write_count",
-        "backoff_seconds",
     )
-    compact = {key: result[key] for key in keys if key in result}
-    observations = _compact_recovery_observations(result)
-    if observations is not None:
-        compact["recovery_observations"] = observations
-    return compact
-
-
-def _compact_recovery_observations(
-    result: Mapping[str, Any],
-) -> dict[str, Any] | None:
-    """Keep rejected recovery visible without copying receipts or task bodies.
-
-    Observation-only recovery correctly leaves a pass idle. Omitting those
-    results from its heartbeat, however, makes a blocked recovery look like
-    an ordinary empty frontier. These summaries grant no retry authority and
-    do not change write accounting or the idle-log throttle.
-    """
-    stages = (
-        "unknown_callback_reopens",
-        "terminal_retry_reconciliations",
-        "terminal_portal_reconciliations",
-        "protected_path_recovery_reconciliations",
-        "external_protected_checkout_recovery_reconciliations",
-        "inflight_process_recovery_reconciliations",
-        "validation_retry_seed_conflict_recovery_reconciliations",
-        "leftover_wait_deferral_budget_recovery_reconciliations",
-        "pooled_worktree_create_recovery_reconciliations",
-        "completion_reconciliations",
-        "expired_attempt_reconciliations",
-        "stale_in_progress_unstalls",
-        "inflight_deferral_unstalls",
-    )
-    text_fields = (
-        "task_cid", "task_alias", "attempt_id", "status", "reason",
-        "error_type", "error_id",
-    )
-    flag_fields = (
-        "operator_review_required", "recovery_deferred",
-        "provider_dispatched", "attempt_consumed",
-    )
-    entries: list[dict[str, Any]] = []
-    truncated = False
-    for stage in stages:
-        outcomes = result.get(stage)
-        if not isinstance(outcomes, (list, tuple)):
-            continue
-        truncated |= len(outcomes) > 64
-        for outcome in outcomes[:64]:
-            if not isinstance(outcome, Mapping) or outcome.get("changed") is not False:
-                continue
-            status = outcome.get("status")
-            if not (
-                (isinstance(status, str)
-                 and status in {"blocked", "quarantined", "unknown", "retrying"})
-                or outcome.get("operator_review_required") is True
-                or outcome.get("recovery_deferred") is True
-                or (stage == "unknown_callback_reopens"
-                    and outcome.get("reopened") is False)
-            ):
-                continue
-            if len(entries) >= 16:
-                truncated = True
-                continue
-            entry: dict[str, Any] = {"stage": stage, "changed": False}
-            for field in text_fields:
-                value = outcome.get(field)
-                if isinstance(value, str) and value:
-                    entry[field] = value[:512]
-                    truncated |= len(value) > 512
-            for field in flag_fields:
-                value = outcome.get(field)
-                if type(value) is bool:
-                    entry[field] = value
-            entries.append(entry)
-    if not entries and not truncated:
-        return None
-    return {
-        "schema": "ipfs_accelerate_py/agent-supervisor/recovery-observation-summary@1",
-        "entries": entries,
-        "truncated": truncated,
-        "retry_authority": False,
-    }
+    return {key: result[key] for key in keys if key in result}
 
 
 def log_daemon_pass_result(
@@ -807,50 +86,12 @@ def bounded_daemon_wait_timeout(
 
     timeout = max(0.0, float(default_timeout))
     retry_after = result.get("next_wake_after_seconds")
-    if (
-        not isinstance(retry_after, bool)
-        and isinstance(retry_after, (int, float))
-        and math.isfinite(float(retry_after))
-    ):
-        timeout = min(timeout, max(0.0, float(retry_after)))
-    backoff = result.get("backoff_seconds")
-    if (
-        not isinstance(backoff, bool)
-        and isinstance(backoff, (int, float))
-        and math.isfinite(float(backoff))
-        and float(backoff) > 0
-    ):
-        timeout = max(timeout, min(30.0, float(backoff)))
-    return timeout
-
-
-def materialize_database_task_state_compatibility_projection(
-    daemon: object,
-    *,
-    state_path: Path,
-    result: Mapping[str, Any],
-) -> Mapping[str, Any] | None:
-    """Refresh a database daemon's non-authoritative supervisor projection.
-
-    Database authority does not require JSON state.  The multi-supervisor's
-    terminal-quiescence compatibility probe does, however, consume the
-    conventional ``*_task_state.json`` path.  Capability detection keeps
-    legacy Portal daemons on their existing projection path.
-    """
-
-    materialize = getattr(
-        daemon,
-        "materialize_task_state_compatibility_projection",
-        None,
-    )
-    if not callable(materialize):
-        return None
-    projection = materialize(state_path=state_path, pass_result=result)
-    if not isinstance(projection, Mapping) or projection.get("written") is not True:
-        raise RuntimeError(
-            "database task-state compatibility projection was not persisted"
-        )
-    return projection
+    if isinstance(retry_after, bool) or not isinstance(retry_after, (int, float)):
+        return timeout
+    retry_after = float(retry_after)
+    if not math.isfinite(retry_after):
+        return timeout
+    return min(timeout, max(0.0, retry_after))
 
 
 class DaemonHookTimeoutError(TimeoutError):
@@ -867,7 +108,7 @@ class ImplementationDaemonRunContext:
     events_path: Path
     pass_index: int = 0
 
-    def for_pass(self, pass_index: int) -> ImplementationDaemonRunContext:
+    def for_pass(self, pass_index: int) -> "ImplementationDaemonRunContext":
         return ImplementationDaemonRunContext(
             parsed=self.parsed,
             state_path=self.state_path,
@@ -883,7 +124,6 @@ DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
 DaemonBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 DaemonMergeResolverCommand = str | Callable[[], str]
-ExternalAgentContainerDispatcherFactory = Callable[..., Any]
 
 
 def _env_float(name: str, default: float) -> float:
@@ -1874,27 +1114,6 @@ def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     )
 
 
-def database_implementation_sidecar_paths(
-    parsed: argparse.Namespace,
-) -> dict[str, Path]:
-    """Return lane-private database execution and coordination sidecars.
-
-    The control database may be shared through Quack, but DuckDB sidecars may
-    only have one external writer.  Bind both filenames to the already
-    lane-scoped ``state_dir`` and ``state_prefix`` supplied by the supervisor.
-    """
-
-    state_dir = Path(parsed.state_dir).absolute()
-    state_prefix = str(parsed.state_prefix or "database").strip()
-    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", state_prefix) is None:
-        raise ValueError("state_prefix is unsafe for database sidecar paths")
-    return {
-        "execution_path": state_dir / f"{state_prefix}_database_execution.duckdb",
-        "coordination_path": state_dir
-        / f"{state_prefix}_database_coordination.duckdb",
-    }
-
-
 def configure_daemon_logging(
     parsed: argparse.Namespace,
     *,
@@ -1924,8 +1143,6 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
 
 def resolve_database_implementation_paths(
     parsed: argparse.Namespace,
-    *,
-    authority_mode: str = "",
 ) -> dict[str, Path | None]:
     """Resolve control-plane database paths for database-authoritative execution.
 
@@ -1933,35 +1150,20 @@ def resolve_database_implementation_paths(
     be absent under database authority.
     """
 
-    mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
-    mode = mode.strip().lower().replace("-", "_")
-    if mode == "quack":
-        # Quack owns the shared task-state boundary.  Lane-local
-        # execution/coordination sidecars must be derived from the expanded
-        # lane state directory, never from the shared remote store identity,
-        # or every lane would open the same DuckDB file as a writer.
-        state_dir = Path(getattr(parsed, "state_dir", Path("state")))
-        database_path: Path | None = state_dir / "quack-lane-control.duckdb"
-    else:
-        database_path = getattr(parsed, "database_path", None)
+    database_path = getattr(parsed, "database_path", None)
     if database_path is not None:
         database_path = Path(database_path)
     todo_path = getattr(parsed, "todo_path", None)
-    if mode != "quack" and database_path is None and todo_path is not None:
+    if database_path is None and todo_path is not None:
         candidate = Path(todo_path)
         if candidate.suffix.lower() in {".duckdb", ".ddb"}:
             database_path = candidate
-    sidecars = database_implementation_sidecar_paths(parsed)
     coordination_path = getattr(parsed, "coordination_path", None)
-    coordination_path = (
-        Path(coordination_path)
-        if coordination_path is not None
-        else sidecars["coordination_path"]
-    )
+    if coordination_path is not None:
+        coordination_path = Path(coordination_path)
     return {
         "database_path": database_path,
         "coordination_path": coordination_path,
-        "execution_path": sidecars["execution_path"],
     }
 
 
@@ -1975,24 +1177,20 @@ def bind_database_portal_execution_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
-    external_agent_container_dispatcher_factory: (
-        ExternalAgentContainerDispatcherFactory | None
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
-    owner_merge_runtime: Any = None,
-    admitted_owner_merge_config_cid: str | None = None,
-    admitted_owner_merge_plan_cid: str | None = None,
 ) -> object | None:
-    """Bind one admitted database execution path in production mode.
+    """Bind real Portal execution to a database daemon in production mode.
 
     DuckDB remains the task/claim/completion authority.  The Portal daemon is
     given only a private one-task projection beneath this lane's state
-    directory, never the configured canonical Markdown board.  EAAEF is a
-    categorical exception: it may use only the container worker dispatcher,
-    and cannot demote to Portal when that dispatcher is unavailable.
+    directory, never the configured canonical Markdown board.
     """
 
     if not bool(getattr(parsed, "implement", False)):
         return None
+    from .database_portal_bridge import DatabasePortalExecutionBridge
 
     binder = getattr(daemon, "bind_execution_callbacks", None)
     task_source = getattr(daemon, "task_source", None)
@@ -2000,42 +1198,6 @@ def bind_database_portal_execution_from_args(
         raise RuntimeError(
             "production database daemon does not expose execution callback binding"
         )
-
-    worker_network_launch_authority_json = str(
-        getattr(parsed, "worker_network_launch_authority_json", "") or ""
-    ).strip()
-    if worker_network_launch_authority_json:
-        from .external_agent_container_dispatcher import (
-            EXTERNAL_AGENT_CONTAINER_DISPATCH_BLOCKERS,
-            ExternalAgentContainerWorkerDispatcher,
-        )
-
-        if external_agent_container_dispatcher_factory is None:
-            raise RuntimeError(
-                "EAAEF container worker dispatch is unavailable_fail_closed: "
-                + ",".join(EXTERNAL_AGENT_CONTAINER_DISPATCH_BLOCKERS)
-            )
-        dispatcher = external_agent_container_dispatcher_factory(
-            daemon=daemon,
-            parsed=parsed,
-            repo_root=repo_root,
-            worker_network_launch_authority_json=(
-                worker_network_launch_authority_json
-            ),
-        )
-        if type(dispatcher) is not ExternalAgentContainerWorkerDispatcher:
-            raise RuntimeError(
-                "EAAEF execution factory did not return the exact container "
-                "worker dispatcher"
-            )
-        binder(
-            provider_fn=dispatcher.run_provider,
-            effect_fn=dispatcher.apply_effect,
-            validation_fn=dispatcher.validate_effect,
-        )
-        return dispatcher
-
-    from .database_portal_bridge import DatabasePortalExecutionBridge
 
     state_dir = Path(parsed.state_dir).absolute()
     state_prefix = str(parsed.state_prefix or "database")
@@ -2050,104 +1212,24 @@ def bind_database_portal_execution_from_args(
         or default_implementation_protected_paths
         or None
     )
-    configured_merge_queue_dir = getattr(parsed, "merge_queue_dir", None)
-    configured_merge_target_branch = str(
-        getattr(parsed, "merge_target_branch", "") or ""
-    ).strip()
-    recovery_queue: Any = None
-    from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
-
-    advertised_merge_pair = (
-        str(getattr(parsed, "owner_merge_bootstrap_profile", "") or "")
-        == "native-owner-merge-pair@1"
-    )
-    spar_board = (
-        str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE
-    )
-    owner_recovery_required = advertised_merge_pair or (
-        not spar_board
-        and str(getattr(parsed, "authority_mode", "") or "") == "quack"
-        and configured_merge_queue_dir is not None
-        and bool(configured_merge_target_branch)
-    )
-    if owner_recovery_required and owner_merge_runtime is None:
-        raise RuntimeError(
-            "owner-backed merge recovery runtime is not admitted; "
-            "native migration and paired grants are required"
-        )
-    if spar_board and not advertised_merge_pair:
-        # Queue owner was not admitted this generation. Do not crash-loop and
-        # do not open a filesystem merge queue.
-        configured_merge_queue_dir = None
-    if owner_merge_runtime is not None:
-        from ..merge.owner_recovery_adapter import OwnerMergeRecoveryRuntime
-
-        if type(owner_merge_runtime) is not OwnerMergeRecoveryRuntime:
-            raise RuntimeError("native queue requires its exact admitted recovery runtime")
-        owner_merge_runtime.validate_factory_binding(
-            repository_root=repo_root,
-            attempt_root=attempt_root,
-            board_namespace=str(getattr(parsed, "board_namespace", "") or ""),
-            lane_id=str(getattr(parsed, "task_shard_index", "")),
-            target_branch=configured_merge_target_branch,
-            admitted_config_cid=admitted_owner_merge_config_cid,
-            admitted_plan_cid=admitted_owner_merge_plan_cid,
-        )
-        recovery_queue = owner_merge_runtime.queue
     if (
-        recovery_queue is None
-        and configured_merge_queue_dir is not None
-        and configured_merge_target_branch
-    ):
-        try:
-            resolved_repo_root = Path(repo_root).resolve(strict=True)
-            repository_check = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=resolved_repo_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-            target_check = subprocess.run(
-                [
-                    "git",
-                    "rev-parse",
-                    "--verify",
-                    f"refs/heads/{configured_merge_target_branch}^{{commit}}",
-                ],
-                cwd=resolved_repo_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise RuntimeError(
-                "configured database post-merge recovery target is unavailable"
-            ) from exc
-        if (
-            repository_check.returncode != 0
-            or target_check.returncode != 0
-            or Path(repository_check.stdout.strip()).resolve()
-            != resolved_repo_root
-        ):
-            raise RuntimeError(
-                "configured database post-merge recovery target is not an "
-                "exact local branch"
-            )
-        from ..merge.checkout_lock import checkout_repository_id
-        from ..merge.merge_queue import MergeQueue
-
-        recovery_queue = MergeQueue(
-            Path(configured_merge_queue_dir),
-            target_repository_id=checkout_repository_id(resolved_repo_root),
-            target_branch=configured_merge_target_branch,
-            require_target_binding=True,
+        configured_board_live_admission is not None
+        and not isinstance(
+            configured_board_live_admission,
+            ConfiguredBoardLiveCapsuleAdmission,
         )
+    ):
+        raise TypeError(
+            "configured_board_live_admission must be a verified admission object"
+        )
+    configured_board_admission_cid = (
+        configured_board_live_admission.admission_cid
+        if configured_board_live_admission is not None
+        else ""
+    )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
-        daemon = portal_daemon_class(
+        return portal_daemon_class(
             todo_path=paths.task_projection,
             state_path=paths.state,
             strategy_path=paths.strategy,
@@ -2166,8 +1248,6 @@ def bind_database_portal_execution_from_args(
             worktree_root=parsed.worktree_root,
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
-            merge_queue=recovery_queue,
-            isolate_merge_queue_to_task_projection=True,
             worktree_submodule_paths=worktree_submodule_paths,
             implementation_protected_paths=implementation_protected_paths,
             manual_completion_authority_task_ids=getattr(
@@ -2209,198 +1289,29 @@ def bind_database_portal_execution_from_args(
             maintenance_interval_seconds=getattr(
                 parsed, "maintenance_interval_seconds", None
             ),
-            dependency_preflight_artifact_store_path=(
-                attempt_root / "dependency-preflight-artifacts"
-            ),
-        )
-        from ..semantic_refactoring.residual_authority import (
-            SPAR_BOARD_NAMESPACE,
-            bind_spar_residual_authority,
         )
 
-        if str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE:
-            bind_spar_residual_authority(daemon, repo_root=repo_root)
-        return daemon
-
-    configured_worktree_root = getattr(parsed, "worktree_root", None)
-    if configured_worktree_root is not None:
-        configured_worktree_root = Path(configured_worktree_root)
-        if not configured_worktree_root.is_absolute():
-            configured_worktree_root = repo_root / configured_worktree_root
-        configured_worktree_root = configured_worktree_root.absolute()
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
-        repository_root=repo_root,
-        worktree_root=configured_worktree_root,
-        implementation_protected_paths=implementation_protected_paths,
-        merge_queue=recovery_queue,
-        merge_target_branch=(
-            configured_merge_target_branch if recovery_queue is not None else ""
+        repo_root=repo_root,
+        board_namespace=str(getattr(parsed, "board_namespace", "") or ""),
+        configured_board_admission_cid=configured_board_admission_cid,
+        configured_board_live_admission=configured_board_live_admission,
+        merge_target_branch=str(
+            getattr(parsed, "merge_target_branch", "") or ""
         ),
-        merge_target_ref=(
-            str(getattr(parsed, "merge_target_branch", "") or "HEAD")
-        ),
-        worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
-        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
-        implementation_timeout=float(parsed.implementation_timeout),
+        prior_attempt_authority=(
+            daemon.authorize_superseded_portal_attempt_binding
+        ),
     )
-    consumed_recovery_binder = getattr(
-        daemon,
-        "bind_superseded_consumed_attempt_recovery",
-        None,
-    )
-    if not callable(consumed_recovery_binder):
-        raise RuntimeError(
-            "production database daemon does not expose consumed-attempt "
-            "recovery binding"
-        )
-    protected_recovery_binder = getattr(
-        daemon,
-        "bind_protected_preservation_recovery",
-        None,
-    )
-    if not callable(protected_recovery_binder):
-        raise RuntimeError(
-            "production database daemon does not expose protected-preservation "
-            "recovery binding"
-        )
-    protected_recovery = getattr(
-        bridge,
-        "recover_protected_path_preservation",
-        None,
-    )
-    if not callable(protected_recovery):
-        raise RuntimeError(
-            "database Portal bridge does not expose protected-preservation "
-            "recovery"
-        )
-    protected_self_lock_binder = getattr(
-        daemon,
-        "bind_protected_reconciliation_self_lock_recovery",
-        None,
-    )
-    if not callable(protected_self_lock_binder):
-        raise RuntimeError(
-            "production database daemon does not expose protected "
-            "reconciliation self-lock recovery binding"
-        )
-    protected_self_lock_recovery = getattr(
-        bridge,
-        "recover_protected_reconciliation_self_lock",
-        None,
-    )
-    if not callable(protected_self_lock_recovery):
-        raise RuntimeError(
-            "database Portal bridge does not expose protected reconciliation "
-            "self-lock recovery"
-        )
     binder(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
-        protected_path_recovery_fn=bridge.recover_protected_path_retry,
-        external_protected_checkout_recovery_fn=(
-            bridge.recover_external_protected_checkout
-        ),
-        inflight_process_recovery_fn=bridge.recover_inflight_process,
-        validation_retry_seed_conflict_recovery_fn=(
-            bridge.recover_validation_retry_seed_conflict
-        ),
-        pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
-        landed_completion_recovery_fn=bridge.recover_landed_completion,
-        validation_retry_successor_recovery_fn=(
-            bridge.verify_validation_retry_successor_recovery
-        ),
-        post_commit_candidate_recovery_fn=(
-            bridge.recover_post_commit_candidate
-        ),
-        quack_preprojection_transport_recovery_fn=(
-            bridge.recover_quack_preprojection_transport_failure
-        ),
-        deterministic_reconciliation_fn=(
-            bridge.run_deterministic_reconciliation
-        ),
     )
-    consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
-    protected_recovery_binder(protected_recovery)
-    protected_self_lock_binder(protected_self_lock_recovery)
-    if recovery_queue is not None:
-        merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)
-        if not callable(merge_train_binder):
-            raise RuntimeError(
-                "production database daemon does not expose merge-train "
-                "recovery binding"
-            )
-        consumer_root = Path(attempt_root) / "merge-train-consumer"
-        consumer_root.mkdir(parents=True, exist_ok=True)
-        (consumer_root / "implementation-logs").mkdir(exist_ok=True)
-        consumer_projection = consumer_root / "task-projection.md"
-        if not consumer_projection.exists():
-            consumer_projection.write_text(
-                "# merge-train-consumer\n",
-                encoding="utf-8",
-            )
-        for name in ("portal-task-state.json", "portal-strategy.json"):
-            path = consumer_root / name
-            if not path.exists():
-                path.write_text("{}\n", encoding="utf-8")
-        consumer_events = consumer_root / "portal-events.jsonl"
-        consumer_events.touch(exist_ok=True)
-        from .database_portal_bridge import DatabasePortalAttemptPaths
-
-        consumer_paths = DatabasePortalAttemptPaths(
-            root=consumer_root,
-            task_projection=consumer_projection,
-            binding=consumer_root / "database-attempt-binding.json",
-            state=consumer_root / "portal-task-state.json",
-            strategy=consumer_root / "portal-strategy.json",
-            events=consumer_events,
-            implementation_logs=consumer_root / "implementation-logs",
-        )
-
-        def consume_pending_merge() -> object:
-            portal = portal_factory(consumer_paths, "")
-            closer = getattr(portal, "close_event_runtime", None) or getattr(
-                portal, "close", None
-            )
-            try:
-                consume = getattr(
-                    portal, "_consume_any_pending_merge_candidate", None
-                )
-                if not callable(consume):
-                    raise RuntimeError(
-                        "Portal merge consumer lacks pending merge-train consume"
-                    )
-                return consume()
-            finally:
-                if callable(closer):
-                    closer()
-
-        merge_train_binder(
-            merge_queue=recovery_queue,
-            repo_root=repo_root,
-            merge_target_branch=configured_merge_target_branch,
-            portal_attempt_root=bridge.attempt_root,
-            worktree_submodule_paths=bridge.worktree_submodule_paths,
-            pending_merge_consume_fn=consume_pending_merge,
-        )
-        recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
-        if callable(recovery_binder) and callable(
-            getattr(daemon, "recover_blocked_post_merge_declared_outputs", None)
-        ):
-            recovery_binder(
-                lambda: bridge.recover_post_merge_declared_outputs(daemon)
-            )
-        consume_binder = getattr(daemon, "bind_pending_merge_consume", None)
-        if not callable(consume_binder):
-            raise RuntimeError(
-                "production database daemon does not expose pending merge "
-                "consume binding"
-            )
-        consume_binder(bridge.consume_pending_same_board_merge)
     return bridge
 
 
@@ -2412,8 +1323,8 @@ def build_portal_implementation_daemon_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
-    external_agent_container_dispatcher_factory: (
-        ExternalAgentContainerDispatcherFactory | None
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
     """Build a portal or database implementation daemon from parsed CLI args."""
@@ -2429,10 +1340,7 @@ def build_portal_implementation_daemon_from_args(
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(
-        parsed,
-        authority_mode=program.authority_mode if program is not None else "",
-    )
+    db_paths = resolve_database_implementation_paths(parsed)
     database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
@@ -2465,7 +1373,8 @@ def build_portal_implementation_daemon_from_args(
         daemon: object = DatabaseImplementationDaemon(
             database_path=database_path,
             coordination_path=db_paths["coordination_path"],
-            execution_path=db_paths["execution_path"],
+            state_dir=Path(parsed.state_dir),
+            state_prefix=str(parsed.state_prefix),
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -2478,31 +1387,12 @@ def build_portal_implementation_daemon_from_args(
             events_path=optional_events if use_projections else None,
             pid_path=None,
             queue_path=None,
-            max_task_attempts=int(
-                getattr(parsed, "max_task_attempts", 0) or 0
-            ),
+            require_real_execution=bool(getattr(parsed, "implement", False)),
+            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
             task_shard_count=getattr(parsed, "task_shard_count", 1),
             task_shard_index=getattr(parsed, "task_shard_index", 0),
             strict_task_sharding=getattr(
                 parsed, "strict_task_sharding", False
-            ),
-            require_real_execution=bool(getattr(parsed, "implement", False)),
-            execution_slice_task_ids=getattr(
-                parsed, "execution_slice_task_id", ()
-            ),
-            execution_slice_task_cids=getattr(
-                parsed, "execution_slice_task_cid", ()
-            ),
-            idle_lane_work_stealing=str(
-                getattr(parsed, "idle_lane_work_stealing", "") or ""
-            ),
-            repo_root=repo_root,
-            merge_target_ref=str(
-                getattr(parsed, "merge_target_branch", "") or "HEAD"
-            ),
-            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
-            board_namespace=str(
-                getattr(parsed, "board_namespace", "") or ""
             ),
         )
         bind_database_portal_execution_from_args(
@@ -2516,9 +1406,7 @@ def build_portal_implementation_daemon_from_args(
             ),
             default_objective_path=default_objective_path,
             default_objective_bundle_dir=default_objective_bundle_dir,
-            external_agent_container_dispatcher_factory=(
-                external_agent_container_dispatcher_factory
-            ),
+            configured_board_live_admission=configured_board_live_admission,
         )
         return daemon, ImplementationDaemonRunContext(
             parsed=parsed,
@@ -2529,6 +1417,13 @@ def build_portal_implementation_daemon_from_args(
 
     worktree_submodule_paths = (
         getattr(parsed, "worktree_submodule_path", None) or default_worktree_submodule_paths or None
+    )
+    authority_revalidation_only = bool(
+        getattr(
+            parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
     )
     implementation_protected_paths = (
         getattr(parsed, "implementation_protected_path", None)
@@ -2553,14 +1448,25 @@ def build_portal_implementation_daemon_from_args(
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
         repo_root=repo_root,
+        board_namespace=str(
+            getattr(parsed, "board_namespace", "") or ""
+        ),
         task_header_prefix=parsed.task_prefix,
         implement=parsed.implement,
         implementation_command=parsed.implementation_command or None,
         implementation_timeout=parsed.implementation_timeout
         or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
-        use_ephemeral_worktree=parsed.implement and not parsed.no_ephemeral_worktree,
+        use_ephemeral_worktree=(
+            parsed.implement
+            and not parsed.no_ephemeral_worktree
+            and not authority_revalidation_only
+        ),
         worktree_root=parsed.worktree_root,
-        merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
+        merge_target_branch=(
+            None
+            if authority_revalidation_only
+            else getattr(parsed, "merge_target_branch", "") or None
+        ),
         merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
@@ -2579,12 +1485,8 @@ def build_portal_implementation_daemon_from_args(
             "manual_completion_authority_epoch_id",
             "",
         ),
-        manual_completion_authority_revalidation_only=bool(
-            getattr(
-                parsed,
-                "manual_completion_authority_revalidation_only",
-                False,
-            )
+        manual_completion_authority_revalidation_only=(
+            authority_revalidation_only
         ),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
@@ -2597,18 +1499,8 @@ def build_portal_implementation_daemon_from_args(
         task_shard_count=parsed.task_shard_count,
         task_shard_index=parsed.task_shard_index,
         strict_task_sharding=bool(getattr(parsed, "strict_task_sharding", False)),
-        idle_lane_work_stealing=str(
-            getattr(parsed, "idle_lane_work_stealing", "") or ""
-        ),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
-        worker_network_launch_authority_json=str(
-            getattr(parsed, "worker_network_launch_authority_json", "") or ""
-        ),
     )
-    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
-        # 74555b11c reads this flag in merged-worktree cleanup; the daemon
-        # class never initialized it, so ASEH-061 terminalized on AttributeError.
-        daemon.isolate_merge_queue_to_task_projection = False
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 
 
@@ -2620,11 +1512,6 @@ def build_database_implementation_daemon_from_args(
     provider_fn: Callable[..., Any] | None = None,
     effect_fn: Callable[..., Any] | None = None,
     validation_fn: Callable[..., Any] | None = None,
-    protected_path_recovery_fn: Callable[..., Any] | None = None,
-    external_protected_checkout_recovery_fn: Callable[..., Any] | None = None,
-    inflight_process_recovery_fn: Callable[..., Any] | None = None,
-    validation_retry_seed_conflict_recovery_fn: Callable[..., Any] | None = None,
-    pooled_worktree_create_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -2634,10 +1521,7 @@ def build_database_implementation_daemon_from_args(
     )
 
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(
-        parsed,
-        authority_mode=program.authority_mode if program is not None else "",
-    )
+    db_paths = resolve_database_implementation_paths(parsed)
     resolved_db = Path(database_path) if database_path is not None else db_paths["database_path"]
     if resolved_db is None:
         raise ValueError(
@@ -2650,10 +1534,11 @@ def build_database_implementation_daemon_from_args(
     task_source_kind = (
         program.task_source_kind if program is not None else "duckdb"
     )
-    daemon = DatabaseImplementationDaemon(
+    return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
-        execution_path=db_paths["execution_path"],
+        state_dir=Path(parsed.state_dir),
+        state_prefix=str(parsed.state_prefix),
         owner_session_id=owner_session_id
         or str(getattr(parsed, "owner_session_id", "") or ""),
         authority_mode=authority_mode,
@@ -2662,45 +1547,16 @@ def build_database_implementation_daemon_from_args(
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,
-        protected_path_recovery_fn=protected_path_recovery_fn,
-        external_protected_checkout_recovery_fn=(
-            external_protected_checkout_recovery_fn
-        ),
-        inflight_process_recovery_fn=inflight_process_recovery_fn,
-        validation_retry_seed_conflict_recovery_fn=(
-            validation_retry_seed_conflict_recovery_fn
-        ),
-        pooled_worktree_create_recovery_fn=pooled_worktree_create_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,
         events_path=None,
         pid_path=None,
         queue_path=None,
-        execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
-        execution_slice_task_cids=getattr(
-            parsed, "execution_slice_task_cid", ()
-        ),
         task_shard_count=getattr(parsed, "task_shard_count", 1),
         task_shard_index=getattr(parsed, "task_shard_index", 0),
-        strict_task_sharding=getattr(
-            parsed, "strict_task_sharding", False
-        ),
-        idle_lane_work_stealing=str(
-            getattr(parsed, "idle_lane_work_stealing", "") or ""
-        ),
-        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
-        repo_root=getattr(parsed, "repo_root", None),
-        merge_target_ref=str(
-            getattr(parsed, "merge_target_branch", "") or "HEAD"
-        ),
-        board_namespace=str(
-            getattr(parsed, "board_namespace", "") or ""
-        ),
+        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
     )
-    if not hasattr(daemon, "isolate_merge_queue_to_task_projection"):
-        daemon.isolate_merge_queue_to_task_projection = False
-    return daemon
 
 
 def _run_hooks(
@@ -2798,11 +1654,6 @@ def run_portal_implementation_daemon_loop(
                 phase="after",
                 context=pass_context,
                 logger=logger,
-            )
-            materialize_database_task_state_compatibility_projection(
-                daemon,
-                state_path=pass_context.state_path,
-                result=result,
             )
             now = time.monotonic()
             emit_idle_info = (

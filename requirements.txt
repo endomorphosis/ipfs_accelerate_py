@@ -12,9 +12,10 @@ pyarrow>=14.0.0
 torch>=2.1
 transformers>=4.46
 
-# Shared HTTP constraint. Keep urllib3 2.5+ aligned with the vendored
-# ipfs_datasets_py contract; the supported ipfshttpclient alpha accepts 2.x.
-urllib3>=2.5.0,<3.0.0
+# Shared HTTP compatibility window.  The admitted ipfshttpclient 0.8.0a2
+# metadata has no direct urllib3 constraint, while the exact datasets and
+# immutable validation closures require the urllib3 2.x line.
+urllib3>=2,<3
 
 # HTTP + auth helpers
 requests>=2.28.0
@@ -30,7 +31,6 @@ werkzeug>=3.0.0
 PyGithub>=2.3.0
 
 # Utilities
-packaging>=23.2
 tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2

@@ -1,0 +1,356 @@
+{
+  "schema": "semantic-addressed-world-model/authority-matrix@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "status_vocabulary": [
+    "available",
+    "available_with_caveats",
+    "partial",
+    "stale",
+    "incompatible",
+    "missing",
+    "duplicate_non_authoritative",
+    "historical_only"
+  ],
+  "conflict_policy": {
+    "one_owner_per_authoritative_responsibility": true,
+    "duplicate_owner_disposition": "reject",
+    "missing_owner_disposition": "typed_unavailable_or_blocked",
+    "stale_binding_disposition": "reject",
+    "name_or_document_proves_capability": false,
+    "model_may_self_approve": false,
+    "worker_may_self_approve": false,
+    "similarity_may_grant_authority": false,
+    "markdown_status_may_complete_task": false,
+    "existing_v1_identity_may_be_rewritten": false,
+    "unknown_dynamic_behavior": "explicit_frontier"
+  },
+  "repository_roles": {
+    "ipfs_datasets_py": {
+      "role": "semantic_and_formal_authority",
+      "exact_source_head": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "exact_source_tree": "964b3e949b80191fe1b8e59af62df08f38857102",
+      "owns": [
+        "canonical semantic schemas and canonicalization profiles",
+        "domain-state and semantic-object identity",
+        "typed semantic relation meaning and pure semantic deltas",
+        "static program graph and runtime trace semantics",
+        "state abstraction and semantic invalidation facts",
+        "solver-neutral claims, proof obligations, formalization and logic-family projections",
+        "proof/counterexample references and proof-corpus semantics",
+        "corpus rights, privacy, split, lineage and leakage policy",
+        "semantic test and proof selection facts",
+        "legal, security, intent, dataset and other domain adapters"
+      ],
+      "does_not_own": [
+        "supervisor scheduling or task completion",
+        "provider or model invocation",
+        "mutable ANN files",
+        "root pointer CAS or WAL",
+        "worktree mutation or operational transition acceptance"
+      ],
+      "current_authority_surfaces": [
+        {
+          "name": "ir_core canonicalization/provenance/evidence",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/provenance.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/evidence.py"
+          ]
+        },
+        {
+          "name": "software-contract semantic index and semantic state",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
+          ],
+          "caveat": "Current repository/symbol/test semantics are reusable, but the complete SAWM static/dynamic contract family is not present."
+        },
+        {
+          "name": "software verification, Tactician, Hammer and proof obligations",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/hammers",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus"
+          ],
+          "caveat": "Contracts and backends are present; each external prover/backend remains capability-probed and requires native reconstruction or deterministic replay."
+        },
+        {
+          "name": "formalization and domain IR adapters",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/formalization",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
+          ],
+          "caveat": "Availability differs by domain and logic family; adapters must return typed unavailability instead of claiming universal coverage."
+        }
+      ]
+    },
+    "ipfs_kit_py": {
+      "role": "verified_storage_retrieval_and_durable_graph_authority",
+      "exact_source_head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "exact_source_tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "owns": [
+        "verified immutable block persistence and CID rehash",
+        "DAG/IPLD and CAR persistence surfaces",
+        "projection records, vector bytes and rebuildable index manifests",
+        "exact candidate resolution",
+        "immutable event, transition and graph-snapshot persistence",
+        "store-before-reference",
+        "generation-bearing root CAS and concurrent-writer semantics",
+        "WAL, replay, crash recovery and corruption detection",
+        "VFS post-commit receipts and durable semantic outbox persistence",
+        "optional replication and pinning"
+      ],
+      "does_not_own": [
+        "semantic equivalence",
+        "proof validity",
+        "prediction truth",
+        "reuse admission",
+        "task completion",
+        "model-output admission"
+      ],
+      "current_authority_surfaces": [
+        {
+          "name": "CID, IPLD and CAR",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_kit_py/ipfs_kit_py/ipfs_multiformats.py",
+            "ipfs_kit_py/ipfs_kit_py/ipld/car.py",
+            "ipfs_kit_py/ipfs_kit_py/ipld/dag_pb.py",
+            "ipfs_kit_py/ipfs_kit_py/ipld/unixfs.py"
+          ],
+          "caveat": "SAWM must compose exact verified-store behavior and may not infer all desired codec/profile guarantees from general handlers."
+        },
+        {
+          "name": "durable coordination and state roots",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+            "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+            "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+            "ipfs_kit_py/ipfs_kit_py/semantic_governor_store"
+          ],
+          "caveat": "Program-world root manifests and full SAWM store-before-reference/recovery qualification are missing."
+        },
+        {
+          "name": "GraphRAG projection and hybrid retrieval",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py",
+            "ipfs_kit_py/ipfs_kit_py/graphrag/projections.py",
+            "ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py",
+            "ipfs_kit_py/ipfs_kit_py/graphrag/retrieval.py"
+          ],
+          "caveat": "Existing results require SAWM exact resolution, immutable model/profile bindings, limitations and explicit authoritative=false semantics."
+        },
+        {
+          "name": "VFS, WAL, recovery and concurrency",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_kit_py/ipfs_kit_py/core/vfs",
+            "ipfs_kit_py/ipfs_kit_py/core/wal",
+            "ipfs_kit_py/ipfs_kit_py/kernel_vfs/durable_mutation.py"
+          ],
+          "caveat": "A durable SAWM semantic outbox surface was not located by exact name and must be reconciled before adding an adapter."
+        },
+        {
+          "name": "generic state transition receipts",
+          "status": "partial",
+          "evidence_paths": [
+            "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py",
+            "ipfs_kit_py/ipfs_kit_py/core/vfs/contracts.py"
+          ],
+          "caveat": "Generic operational/VFS transitions do not by themselves provide program-transition query, prediction, observation, calibration or admission semantics."
+        }
+      ]
+    },
+    "ipfs_accelerate_py": {
+      "role": "operational_intelligence_and_system_consumer",
+      "exact_source_head": "54bc66e9512079ef9ddc04152bc5517cc03292d6",
+      "exact_source_tree": "81680791ef2df9ad7cfb01dea428ed691134d5e0",
+      "owns": [
+        "objective/task planning and cognitive action selection",
+        "exact/procedural/symbolic/retrieval/model inference cascade",
+        "context construction and semantic-memory consumption",
+        "model/provider/hardware routing and batching",
+        "worktree execution and operational transition compilation",
+        "proof, freshness, environment and policy admission",
+        "operational world-root publication",
+        "rollout and required-mode dogfooding",
+        "benchmark accounting and final operational acceptance"
+      ],
+      "does_not_own": [
+        "datasets semantic identity redefinition",
+        "kit durable primitive duplication",
+        "ANN authority",
+        "model-created proof, authority or completion"
+      ],
+      "current_authority_surfaces": [
+        {
+          "name": "ContextCompiler and DecisionRuntime",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+            "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+            "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_rollout.py"
+          ]
+        },
+        {
+          "name": "semantic compression harness and governor",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+            "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
+            "ipfs_accelerate_py/agent_supervisor/semantic_governor"
+          ]
+        },
+        {
+          "name": "incremental verification and proof sealing",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/proof_test_reuse_current_tree_gate.py"
+          ],
+          "caveat": "Program-world exact keys, transition/root receipts and required-mode admission remain to be integrated."
+        },
+        {
+          "name": "Tactician, Hammer and deterministic repair orchestration",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+            "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/live_logic_repair_controller.py",
+            "ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py"
+          ],
+          "caveat": "External backends and proof reconstruction are runtime-scoped; e-graph support and complete SAWM repair-operator integration were not established."
+        },
+        {
+          "name": "worktree, lease, fence, merge and resource/provider authorities",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/merge",
+            "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/provider_execution.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+          ]
+        },
+        {
+          "name": "DuckDB and Quack control-plane code",
+          "status": "available_with_caveats",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "scripts/ops/agent_supervisor/configured_board_scheduler.py"
+          ],
+          "caveat": "Source presence is not a live exclusive-owner/transport probe; preflight must establish liveness and current authority."
+        },
+        {
+          "name": "adversarial assurance",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/adversarial_assurance"
+          ]
+        },
+        {
+          "name": "AdaptivePlanner and formal replanning",
+          "status": "available",
+          "evidence_paths": [
+            "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+            "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py"
+          ]
+        },
+        {
+          "name": "RepositoryWorldModel exact named public authority",
+          "status": "missing",
+          "evidence_paths": [],
+          "required_disposition": "extend landed repository/semantic state and generic transition contracts with a narrow versioned adapter"
+        },
+        {
+          "name": "ProofCarryingProcedureCompiler exact named public authority",
+          "status": "historical_only",
+          "evidence_paths": [
+            "/home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1"
+          ],
+          "required_disposition": "ambient worktree is not current authority; reconcile before extending landed procedure-related primitives"
+        },
+        {
+          "name": "VerifiedResidualIntelligenceFoundry exact named public authority",
+          "status": "historical_only",
+          "evidence_paths": [
+            "/home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1"
+          ],
+          "required_disposition": "ambient worktree is not current authority; learned tasks must use current admitted corpus/provider/promotion surfaces"
+        },
+        {
+          "name": "AutonomousMetaController exact named public authority",
+          "status": "historical_only",
+          "evidence_paths": [
+            "/home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1"
+          ],
+          "required_disposition": "ambient worktree is not current authority; integrate with current planning, budget and resource schedulers"
+        },
+        {
+          "name": "CausalAbstractionSupervisorFederation exact named public authority",
+          "status": "missing",
+          "evidence_paths": [],
+          "required_disposition": "extend current event/outbox and causal-frontier authorities only after exact interface reconciliation"
+        }
+      ]
+    }
+  },
+  "cross_repository_authorities": {
+    "task_goal_completion": {
+      "owner": "ipfs_accelerate_py.agent_supervisor current DuckDB/Quack authority",
+      "duckdb_authoritative": true,
+      "quack_required_for_multi_writer": true,
+      "ducklake_authoritative": false,
+      "markdown_authoritative": false
+    },
+    "semantic_identity": {
+      "owner": "ipfs_datasets_py",
+      "accelerate_may_redefine": false,
+      "kit_may_redefine": false
+    },
+    "storage_and_root_cas": {
+      "owner": "ipfs_kit_py",
+      "datasets_may_operationally_accept": false,
+      "accelerate_may_duplicate_primitive": false
+    },
+    "operational_admission": {
+      "owner": "ipfs_accelerate_py",
+      "model_may_admit": false,
+      "retrieval_may_admit": false,
+      "storage_may_admit": false
+    }
+  },
+  "protected_operator_controls": [
+    "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+    "docs/architecture/semantic_addressed_world_model.objectives.md",
+    "docs/architecture/semantic_addressed_world_model.todo.md",
+    "docs/architecture/semantic_addressed_world_model_inventory/**",
+    "config/semantic_addressed_world_model_dependencies.seal.json",
+    "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+    "scripts/validate_semantic_addressed_world_model_dependencies.py",
+    "scripts/validate_semantic_addressed_world_model_board.py",
+    "scripts/materialize_semantic_addressed_world_model_program.py"
+  ],
+  "limitations": [
+    "This matrix freezes planning ownership; it is not an acceptance receipt.",
+    "Historical worktree paths are evidence of non-authoritative copies only and must not be imported as implementation source.",
+    "Runtime capability is not inferred from module or class presence."
+  ]
+}

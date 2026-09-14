@@ -7,7 +7,7 @@ worktrees observe the same fences. A freeze records the exact bounded pool,
 lifecycle, and shared-claim population and reserves a fresh sibling root for
 independent work.
 
-Native pool mutations, lifecycle transitions and deletion journals, provider
+Native pool mutations, lifecycle transitions and exact native deletion, provider
 workspace operations, and shared claim updates hold a shared custody lock.
 Installing a freeze requires the exclusive lock. Retained claims remain occupied
 even after their original owner exits. Repository-wide Git cleanup also checks
@@ -23,5 +23,6 @@ callback custody audit, and independent-task admission remain separate native
 requirements. Filesystem custody grants no task completion or callback retry.
 
 The tests use real Git worktrees, lifecycle records, shared claims, subprocess
-locks, and FIFO rejection. Main's newer exact-record and journal deletion paths
-also preserve frozen custody, including stale task-index repair.
+locks, and FIFO rejection. SAWM's native exact deletion, dead-owner quarantine, partial-finalization
+repair and direct supervisor rescue preserve frozen custody. Main-only deletion
+journals and task-index healing are not imported into this fork.

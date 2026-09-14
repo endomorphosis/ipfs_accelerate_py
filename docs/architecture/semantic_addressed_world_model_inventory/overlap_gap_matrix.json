@@ -1,0 +1,520 @@
+{
+  "schema": "semantic-addressed-world-model/overlap-gap-matrix@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "status_vocabulary": [
+    "available",
+    "available_with_caveats",
+    "partial",
+    "stale",
+    "incompatible",
+    "missing",
+    "duplicate_non_authoritative",
+    "historical_only"
+  ],
+  "classification_rule": "A current exact-tree implementation plus current contracts/tests/environment/authority binding is required for available. A path, title, class name, fixture, report, branch or worktree alone is never sufficient.",
+  "features": [
+    {
+      "task_id": "SAWM-000",
+      "feature": "R2 operator controls, source/dependency seal, executable board and scheduler",
+      "owner": "ipfs_accelerate_py/operator",
+      "status": "partial",
+      "current_evidence": [
+        "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+        "existing configured-board program controls"
+      ],
+      "verified_gap": "SAWM R2 controls were absent at audit start and are being created; materialization and launch evidence do not yet exist."
+    },
+    {
+      "task_id": "SAWM-001",
+      "feature": "current authority and overlap inventory",
+      "owner": "cross_repository/operator",
+      "status": "partial",
+      "current_evidence": [
+        "docs/architecture/semantic_addressed_world_model_inventory"
+      ],
+      "verified_gap": "Inventory is planning evidence until independently validated against the sealed current tree."
+    },
+    {
+      "task_id": "SAWM-002",
+      "feature": "semantic identity and canonicalization profiles",
+      "owner": "ipfs_datasets_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
+      ],
+      "verified_gap": "No complete closed SAWM identity/profile family or compatibility proof for all required state, trace, projection, relation, transition and root identities."
+    },
+    {
+      "task_id": "SAWM-003",
+      "feature": "scoped relation and equivalence claims",
+      "owner": "ipfs_datasets_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py"
+      ],
+      "verified_gap": "No unified versioned SAWM relation lifecycle retaining scope, authority, evidence, invalidators and freshness while excluding neural similarity."
+    },
+    {
+      "task_id": "SAWM-004",
+      "feature": "domain adapters without domain-identity changes",
+      "owner": "ipfs_datasets_py",
+      "status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
+      ],
+      "verified_gap": "Domain coverage and current adapter contracts vary; typed unavailability and identity-preservation tests are missing for SAWM consumption."
+    },
+    {
+      "task_id": "SAWM-005",
+      "feature": "static program-graph contracts",
+      "owner": "ipfs_datasets_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py"
+      ],
+      "verified_gap": "Current symbol/dependency/proof graphs do not expose the complete typed node/edge/snapshot/delta/successor/dynamic-frontier family."
+    },
+    {
+      "task_id": "SAWM-006",
+      "feature": "deterministic static graph construction and invalidation",
+      "owner": "ipfs_datasets_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/symbolic_contract_graph.py"
+      ],
+      "verified_gap": "Complete AST/symbol/import/call/CFG/data-flow/exception/type/effect/contract/test/proof coverage and explicit incomplete-frontier receipts are not established."
+    },
+    {
+      "task_id": "SAWM-007",
+      "feature": "dynamic execution state, event and trace contracts",
+      "owner": "ipfs_datasets_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No current complete bounded program state/stack/event/trace/privacy/environment contract family with separate raw and abstract identities."
+    },
+    {
+      "task_id": "SAWM-008",
+      "feature": "hermetic Python execution tracing",
+      "owner": "ipfs_datasets_py_with_accelerate_execution_adapter",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/test_runtime_dependency_trace.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/formal_transition_monitor.py"
+      ],
+      "verified_gap": "No admitted SAWM tracer binding every event to exact tree/environment/symbol/location with bounded redaction, cancellation and test-only network isolation."
+    },
+    {
+      "task_id": "SAWM-009",
+      "feature": "versioned state abstraction profiles and abstract-state identity",
+      "owner": "ipfs_datasets_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No sound query-specific next-call/next-event/inverse/repair abstraction profiles or distinction-preservation evidence."
+    },
+    {
+      "task_id": "SAWM-010",
+      "feature": "program-transition contracts and admission",
+      "owner": "ipfs_datasets_py_semantics_and_ipfs_accelerate_py_admission",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py",
+        "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py"
+      ],
+      "verified_gap": "Generic transitions do not supply the domain-specific proposal-only query/candidate/prediction/observation/calibration/admission family."
+    },
+    {
+      "task_id": "SAWM-011",
+      "feature": "verified semantic-object and model-pinned projection storage",
+      "owner": "ipfs_kit_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+        "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/semantic_governor_store"
+      ],
+      "verified_gap": "A SAWM verified-store facade and all projection serialization/profile validation guarantees are not yet integrated."
+    },
+    {
+      "task_id": "SAWM-012",
+      "feature": "projection indexes with exact non-authoritative resolver",
+      "owner": "ipfs_kit_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py",
+        "ipfs_kit_py/ipfs_kit_py/graphrag/retrieval.py"
+      ],
+      "verified_gap": "All results must bind immutable manifest/projection/model/state identities, limitations and authoritative=false, then resolve current objects before use."
+    },
+    {
+      "task_id": "SAWM-013",
+      "feature": "logical graph snapshots, transition log and world-root manifests",
+      "owner": "ipfs_kit_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/history.py"
+      ],
+      "verified_gap": "No complete immutable program graph/trace/prediction/admission/world snapshot persistence with SAWM store-before-reference."
+    },
+    {
+      "task_id": "SAWM-014",
+      "feature": "generation root CAS, recovery, replication and VFS semantic outbox",
+      "owner": "ipfs_kit_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py",
+        "ipfs_kit_py/ipfs_kit_py/core/wal",
+        "ipfs_kit_py/ipfs_kit_py/core/vfs",
+        "ipfs_kit_py/ipfs_kit_py/core/replication"
+      ],
+      "verified_gap": "SAWM-specific ABA-safe root, corruption/restart/concurrency qualification and a reconciled durable post-commit semantic outbox are missing."
+    },
+    {
+      "task_id": "SAWM-015",
+      "feature": "accelerator semantic-world operational adapters",
+      "owner": "ipfs_accelerate_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/verified_ipld_backend.py"
+      ],
+      "verified_gap": "No unified SAWM capability gate, reuse/context/transition adapter and generation-bearing world publication path."
+    },
+    {
+      "task_id": "SAWM-016",
+      "feature": "exact state, transition, procedure and proof reuse gates",
+      "owner": "ipfs_accelerate_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/validation/proof_test_reuse_current_tree_gate.py",
+        "ipfs_accelerate_py/agent_supervisor/verification/receipt_cache.py",
+        "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py"
+      ],
+      "verified_gap": "Complete state/goal/policy/environment/toolchain/obligation/selection/procedure/validation dependency keys and stale invalidation are absent."
+    },
+    {
+      "task_id": "SAWM-017",
+      "feature": "conservative static successor generation and symbolic pruning",
+      "owner": "ipfs_datasets_py_semantics_and_ipfs_accelerate_py_orchestration",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/symbolic_contract_graph.py"
+      ],
+      "verified_gap": "No complete next-call/event successor set with authoritative pruning and explicit unknown widening."
+    },
+    {
+      "task_id": "SAWM-018",
+      "feature": "production Tactician and Hammer integration",
+      "owner": "ipfs_accelerate_py_consuming_ipfs_datasets_py",
+      "status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers"
+      ],
+      "verified_gap": "SAWM uncertainties are not yet compiled into finite transition/repair obligations; backend availability and proof reconstruction remain per-run gates."
+    },
+    {
+      "task_id": "SAWM-019",
+      "feature": "e-graphs, equality saturation and sound relation promotion",
+      "owner": "ipfs_datasets_py_semantics_and_ipfs_accelerate_py_orchestration",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No current exact-tree e-graph/equality-saturation authority with sound normalization receipts was established."
+    },
+    {
+      "task_id": "SAWM-020",
+      "feature": "proof-carrying procedure compilation and trajectory normalization",
+      "owner": "ipfs_accelerate_py",
+      "status": "historical_only",
+      "current_evidence": [
+        "/home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1"
+      ],
+      "verified_gap": "The named worktree is not landed authority; current exact-tree procedure primitives and an extension/adaptation point must be reconciled."
+    },
+    {
+      "task_id": "SAWM-021",
+      "feature": "deterministic repair operators and bounded CEGIS",
+      "owner": "ipfs_accelerate_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/autonomous_repair",
+        "ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_prediction_cegis.py"
+      ],
+      "verified_gap": "The required closed SAWM repair vocabulary, patch-sketch constraints and fixed-point proof/test admission are incomplete."
+    },
+    {
+      "task_id": "SAWM-022",
+      "feature": "semantic context capsules, exact fallback and compression",
+      "owner": "ipfs_accelerate_py",
+      "status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/capsules.py"
+      ],
+      "verified_gap": "SAWM unresolved-frontier ordering, transition/procedure inputs, omission reasons and required raw-source fallback need integration."
+    },
+    {
+      "task_id": "SAWM-023",
+      "feature": "rights-admitted execution-trace corpus",
+      "owner": "ipfs_datasets_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No admitted SAWM execution corpus/split/leakage/lineage receipts or trace instrumentation output exists."
+    },
+    {
+      "task_id": "SAWM-024",
+      "feature": "next-call benchmark and deterministic baselines",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No frozen controlled SAWM call-target benchmark or reproducible static/lexical/vector/linear metrics."
+    },
+    {
+      "task_id": "SAWM-025",
+      "feature": "proposal-only call-target ranking specialist",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No qualified exact-symbol link predictor preserving all static candidates and the unknown frontier."
+    },
+    {
+      "task_id": "SAWM-026",
+      "feature": "structured next-event and bounded next-state prediction",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No calibrated closed-grammar specialist validated against observed traces."
+    },
+    {
+      "task_id": "SAWM-027",
+      "feature": "set-valued inverse trace reconstruction",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No predecessor-state/event ranker or semantic-validity/reproduction benchmark."
+    },
+    {
+      "task_id": "SAWM-028",
+      "feature": "repair-operator and graph-delta prediction",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No learned proposal path constrained to admitted operators/deltas and subordinate to analytical procedures."
+    },
+    {
+      "task_id": "SAWM-029",
+      "feature": "GNN, graph-transformer and TAGSeq-style experiment",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No locally governed experimental adapter, license/security review, sparse-attention protocol or fair ablation evidence."
+    },
+    {
+      "task_id": "SAWM-030",
+      "feature": "residual-intelligence corpus, training and calibration authority",
+      "owner": "ipfs_accelerate_py",
+      "status": "historical_only",
+      "current_evidence": [
+        "/home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1",
+        "current generic corpus/provider/promotion modules"
+      ],
+      "verified_gap": "The named foundry is not landed at the sealed tree; a current authority adapter must be found and training must return training_unavailable without admitted data/checkpoint."
+    },
+    {
+      "task_id": "SAWM-031",
+      "feature": "model serving, batching, hardware and quantization",
+      "owner": "ipfs_accelerate_py",
+      "status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_execution.py"
+      ],
+      "verified_gap": "No SAWM specialist checkpoint is admitted; provider/hardware/quantization availability is runtime-probed and may be unavailable."
+    },
+    {
+      "task_id": "SAWM-032",
+      "feature": "autonomous meta-controller action cascade and cognitive budgets",
+      "owner": "ipfs_accelerate_py",
+      "status": "historical_only",
+      "current_evidence": [
+        "/home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1",
+        "ipfs_accelerate_py/agent_supervisor/planning",
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
+      ],
+      "verified_gap": "The named controller is non-authoritative; current scheduler actions need a narrow integration that preserves validation reserves."
+    },
+    {
+      "task_id": "SAWM-033",
+      "feature": "causal-event federation and affected-supervisor wakeup",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+        "current task/event control-plane modules"
+      ],
+      "verified_gap": "No exact named causal federation/current-frontier integration was found; no second event system may be created."
+    },
+    {
+      "task_id": "SAWM-034",
+      "feature": "shadow_write rollout",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/shadow.py"
+      ],
+      "verified_gap": "Existing governor shadow execution is related but no SAWM state/projection/context/prediction/transition/root shadow-write activation exists."
+    },
+    {
+      "task_id": "SAWM-035",
+      "feature": "shadow_read rollout",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No SAWM hypothetical reuse/prediction decision path or false/missed candidate measurements."
+    },
+    {
+      "task_id": "SAWM-036",
+      "feature": "guarded rollout",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No qualified gate allowing only exact/procedure/proof-backed influence and advisory neural ranking."
+    },
+    {
+      "task_id": "SAWM-037",
+      "feature": "required rollout with fail-closed world receipts",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No all-task pre/post root, context, reuse, transition and generation enforcement."
+    },
+    {
+      "task_id": "SAWM-038",
+      "feature": "multi-view and cross-domain projections",
+      "owner": "ipfs_datasets_py_semantics_and_ipfs_kit_py_storage",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py",
+        "ipfs_kit_py/ipfs_kit_py/graphrag"
+      ],
+      "verified_gap": "No complete explicit-profile view set across AST/CFG/calls/data flow/proofs/traces/failures/domains/procedures."
+    },
+    {
+      "task_id": "SAWM-039",
+      "feature": "typed service, CLI and existing MCP diagnostics",
+      "owner": "ipfs_accelerate_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/entrypoints",
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_governor/cli.py"
+      ],
+      "verified_gap": "No complete SAWM world/graph/state/trace/transition/reuse/procedure/rollout/index operation set; no second service/MCP server is allowed."
+    },
+    {
+      "task_id": "SAWM-040",
+      "feature": "end-to-end acceptance matrix",
+      "owner": "cross_repository",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No current-tree positive/negative scenario traverses the complete semantic world and restart/reuse sequence."
+    },
+    {
+      "task_id": "SAWM-041",
+      "feature": "controlled ablation and efficiency benchmark",
+      "owner": "ipfs_accelerate_py",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No frozen paired SAWM benchmark, complete denominators or token/call/cost ablations."
+    },
+    {
+      "task_id": "SAWM-042",
+      "feature": "adversarial assurance and security qualification",
+      "owner": "ipfs_accelerate_py",
+      "status": "partial",
+      "current_evidence": [
+        "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+        "test/fixtures/adversarial_assurance"
+      ],
+      "verified_gap": "SAWM-specific forged CID/root/relation/trace/abstraction/model/procedure/context/privacy attacks are not yet covered."
+    },
+    {
+      "task_id": "SAWM-043",
+      "feature": "required-mode self-hosted capstone",
+      "owner": "ipfs_accelerate_py.agent_supervisor",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "Must be implemented and completed by the launched supervisor after required mode, not by the operator session."
+    },
+    {
+      "task_id": "SAWM-044",
+      "feature": "current-tree release, migration, limitation and transitive-root report",
+      "owner": "cross_repository_release_integration",
+      "status": "missing",
+      "current_evidence": [],
+      "verified_gap": "No terminal tasks/goals, final roots, benchmark results or release evidence exist at bootstrap."
+    }
+  ],
+  "non_authoritative_overlaps": [
+    {
+      "copy": "/home/barberb/ipfs_accelerate_py",
+      "classification": "duplicate_non_authoritative",
+      "reason": "not the sealed isolated source"
+    },
+    {
+      "copy": "/home/barberb/ipfs_datasets_py",
+      "classification": "duplicate_non_authoritative",
+      "reason": "not the sealed datasets gitlink"
+    },
+    {
+      "copy": "/home/barberb/ipfs_kit_py",
+      "classification": "duplicate_non_authoritative",
+      "reason": "not the sealed kit gitlink"
+    },
+    {
+      "copy": "ambient named feature worktrees",
+      "classification": "historical_only",
+      "reason": "worktree name and branch history are not current landed authority"
+    }
+  ],
+  "summary": {
+    "available": 0,
+    "available_with_caveats": 4,
+    "partial": 19,
+    "stale": 0,
+    "incompatible": 0,
+    "missing": 19,
+    "duplicate_non_authoritative": 0,
+    "historical_only": 3,
+    "feature_count": 45,
+    "summary_is_computed_for_features_only": true
+  },
+  "limitations": [
+    "Counts describe bootstrap implementation overlap, not task status or completion.",
+    "A worker must revalidate its exact current-tree inputs because subsequent accepted tasks may change classifications.",
+    "Runtime availability is never inferred from static source inventory."
+  ]
+}

@@ -92,7 +92,6 @@ def test_tick_does_not_swallow_other_coordination_failures():
     daemon._require_typed_quack_authority_binding = lambda: None
     daemon._reopen_unusable_embedded_sidecars = lambda error: None
     daemon._is_quack_attach_contention = lambda error: False
-    daemon._is_quack_transport_unavailable = lambda error: False
     error = DatabaseCoordinationNotReadyError("other", evidence={"reason": "already_completed"})
 
     def fail():
@@ -141,26 +140,27 @@ def test_preparation_disappearing_at_identity_recheck_is_not_stale_evidence(tmp_
         coordinator.close()
 
 
-@pytest.mark.parametrize("error", [RuntimeError("settlement response lost"),
-    DatabaseCoordinationNotReadyError("unbound authority", evidence={"reason": "other"})])
-def test_unrecognized_tick_failure_never_replays_same_tick(error):
+def test_missing_completion_at_reconciliation_barrier_prevents_dispatch():
     daemon = DatabaseImplementationDaemon.__new__(DatabaseImplementationDaemon)
-    daemon._embedded_writer_lock_handles = {}
-    daemon._require_typed_quack_authority_binding = lambda: None
-    daemon._reopen_unusable_embedded_sidecars = lambda error: None
-    daemon._is_quack_transport_unavailable = lambda error: False
-    daemon._is_quack_attach_contention = lambda error: False
     calls = []
+    error = DatabaseCoordinationNotReadyError("missing", evidence=dict(
+        reason="completion_missing", task_cid="task:a", claim_id="claim:a", attempt_id="attempt:a"))
 
-    def mutate_then_fail():
-        calls.append("durable mutation")
-        if len(calls) == 1:
-            raise error
-        return {"would_hide_first_failure": True}
+    def reconcile():
+        calls.append("reconcile")
+        raise error
 
-    daemon._run_once_impl = mutate_then_fail
-    with pytest.raises(type(error)) as caught:
-        daemon.run_once()
-    assert caught.value is error
-    assert calls == ["durable mutation"]
-    assert daemon._idle_recovery_prefix is None
+    def forbidden():
+        pytest.fail("missing settlement evidence must end the tick")
+
+    daemon.reconcile_prepared_task_completions = reconcile
+    daemon.reconcile_terminal_portal_failures = forbidden
+    daemon.reconcile_expired_running_attempts = forbidden
+    daemon.reconcile_recoverable_portal_failure_rearms = forbidden
+    daemon.list_running_attempts = forbidden
+    daemon.claim_next = forbidden
+    for _ in range(2):
+        result = daemon.run_once()
+        assert result["deferred"] is True
+        assert result["recovery_provider_dispatched"] is False
+    assert calls == ["reconcile", "reconcile"]

@@ -1,0 +1,223 @@
+{
+  "schema": "semantic-addressed-world-model/repository-baseline@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "root_goal_id": "SAWM-G000",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "is_task_acceptance_receipt": false,
+  "is_world_root": false,
+  "snapshot_policy": {
+    "mode": "clean_isolated_exact_source_worktree",
+    "authoritative_implementation_root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2",
+    "dirty_origins_preserved": true,
+    "remote_revision_adopted": false,
+    "source_state_directories_are_implementation_source": false,
+    "untracked_user_source_deleted": false,
+    "tracked_user_change_discarded": false
+  },
+  "authoritative_snapshots": [
+    {
+      "authority_role": "accelerator_operational_intelligence_and_supervisor",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "absolute_root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2",
+      "origin_url": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "branch": "agent/semantic-addressed-world-model-v1",
+      "head": "54bc66e9512079ef9ddc04152bc5517cc03292d6",
+      "tree": "81680791ef2df9ad7cfb01dea428ed691134d5e0",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "package_version_source": "pyproject.toml",
+      "public_package_path": "ipfs_accelerate_py",
+      "gitlink_path": null,
+      "gitlink_identity": null,
+      "tracked_modifications_before_control_authoring": [],
+      "untracked_files_before_control_authoring": [],
+      "clean_before_control_authoring": true,
+      "canonical_source_authority": true
+    },
+    {
+      "authority_role": "datasets_semantic_and_formal_authority",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "absolute_root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_datasets_py",
+      "origin_url_in_isolated_snapshot": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "declared_gitlink_url": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "reachable_reference_observed": "remotes/origin/agent/sawm-r2-datasets-snapshot",
+      "head": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "tree": "964b3e949b80191fe1b8e59af62df08f38857102",
+      "package_name": "ipfs_datasets_py",
+      "package_version": "0.2.0",
+      "package_version_source": "ipfs_datasets_py/pyproject.toml",
+      "public_package_path": "ipfs_datasets_py/ipfs_datasets_py",
+      "gitlink_path": "ipfs_datasets_py",
+      "gitlink_identity": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "tracked_modifications_before_control_authoring": [],
+      "untracked_files_before_control_authoring": [],
+      "clean_before_control_authoring": true,
+      "canonical_source_authority": true
+    },
+    {
+      "authority_role": "kit_storage_retrieval_and_durable_graph_authority",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "absolute_root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_kit_py",
+      "origin_url_in_isolated_snapshot": "/home/barberb/lift_coding/external/ipfs_kit",
+      "declared_gitlink_url": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "package_name": "ipfs_kit_py",
+      "package_version": "0.3.0",
+      "package_version_source": "ipfs_kit_py/pyproject.toml",
+      "public_package_path": "ipfs_kit_py/ipfs_kit_py",
+      "gitlink_path": "ipfs_kit_py",
+      "gitlink_identity": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tracked_modifications_before_control_authoring": [],
+      "untracked_files_before_control_authoring": [],
+      "clean_before_control_authoring": true,
+      "canonical_source_authority": true
+    }
+  ],
+  "preserved_original_authority_candidates": [
+    {
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "absolute_root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "origin_url": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "branch": "recovery/pre-reboot-agent-supervisor-20260822",
+      "head": "5d79bbf8bb61e027fbda76920580cb9d4fd919c1",
+      "tree": "c5ddd043de58349aafac0f9af03c1b018313623d",
+      "clean": false,
+      "tracked_modifications": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py"
+      ],
+      "untracked_source_files": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py",
+        "ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py"
+      ],
+      "untracked_runtime_files_excluded_from_source_snapshot": [
+        "data/agent_supervisor/.control-transaction.lock",
+        "data/agent_supervisor/control-audit.jsonl"
+      ],
+      "admitted_as_clean_source": false,
+      "preservation_disposition": "left_unchanged"
+    },
+    {
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "absolute_root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "origin_url": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "branch": "main",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "clean": false,
+      "tracked_modifications": [
+        ".tools/ipfs_kit_py",
+        "ipfs_datasets_py/core_operations/logic_processor.py"
+      ],
+      "untracked_source_groups": [
+        "ipfs_datasets_py/logic/ui_ux_ir/**",
+        "ipfs_datasets_py/mcp_server/mcplusplus/p2p_libp2p_transport.py",
+        "tests/fixtures/ui_ux_ir/v1/golden_vectors.json",
+        "tests/unit/logic/ui_ux_ir/**",
+        "tests/unit/mcp_server/test_mcplusplus_capability_truthfulness.py",
+        "tests/unit/mcp_server/test_mcplusplus_p2p_tool_parity.py"
+      ],
+      "admitted_as_clean_source": false,
+      "preservation_disposition": "left_unchanged"
+    },
+    {
+      "repository": "endomorphosis/ipfs_kit_py",
+      "absolute_root": "/home/barberb/lift_coding/external/ipfs_kit",
+      "origin_url": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "branch": "main",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "clean": true,
+      "tracked_modifications": [],
+      "untracked_source_files": [],
+      "admitted_as_clean_source": true,
+      "preservation_disposition": "same_exact_source_used_by_snapshot"
+    }
+  ],
+  "enclosing_superproject": {
+    "absolute_root": "/home/barberb/lift_coding",
+    "repository": "endomorphosis/lift_coding",
+    "origin_url": "https://github.com/endomorphosis/lift_coding.git",
+    "branch": "chore/fmt-check-main",
+    "head": "8601408d6406681a14a9488d31d1cd9a16164649",
+    "tree": "e35dfaebbd229d7e7de988b2e0345444d9284221",
+    "clean": false,
+    "role": "operator_workspace_container_not_sawm_implementation_source",
+    "preservation_disposition": "left_unchanged"
+  },
+  "duplicate_copy_policy": {
+    "classification": "duplicate_non_authoritative",
+    "representative_scopes_observed": [
+      "/home/barberb/ipfs_accelerate_py",
+      "/home/barberb/ipfs_datasets_py",
+      "/home/barberb/ipfs_kit_py",
+      "/home/barberb/HACC",
+      "/home/barberb/211-AI",
+      "/home/barberb/.cache/ipfs_datasets_py",
+      "/home/barberb/.cache/ipfs_kit_py",
+      "/home/barberb/.local/state/ipfs_accelerate_py"
+    ],
+    "may_supply_current_source_without_new_operator_seal": false,
+    "ambient_worktrees_with_related_program_names": "historical_only"
+  },
+  "runtime_environment": {
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "operating_system": "Linux",
+    "machine": "aarch64",
+    "kernel_observed": "6.17.0-1014-nvidia",
+    "test_framework_expected": "pytest",
+    "test_environment_status": "not_executed_by_inventory_capture",
+    "ordinary_test_network_policy": "forbidden",
+    "implicit_install_policy": "forbidden",
+    "optional_capability_policy": "probe_and_return_typed_unavailability"
+  },
+  "dependency_identity_files": [
+    ".gitmodules",
+    "pyproject.toml",
+    "requirements.txt",
+    "requirements-proof-reuse.txt",
+    "ipfs_datasets_py/pyproject.toml",
+    "ipfs_datasets_py/requirements.txt",
+    "ipfs_datasets_py/requirements-theorem-provers.txt",
+    "ipfs_kit_py/pyproject.toml",
+    "ipfs_kit_py/requirements.txt"
+  ],
+  "prior_sawm_reconciliation": {
+    "search_terms": [
+      "SAWM-",
+      "SAWM-G",
+      "SAWM-PLAN-R2",
+      "semantic-addressed-world-model-v1"
+    ],
+    "search_scopes": [
+      "authoritative isolated source tree",
+      "original repository candidates",
+      "enclosing superproject",
+      "sibling worktrees",
+      "/home/barberb/.local/state/ipfs_accelerate_py",
+      "text task and event projections",
+      "candidate DuckDB control-store locations"
+    ],
+    "prior_plan_found": false,
+    "prior_markdown_board_found": false,
+    "prior_materialized_program_found": false,
+    "accepted_sawm_task_or_event_projection_found": false,
+    "disposition": "materialize_complete_r2_after_authoritative_recheck",
+    "migration_observation": "R2 bootstrap from no prior materialized SAWM program found",
+    "migration_observation_is_database_receipt": false,
+    "migration_receipt_cid": null,
+    "required_pre_insert_behavior": "query current authority and stop for append_only_reconciliation_on_conflict"
+  },
+  "capture_limitations": [
+    "No test, proof, benchmark, provider, model, hardware, Quack, DuckLake, or external-prover result is inferred from source presence.",
+    "Package versions are declared source metadata, not evidence that wheels are installed.",
+    "Dirty origin contents are preservation facts and are not admitted into the isolated source snapshot.",
+    "The migration observation is planning evidence only."
+  ]
+}

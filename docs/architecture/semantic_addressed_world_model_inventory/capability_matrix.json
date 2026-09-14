@@ -1,0 +1,289 @@
+{
+  "schema": "semantic-addressed-world-model/capability-matrix@2",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "probe_policy": {
+    "source_presence_is_runtime_availability": false,
+    "installed_distribution_is_qualified_capability": false,
+    "implicit_install": false,
+    "implicit_model_download": false,
+    "ordinary_test_network": false,
+    "unavailable_result": "typed_unavailability",
+    "simulation_may_be_live_evidence": false
+  },
+  "environment_observations": {
+    "python": {
+      "executable": "/home/barberb/.local/bin/python",
+      "launch_executable": "/usr/bin/python3.12",
+      "version": "3.12.3",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    },
+    "installed_distribution_metadata": {
+      "duckdb": "1.5.5",
+      "pytest": "9.1.1",
+      "numpy": "1.26.4",
+      "torch": "2.13.0",
+      "quack": null,
+      "ducklake": null
+    },
+    "distribution_metadata_note": "Quack and DuckLake are repository/control capabilities rather than assumed PyPI distribution requirements. The later bounded launch qualification opened only an isolated in-memory native DuckDB and private Quack-extension projection; no authoritative database was mutated and no service was started by the capability probe.",
+    "grok_executable_observed": "/home/barberb/.local/bin/grok",
+    "grok_resolved_executable": "/home/barberb/.grok/downloads/grok-1.0.5-linux-aarch64",
+    "grok_executable_sha256": "1c1fe67d7c35497fb09f44a451f57acc3787add4c9aea2c56f5c7c75dc5ffcf1",
+    "grok_version": "1.0.5",
+    "grok_provider_authenticated": true,
+    "codex_executable_observed": "/usr/local/bin/codex",
+    "codex_resolved_executable": "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+    "codex_executable_sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477",
+    "codex_version": "0.150.1",
+    "codex_authentication_check": "codex_login_status_ok",
+    "codex_provider_admitted": true,
+    "provider_policy_id": "sha256:3de134194a1ccd6739eaeb77d63a0cd1be4de46eda4cff0433e7c34082ac9564",
+    "provider_probe_is_completion_authority": false
+  },
+  "capabilities": [
+    {
+      "capability": "current configured-board scheduler",
+      "source_status": "available",
+      "runtime_status": "m4_preflight_dry_run_and_live_launch_passed_then_stopped_at_preprovider_task_failure",
+      "evidence": "scripts/ops/agent_supervisor/configured_board_scheduler.py and data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/logs/configured-board-20260828T063346Z.log",
+      "required_gate": "M5 exact-source revalidation, append-only migration, generation-7 owner admission, preflight and dry-run"
+    },
+    {
+      "capability": "DuckDB embedded engine",
+      "source_status": "available",
+      "runtime_status": "m4_authoritative_store_materialized_and_stopped_at_event_116",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb sha256:d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670; frozen event watermark 116",
+      "required_gate": "append-only M5 copy and exact predecessor verification before any successor mutation"
+    },
+    {
+      "capability": "Quack multi-writer transport and exclusive state owner",
+      "source_status": "available_with_caveats",
+      "runtime_status": "m4_generation_6_owner_started_served_and_cleanly_stopped",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/quack-owner/quack-state-server.status.json sha256:16e0aa98ea054cc8665355ba4bc10a05affb8d26c0fbbffc5650256deec1e1b0",
+      "required_gate": "fresh M5 generation-7 credential, exclusive-owner and current-authority admission"
+    },
+    {
+      "capability": "DuckLake history projection",
+      "source_status": "available_with_caveats",
+      "runtime_status": "m4_non_authoritative_local_history_projection_available",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/ducklake-history-receipt.json sha256:3a1334919596234da7127464b6736cf44171666a6c3eae26291de4beaf401e5e",
+      "required_gate": "optional projection probe only",
+      "authoritative": false
+    },
+    {
+      "capability": "goal, task, revision, event and completion authority",
+      "source_status": "available",
+      "runtime_status": "m4_materialized_sawm_000_completed_sawm_001_claimed_in_progress",
+      "evidence": "M4 canonical event 116 baguqeera3qvtzkbfquvcwhk3weocoesvqlajklm736surlkl25jn2ljkllha; SAWM-000 completed@2, SAWM-001 in_progress@2, 43 tasks todo@1",
+      "required_gate": "M5 must preserve the accepted SAWM-000 receipt and migrate SAWM-001 in_progress to an append-only retryable successor state"
+    },
+    {
+      "capability": "worktree, lease, fence, resource and merge lifecycle",
+      "source_status": "available",
+      "runtime_status": "m4_task_claim_and_worktree_setup_exercised_preprovider_failure_cleaned_worktree",
+      "evidence": "M4 attempt attempt:bd4aa7ffd3ee4bc9b7c48af433ae2a99 and portal event snapshot event-log-snapshot:sha256:806ba18bf8230033aadf344c166a193b85c8cf77fd4a21792e4e61cd8ad02171",
+      "required_gate": "M5 must reconcile the execution/coordination attempt state before requeue; provider dispatch remains unexercised"
+    },
+    {
+      "capability": "ContextCompiler and DecisionRuntime",
+      "source_status": "available",
+      "runtime_status": "current_sawm_adapter_missing",
+      "evidence": "ipfs_accelerate_py/agent_supervisor/context",
+      "required_gate": "focused current-tree contract/receipt tests"
+    },
+    {
+      "capability": "semantic compression harness and governor",
+      "source_status": "available",
+      "runtime_status": "current_sawm_adapter_missing",
+      "evidence": "ipfs_accelerate_py/agent_supervisor/semantic_state and semantic_governor",
+      "required_gate": "bootstrap then shadow parity qualification"
+    },
+    {
+      "capability": "incremental verification and proof sealing",
+      "source_status": "available_with_caveats",
+      "runtime_status": "backend_and_sawm_bindings_unprobed",
+      "evidence": "ipfs_accelerate_py/agent_supervisor/verification and proof/incremental_sealing",
+      "required_gate": "current-tree selection, proof reconstruction/replay and independent seal tests"
+    },
+    {
+      "capability": "Tactician and Hammer",
+      "source_status": "available_with_caveats",
+      "runtime_status": "external_backends_unprobed",
+      "evidence": "accelerate proof modules and datasets logic/software_verification/tactician plus logic/hammers",
+      "required_gate": "per-backend capability, boundedness, proof/countermodel replay and abstention"
+    },
+    {
+      "capability": "e-graph or equality-saturation engine",
+      "source_status": "missing",
+      "runtime_status": "unavailable",
+      "evidence": null,
+      "required_gate": "task implementation without implicit external dependency"
+    },
+    {
+      "capability": "bounded CEGIS and deterministic repairs",
+      "source_status": "partial",
+      "runtime_status": "not_qualified_for_sawm",
+      "evidence": "autonomous_repair, planning/program_repair_synthesis.py and proof/logic_prediction_cegis.py",
+      "required_gate": "closed operator scope plus fixed-point proof/test validation"
+    },
+    {
+      "capability": "datasets semantic index and program analysis",
+      "source_status": "available_with_caveats",
+      "runtime_status": "sawm_coverage_not_qualified",
+      "evidence": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index",
+      "required_gate": "coverage/frontier/invalidation and deterministic snapshot tests"
+    },
+    {
+      "capability": "dynamic execution tracing",
+      "source_status": "partial",
+      "runtime_status": "sawm_tracer_unavailable",
+      "evidence": "related accelerator trace/monitor modules",
+      "required_gate": "hermetic Python tracer with redaction/cancellation/environment bindings"
+    },
+    {
+      "capability": "verified CID/IPLD/CAR block persistence",
+      "source_status": "available_with_caveats",
+      "runtime_status": "sawm_facade_unqualified",
+      "evidence": "ipfs_kit_py/ipfs_kit_py/ipfs_multiformats.py and ipld",
+      "required_gate": "claimed CID rehash, corruption and store-before-reference tests"
+    },
+    {
+      "capability": "GraphRAG and vector retrieval",
+      "source_status": "available_with_caveats",
+      "runtime_status": "backend_not_probed_for_sawm",
+      "evidence": "ipfs_kit_py/ipfs_kit_py/graphrag",
+      "required_gate": "immutable projection/manifest resolution and advisory-only response tests"
+    },
+    {
+      "capability": "generation-bearing durable state root CAS",
+      "source_status": "available_with_caveats",
+      "runtime_status": "sawm_root_not_qualified",
+      "evidence": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_*",
+      "required_gate": "ABA, stale writer, crash, replay and transitive verification tests"
+    },
+    {
+      "capability": "VFS, WAL, crash recovery and replication",
+      "source_status": "available_with_caveats",
+      "runtime_status": "sawm_outbox_and_recovery_not_qualified",
+      "evidence": "ipfs_kit_py/ipfs_kit_py/core/vfs, core/wal and core/replication",
+      "required_gate": "post-commit outbox, cancellation, corruption, restart and idempotence tests"
+    },
+    {
+      "capability": "rights-admitted execution-trace corpus",
+      "source_status": "missing",
+      "runtime_status": "training_unavailable",
+      "evidence": null,
+      "required_gate": "corpus/split/rights/privacy/leakage/lineage receipts"
+    },
+    {
+      "capability": "call-target specialist checkpoint",
+      "source_status": "missing",
+      "runtime_status": "training_unavailable",
+      "evidence": null,
+      "required_gate": "held-out benchmark, calibration, abstention, OOD and current-symbol resolution"
+    },
+    {
+      "capability": "next-event specialist checkpoint",
+      "source_status": "missing",
+      "runtime_status": "training_unavailable",
+      "evidence": null,
+      "required_gate": "observed-trace validation and closed structured grammar"
+    },
+    {
+      "capability": "inverse-trace specialist checkpoint",
+      "source_status": "missing",
+      "runtime_status": "training_unavailable",
+      "evidence": null,
+      "required_gate": "set-valued semantic validity and reproduction utility"
+    },
+    {
+      "capability": "repair-operator or graph-delta specialist checkpoint",
+      "source_status": "missing",
+      "runtime_status": "training_unavailable",
+      "evidence": null,
+      "required_gate": "operator scope, current-tree proof/test admission, calibration and rollback"
+    },
+    {
+      "capability": "GNN, graph transformer or TAGSeq-style checkpoint",
+      "source_status": "missing",
+      "runtime_status": "experimental_unavailable",
+      "evidence": null,
+      "required_gate": "license/security/reproducibility review and benefit over simpler frozen baselines"
+    },
+    {
+      "capability": "local accelerator/GPU execution",
+      "source_status": "provider_and_torch_surfaces_present",
+      "runtime_status": "hardware_not_probed",
+      "evidence": "torch 2.13.0 distribution metadata and current resource scheduler",
+      "required_gate": "current hardware/capacity/quantization/checkpoint capability probe"
+    },
+    {
+      "capability": "Codex implementation provider",
+      "source_status": "executable_observed",
+      "runtime_status": "m4_outer_capability_probe_admitted_no_task_provider_dispatch_or_invocation",
+      "evidence": "/usr/local/bin/codex 0.150.1; root-owned executable chain; login status passed; current ProductionCLIProviderPolicy readiness passed; M4 per-task provider tables remained empty",
+      "required_gate": "per-attempt current supervisor route, budget, privacy, command-binding and secrets/environment policy"
+    },
+    {
+      "capability": "remote model provider",
+      "source_status": "provider_integration_present",
+      "runtime_status": "m4_outer_capability_probe_admitted_no_task_provider_dispatch_or_invocation",
+      "evidence": "/home/barberb/.local/bin/grok -> account-standard grok 1.0.5 download; authenticated; current ProductionCLIProviderPolicy readiness passed; M4 per-task provider tables remained empty",
+      "required_gate": "per-attempt privacy, credentials policy, cognitive budget, quota and provider command binding"
+    }
+  ],
+  "m4_runtime_observation": {
+    "schema": "semantic-addressed-world-model/m4-runtime-observation@1",
+    "authority_class": "operator_frozen_predecessor_observation",
+    "completion_authority": false,
+    "rollout_activation_authority": false,
+    "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+    "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+    "source_binding_cid": "sha256:72ae538afc063f98a4e7b0a799a619d6a8c499ceb51c9ceb4bffe95de5f9d323",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "control_store_sha256": "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670",
+    "event_watermark": 116,
+    "event_prefix_sha256": "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911",
+    "projection_cid": "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha",
+    "plan_revision": 5,
+    "owner_generation": 6,
+    "owner_status": "stopped",
+    "task_alias": "SAWM-001",
+    "task_status": "in_progress",
+    "task_revision": 2,
+    "attempt_id": "attempt:bd4aa7ffd3ee4bc9b7c48af433ae2a99",
+    "claim_id": "claim:22c0f7ef869c4f508b1cdc1324b16413",
+    "portal_snapshot_id": "event-log-snapshot:sha256:806ba18bf8230033aadf344c166a193b85c8cf77fd4a21792e4e61cd8ad02171",
+    "failure_reason": "validation_project_dependency_preflight_failed",
+    "failure_kind": "lifecycle_setup",
+    "database_attempt_terminal_reason": "external_protected_checkout_recovery_required",
+    "lifecycle_started": true,
+    "task_claimed": true,
+    "task_state_changed": true,
+    "worktree_setup_occurred": true,
+    "worktree_removed": true,
+    "worktree_branch_deleted": true,
+    "provider_dispatch_attempted": false,
+    "provider_dispatched": false,
+    "provider_invocation_recorded": false,
+    "effect_claim_recorded": false,
+    "implementation_commit_created": false,
+    "merge_attempted": false,
+    "task_completed": false,
+    "successor_migration_revision": "SAWM-R2-M5",
+    "successor_run_id": "run-r2-m5",
+    "successor_plan_revision": 6,
+    "successor_store_generation": 7,
+    "successor_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb"
+  },
+  "fallback_invariants": [
+    "No admitted checkpoint returns training_unavailable, not fabricated inference.",
+    "Unavailable ANN preserves exact/static/symbolic/raw-source routes.",
+    "Unavailable prover preserves typed unknown or countermodel-free abstention.",
+    "Unavailable provider does not weaken validation or completion.",
+    "Candidate-only prediction never becomes observation, proof, authority or completion."
+  ]
+}

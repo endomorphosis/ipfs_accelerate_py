@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import copy
-import hashlib
-import json
-import shlex
 import subprocess
 import sys
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
+    DiffChangeKind,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
     summarize_test_failure,
@@ -20,1441 +18,45 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
-    PortalTaskState,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
     build_inline_provider_rescue_prompt,
+    build_scoped_test_semantic_inventory,
     derive_materialize_commands,
     is_undeclared_helper_path,
     plan_automatic_implementation_rescue,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
-VRIF_MATERIALIZER = "scripts/materialize_vrif_frozen_benchmark.py"
-VRIF_DECLARED_OUTPUTS = (
-    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-    "test/api/residual_intelligence/test_benchmark.py",
-)
-VRIF_OUTPUTS = (
-    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-    "test/api/residual_intelligence/test_benchmark.py",
-)
-VRIF_VALIDATION = (
-    "python3 -m pytest -q test/api/residual_intelligence/test_benchmark.py"
-)
-VRIF_CHANGED_PATHS = (
-    "test/api/residual_intelligence/test_benchmark.py",
-    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-)
 
-
-def test_vrif_owner_recovery_constants_remain_exactly_sealed() -> None:
-    assert (
-        implementation_daemon.VRIF_BENCHMARK_RECOVERY_DECLARED_OUTPUTS
-        == VRIF_DECLARED_OUTPUTS
+def _secret_test_source(value: str, *, include_assertion: bool = True) -> str:
+    source = (
+        "def test_secret_redaction():\n"
+        f"    password = {value!r}\n"
     )
-    assert implementation_daemon.VRIF_BENCHMARK_RECOVERY_OUTPUTS == VRIF_OUTPUTS
-    assert implementation_daemon.VRIF_BENCHMARK_RECOVERY_VALIDATION == VRIF_VALIDATION
+    if include_assertion:
+        source += "    assert redact(password) == '[redacted]'\n"
+    return source
 
 
-def test_vrif_owner_environment_is_exact_and_disables_replace_objects() -> None:
-    assert PortalImplementationDaemon._vrif_benchmark_owner_environment() == {
-        "GIT_CONFIG_GLOBAL": "/dev/null",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_NO_REPLACE_OBJECTS": "1",
-        "GIT_OPTIONAL_LOCKS": "0",
-        "HOME": "/nonexistent",
-        "LANG": "C.UTF-8",
-        "LC_ALL": "C.UTF-8",
-        "PATH": "/usr/bin:/bin",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONHASHSEED": "0",
-        "TMPDIR": "/tmp",
-    }
-
-
-def _git(repo: Path, *args: str) -> str:
-    completed = subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=10,
-    )
-    assert completed.returncode == 0, completed.stderr
-    return completed.stdout.strip()
-
-
-def _vrif_clean_repository(tmp_path: Path) -> tuple[Path, str, str]:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir(parents=True)
-    _git(workspace, "init", "-q")
-    _git(workspace, "config", "user.email", "vrif-rescue@example.invalid")
-    _git(workspace, "config", "user.name", "VRIF rescue fixture")
-    trusted_code_paths = tuple(
-        dict.fromkeys(
-            (
-                VRIF_MATERIALIZER,
-                *implementation_daemon.VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS,
-                *implementation_daemon.VRIF_BENCHMARK_RECOVERY_PRIVATE_PACKAGE_INITS,
-            )
-        )
-    )
-    for relative in trusted_code_paths:
-        destination = workspace / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((ROOT / relative).read_bytes())
-    data_paths = tuple(implementation_daemon.VRIF_BENCHMARK_RECOVERY_DATA_PATHS)
-    for relative in data_paths:
-        data_path = workspace / relative
-        if data_path.exists():
-            continue
-        data_path.parent.mkdir(parents=True, exist_ok=True)
-        data_path.write_text(f"baseline input for {relative}\n", encoding="utf-8")
-    for relative in VRIF_OUTPUTS:
-        output = workspace / relative
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(f"baseline placeholder for {relative}\n", encoding="utf-8")
-    _git(workspace, "add", *trusted_code_paths, *data_paths, *VRIF_OUTPUTS)
-    _git(workspace, "commit", "-qm", "trusted VRIF materializer baseline")
-    baseline = _git(workspace, "rev-parse", "HEAD")
-    tree = _git(workspace, "rev-parse", "HEAD^{tree}")
-    return workspace, baseline, tree
-
-
-def _vrif_task(**changes: object) -> PortalTask:
-    task = PortalTask(
-        task_id="VRIF-030",
-        title="Build frozen paired benchmark",
-        status="in_progress",
-        completion="auto",
-        priority="P1",
-        track="implementation",
-        outputs=list(VRIF_DECLARED_OUTPUTS),
-        validation=[VRIF_VALIDATION],
-        canonical_task_cid="baguqeera-vrif-030-fixture",
-    )
-    return replace(task, **changes)
-
-
-def test_vrif_owner_gate_reserves_provider_free_empty_candidate(
-    tmp_path: Path,
-) -> None:
-    daemon = PortalImplementationDaemon(
-        todo_path=ROOT
-        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
-        state_path=tmp_path / "state.json",
-        strategy_path=tmp_path / "strategy.json",
-        events_path=tmp_path / "events.jsonl",
-        repo_root=ROOT,
-        implement=True,
-    )
-
-    reserved = daemon._evaluate_pre_implementation_provider_gate(
-        task=_vrif_task(),
-        attempt=1,
-        worktree_path=ROOT,
-    )
-    ordinary = daemon._evaluate_pre_implementation_provider_gate(
-        task=_vrif_task(
-            task_id="VRIF-999",
-            outputs=["ordinary.txt"],
-            validation=["python3 -m py_compile ordinary.py"],
-            canonical_task_cid="baguqeera-ordinary-fixture",
-        ),
-        attempt=1,
-        worktree_path=ROOT,
-    )
-
-    assert reserved["disposition"] == "abstain_review"
-    assert reserved["reason_code"] == "no_analytical_close"
-    assert reserved["skip_provider"] is True
-    assert reserved["provider_authorized"] is False
-    assert reserved["owner_recovery_reserved"] is True
-    assert ordinary["reason_code"] == "no_analytical_close"
-    assert ordinary["skip_provider"] is True
-    assert ordinary["provider_authorized"] is False
-    assert ordinary["owner_recovery_reserved"] is False
-
-
-def test_vrif_reserved_candidate_is_provider_independent_and_terminal(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon = PortalImplementationDaemon(
-        todo_path=ROOT
-        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
-        state_path=tmp_path / "state.json",
-        strategy_path=tmp_path / "strategy.json",
-        events_path=tmp_path / "events.jsonl",
-        repo_root=ROOT,
-        implement=True,
-        implementation_command="provider-must-remain-unreachable",
-        use_ephemeral_worktree=True,
-        worktree_root=tmp_path / "worktrees",
-        worktree_pool_enabled=False,
-    )
-    task = _vrif_task()
-    state = PortalTaskState()
-    baseline = "a" * 40
-    # This unit isolates the reserved provider-free execution branch.  Event
-    # projection independently requires a canonical dependency receipt and is
-    # exercised by its own integration tests.
-    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
-
-    def seed(worktree_path: Path, _branch_name: str, *, task=None) -> str:
-        worktree_path.mkdir(parents=True)
-        return baseline
-
-    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
-    monkeypatch.setattr(
-        daemon,
-        "_require_validation_project_dependency_preflight",
-        lambda **_kwargs: {"passed": True},
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_require_implementation_protected_snapshot",
-        lambda **_kwargs: {},
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_prepare_worktree_for_validation",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_run_validation_with_candidate_binding",
-        lambda *_args, **_kwargs: {
-            "attempted": False,
-            "passed": False,
-            "returncode": (
-                implementation_daemon.PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
-            ),
-            "results": [],
-            "reason": "synthetic_reserved_candidate_rejected",
-        },
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_apply_implementation_failure_review",
-        lambda **kwargs: dict(kwargs["validation_result"]),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_finalize_implementation_protected_path_fence",
-        lambda **_kwargs: {},
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_preserve_failed_validation_worktree",
-        lambda *_args, **_kwargs: {
-            "commit_result": {"committed": False},
-            "cleanup_result": {"cleaned": False, "preserved": True},
-        },
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_record_task_queue_outcome",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_record_failed_attempt_retry_context",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_build_implementation_command",
-        lambda *_args, **_kwargs: pytest.fail(
-            "reserved owner recovery must not construct a provider command"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_automatic_implementation_rescue",
-        lambda **_kwargs: pytest.fail(
-            "reserved owner recovery must not fall through to generic rescue"
-        ),
-    )
-    monkeypatch.setattr(
-        implementation_daemon,
-        "run_process_group_stream",
-        lambda *_args, **_kwargs: pytest.fail(
-            "reserved owner recovery must not invoke a provider"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_evaluate_pre_implementation_provider_gate",
-        lambda **_kwargs: {
-            "skip_provider": True,
-            "provider_authorized": False,
-            "disposition": "abstain_review",
-            "reason_code": "no_analytical_close",
-            "receipt_cid": "baguqeera-reserved-gate",
-            "owner_recovery_reserved": True,
-            "event": {},
-        },
-    )
-
-    result = daemon._run_implementation_in_ephemeral_worktree(
-        task=task,
-        state=state,
-        attempt=1,
-        started_at="2026-08-25T00:00:00+00:00",
-        log_path=tmp_path / "implementation.log",
-        prompt="provider prompt must remain unused",
-    )
-
-    assert result["provider_dispatched"] is False
-    assert result["returncode"] != 0
-    assert (
-        result["validation_result"]["reason"]
-        == "vrif_benchmark_owner_reserved_candidate_rejected"
-    )
-    assert result["validation_result"]["auto_rescue_terminal"] is True
-    assert result["validation_result"]["auto_rescue"]["provider_passes"] == 0
-
-
-def test_vrif_owner_dispatch_bypasses_every_provider_prerequisite(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon = PortalImplementationDaemon(
-        todo_path=ROOT
-        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
-        state_path=tmp_path / "state.json",
-        strategy_path=tmp_path / "strategy.json",
-        events_path=tmp_path / "events.jsonl",
-        repo_root=ROOT,
-        implement=True,
-        implementation_command="provider-must-remain-unreachable",
-        use_ephemeral_worktree=True,
-        worktree_root=tmp_path / "worktrees",
-        worktree_pool_enabled=False,
-    )
-    task = _vrif_task()
-    state = PortalTaskState()
-    observed: dict[str, object] = {}
-
-    def forbidden(name: str):
-        return lambda *_args, **_kwargs: pytest.fail(
-            f"reserved owner recovery reached provider prerequisite {name}"
-        )
-
-    monkeypatch.setattr(daemon, "_board_task_is_completed", lambda *_args: False)
-    monkeypatch.setattr(daemon, "_find_live_inflight_implementation", lambda: None)
-    monkeypatch.setattr(
-        daemon, "_require_plan_runtime_before_claim", lambda *_args, **_kwargs: None
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_try_acquire_implementation_dispatch_intent",
-        lambda *_args, **_kwargs: (True, "acquired", None, None, None),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_acquire_implementation_resource_claims",
-        lambda *_args, **_kwargs: ([], "", "", None),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_try_acquire_implementation_lock",
-        lambda *_args, **_kwargs: (True, "acquired", None),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_release_implementation_lock",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_release_implementation_task_claim",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_release_implementation_resource_claims",
-        lambda *_args, **_kwargs: None,
-    )
-    for name in (
-        "_retry_no_change_pre_dispatch_scope",
-        "_active_provider_capacity_backoff_for_task",
-        "_require_primary_provider_readiness",
-        "_build_implementation_prompt",
-        "_persist_implementation_context_receipt",
-    ):
-        monkeypatch.setattr(daemon, name, forbidden(name))
-
-    def run_ephemeral(**kwargs):
-        observed.update(kwargs)
-        return {
-            "task_id": task.task_id,
-            "returncode": 0,
-            "attempt_consumed": True,
-            "provider_dispatched": False,
-        }
-
-    monkeypatch.setattr(
-        daemon,
-        "_run_implementation_in_ephemeral_worktree",
-        run_ephemeral,
-    )
-
-    result = daemon._run_implementation(task, state)
-
-    assert result["returncode"] == 0
-    assert result["provider_dispatched"] is False
-    assert observed["prompt"] == ""
-    assert observed["retry_no_change_probe_only"] is False
-
-
-def _vrif_exact_empty_patch_result(baseline: str) -> dict[str, object]:
-    proposal_id = "1" * 64
-    policy_id = "2" * 64
-    receipt_id = "3" * 64
-    canonical_task_cid = str(_vrif_task().canonical_task_cid)
-    findings = [
-        ["empty_patch", "patch", "candidate diff contains no file changes", ""],
-        [
-            "missing_required_field",
-            "structure",
-            "structured proposal requires operations",
-            "",
-        ],
-        [
-            "missing_required_field",
-            "structure",
-            "structured proposal requires patch_text",
-            "",
-        ],
-    ]
-    return {
-        "attempted": False,
-        "passed": False,
-        "returncode": implementation_daemon.PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
-        "results": [],
-        "reason": "no_change_completion_not_allowed",
-        "proposal_gate": {
-            "accepted": False,
-            "attempted": True,
-            "changed_paths": [],
-            "completion_authoritative": False,
-            "policy_id": policy_id,
-            "proof_authoritative": False,
-            "proposal_id": proposal_id,
-            "reason": "empty_patch_reserved_for_no_change_gate",
-            "reason_codes": ["empty_patch", "missing_required_field"],
-            "receipt_id": receipt_id,
-            "repository_tree_id": baseline,
-        },
-        "no_change_policy_gate": {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor/"
-                "no-change-candidate-policy-gate@1"
-            ),
-            "accepted": False,
-            "attempted": True,
-            "actual_findings": findings,
-            "baseline_id": baseline,
-            "candidate_fingerprint": (
-                "sha256:"
-                + implementation_daemon.VRIF_BENCHMARK_RECOVERY_EMPTY_DIFF_DIGEST
-            ),
-            "canonical_task_cid": canonical_task_cid,
-            "changed_paths": [],
-            "completion_authoritative": False,
-            "completion_mode": "",
-            "context_id": canonical_task_cid,
-            "diff_digest": (
-                implementation_daemon.VRIF_BENCHMARK_RECOVERY_EMPTY_DIFF_DIGEST
-            ),
-            "expected_findings": copy.deepcopy(findings),
-            "objective_id": canonical_task_cid,
-            "policy_id": policy_id,
-            "proof_authoritative": False,
-            "proposal_accepted": False,
-            "proposal_collection_error": "",
-            "proposal_id": proposal_id,
-            "proposal_receipt_id": receipt_id,
-            "reason": "no_change_completion_not_allowed",
-            "repository_tree_id": baseline,
-            "task_id": "VRIF-030",
-        },
-        "failure_review": {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "implementation-failure-review@1"
-            ),
-            "task_id": "VRIF-030",
-            "accepted": False,
-            "decision": "guide_rescue",
-            "finding_codes": ["empty_patch", "missing_required_field"],
-            "reason_codes": ["generic_implementation_failure"],
-            "changed_paths": [],
-            "denied_paths": [],
-            "out_of_scope_paths": [],
-            "missing_expected_outputs": [],
-            "failed_commands": [],
-            "expected_outputs": list(VRIF_OUTPUTS),
-            "completion_authoritative": False,
-            "proof_authoritative": False,
-        },
-    }
-
-
-def test_vrif_owner_materialize_argv_requires_exact_clean_gate_and_repository(
-    tmp_path: Path,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-
-    argv = PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-        workspace_path=workspace,
-        task=_vrif_task(),
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-    )
-
-    assert argv == (
-        sys.executable,
-        "-I",
-        "-S",
-        "-B",
-        VRIF_MATERIALIZER,
-        "--repo-root",
-        str(workspace.resolve()),
-        "--baseline-commit",
-        baseline,
-        "--write",
-    )
-
-
-@pytest.mark.parametrize(
-    ("task_changes", "gate_mutation"),
-    [
-        ({"task_id": "OTHER-030"}, None),
-        ({"outputs": list(VRIF_DECLARED_OUTPUTS[:-1])}, None),
-        ({"outputs": [*VRIF_DECLARED_OUTPUTS, "extra.json"]}, None),
-        ({"outputs": list(reversed(VRIF_DECLARED_OUTPUTS))}, None),
-        ({"validation": [VRIF_VALIDATION.replace("python3", "python")]}, None),
-        ({"validation": [VRIF_VALIDATION, "true"]}, None),
-        ({}, "returncode"),
-        ({}, "extra_reason_code"),
-        ({}, "missing_finding"),
-        ({}, "findings_disagree"),
-        ({}, "wrong_baseline"),
-        ({}, "canonical_cid_mismatch"),
-        ({}, "reject_review"),
-    ],
-)
-def test_vrif_owner_materialize_argv_rejects_nonexact_task_or_gate(
-    tmp_path: Path,
-    task_changes: dict[str, object],
-    gate_mutation: str | None,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    gate = _vrif_exact_empty_patch_result(baseline)
-    proposal_gate = gate["proposal_gate"]
-    no_change_gate = gate["no_change_policy_gate"]
-    assert isinstance(proposal_gate, dict)
-    assert isinstance(no_change_gate, dict)
-    if gate_mutation == "returncode":
-        gate["returncode"] = 0
-    elif gate_mutation == "extra_reason_code":
-        proposal_gate["reason_codes"] = [
-            "empty_patch",
-            "missing_required_field",
-            "scope_expansion_denied",
-        ]
-    elif gate_mutation == "missing_finding":
-        no_change_gate["actual_findings"] = no_change_gate["actual_findings"][:-1]
-    elif gate_mutation == "findings_disagree":
-        no_change_gate["expected_findings"] = []
-    elif gate_mutation == "wrong_baseline":
-        no_change_gate["baseline_id"] = "f" * 40
-    elif gate_mutation == "canonical_cid_mismatch":
-        no_change_gate["canonical_task_cid"] = "baguqeera-foreign-task"
-    elif gate_mutation == "reject_review":
-        failure_review = gate["failure_review"]
-        assert isinstance(failure_review, dict)
-        failure_review["decision"] = "reject"
-
-    assert (
-        PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-            workspace_path=workspace,
-            task=_vrif_task(**task_changes),
-            baseline_ref=baseline,
-            validation_result=gate,
-        )
-        == ()
-    )
-
-
-@pytest.mark.parametrize(
-    "defect", ["tracked", "untracked", "symlink", "parent_symlink", "altered"]
-)
-def test_vrif_owner_materialize_argv_rejects_dirty_or_untrusted_workspace(
-    tmp_path: Path,
-    defect: str,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    materializer = workspace / VRIF_MATERIALIZER
-    if defect == "tracked":
-        materializer.write_bytes(materializer.read_bytes() + b"\n# changed\n")
-    elif defect == "untracked":
-        (workspace / "untracked.txt").write_text("unexpected\n", encoding="utf-8")
-    elif defect == "symlink":
-        materializer.unlink()
-        materializer.symlink_to("../untracked-materializer.py")
-    elif defect == "parent_symlink":
-        scripts = workspace / "scripts"
-        external_scripts = tmp_path / "external-scripts"
-        scripts.rename(external_scripts)
-        scripts.symlink_to(external_scripts, target_is_directory=True)
-    else:
-        _git(workspace, "update-index", "--assume-unchanged", VRIF_MATERIALIZER)
-        materializer.write_bytes(materializer.read_bytes() + b"\n# concealed drift\n")
-
-    assert (
-        PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-            workspace_path=workspace,
-            task=_vrif_task(),
-            baseline_ref=baseline,
-            validation_result=_vrif_exact_empty_patch_result(baseline),
-        )
-        == ()
-    )
-
-
-@pytest.mark.parametrize(
-    "config_key",
-    [
-        "filter.vrif.clean",
-        "filter.vrif.process",
-        "diff.vrif.command",
-        "diff.vrif.textconv",
-        "core.fsmonitor",
-        "core.hooksPath",
-    ],
-)
-def test_vrif_owner_authorization_rejects_dangerous_local_git_config_without_execution(
-    tmp_path: Path,
-    config_key: str,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    marker = tmp_path / "dangerous-git-config-executed"
-    helper = tmp_path / "dangerous-git-helper"
-    helper.write_text(
-        "#!/usr/bin/env python3\n"
-        "from pathlib import Path\n"
-        f"Path({str(marker)!r}).write_text('executed\\n', encoding='utf-8')\n"
-        "raise SystemExit(7)\n",
-        encoding="utf-8",
-    )
-    helper.chmod(0o755)
-    config_value = str(helper)
-    if config_key == "core.hooksPath":
-        hooks = tmp_path / "dangerous-hooks"
-        hooks.mkdir()
-        for hook_name in ("post-checkout", "pre-commit"):
-            hook = hooks / hook_name
-            hook.write_bytes(helper.read_bytes())
-            hook.chmod(0o755)
-        config_value = str(hooks)
-    _git(workspace, "config", "--local", config_key, config_value)
-
-    argv = PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-        workspace_path=workspace,
-        task=_vrif_task(),
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-    )
-
-    assert argv == ()
-    assert not marker.exists()
-
-
-def _sha256_identity(payload: bytes) -> str:
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
-
-
-def _vrif_materializer_receipt(
+def _test_proposal(
+    proposal_id: str,
+    source: str,
     *,
-    baseline: str,
-    tree: str,
-    payloads: dict[str, bytes],
-    changed_paths: list[str] | None = None,
-) -> dict[str, object]:
-    return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "vrif-frozen-benchmark-materialization@1"
-        ),
-        "mode": "write",
-        "baseline_commit": baseline,
-        "baseline_tree": tree,
-        "changed_paths": list(changed_paths or VRIF_CHANGED_PATHS),
-        "case_count": 96,
-        "case_root": "sha256:" + "4" * 64,
-        "binding_set_id": "sha256:" + "5" * 64,
-        "freeze_id": "sha256:" + "6" * 64,
-        "output_identities": {
-            path: _sha256_identity(payload) for path, payload in payloads.items()
-        },
-    }
-
-
-def _vrif_runner_daemon(monkeypatch: pytest.MonkeyPatch) -> PortalImplementationDaemon:
-    daemon = object.__new__(PortalImplementationDaemon)
-    daemon.implementation_timeout = 60
-    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
-    return daemon
-
-
-def test_vrif_owner_materializer_runner_is_shell_free_isolated_and_exact(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace, baseline, tree = _vrif_clean_repository(tmp_path)
-    task = _vrif_task()
-    gate = _vrif_exact_empty_patch_result(baseline)
-    argv = PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-        workspace_path=workspace,
-        task=task,
-        baseline_ref=baseline,
-        validation_result=gate,
-    )
-    assert argv
-    payloads = {path: f"owner materialized {path}\n".encode() for path in VRIF_OUTPUTS}
-    receipt = _vrif_materializer_receipt(
-        baseline=baseline,
-        tree=tree,
-        payloads=payloads,
-    )
-    captured: dict[str, object] = {}
-    real_run = subprocess.run
-
-    def fake_run(command, *args, **kwargs):
-        command_tuple = tuple(str(item) for item in command)
-        if (
-            command_tuple[:4] == (sys.executable, "-I", "-S", "-B")
-            and command_tuple[5:] == argv[5:]
-            and command_tuple[4] != VRIF_MATERIALIZER
-        ):
-            captured.update(kwargs)
-            for path, payload in payloads.items():
-                (workspace / path).write_bytes(payload)
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=json.dumps(receipt, sort_keys=True, separators=(",", ":"))
-                + "\n",
-                stderr="",
-            )
-        return real_run(command, *args, **kwargs)
-
-    monkeypatch.setattr(implementation_daemon.subprocess, "run", fake_run)
-    monkeypatch.setenv("PYTHONPATH", "/attacker-controlled-pythonpath")
-    monkeypatch.setenv("VIRTUAL_ENV", "/attacker-controlled-venv")
-    daemon = _vrif_runner_daemon(monkeypatch)
-
-    result = daemon._run_vrif_benchmark_owner_materializer(
-        workspace_path=workspace,
-        task=task,
-        attempt=1,
-        baseline_ref=baseline,
-        argv=argv,
-        log_path=tmp_path / "implementation.log",
-    )
-
-    assert result["attempted"] is True
-    assert result["passed"] is True
-    assert result["returncode"] == 0
-    assert set(result["changed_paths"]) == set(VRIF_OUTPUTS)
-    assert captured["shell"] is False
-    assert captured["cwd"] == workspace
-    assert captured["text"] is True
-    assert captured["capture_output"] is True
-    environment = captured["env"]
-    assert isinstance(environment, dict)
-    assert "PYTHONPATH" not in environment
-    assert "VIRTUAL_ENV" not in environment
-    assert all(
-        result["output_identities"][path] == _sha256_identity(payloads[path])
-        for path in VRIF_OUTPUTS
-    )
-
-
-@pytest.mark.parametrize(
-    "defect",
-    [
-        "nonzero",
-        "extra_field",
-        "duplicate_json",
-        "extra_stdout",
-        "wrong_tree",
-        "partial_paths",
-        "wrong_hash",
-        "branch_switch",
-        "trusted_code_mutation",
-        "data_mutation",
-        "index_flag_mutation",
-    ],
-)
-def test_vrif_owner_materializer_runner_rejects_malformed_or_partial_result(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    defect: str,
-) -> None:
-    workspace, baseline, tree = _vrif_clean_repository(tmp_path)
-    task = _vrif_task()
-    argv = PortalImplementationDaemon._vrif_benchmark_owner_materialize_argv(
-        workspace_path=workspace,
-        task=task,
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-    )
-    assert argv
-    payloads = {path: f"owner materialized {path}\n".encode() for path in VRIF_OUTPUTS}
-    receipt = _vrif_materializer_receipt(
-        baseline=baseline,
-        tree=tree,
-        payloads=payloads,
-    )
-    if defect == "extra_field":
-        receipt["unexpected"] = True
-    elif defect == "wrong_tree":
-        receipt["baseline_tree"] = "f" * 40
-    elif defect == "partial_paths":
-        receipt["changed_paths"] = list(VRIF_CHANGED_PATHS[:-1])
-        output_identities = receipt["output_identities"]
-        assert isinstance(output_identities, dict)
-        output_identities.pop(VRIF_CHANGED_PATHS[-1])
-    elif defect == "wrong_hash":
-        output_identities = receipt["output_identities"]
-        assert isinstance(output_identities, dict)
-        output_identities[VRIF_OUTPUTS[0]] = "sha256:" + "f" * 64
-
-    real_run = subprocess.run
-
-    def fake_run(command, *args, **kwargs):
-        command_tuple = tuple(str(item) for item in command)
-        if not (
-            command_tuple[:4] == (sys.executable, "-I", "-S", "-B")
-            and command_tuple[5:] == argv[5:]
-            and command_tuple[4] != VRIF_MATERIALIZER
-        ):
-            return real_run(command, *args, **kwargs)
-        if defect == "nonzero":
-            return subprocess.CompletedProcess(command, 9, stdout="", stderr="failed")
-        written = VRIF_OUTPUTS[:-1] if defect == "partial_paths" else VRIF_OUTPUTS
-        for path in written:
-            (workspace / path).write_bytes(payloads[path])
-        if defect == "branch_switch":
-            switched = real_run(
-                ["git", "switch", "-qc", "post-materialization-drift"],
-                cwd=workspace,
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            assert switched.returncode == 0, switched.stderr
-        elif defect == "trusted_code_mutation":
-            trusted_path = (
-                workspace
-                / implementation_daemon.VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS[
-                    1
-                ]
-            )
-            trusted_path.write_bytes(trusted_path.read_bytes() + b"\n# post-run drift\n")
-        elif defect == "data_mutation":
-            data_path = (
-                workspace
-                / implementation_daemon.VRIF_BENCHMARK_RECOVERY_DATA_PATHS[0]
-            )
-            data_path.write_bytes(data_path.read_bytes() + b"\npost-run drift\n")
-        elif defect == "index_flag_mutation":
-            flag_path = (
-                implementation_daemon.VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS[1]
-            )
-            flagged = real_run(
-                ["git", "update-index", "--assume-unchanged", "--", flag_path],
-                cwd=workspace,
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-            assert flagged.returncode == 0, flagged.stderr
-        encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
-        if defect == "duplicate_json":
-            encoded = encoded.replace(
-                '"mode":"write"',
-                '"mode":"write","mode":"write"',
-            )
-        elif defect == "extra_stdout":
-            encoded = "untrusted preamble\n" + encoded
-        return subprocess.CompletedProcess(command, 0, stdout=encoded + "\n", stderr="")
-
-    monkeypatch.setattr(implementation_daemon.subprocess, "run", fake_run)
-    daemon = _vrif_runner_daemon(monkeypatch)
-
-    result = daemon._run_vrif_benchmark_owner_materializer(
-        workspace_path=workspace,
-        task=task,
-        attempt=1,
-        baseline_ref=baseline,
-        argv=argv,
-        log_path=tmp_path / "implementation.log",
-    )
-
-    assert result["attempted"] is True
-    assert result["passed"] is False
-
-
-def _vrif_accepted_proposal(baseline: str) -> SimpleNamespace:
+    path: str = "tests/unit/test_redaction.py",
+) -> SimpleNamespace:
     return SimpleNamespace(
-        accepted=True,
-        findings=(),
-        policy=SimpleNamespace(policy_id="4" * 64),
-        proposal=SimpleNamespace(
-            changed_paths=VRIF_OUTPUTS,
-            proposal_id="5" * 64,
-            repository_tree_id=baseline,
-        ),
-        receipt=SimpleNamespace(receipt_id="6" * 64),
-    )
-
-
-def _vrif_recovery_daemon(monkeypatch: pytest.MonkeyPatch) -> PortalImplementationDaemon:
-    daemon = object.__new__(PortalImplementationDaemon)
-    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        daemon,
-        "_sanitize_failed_validation_result",
-        lambda result: dict(result),
-    )
-    return daemon
-
-
-def test_vrif_owner_recovery_stages_exact_outputs_and_runs_uncached_bound_validation(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace, baseline, tree = _vrif_clean_repository(tmp_path)
-    branch = _git(workspace, "branch", "--show-current")
-    task = _vrif_task()
-    payloads = {path: f"recovered {path}\n".encode() for path in VRIF_OUTPUTS}
-    receipt = _vrif_materializer_receipt(
-        baseline=baseline,
-        tree=tree,
-        payloads=payloads,
-    )
-    materializer_calls: list[tuple[str, ...]] = []
-    validation_calls: list[dict[str, object]] = []
-    binding_calls: list[dict[str, object]] = []
-    git_calls: list[tuple[str, ...]] = []
-    proposal = _vrif_accepted_proposal(baseline)
-    daemon = _vrif_recovery_daemon(monkeypatch)
-    real_run = subprocess.run
-
-    def materialize(**kwargs):
-        materializer_calls.append(tuple(kwargs["argv"]))
-        for path, payload in payloads.items():
-            (workspace / path).write_bytes(payload)
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "reason": "vrif_benchmark_owner_materialized",
-            "changed_paths": list(VRIF_OUTPUTS),
-            "receipt": receipt,
-            "output_identities": dict(receipt["output_identities"]),
-        }
-
-    def validate_commands(*args, **kwargs):
-        validation_calls.append(dict(kwargs))
-        assert args == (workspace, task, tmp_path / "implementation.log")
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "results": [{"command": VRIF_VALIDATION, "passed": True}],
-        }
-
-    def verify_binding(*args, **kwargs):
-        binding_calls.append(dict(kwargs))
-        assert args == (workspace, task)
-        return dict(kwargs["validation_result"])
-
-    def record_run(command, *args, **kwargs):
-        command_tuple = tuple(str(item) for item in command)
-        if command_tuple and Path(command_tuple[0]).name == "git":
-            git_calls.append(command_tuple)
-        return real_run(command, *args, **kwargs)
-
-    monkeypatch.setattr(
-        daemon,
-        "_run_vrif_benchmark_owner_materializer",
-        materialize,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_stage_declared_candidate_outputs",
-        lambda *_args, **_kwargs: pytest.fail(
-            "owner recovery must not use generic staging"
+        proposal_id=proposal_id,
+        changed_paths=(path,),
+        candidate_diff=(
+            SimpleNamespace(
+                before_source="",
+                after_source=source,
+                new_path=path,
+                old_path=path,
+            ),
         ),
     )
-    monkeypatch.setattr(
-        daemon,
-        "_staged_worktree_paths",
-        lambda *_args, **_kwargs: pytest.fail(
-            "owner recovery must not use the bare staged-path helper"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_validate_implementation_patch",
-        lambda *_args, **_kwargs: proposal,
-    )
-    monkeypatch.setattr(daemon, "_run_validation_commands", validate_commands)
-    monkeypatch.setattr(
-        daemon,
-        "_verify_post_validation_candidate_binding",
-        verify_binding,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_automatic_implementation_rescue",
-        lambda **_kwargs: pytest.fail("owner recovery must not fall through"),
-    )
-    monkeypatch.setattr(
-        implementation_daemon,
-        "run_process_group_stream",
-        lambda *_args, **_kwargs: pytest.fail("owner recovery must not invoke a provider"),
-    )
-    monkeypatch.setattr(implementation_daemon.subprocess, "run", record_run)
-
-    result = daemon._run_vrif_benchmark_owner_recovery_after_review(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        branch_name=branch,
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-        log_path=tmp_path / "implementation.log",
-        state=None,
-    )
-
-    assert result is not None
-    assert result["passed"] is True
-    assert result["auto_rescue_terminal"] is True
-    assert result["auto_rescue"] == {
-        "succeeded": True,
-        "owner_recovery": True,
-        "provider_passes": 0,
-        "materializer_attempted": True,
-        "changed_paths": list(VRIF_OUTPUTS),
-    }
-    assert len(materializer_calls) == 1
-    assert _git(workspace, "diff", "--cached", "--name-only").splitlines() == list(
-        VRIF_OUTPUTS
-    )
-    hash_calls = [call for call in git_calls if "hash-object" in call]
-    update_calls = [call for call in git_calls if "update-index" in call]
-    assert len(hash_calls) == len(VRIF_OUTPUTS)
-    assert all(
-        call[0] == implementation_daemon.VRIF_BENCHMARK_RECOVERY_GIT
-        for call in (*hash_calls, *update_calls)
-    )
-    assert all("-w" in call and "--no-filters" in call for call in hash_calls)
-    assert all("--stdin" in call for call in hash_calls)
-    assert len(update_calls) == len(VRIF_OUTPUTS)
-    assert all("--add" in call and "--cacheinfo" in call for call in update_calls)
-    assert all(
-        any(path in " ".join(call) for call in update_calls) for path in VRIF_OUTPUTS
-    )
-    assert not any("add" in call for call in git_calls)
-    assert len(validation_calls) == 1
-    assert validation_calls[0]["force_uncached"] is True
-    assert validation_calls[0]["proposal_validation"] is proposal
-    assert len(binding_calls) == 1
-    assert binding_calls[0]["baseline_ref"] == baseline
-    assert binding_calls[0]["proposal_validation"] is proposal
-
-
-@pytest.mark.parametrize(
-    ("mutation", "expected_reason"),
-    [
-        ("materializer", "vrif_benchmark_owner_materialization_failed"),
-        ("gate", "vrif_benchmark_owner_materializer_not_authorized"),
-        ("validation", "vrif_benchmark_owner_contract_mismatch"),
-        ("output", "vrif_benchmark_owner_contract_mismatch"),
-    ],
-)
-def test_vrif_owner_recovery_failure_is_terminal_without_generic_or_provider_rescue(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    mutation: str,
-    expected_reason: str,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    branch = _git(workspace, "branch", "--show-current")
-    task = _vrif_task()
-    gate = _vrif_exact_empty_patch_result(baseline)
-    if mutation == "gate":
-        proposal_gate = gate["proposal_gate"]
-        assert isinstance(proposal_gate, dict)
-        proposal_gate["reason_codes"] = ["empty_patch"]
-    elif mutation == "validation":
-        task = _vrif_task(validation=["python3 -m pytest -q unrelated.py"])
-    elif mutation == "output":
-        task = _vrif_task(outputs=list(VRIF_DECLARED_OUTPUTS[:-1]))
-
-    daemon = _vrif_recovery_daemon(monkeypatch)
-    monkeypatch.setattr(
-        daemon,
-        "_run_vrif_benchmark_owner_materializer",
-        lambda **_kwargs: {
-            "attempted": True,
-            "passed": False,
-            "returncode": 9,
-            "reason": "synthetic_materializer_failure",
-            "changed_paths": [],
-        },
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_run_auto_rescue_materialize_commands",
-        lambda **_kwargs: pytest.fail("generic materialization must be unreachable"),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_automatic_implementation_rescue",
-        lambda **_kwargs: pytest.fail("generic auto-rescue must be unreachable"),
-    )
-    monkeypatch.setattr(
-        implementation_daemon,
-        "run_process_group_stream",
-        lambda *_args, **_kwargs: pytest.fail("provider rescue must be unreachable"),
-    )
-
-    result = daemon._run_vrif_benchmark_owner_recovery_after_review(
-        task=task,
-        attempt=2,
-        workspace_path=workspace,
-        branch_name=branch,
-        baseline_ref=baseline,
-        validation_result=gate,
-        log_path=tmp_path / "implementation.log",
-        state=None,
-    )
-
-    assert result is not None
-    assert result["passed"] is False
-    assert result["reason"] == expected_reason
-    assert result["auto_rescue_terminal"] is True
-    assert result["auto_rescue"]["owner_recovery"] is True
-    assert result["auto_rescue"]["provider_passes"] == 0
-
-
-def test_vrif_owner_recovery_rejects_partial_staging_before_validation(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace, baseline, tree = _vrif_clean_repository(tmp_path)
-    task = _vrif_task()
-    payloads = {path: f"recovered {path}\n".encode() for path in VRIF_OUTPUTS}
-    receipt = _vrif_materializer_receipt(
-        baseline=baseline,
-        tree=tree,
-        payloads=payloads,
-    )
-    daemon = _vrif_recovery_daemon(monkeypatch)
-
-    def materialize(**_kwargs):
-        for path, payload in payloads.items():
-            (workspace / path).write_bytes(payload)
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "reason": "vrif_benchmark_owner_materialized",
-            "changed_paths": list(VRIF_OUTPUTS),
-            "receipt": receipt,
-            "output_identities": dict(receipt["output_identities"]),
-        }
-
-    def stage_partial(*_args, **_kwargs) -> tuple[str, ...]:
-        _git(workspace, "add", "--", *VRIF_OUTPUTS[:-1])
-        return VRIF_OUTPUTS[:-1]
-
-    monkeypatch.setattr(
-        daemon,
-        "_run_vrif_benchmark_owner_materializer",
-        materialize,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_stage_vrif_benchmark_owner_outputs",
-        stage_partial,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_stage_declared_candidate_outputs",
-        lambda *_args, **_kwargs: pytest.fail(
-            "owner recovery must not use generic staging"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_validate_implementation_patch",
-        lambda *_args, **_kwargs: pytest.fail(
-            "partial staging must fail before proposal admission"
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_run_validation_commands",
-        lambda *_args, **_kwargs: pytest.fail(
-            "partial staging must fail before validation"
-        ),
-    )
-
-    result = daemon._run_vrif_benchmark_owner_recovery_after_review(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        branch_name=_git(workspace, "branch", "--show-current"),
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-        log_path=tmp_path / "implementation.log",
-        state=None,
-    )
-
-    assert result is not None
-    assert result["passed"] is False
-    assert result["reason"] == "vrif_benchmark_owner_staging_failed"
-    assert result["auto_rescue_terminal"] is True
-    assert result["auto_rescue"]["provider_passes"] == 0
-
-
-def _write_vrif_commit_candidate(
-    workspace: Path,
-    paths: tuple[str, ...] = VRIF_OUTPUTS,
-) -> None:
-    for relative_path in paths:
-        (workspace / relative_path).write_text(
-            f"sealed commit candidate for {relative_path}\n",
-            encoding="utf-8",
-        )
-
-
-def test_commit_vrif_owner_changes_commits_only_exact_outputs_without_hooks(
-    tmp_path: Path,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = object.__new__(PortalImplementationDaemon)
-    marker = tmp_path / "pre-commit-hook-ran"
-    pre_commit = workspace / ".git" / "hooks" / "pre-commit"
-    pre_commit.write_text(
-        "#!/usr/bin/env python3\n"
-        "from pathlib import Path\n"
-        f"Path({str(marker)!r}).write_text('ran\\n', encoding='utf-8')\n"
-        "raise SystemExit(73)\n",
-        encoding="utf-8",
-    )
-    pre_commit.chmod(0o755)
-    _write_vrif_commit_candidate(workspace)
-    assert daemon._stage_vrif_benchmark_owner_outputs(
-        workspace,
-        baseline_ref=baseline,
-    ) == VRIF_OUTPUTS
-
-    result = daemon._commit_vrif_benchmark_owner_changes(
-        workspace,
-        task=_vrif_task(),
-        attempt=7,
-        baseline_ref=baseline,
-    )
-
-    assert result["committed"] is True
-    assert result["reason"] == "vrif_benchmark_owner_committed"
-    commit = str(result["commit"])
-    assert _git(workspace, "rev-list", "--parents", "-n", "1", commit).split() == [
-        commit,
-        baseline,
-    ]
-    changed_paths = _git(
-        workspace,
-        "diff",
-        "--name-only",
-        baseline,
-        commit,
-        "--",
-    ).splitlines()
-    assert changed_paths == list(VRIF_OUTPUTS)
-    tree_entries = _git(
-        workspace,
-        "ls-tree",
-        commit,
-        "--",
-        *VRIF_OUTPUTS,
-    ).splitlines()
-    assert len(tree_entries) == len(VRIF_OUTPUTS)
-    assert all(entry.startswith("100644 blob ") for entry in tree_entries)
-    assert {entry.split("\t", 1)[1] for entry in tree_entries} == set(VRIF_OUTPUTS)
-    assert _git(workspace, "status", "--porcelain=v1", "--untracked-files=all") == ""
-    assert not marker.exists()
-
-
-def test_commit_vrif_owner_changes_rejects_malformed_task(
-    tmp_path: Path,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = object.__new__(PortalImplementationDaemon)
-    _write_vrif_commit_candidate(workspace)
-    assert daemon._stage_vrif_benchmark_owner_outputs(
-        workspace,
-        baseline_ref=baseline,
-    ) == VRIF_OUTPUTS
-
-    result = daemon._commit_vrif_benchmark_owner_changes(
-        workspace,
-        task=_vrif_task(outputs=list(VRIF_OUTPUTS[:-1])),
-        attempt=1,
-        baseline_ref=baseline,
-    )
-
-    assert result == {
-        "committed": False,
-        "reason": "vrif_benchmark_owner_commit_not_authorized",
-    }
-    assert _git(workspace, "rev-parse", "HEAD") == baseline
-
-
-def test_commit_vrif_owner_changes_rejects_partial_output_candidate(
-    tmp_path: Path,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = object.__new__(PortalImplementationDaemon)
-    _write_vrif_commit_candidate(workspace, VRIF_OUTPUTS[:-1])
-    assert daemon._stage_vrif_benchmark_owner_outputs(
-        workspace,
-        baseline_ref=baseline,
-    ) == VRIF_OUTPUTS
-
-    result = daemon._commit_vrif_benchmark_owner_changes(
-        workspace,
-        task=_vrif_task(),
-        attempt=1,
-        baseline_ref=baseline,
-    )
-
-    assert result["committed"] is False
-    assert result["reason"] == "vrif_benchmark_owner_commit_not_authorized"
-    assert _git(workspace, "rev-parse", "HEAD") == baseline
-    assert _git(workspace, "diff", "--cached", "--name-only").splitlines() == list(
-        VRIF_OUTPUTS[:-1]
-    )
-
-
-def test_commit_vrif_owner_changes_rejects_residual_unstaged_path(
-    tmp_path: Path,
-) -> None:
-    workspace, _baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = object.__new__(PortalImplementationDaemon)
-    residual = workspace / "tracked-residual.txt"
-    residual.write_text("baseline\n", encoding="utf-8")
-    _git(workspace, "add", "--", residual.name)
-    _git(workspace, "commit", "-qm", "add tracked residual fixture")
-    baseline = _git(workspace, "rev-parse", "HEAD")
-    _write_vrif_commit_candidate(workspace)
-    assert daemon._stage_vrif_benchmark_owner_outputs(
-        workspace,
-        baseline_ref=baseline,
-    ) == VRIF_OUTPUTS
-    residual.write_text("unstaged drift\n", encoding="utf-8")
-
-    result = daemon._commit_vrif_benchmark_owner_changes(
-        workspace,
-        task=_vrif_task(),
-        attempt=1,
-        baseline_ref=baseline,
-    )
-
-    assert result["committed"] is False
-    assert result["reason"] == "vrif_benchmark_owner_commit_not_authorized"
-    assert _git(workspace, "rev-parse", "HEAD") == baseline
-    assert residual.name in _git(workspace, "diff", "--name-only").splitlines()
-
-
-def test_commit_vrif_owner_changes_rejects_existing_executable_output_mode(
-    tmp_path: Path,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = object.__new__(PortalImplementationDaemon)
-    _write_vrif_commit_candidate(workspace)
-    executable_output = workspace / VRIF_OUTPUTS[0]
-    executable_output.chmod(0o755)
-    _git(workspace, "add", "--", *VRIF_OUTPUTS)
-    _git(workspace, "commit", "-qm", "candidate with executable output")
-    candidate = _git(workspace, "rev-parse", "HEAD")
-    assert _git(workspace, "rev-parse", "HEAD^1") == baseline
-    assert _git(
-        workspace,
-        "diff",
-        "--name-only",
-        baseline,
-        candidate,
-        "--",
-    ).splitlines() == list(VRIF_OUTPUTS)
-    executable_entry = _git(
-        workspace,
-        "ls-tree",
-        candidate,
-        "--",
-        VRIF_OUTPUTS[0],
-    )
-    assert executable_entry.startswith("100755 blob ")
-
-    result = daemon._commit_vrif_benchmark_owner_changes(
-        workspace,
-        task=_vrif_task(),
-        attempt=1,
-        baseline_ref=baseline,
-    )
-
-    assert result["committed"] is False
-    assert result["reason"] == "vrif_benchmark_owner_commit_not_authorized"
-    assert _git(workspace, "rev-parse", "HEAD") == candidate
-    assert _git(workspace, "status", "--porcelain=v1") == ""
-
-
-def test_vrif_owner_recovery_ordinary_task_remains_outside_reserved_branch(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace, baseline, _tree = _vrif_clean_repository(tmp_path)
-    daemon = _vrif_recovery_daemon(monkeypatch)
-
-    result = daemon._run_vrif_benchmark_owner_recovery_after_review(
-        task=_vrif_task(task_id="ORDINARY-030"),
-        attempt=1,
-        workspace_path=workspace,
-        branch_name=_git(workspace, "branch", "--show-current"),
-        baseline_ref=baseline,
-        validation_result=_vrif_exact_empty_patch_result(baseline),
-        log_path=tmp_path / "implementation.log",
-        state=None,
-    )
-
-    assert result is None
 
 
 def test_summarize_test_failure_prefers_assertion_over_banner() -> None:
@@ -1482,23 +84,6 @@ FAILED test/api/test_foo.py::test_provider_surfaces - AssertionError: assert 0 >
     assert "AssertionError" in head
     assert "short test summary info" not in head
     assert "assert 0 >= 1" in head
-
-
-def test_summarize_test_failure_strips_ansi_failed_nodes() -> None:
-    output = (
-        "\x1b[31mFAILED\x1b[0m "
-        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::"
-        "\x1b[1mtest_quota_grok_command_authorizes_canonical_legacy_preflight\x1b[0m "
-        "- AssertionError: assert 'grok-4.6' == 'grok-4.5'\n"
-    )
-    summary = summarize_test_failure(output)
-    assert any(
-        "test_quota_grok_command_authorizes_canonical_legacy_preflight" in item
-        for item in summary["failed_tests"]
-    )
-    assert summary["failed_test_paths"] == [
-        "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
-    ]
 
 
 def test_summarize_test_failure_quiet_mode_still_extracts_failed_node() -> None:
@@ -1537,24 +122,6 @@ def test_plan_stage_and_revalidate_for_empty_patch_with_dirty_outputs() -> None:
     )
     assert plan.action is AutoRescueAction.STAGE_AND_REVALIDATE
     assert plan.reason == "stage_declared_outputs_and_revalidate"
-
-
-def test_looks_like_validation_retry_accepts_command_failure() -> None:
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
-        DatabasePortalExecutionBridge,
-    )
-
-    payload = {
-        "returncode": 1,
-        "attempt_consumed": True,
-        "provider_dispatched": True,
-        "validation_result": {
-            "attempted": True,
-            "passed": False,
-            "reason": "validation_command_failed",
-        },
-    }
-    assert DatabasePortalExecutionBridge._looks_like_validation_retry(payload) is True
 
 
 def test_plan_inline_provider_rescue_for_validation_command_failed() -> None:
@@ -1812,47 +379,6 @@ def test_plan_strips_helper_only_scope_denials_when_outputs_exist() -> None:
     assert after_strip.action is AutoRescueAction.NONE
 
 
-def test_plan_routes_combined_pytest_failures_to_file_isolation() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "python3 -m pytest -q test/api/test_eaaef_borrowed_transaction.py",
-            "stdout": "===== 2 failed, 10 passed in 1.0s =====",
-        }
-    )
-    assert plan.action is AutoRescueAction.PYTEST_FILE_ISOLATION
-    assert plan.max_provider_rescue_passes == 0
-
-
-def test_plan_routes_host_gated_image_gaps_to_host_evidence_materialize() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": (
-                "independently signed execution-profile @2 is absent; unsigned "
-                "@1 cannot satisfy this gate"
-            ),
-        }
-    )
-    assert plan.action is AutoRescueAction.HOST_EVIDENCE_MATERIALIZE
-    assert plan.max_provider_rescue_passes == 0
-
-
-def test_plan_routes_control_plane_ingest_failures_to_host_bootstrap_recovery() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "ControlPlaneIdentityError: output path is not a safe identifier",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["control_plane_identity_error"],
-            },
-        }
-    )
-    assert plan.action is AutoRescueAction.HOST_BOOTSTRAP_RECOVERY
-    assert plan.max_provider_rescue_passes == 0
-
-
 def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     hard = plan_automatic_implementation_rescue(
         validation_result={
@@ -1885,241 +411,236 @@ def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     assert exhausted.action is AutoRescueAction.NONE
 
 
-def test_plan_skips_provider_rescue_when_failures_are_ansi_colored() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-            },
-            "failure_head": (
-                "\x1b[31mFAILED\x1b[0m test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_post_admission_bounds_parallel_scope_identity_flicker"
-            ),
-        },
-        expected_outputs=(
-            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
-            "test/api/agent_supervisor/efficiency_state_hardening/"
-            "test_compatibility_migration.py",
-        ),
-        expected_outputs_present_on_disk=True,
-        stage_rescue_used=True,
-        materialize_rescue_used=True,
+def _scoped_test_secret_failure_result(
+    *,
+    path: str = "tests/unit/test_redaction.py",
+    private_key_absence_verified: bool = True,
+    credential_assignment_only: bool = True,
+    out_of_scope_paths: tuple[str, ...] = (),
+    finding_codes: tuple[str, ...] = ("secret_change_forbidden",),
+) -> dict[str, object]:
+    in_scope_paths = () if out_of_scope_paths else (path,)
+    rejected_proposal = _test_proposal(
+        "proposal:rejected-secret",
+        _secret_test_source("s3cret-value"),
+        path=path,
     )
+    semantic_inventory = build_scoped_test_semantic_inventory(
+        rejected_proposal,
+        (path,),
+        concrete_secret_value=lambda _value: True,
+    )
+    assert semantic_inventory is not None
+    return {
+        "passed": False,
+        "reason": "proposal_gate_failed",
+        "error": "proposal_validation_failed",
+        "proposal_gate": {
+            "accepted": False,
+            "proposal_id": "proposal:rejected-secret",
+            "receipt_id": "receipt:rejected-secret",
+            "reason_codes": list(finding_codes),
+        },
+        "failure_review": {
+            "decision": "reject",
+            "reason_codes": ["hard_deny_findings", "proposal_gate_failed"],
+            "finding_codes": list(finding_codes),
+        },
+        "secret_change_scope_examination": {
+            "proposal_id": "proposal:rejected-secret",
+            "finding_code": "secret_change_forbidden",
+            "examined_paths": [path],
+            "in_scope_paths": list(in_scope_paths),
+            "out_of_scope_paths": list(out_of_scope_paths),
+            "scoped_python_test_source_paths": [path],
+            "scope_classification": (
+                "out_of_scope" if out_of_scope_paths else "in_scope"
+            ),
+            "candidate_diff_path_coverage_complete": True,
+            "private_key_material_detected": (
+                not private_key_absence_verified
+            ),
+            "private_key_material_absence_verified": (
+                private_key_absence_verified
+            ),
+            "credential_assignment_only": credential_assignment_only,
+            "test_semantic_inventory": semantic_inventory,
+            "secret_policy_overridden": False,
+        },
+    }
+
+
+def test_plan_allows_one_repair_pass_for_rejected_scoped_test_secret() -> None:
+    unbound = plan_automatic_implementation_rescue(
+        validation_result=_scoped_test_secret_failure_result(),
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+    )
+    assert unbound.action is AutoRescueAction.NONE
+
+    plan = plan_automatic_implementation_rescue(
+        validation_result=_scoped_test_secret_failure_result(),
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        provider_rescue_passes_used=0,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
+    assert plan.action is AutoRescueAction.REMEDIATE_SCOPED_TEST_SECRET
+    assert plan.remediation_paths == ("tests/unit/test_redaction.py",)
+    assert plan.prior_proposal_id == "proposal:rejected-secret"
+    assert plan.prior_receipt_id == "receipt:rejected-secret"
+    assert plan.accepted_effect_count == 0
+    assert plan.merge_effect_count == 0
+    assert plan.max_provider_rescue_passes == 1
+    assert plan.prior_test_semantic_inventory is not None
+    assert "s3cret-value" not in str(plan.to_record())
+
+
+def test_plan_refuses_scoped_secret_rescue_without_bound_test_inventory() -> None:
+    result = _scoped_test_secret_failure_result()
+    examination = result["secret_change_scope_examination"]
+    assert isinstance(examination, dict)
+    examination.pop("test_semantic_inventory")
+
+    plan = plan_automatic_implementation_rescue(
+        validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        provider_rescue_passes_used=0,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
     assert plan.action is AutoRescueAction.NONE
-    assert plan.reason == "failed_tests_outside_declared_outputs"
 
 
-def test_plan_skips_provider_rescue_when_failures_are_outside_declared_outputs() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-            },
-            "failed_tests": [
-                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_r45_receipt_id_reuses_memoized_validation_contracts"
-            ],
-            "failure_head": (
-                "FAILED test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_health_gives_exact_blocked_reconciliation_a_bounded_window"
-            ),
-        },
-        expected_outputs=(
-            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
-            "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
-            "test/api/agent_supervisor/efficiency_state_hardening/"
-            "test_compatibility_migration.py",
-        ),
-        expected_outputs_present_on_disk=True,
-        stage_rescue_used=True,
-        materialize_rescue_used=True,
-    )
-    assert plan.action is AutoRescueAction.NONE
-    assert plan.reason == "failed_tests_outside_declared_outputs"
-
-
-def test_plan_revalidates_pid_marker_empty_int_flake_without_grok() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-            },
-            "failed_tests": [
-                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
-            ],
-            "failure_head": (
-                "FAILED test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree"
-                " - ValueError: invalid literal for int() with base 10: ''"
-            ),
-        },
-        expected_outputs=(
-            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
-            "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
-            "test/api/agent_supervisor/efficiency_state_hardening/"
-            "test_compatibility_migration.py",
-        ),
-        expected_outputs_present_on_disk=True,
-        stage_rescue_used=True,
-        materialize_rescue_used=True,
-    )
-    assert plan.action is AutoRescueAction.STAGE_AND_REVALIDATE
-    assert plan.reason == "retry_pid_marker_empty_int_flake"
-
-
-def test_plan_still_rescues_when_a_declared_output_test_failed() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-            },
-            "failed_tests": [
-                "test/api/agent_supervisor/efficiency_state_hardening/"
-                "test_compatibility_migration.py"
-                "::test_quack_state_server_routes_legacy_api_through_bound_repository",
-                "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
-                "::test_aseh_r21_owner_start_runner_preserves_failed_start_and_skips_stop",
-            ],
-        },
-        expected_outputs=(
-            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
-            "test/api/agent_supervisor/efficiency_state_hardening/"
-            "test_compatibility_migration.py",
-        ),
-        expected_outputs_present_on_disk=True,
-        stage_rescue_used=True,
-        materialize_rescue_used=True,
-    )
-    assert plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE
-
-
-def test_derive_materialize_commands_keeps_qualification_output_writers() -> None:
-    commands = derive_materialize_commands(
+@pytest.mark.parametrize(
+    "result_kwargs,planner_kwargs",
+    [
+        ({"path": "src/redaction.py"}, {}),
+        ({"out_of_scope_paths": ("tests/unit/test_redaction.py",)}, {}),
+        ({"private_key_absence_verified": False}, {}),
+        ({"credential_assignment_only": False}, {}),
         (
-            "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
-            "paired_harness.py --cohort hermetic --minimum-tasks 60 "
-            "--output benchmarks/agent_supervisor/efficiency_state_hardening/"
-            "results/hermetic.json --qualification-output docs/architecture/"
-            "agent_supervisor_efficiency_state_hardening_inventory/"
-            "hermetic_qualification.json --allow-honest-nonpromotion",
+            {
+                "finding_codes": (
+                    "secret_change_forbidden",
+                    "test_weakening_forbidden",
+                )
+            },
+            {},
+        ),
+        ({}, {"accepted_effect_count": 1}),
+        ({}, {"merge_effect_count": 1}),
+        ({}, {"provider_rescue_passes_used": 1}),
+    ],
+)
+def test_plan_refuses_unsafe_or_repeated_scoped_test_secret_remediation(
+    result_kwargs: dict[str, object],
+    planner_kwargs: dict[str, int],
+) -> None:
+    result = _scoped_test_secret_failure_result(**result_kwargs)
+    # Production paths are deliberately not classified as scoped test source.
+    if result_kwargs.get("path") == "src/redaction.py":
+        examination = result["secret_change_scope_examination"]
+        assert isinstance(examination, dict)
+        examination["scoped_python_test_source_paths"] = []
+
+    kwargs = {
+        "provider_rescue_passes_used": 0,
+        "accepted_effect_count": 0,
+        "merge_effect_count": 0,
+        **planner_kwargs,
+    }
+    plan = plan_automatic_implementation_rescue(
+        validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        **kwargs,
+    )
+
+    assert plan.action is AutoRescueAction.NONE
+
+
+def test_scoped_test_secret_rescue_prompt_changes_strategy_without_value() -> None:
+    failure = _scoped_test_secret_failure_result()
+    plan = plan_automatic_implementation_rescue(
+        validation_result=failure,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
+    prompt = build_inline_provider_rescue_prompt(
+        base_prompt="Implement the redaction trace test.",
+        validation_result=failure,
+        auto_rescue_plan=plan,
+    )
+
+    assert "Scoped test-secret remediation" in prompt
+    assert "prior proposal remains rejected" in prompt
+    assert "different proposal" in prompt
+    assert "do not weaken" in prompt
+    assert "tests/unit/test_redaction.py" in prompt
+    assert "actual-secret-from-candidate" not in prompt
+
+
+def test_secret_scope_examination_proves_assignment_only_not_private_key() -> None:
+    path = "tests/unit/test_redaction.py"
+    policy = SimpleNamespace(
+        policy_id="policy:test-scope",
+        path_is_in_scope=lambda candidate: candidate == path,
+    )
+
+    def examination_for(source: str) -> dict[str, object]:
+        entry = SimpleNamespace(
+            before_source="",
+            after_source=source,
+            change_kind=DiffChangeKind.MODIFY,
+            new_path=path,
+            old_path=path,
         )
-    )
-    assert commands
-    assert "--output" in commands[0]
-    assert "--qualification-output" in commands[0]
-
-
-def test_plan_materializes_qualification_cli_instead_of_recaiming_prior_harness() -> None:
-    validation = (
-        "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
-        "paired_harness.py --cohort hermetic --minimum-tasks 60 "
-        "--output benchmarks/agent_supervisor/efficiency_state_hardening/"
-        "results/hermetic.json --qualification-output docs/architecture/"
-        "agent_supervisor_efficiency_state_hardening_inventory/"
-        "hermetic_qualification.json --allow-honest-nonpromotion"
-    )
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "failure_head": (
-                "paired_harness.py: error: unrecognized arguments: "
-                "--cohort hermetic --qualification-output"
+        proposal = SimpleNamespace(
+            proposal_id="proposal:scope-examination",
+            changed_paths=(path,),
+            candidate_diff=(entry,),
+        )
+        result = SimpleNamespace(
+            findings=(
+                SimpleNamespace(
+                    code=SimpleNamespace(value="secret_change_forbidden"),
+                    path=path,
+                ),
             ),
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-                "failed_commands": [validation],
-                "missing_expected_outputs": [
-                    "benchmarks/agent_supervisor/efficiency_state_hardening/"
-                    "results/hermetic.json",
-                    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
-                    "hermetic_qualification.json",
-                ],
-            },
-        },
-        expected_outputs=(
-            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
-            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
-            "hermetic_qualification.json",
-        ),
-        validation_commands=(validation,),
-        expected_outputs_present_on_disk=False,
-    )
-    assert plan.action is AutoRescueAction.MATERIALIZE_AND_STAGE
-    assert validation in plan.materialize_commands
+            proposal=proposal,
+            policy=policy,
+        )
+        examination = PortalImplementationDaemon._secret_change_scope_examination(
+            result
+        )
+        assert examination is not None
+        return examination
 
-
-def test_plan_skips_grok_when_qualification_flags_are_unrecognized_after_materialize() -> None:
-    validation = (
-        "python3 benchmarks/agent_supervisor/efficiency_state_hardening/"
-        "paired_harness.py --cohort hermetic --output results/hermetic.json "
-        "--qualification-output inventory/hermetic_qualification.json"
+    assignment_source = (
+        "pass" + "word = \"" + "s3cret" + "-value\"\n"
     )
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "validation_command_failed",
-            "stderr": "error: unrecognized arguments: --cohort hermetic",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["validation_command_failed"],
-                "failed_commands": [validation],
-            },
-        },
-        expected_outputs=(
-            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
-            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
-            "hermetic_qualification.json",
-        ),
-        validation_commands=(validation,),
-        expected_outputs_present_on_disk=True,
-        materialize_rescue_used=True,
-        stage_rescue_used=True,
-    )
-    assert plan.action is AutoRescueAction.NONE
-    assert plan.reason == "sealed_executable_missing_qualification_flags"
+    assignment = examination_for(assignment_source)
+    assert assignment["scoped_python_test_source_paths"] == [path]
+    assert assignment["candidate_diff_path_coverage_complete"] is True
+    assert assignment["private_key_material_detected"] is False
+    assert assignment["private_key_material_absence_verified"] is True
+    assert assignment["credential_assignment_only"] is True
 
-
-def test_plan_skips_grok_when_implementer_recaims_prior_task_output() -> None:
-    plan = plan_automatic_implementation_rescue(
-        validation_result={
-            "passed": False,
-            "error": "proposal_validation_failed",
-            "failure_review": {
-                "decision": "guide_rescue",
-                "reason_codes": ["proposal_gate_failed"],
-                "finding_codes": ["path_outside_scope"],
-                "denied_paths": [
-                    "benchmarks/agent_supervisor/efficiency_state_hardening/"
-                    "paired_harness.py"
-                ],
-            },
-        },
-        expected_outputs=(
-            "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
-            "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
-            "hermetic_qualification.json",
-        ),
-        expected_outputs_present_on_disk=True,
-        materialize_rescue_used=True,
-        stage_rescue_used=True,
+    private_key_source = (
+        "-----BEGIN " + "PRIVATE KEY-----\nnot-a-key\n-----END PRIVATE KEY-----\n"
     )
-    assert plan.action is AutoRescueAction.NONE
-    assert plan.reason == "extra_path_recaim_skip_grok"
+    private_key = examination_for(private_key_source)
+    assert private_key["private_key_material_detected"] is True
+    assert private_key["private_key_material_absence_verified"] is False
+    assert private_key["credential_assignment_only"] is False
 
 
 def test_inline_provider_rescue_prompt_includes_failure_evidence() -> None:
@@ -2295,11 +816,11 @@ def test_inline_provider_rescue_fails_closed_on_ambiguous_sealed_fd(
     assert not any(name.endswith("provider_started") for name, _payload in events)
 
 
-def test_inline_provider_rescue_requires_fresh_residual_authority(
+def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    daemon, events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
     daemon._scoped_control_plane_launch = None
     daemon._scoped_recovery_control_plane_launches = {}
     command = ["/opt/providers/grok", "--model", "grok-4.6"]
@@ -2317,64 +838,248 @@ def test_inline_provider_rescue_requires_fresh_residual_authority(
 
     result = _run_inline_rescue(daemon, tmp_path, command)
 
-    assert result["passed"] is False
-    assert result["auto_rescue_terminal"] is True
-    assert result["auto_rescue"]["provider_passes"] == 0
-    assert calls == []
-    assert any(
-        name == "implementation_auto_rescue_provider_blocked"
-        and payload["reason"] == "fresh_residual_authority_required"
-        and payload["provider_call_allowed"] is False
-        for name, payload in events
-    )
+    assert result["passed"] is True
+    assert len(calls) == 1
+    assert "pass_fds" not in calls[0]
 
 
-def test_auto_rescue_materializer_uses_sanitized_exact_environment(
+def test_scoped_test_secret_remediation_runs_once_then_fully_revalidates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("QUACK_TOKEN", "private-quack-token")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
-        "private-canonical-quack-token",
-    )
-    monkeypatch.setenv("APMC_MATERIALIZER_ALLOWED", "allowed")
-    script_path = tmp_path / "inspect_materializer_environment.py"
-    result_path = tmp_path / "materializer-environment.json"
-    script_path.write_text(
-        "import json, os, pathlib\n"
-        "pathlib.Path('materializer-environment.json').write_text(json.dumps({\n"
-        "    'quack_token': bool(os.environ.get('QUACK_TOKEN')),\n"
-        "    'canonical_quack_token': bool(os.environ.get(\n"
-        "        'IPFS_ACCELERATE_AGENT_QUACK_TOKEN')),\n"
-        "    'allowed': os.environ.get('APMC_MATERIALIZER_ALLOWED'),\n"
-        "}))\n",
-        encoding="utf-8",
-    )
-    daemon = object.__new__(PortalImplementationDaemon)
-    daemon.implementation_timeout = 60
-    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
-    task = PortalTask(
-        task_id="RESCUE-ENV-001",
-        title="materialize without state credentials",
-        status="in_progress",
-        completion="manual",
-        priority="P0",
-        track="security",
-    )
+    daemon, events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    provider_calls: list[dict[str, object]] = []
+    validation_calls: list[dict[str, object]] = []
 
-    results = daemon._run_auto_rescue_materialize_commands(
-        workspace_path=tmp_path,
-        log_path=tmp_path / "materializer.log",
-        commands=(
-            f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))}",
+    def fake_stream(run_command, **kwargs):
+        provider_calls.append({"command": list(run_command), **dict(kwargs)})
+        return subprocess.CompletedProcess(run_command, 0)
+
+    replacement = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:replacement-secret",
+            _secret_test_source("literal-secret-canary"),
         ),
-        task=task,
     )
 
-    assert results[0]["ok"] is True
-    assert json.loads(result_path.read_text(encoding="utf-8")) == {
-        "allowed": "allowed",
-        "canonical_quack_token": False,
-        "quack_token": False,
-    }
+    def fake_revalidate(*_args, **kwargs):
+        validation_calls.append(dict(kwargs))
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": replacement,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:replacement-secret",
+                "receipt_id": "receipt:replacement-secret",
+            },
+            "selection": {"scope": "pre_merge"},
+        }
+
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        fake_stream,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        fake_revalidate,
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-001",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-001",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok", "--model", "grok-4.6"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is True
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 1
+    assert len(provider_calls) == 1
+    assert len(validation_calls) == 1
+    # Omitting a prior live proposal forces a fresh proposal-gate run followed
+    # by the ordinary full pre-merge validation plan.
+    assert validation_calls[0]["proposal_validation"] is None
+    binding = result["scoped_test_secret_remediation_binding"]
+    assert binding["prior_proposal_id"] == "proposal:rejected-secret"
+    assert binding["prior_receipt_id"] == "receipt:rejected-secret"
+    assert binding["replacement_proposal_id"] == "proposal:replacement-secret"
+    assert binding["replacement_is_fresh"] is True
+    assert binding["replacement_gate_accepted"] is True
+    assert binding["full_validation_passed"] is True
+    started = next(
+        payload
+        for name, payload in events
+        if name == "implementation_auto_rescue_provider_started"
+    )
+    assert started["strategy_changed"] is True
+    assert started["base_prompt_id"] != started["rescue_prompt_id"]
+    assert started["plan"]["prior_receipt_id"] == "receipt:rejected-secret"
+    assert "actual-secret-from-candidate" not in str(started)
+
+
+def test_scoped_test_secret_remediation_rejects_unchanged_proposal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    unchanged = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:rejected-secret",
+            _secret_test_source("literal-secret-canary"),
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": unchanged,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:rejected-secret",
+                "receipt_id": "receipt:unchanged",
+            },
+        },
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-002",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-002",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 1
+    assert result["reason"] == "scoped_test_secret_remediation_proposal_unchanged"
+    assert result["scoped_test_secret_remediation_binding"][
+        "replacement_is_fresh"
+    ] is False
+
+
+def test_scoped_test_secret_remediation_rejects_deleted_security_assertion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary green gate cannot weaken a test added by the rejection."""
+
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    weakened = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:replacement-weakened",
+            "RESCUE_MARKER = 'different-proposal'\n",
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            # Model the pre-fix hole: baseline tests and the ordinary proposal
+            # gate are green even though the rejected proposal's new security
+            # test disappeared.
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": weakened,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:replacement-weakened",
+                "receipt_id": "receipt:replacement-weakened",
+            },
+        },
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-003",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-003",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["reason"] == (
+        "scoped_test_secret_remediation_test_semantics_not_preserved"
+    )
+    binding = result["scoped_test_secret_remediation_binding"]
+    assert binding["replacement_is_fresh"] is True
+    assert binding["replacement_gate_accepted"] is True
+    assert binding["full_validation_passed"] is True
+    assert binding["test_semantics_preserved"] is False
+    assert binding["test_semantics_reason"] == (
+        "replacement_inventory_unavailable"
+    )

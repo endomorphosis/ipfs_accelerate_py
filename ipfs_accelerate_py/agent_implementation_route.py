@@ -5,17 +5,16 @@ from ``llm_router.py``. ``llm_router`` re-exports these names.
 """
 from __future__ import annotations
 
-import atexit
 import base64
 import binascii
 import fcntl
 import hashlib
 import hmac
-import io
+import importlib
 import importlib.machinery
 import importlib.util
+import io
 import json
-import mmap
 import os
 import re
 import secrets
@@ -28,16 +27,12 @@ import sysconfig
 import tempfile
 import threading
 import time
-import urllib.parse
+from urllib.parse import quote
 import uuid
 import zipfile
-from collections import OrderedDict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -86,37 +81,6 @@ _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     "local_profile_lifecycle_root_pin_20260808.json"
 )
-_V3_AGENT_LIFECYCLE_WITNESS_PREFIX = (
-    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
-)
-_VGO_AGENT_ROUTE_BOARD_NAMESPACE = "verified-gui-optimizer-v1"
-_VGO_AGENT_ROUTE_AUTHORIZATION_PATH = (
-    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
-    "provider_fallback_policy_authorization_20260812.json"
-)
-_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
-    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
-    "local_profile_lifecycle_root_pin_20260812.json"
-)
-_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX = (
-    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
-)
-_EAAEF_AGENT_ROUTE_BOARD_NAMESPACE = (
-    "external-agent-autonomous-execution-fabric-v1"
-)
-_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX = (
-    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
-    "authority/provider-route-authorization-"
-)
-_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX = (
-    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
-    "authority/provider-route-lifecycle-root-pin-"
-)
-_EAAEF_AGENT_LIFECYCLE_WITNESS_PREFIX = (
-    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
-    "authority/provider-route-lifecycle-witness-"
-)
-_GIT_OBJECT_ID_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _AGENT_ROUTE_AUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "provider-fallback-policy-authorization@2"
@@ -145,53 +109,9 @@ _AGENT_CONTROL_PLANE_MANIFEST_SCHEMA = (
 _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
     ".agent-control-plane-manifest.json"
 )
-# Keep each sealed source leaf bounded while allowing the integrated supervisor
-# daemon to carry both scheduler and recovery authority surfaces.  The capsule
-# as a whole remains independently bounded by the 128 MiB archive limit.
-_AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 8 * 1024 * 1024
+_AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
-# The capsule contains the complete supervisor Python closure.  Keep a bounded
-# allowance above its current size so reviewed feature additions do not make
-# an otherwise valid, content-addressed control plane impossible to seal.
-_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
-# The LGCVF live capsule is deliberately separate from the generic accepted
-# control-plane capsule above.  In particular, these limits and schemas must
-# never widen ``accepted-control-plane@2``: the live capsule also carries the
-# clean nested datasets source tree, DuckDB's Python facade, and three reviewed
-# DuckDB extensions, so it requires a larger, independently audited envelope.
-_LGCVF_LIVE_CAPSULE_PIN_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.lgcvf-configured-board-live-capsule@1"
-)
-_LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "lgcvf-configured-board-live-capsule-manifest@1"
-)
-_LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME = (
-    ".lgcvf-configured-board-live-capsule-manifest.json"
-)
-_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES = 64 * 1024 * 1024
-_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES = 8 * 1024 * 1024
-_LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES = 384 * 1024 * 1024
-_LGCVF_LIVE_CAPSULE_MAX_FILES = 8192
-_LGCVF_LIVE_CANDIDATE_CONFIG_PATH = (
-    "config/agent_supervisor_logic_governed_compositional_verification_"
-    "fabric_quack_candidate_scheduler.json"
-)
-_LGCVF_LIVE_VALIDATOR_PATH = (
-    "scripts/validate_logic_governed_compositional_verification_fabric_plan.py"
-)
-_LGCVF_LIVE_MATERIALIZER_PATH = (
-    "scripts/materialize_logic_governed_compositional_verification_"
-    "fabric_control_plane.py"
-)
-_LGCVF_LIVE_OPERATOR_PATH = (
-    "scripts/run_logic_governed_compositional_verification_fabric_quack.py"
-)
-_LGCVF_LIVE_EXTENSION_ROLES = {
-    "quack": ("authority_bearing_state_transport", "load_only"),
-    "httpfs": ("quack_transport_dependency", "load_only"),
-    "ducklake": ("non_authoritative_projection_only", "projection_only"),
-}
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 _AGENT_NATIVE_DEPENDENCY_PIN_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1"
 )
@@ -213,51 +133,15 @@ _AGENT_NATIVE_DEPENDENCY_MEMFD_NAME = "ipfs-accelerate-duckdb"
 _AGENT_NATIVE_DEPENDENCY_SEALED_MODE = 0o500
 _AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK = threading.Lock()
 _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = False
-_AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH: (
-    AgentSupervisorNativeDependencyLaunch | None
-) = None
-AGENT_SUPERVISOR_CURRENT_DUCKDB_PIN_JSON = (
-    '{"dependency_id":"sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",'
-    '"distribution_name":"duckdb","distribution_version":"1.5.5",'
-    '"elf_abi_version":0,"elf_class_bits":64,"elf_dt_needed":['
-    '"libdl.so.2","libpthread.so.0","libstdc++.so.6","libm.so.6",'
-    '"libgcc_s.so.1","libc.so.6"],"elf_endianness":"little",'
-    '"elf_flags":0,"elf_ident_version":1,"elf_machine":183,'
-    '"elf_object_type":3,"elf_object_version":1,"elf_osabi":3,'
-    '"engine_version":"v1.5.5","extension_filename":'
-    '"_duckdb.cpython-312-aarch64-linux-gnu.so","module_name":"_duckdb",'
-    '"payload_sha256":"sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",'
-    '"platform_machine":"aarch64","platform_name":"linux",'
-    '"public_alias":"duckdb","python_cache_tag":"cpython-312",'
-    '"python_executable_sha256":"sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",'
-    '"python_soabi":"cpython-312-aarch64-linux-gnu","schema":'
-    '"ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",'
-    '"size_bytes":54541064}'
-)
-_AGENT_CONTROL_PLANE_TRUSTED_GIT = Path("/usr/bin/git")
-_AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
 # Non-supervisor roots plus the security-critical supervisor modules called out
 # explicitly for auditability.  Capsule construction additionally walks and
-# hashes the complete ``agent_supervisor`` Python source tree plus every
-# canonical ``task_sources/sql/*.sql`` migration on every build and
+# hashes the complete ``agent_supervisor`` Python source tree on every build and
 # verification, so a newly added or indirect daemon/runner dependency cannot
 # fall outside the pin.  Candidate worktrees are never roots.
-_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY = (
-    "ipfs_accelerate_py/agent_supervisor/task_sources/sql"
-)
-_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES = (
-    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0001_control_plane.sql",
-    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
-    "0002_causal_event_federation_core.sql",
-    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
-    "0003_state_server_restart_identity.sql",
-    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0004_hash_observations.sql",
-)
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
-    "ipfs_accelerate_py/_hash_resources.py",
     "ipfs_accelerate_py/router_deps.py",
     "ipfs_accelerate_py/common/__init__.py",
     "ipfs_accelerate_py/common/meta_model_api.py",
@@ -283,39 +167,8 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
-    *_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES,
     "scripts/ops/agent_supervisor/configured_board_scheduler.py",
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
-    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
-)
-_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES = (
-    *_AGENT_CONTROL_PLANE_RELATIVE_FILES,
-    "scripts/__init__.py",
-    "scripts/emit_logic_governed_compositional_verification_fabric_plan.py",
-    _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
-    (
-        "config/agent_supervisor_logic_governed_compositional_verification_"
-        "fabric_scheduler.json"
-    ),
-    _LGCVF_LIVE_VALIDATOR_PATH,
-    _LGCVF_LIVE_MATERIALIZER_PATH,
-    _LGCVF_LIVE_OPERATOR_PATH,
-    "scripts/ops/agent_supervisor/quack_state_server.py",
-    (
-        "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
-        "formal_work_plan.json"
-    ),
-    (
-        "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
-        "plan_revisions/"
-        "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q.json"
-    ),
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
-    (
-        "docs/architecture/logic_governed_compositional_verification_fabric."
-        "objectives.md"
-    ),
-    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md",
 )
 _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
@@ -323,188 +176,9 @@ _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
 _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-grok45-terra56-high-hard-quota-v1"
 )
-_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-grok46-terra56-medium-hard-quota-v1"
-)
-_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-grok46-terra56-high-hard-quota-v1"
-)
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
-_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-eaaef-v1-grok46-terra56-high-auth-or-hard-quota-v1"
-)
-AGENT_IMPLEMENTATION_PRIMARY_MODEL_ID = "grok-4.6"
-
-
-@dataclass(frozen=True, slots=True)
-class _AgentRouteAuthorizationPolicy:
-    board_namespace: str
-    authorization_path: str
-    lifecycle_root_pin_path: str
-    lifecycle_witness_prefix: str
-    route_id: str
-    primary_model_id: str
-    source_addressed: bool = False
-
-
-_V3_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
-    board_namespace=_V3_AGENT_ROUTE_BOARD_NAMESPACE,
-    authorization_path=_V3_AGENT_ROUTE_AUTHORIZATION_PATH,
-    lifecycle_root_pin_path=_V3_AGENT_LIFECYCLE_ROOT_PIN_PATH,
-    lifecycle_witness_prefix=_V3_AGENT_LIFECYCLE_WITNESS_PREFIX,
-    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
-    primary_model_id="grok-4.5",
-)
-_VGO_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
-    board_namespace=_VGO_AGENT_ROUTE_BOARD_NAMESPACE,
-    authorization_path=_VGO_AGENT_ROUTE_AUTHORIZATION_PATH,
-    lifecycle_root_pin_path=_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH,
-    lifecycle_witness_prefix=_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX,
-    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
-    primary_model_id="grok-4.5",
-)
-_EAAEF_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
-    board_namespace=_EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
-    authorization_path=_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX,
-    lifecycle_root_pin_path=_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX,
-    lifecycle_witness_prefix=_EAAEF_AGENT_LIFECYCLE_WITNESS_PREFIX,
-    route_id=_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
-    primary_model_id="grok-4.6",
-    source_addressed=True,
-)
-_AGENT_ROUTE_AUTHORIZATION_POLICIES = (
-    _V3_AGENT_ROUTE_AUTHORIZATION_POLICY,
-    _VGO_AGENT_ROUTE_AUTHORIZATION_POLICY,
-    _EAAEF_AGENT_ROUTE_AUTHORIZATION_POLICY,
-)
-
-
-def _agent_route_authorization_policy(
-    *,
-    board_namespace: str,
-    authorization_path: str,
-) -> _AgentRouteAuthorizationPolicy | None:
-    for policy in _AGENT_ROUTE_AUTHORIZATION_POLICIES:
-        if (
-            policy.board_namespace == board_namespace
-            and _agent_route_authorization_path_matches(
-                policy,
-                authorization_path,
-            )
-        ):
-            return policy
-    return None
-
-
-def _source_addressed_json_path(*, prefix: str, source_tree: str) -> str:
-    if _GIT_OBJECT_ID_RE.fullmatch(str(source_tree or "")) is None:
-        raise ValueError("source tree identity is invalid")
-    return f"{prefix}{source_tree}.json"
-
-
-def eaaef_agent_route_authorization_path(source_tree: str) -> str:
-    """Return the create-once EAAEF route artifact path for one source tree."""
-
-    return _source_addressed_json_path(
-        prefix=_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX,
-        source_tree=source_tree,
-    )
-
-
-def eaaef_agent_lifecycle_root_pin_path(source_tree: str) -> str:
-    """Return the create-once EAAEF lifecycle-root path for one source tree."""
-
-    return _source_addressed_json_path(
-        prefix=_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX,
-        source_tree=source_tree,
-    )
-
-
-def _agent_route_authorization_path_matches(
-    policy: _AgentRouteAuthorizationPolicy,
-    authorization_path: str,
-    *,
-    source_tree: str = "",
-) -> bool:
-    if not policy.source_addressed:
-        return authorization_path == policy.authorization_path
-    try:
-        if source_tree:
-            return authorization_path == _source_addressed_json_path(
-                prefix=policy.authorization_path,
-                source_tree=source_tree,
-            )
-        if not authorization_path.startswith(policy.authorization_path):
-            return False
-        suffix = authorization_path[len(policy.authorization_path) :]
-        return bool(
-            suffix.endswith(".json")
-            and _GIT_OBJECT_ID_RE.fullmatch(suffix[:-5]) is not None
-        )
-    except ValueError:
-        return False
-
-
-def _agent_route_lifecycle_root_pin_path_matches(
-    policy: _AgentRouteAuthorizationPolicy,
-    lifecycle_root_pin_path: str,
-    *,
-    source_tree: str,
-) -> bool:
-    if not policy.source_addressed:
-        return lifecycle_root_pin_path == policy.lifecycle_root_pin_path
-    try:
-        return lifecycle_root_pin_path == _source_addressed_json_path(
-            prefix=policy.lifecycle_root_pin_path,
-            source_tree=source_tree,
-        )
-    except ValueError:
-        return False
-
-
-def _agent_route_lifecycle_witness_path_matches(
-    policy: _AgentRouteAuthorizationPolicy,
-    witness_path: str,
-    *,
-    source_tree: str,
-) -> bool:
-    if not witness_path.endswith(".json"):
-        return False
-    if not policy.source_addressed:
-        return witness_path.startswith(policy.lifecycle_witness_prefix)
-    expected_prefix = f"{policy.lifecycle_witness_prefix}{source_tree}-"
-    suffix = witness_path[len(expected_prefix) : -5]
-    return bool(
-        witness_path.startswith(expected_prefix)
-        and re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?", suffix)
-    )
-
-
-def _agent_route_authorization_policy_for_route(
-    route_id: str,
-    *,
-    authorization: AgentImplementationRouteAuthorization | None = None,
-) -> _AgentRouteAuthorizationPolicy | None:
-    matches = tuple(
-        policy
-        for policy in _AGENT_ROUTE_AUTHORIZATION_POLICIES
-        if policy.route_id == route_id
-    )
-    if authorization is not None:
-        matches = tuple(
-            policy
-            for policy in matches
-            if policy.board_namespace == authorization.board_namespace
-            and _agent_route_authorization_path_matches(
-                policy,
-                authorization.artifact_path,
-                source_tree=authorization.source_tree,
-            )
-        )
-    return matches[0] if len(matches) == 1 else None
-
 # Runner and scheduler code import these projections instead of maintaining
 # another provider/model/reasoning tuple.
 AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-5.6-terra"
@@ -554,60 +228,33 @@ _AGENT_IMPLEMENTATION_PROBE_PROMPT = (
 _AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE = (
     b"Error: max turns reached\n"
 )
-def _agent_implementation_probe_contract(model: str) -> dict[str, object]:
-    """Return the exact no-tools probe contract for one admitted route model."""
-
-    return {
-        "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-        "model": model,
-        "mode": "chat",
-        "max_turns": 1,
-        "permission_mode": "dontAsk",
-        "tools": "",
-        "no_plan": True,
-        "no_subagents": True,
-        "disable_web_search": True,
-        "no_memory": True,
-        "isolated_workspace": True,
-        "task_context": False,
-        "prompt": _AGENT_IMPLEMENTATION_PROBE_PROMPT,
-        "timeout_seconds": 60,
-    }
-
-
-_AGENT_IMPLEMENTATION_PROBE_CONTRACTS = {
-    model: _agent_implementation_probe_contract(model)
-    for model in ("grok-4.5", "grok-4.6")
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
+    "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
+    "model": "grok-4.6",
+    "mode": "chat",
+    "max_turns": 1,
+    "permission_mode": "dontAsk",
+    "tools": "",
+    "no_plan": True,
+    "no_subagents": True,
+    "disable_web_search": True,
+    "no_memory": True,
+    "isolated_workspace": True,
+    "task_context": False,
+    "prompt": _AGENT_IMPLEMENTATION_PROBE_PROMPT,
+    "timeout_seconds": 60,
 }
-_AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS = {
-    model: "sha256:"
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID = (
+    "sha256:"
     + hashlib.sha256(
         json.dumps(
-            contract,
+            _AGENT_IMPLEMENTATION_PROBE_CONTRACT,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
-    for model, contract in _AGENT_IMPLEMENTATION_PROBE_CONTRACTS.items()
-}
-
-
-def _agent_implementation_probe_contract_id(model: object) -> str:
-    """Resolve an exact model-bound probe identity, or fail closed."""
-
-    return _AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS.get(str(model or ""), "")
-
-
-# Compatibility exports remain the frozen V3/Grok-4.5 contract.  Grok-4.6
-# callers resolve their distinct identity through the model-indexed mapping;
-# the two receipt families therefore cannot be replayed across routes.
-_AGENT_IMPLEMENTATION_PROBE_CONTRACT = (
-    _AGENT_IMPLEMENTATION_PROBE_CONTRACTS["grok-4.5"]
-)
-_AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID = (
-    _AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS["grok-4.5"]
 )
 _AGENT_HARD_QUOTA_PATTERN = re.compile(
     r"(?:"
@@ -741,10 +388,6 @@ def build_agent_implementation_failure_receipt(
     observed_at_ms: int | None = None,
     freshness_ms: int = 60 * 1000,
 ) -> dict[str, object]:
-    primary_model = str(model or "")
-    probe_contract_id = _agent_implementation_probe_contract_id(primary_model)
-    if not probe_contract_id:
-        raise ValueError("failure receipt model has no admitted probe contract")
     observed = (
         int(time.time() * 1000)
         if observed_at_ms is None
@@ -773,10 +416,10 @@ def build_agent_implementation_failure_receipt(
     receipt: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA,
         "source": _AGENT_IMPLEMENTATION_FAILURE_SOURCE,
-        "probe_contract_id": probe_contract_id,
+        "probe_contract_id": _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID,
         "nonce": str(nonce),
         "primary_provider": "grok",
-        "primary_model": primary_model,
+        "primary_model": str(model),
         "primary_dispatched": bool(primary_dispatched),
         "probe_returncode": int(probe_returncode),
         "evidence_size": measured_size,
@@ -801,10 +444,6 @@ def valid_agent_implementation_failure_receipt(
     now_ms: int | None = None,
     max_age_ms: int | None = None,
 ) -> bool:
-    expected_model = str(model or "")
-    expected_probe_contract_id = _agent_implementation_probe_contract_id(
-        expected_model
-    )
     expected_fields = {
         "schema",
         "source",
@@ -856,12 +495,12 @@ def valid_agent_implementation_failure_receipt(
         and receipt.get("schema")
         == _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA
         and receipt.get("source") == _AGENT_IMPLEMENTATION_FAILURE_SOURCE
-        and bool(expected_probe_contract_id)
-        and receipt.get("probe_contract_id") == expected_probe_contract_id
+        and receipt.get("probe_contract_id")
+        == _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
         and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
         and receipt.get("nonce") == nonce
         and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == expected_model
+        and receipt.get("primary_model") == model == "grok-4.6"
         and receipt.get("primary_dispatched") is False
         and isinstance(evidence_size, int)
         and not isinstance(evidence_size, bool)
@@ -1165,7 +804,6 @@ class AgentSupervisorNativeDependencyLaunch:
     @property
     def bootstrap_arguments(self) -> tuple[str, str]:
         return (str(self.descriptor.descriptor), self.to_json())
-
 @dataclass(frozen=True, slots=True)
 class AgentImplementationInvocationBinding:
     """Reviewer-signed equality contract for one logical provider attempt."""
@@ -1792,23 +1430,6 @@ def project_agent_implementation_route_capacity(
         raise ValueError("route capacity observations require positive timestamps")
     if route.primary_provider_id != "grok_cli":
         raise ValueError("route capacity primary identity drifted")
-    route_policy = _agent_route_authorization_policy_for_route(
-        route.route_id,
-        authorization=route.authorization,
-    )
-    if route.permits_authentication_unavailable and (
-        route_policy is None
-        or route.primary_model_id != route_policy.primary_model_id
-        or route.authorization is None
-        or route.authorization.board_namespace
-        != route_policy.board_namespace
-        or not _agent_route_authorization_path_matches(
-            route_policy,
-            route.authorization.artifact_path,
-            source_tree=route.authorization.source_tree,
-        )
-    ):
-        raise ValueError("route capacity authorization scope drifted")
 
     def usable(
         item: AgentImplementationProviderCapacityObservation,
@@ -1828,19 +1449,10 @@ def project_agent_implementation_route_capacity(
     sealed_fallback = bool(
         route.permits_authentication_unavailable
         and _agent_route_authorization_is_sealed(route.authorization)
-        and route_policy is not None
-        and route.primary_model_id == route_policy.primary_model_id
-        and route.authorization is not None
-        and route.authorization.board_namespace
-        == route_policy.board_namespace
-        and _agent_route_authorization_path_matches(
-            route_policy,
-            route.authorization.artifact_path,
-            source_tree=route.authorization.source_tree,
-        )
         and route.fallback_provider_id == "codex"
         and route.fallback_model_id == "gpt-5.6-terra"
         and route.fallback_reasoning_effort == "high"
+        and route.route_id == _V3_AGENT_IMPLEMENTATION_ROUTE_ID
     )
     fallback_ready = sealed_fallback and usable(fallback)
     lane_values = (
@@ -2181,301 +1793,11 @@ AGENT_IMPLEMENTATION_ROUTE_OUTCOME_SCHEMA = (
 AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX = (
     "AGENT_IMPLEMENTATION_PROTECTED_ROUTE_OUTCOME_JSON:"
 )
-AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "codex-terminal-capacity-receipt@1"
-)
-AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX = (
-    "AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_JSON:"
-)
-AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.codex-capacity-log-start@1"
-)
-AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER = (
-    "import json,os,sys;"
-    "print(json.dumps({'schema':sys.argv[1],'type':'runner.capacity.start',"
-    "'log_nonce':sys.argv[2]},sort_keys=True,separators=(',',':')),flush=True);"
-    "os.execv(sys.argv[3],sys.argv[3:])"
-)
 # The bounded eight-generation adoption lineage is intentionally complete,
 # not merely a latest-receipt pointer.  Its canonical JSON is roughly 225KiB
 # at the cap, so retain a fixed ceiling that covers the exact terminal chain
 # while still rejecting unbounded/attacker-grown log records.
 _AGENT_IMPLEMENTATION_ROUTE_OUTCOME_MAX_BYTES = 512 * 1024
-_AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_MAX_BYTES = 16 * 1024
-_AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES = 64 * 1024
-_AGENT_IMPLEMENTATION_CODEX_USAGE_LIMIT_PATTERN = re.compile(
-    r"\A\s*(?:error:\s*)?you(?:'|\u2019)?ve\s+hit\s+your\s+usage\s+limit"
-    r"(?:[.!]|\s|$)",
-    re.IGNORECASE,
-)
-_AGENT_IMPLEMENTATION_CODEX_RESET_PATTERN = re.compile(
-    r"\btry\s+again\s+at\s+"
-    r"([A-Z][a-z]{2})\s+(\d{1,2})(?:st|nd|rd|th)?,\s+"
-    r"(\d{4})\s+(\d{1,2}):(\d{2})\s+(AM|PM)\b",
-    re.IGNORECASE,
-)
-_AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS = 31 * 24 * 60 * 60 * 1000
-
-
-def _agent_implementation_codex_retry_not_before_ms(
-    message: str,
-    *,
-    observed_at_ms: int,
-) -> int:
-    match = _AGENT_IMPLEMENTATION_CODEX_RESET_PATTERN.search(message)
-    if match is None:
-        return 0
-    try:
-        parsed = datetime.strptime(
-            " ".join(match.groups()),
-            "%b %d %Y %I %M %p",
-        ).replace(tzinfo=timezone.utc)
-    except ValueError:
-        return 0
-    value = int(parsed.timestamp() * 1000)
-    if not (
-        observed_at_ms < value
-        <= observed_at_ms + _AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS
-    ):
-        return 0
-    return value
-
-
-def _agent_implementation_codex_usage_limit_record(
-    raw: str,
-) -> tuple[str, int] | None:
-    """Return the canonical exact Codex JSONL terminal error, if any.
-
-    Assistant/tool output is represented by other Codex JSONL record types.
-    Accepting only a top-level ``error`` record prevents model text containing
-    quota prose from manufacturing retry authority.
-    """
-
-    encoded = str(raw).encode("utf-8")
-    if (
-        not encoded
-        or len(encoded) > _AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES
-        or "\r" in raw
-        or "\x00" in raw
-        or "\ufffd" in raw
-    ):
-        return None
-
-    def unique(pairs: Sequence[tuple[str, object]]) -> dict[str, object]:
-        value: dict[str, object] = {}
-        for key, item in pairs:
-            if key in value:
-                raise ValueError("duplicate Codex terminal error key")
-            value[key] = item
-        return value
-
-    try:
-        record = json.loads(raw, object_pairs_hook=unique)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(record, dict) or record.get("type") != "error":
-        return None
-    message = record.get("message")
-    if message is None and isinstance(record.get("error"), Mapping):
-        nested = record["error"]
-        if set(nested) != {"message"}:
-            return None
-        message = nested.get("message")
-        expected_fields = {"type", "error"}
-    else:
-        expected_fields = {"type", "message"}
-    if (
-        set(record) != expected_fields
-        or not isinstance(message, str)
-        or _AGENT_IMPLEMENTATION_CODEX_USAGE_LIMIT_PATTERN.search(message)
-        is None
-    ):
-        return None
-    canonical = json.dumps(
-        record,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    )
-    return canonical, len(encoded)
-
-
-def build_agent_implementation_codex_capacity_receipt(
-    *,
-    receipt: Mapping[str, object],
-    route: AgentImplementationRoutePlan,
-    fallback_returncode: int,
-    decision_id: str,
-    terminal_error_record: str,
-    observed_at_ms: int,
-) -> dict[str, object]:
-    """Build a body-free post-dispatch Codex usage-window receipt."""
-
-    invocation = route.invocation_binding
-    evidence = _agent_implementation_codex_usage_limit_record(
-        terminal_error_record
-    )
-    if (
-        invocation is None
-        or evidence is None
-        or isinstance(fallback_returncode, bool)
-        or not isinstance(fallback_returncode, int)
-        or fallback_returncode == 0
-        or isinstance(observed_at_ms, bool)
-        or not isinstance(observed_at_ms, int)
-        or observed_at_ms <= 0
-        or receipt.get("receipt_id") is None
-        or receipt.get("nonce") is None
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", str(decision_id or ""))
-        is None
-    ):
-        raise ValueError(
-            "Codex capacity receipt requires an exact protected terminal error"
-        )
-    canonical_error, evidence_bytes = evidence
-    decoded_error = json.loads(canonical_error)
-    raw_message = decoded_error.get("message")
-    if raw_message is None:
-        raw_message = decoded_error["error"]["message"]
-    retry_not_before_ms = _agent_implementation_codex_retry_not_before_ms(
-        str(raw_message),
-        observed_at_ms=observed_at_ms,
-    )
-    value: dict[str, object] = {
-        "schema": AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA,
-        "source": "grok_cli_runner",
-        "failure_class": "usage_limit",
-        "reason_code": "codex_usage_limit_reached",
-        "primary_receipt_id": str(receipt.get("receipt_id") or ""),
-        "nonce": str(receipt.get("nonce") or ""),
-        "route_id": route.route_id,
-        "invocation_binding_id": invocation.content_id,
-        "logical_attempt_id": invocation.logical_attempt_id,
-        "fallback_provider_id": route.fallback_provider_id,
-        "fallback_model_id": route.fallback_model_id,
-        "fallback_reasoning_effort": route.fallback_reasoning_effort,
-        "fallback_returncode": fallback_returncode,
-        "outcome_decision": "fallback_failed",
-        "decision_id": decision_id,
-        "provider_dispatched": True,
-        "candidate_activity_observed": False,
-        "attempt_consumed": True,
-        "completion_authority": False,
-        "observed_at_ms": observed_at_ms,
-        "retry_not_before_ms": retry_not_before_ms,
-        "evidence_kind": "codex_jsonl_terminal_error",
-        "evidence_sha256": "sha256:"
-        + hashlib.sha256(canonical_error.encode("utf-8")).hexdigest(),
-        "evidence_bytes": evidence_bytes,
-        "evidence_overflow": False,
-    }
-    value["receipt_id"] = _content_addressed_mapping(
-        value,
-        identity_field="receipt_id",
-    )
-    return value
-
-
-def valid_agent_implementation_codex_capacity_receipt(
-    value: Mapping[str, object],
-    *,
-    receipt: Mapping[str, object],
-    route: AgentImplementationRoutePlan,
-    fallback_returncode: int,
-    decision_id: str,
-) -> bool:
-    """Validate the closed route binding of one runner-owned receipt."""
-
-    expected = {
-        "schema",
-        "source",
-        "failure_class",
-        "reason_code",
-        "primary_receipt_id",
-        "nonce",
-        "route_id",
-        "invocation_binding_id",
-        "logical_attempt_id",
-        "fallback_provider_id",
-        "fallback_model_id",
-        "fallback_reasoning_effort",
-        "fallback_returncode",
-        "outcome_decision",
-        "decision_id",
-        "provider_dispatched",
-        "candidate_activity_observed",
-        "attempt_consumed",
-        "completion_authority",
-        "observed_at_ms",
-        "retry_not_before_ms",
-        "evidence_kind",
-        "evidence_sha256",
-        "evidence_bytes",
-        "evidence_overflow",
-        "receipt_id",
-    }
-    invocation = route.invocation_binding
-    evidence_bytes = value.get("evidence_bytes")
-    observed_at_ms = value.get("observed_at_ms")
-    retry_not_before_ms = value.get("retry_not_before_ms")
-    return bool(
-        invocation is not None
-        and set(value) == expected
-        and value.get("schema")
-        == AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA
-        and value.get("source") == "grok_cli_runner"
-        and value.get("failure_class") == "usage_limit"
-        and value.get("reason_code") == "codex_usage_limit_reached"
-        and value.get("primary_receipt_id") == receipt.get("receipt_id")
-        and value.get("nonce") == receipt.get("nonce")
-        and value.get("route_id") == route.route_id
-        and value.get("invocation_binding_id") == invocation.content_id
-        and value.get("logical_attempt_id") == invocation.logical_attempt_id
-        and value.get("fallback_provider_id") == route.fallback_provider_id
-        and value.get("fallback_provider_id") == "codex"
-        and value.get("fallback_model_id") == route.fallback_model_id
-        and value.get("fallback_reasoning_effort")
-        == route.fallback_reasoning_effort
-        and value.get("fallback_returncode") == fallback_returncode
-        and value.get("outcome_decision") == "fallback_failed"
-        and value.get("decision_id") == decision_id
-        and re.fullmatch(
-            r"sha256:[0-9a-f]{64}", str(value.get("decision_id") or "")
-        )
-        is not None
-        and isinstance(fallback_returncode, int)
-        and not isinstance(fallback_returncode, bool)
-        and fallback_returncode != 0
-        and value.get("provider_dispatched") is True
-        and value.get("candidate_activity_observed") is False
-        and value.get("attempt_consumed") is True
-        and value.get("completion_authority") is False
-        and isinstance(observed_at_ms, int)
-        and not isinstance(observed_at_ms, bool)
-        and observed_at_ms > 0
-        and isinstance(retry_not_before_ms, int)
-        and not isinstance(retry_not_before_ms, bool)
-        and (
-            retry_not_before_ms == 0
-            or observed_at_ms < retry_not_before_ms
-            <= observed_at_ms
-            + _AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS
-        )
-        and value.get("evidence_kind") == "codex_jsonl_terminal_error"
-        and re.fullmatch(
-            r"sha256:[0-9a-f]{64}",
-            str(value.get("evidence_sha256") or ""),
-        )
-        is not None
-        and isinstance(evidence_bytes, int)
-        and not isinstance(evidence_bytes, bool)
-        and 0 < evidence_bytes <= _AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES
-        and value.get("evidence_overflow") is False
-        and value.get("receipt_id")
-        == _content_addressed_mapping(value, identity_field="receipt_id")
-    )
 
 
 def _agent_effect_detail_id(value: object) -> str:
@@ -2490,536 +1812,10 @@ def _agent_effect_detail_id(value: object) -> str:
     ).hexdigest()
 
 
-_EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "eaaef-worker-effect-image-receipt@1"
-)
-_EAAEF_QUALIFIED_CODEX_PATH = "/opt/eaaef/bin/codex"
-_EAAEF_QUALIFIED_CONTAINER_ENV = {
-    "BASH_ENV": "",
-    "CODEX_HOME": "/opt/codex-home",
-    "ENV": "",
-    "HOME": "/opt/codex-home",
-    "LANG": "C.UTF-8",
-    "LC_ALL": "C.UTF-8",
-    "PATH": "/opt/eaaef/bin:/usr/bin:/bin",
-    "PYTHONDONTWRITEBYTECODE": "1",
-    "PYTHONNOUSERSITE": "1",
-    "TERM": "dumb",
-}
-
-
-def _agent_eaaef_effect_launch_details_valid(
-    value: Mapping[str, object],
-    *,
-    workspace_path: str,
-    invocation_binding: AgentImplementationInvocationBinding | None,
-) -> bool:
-    """Validate the additive EAAEF image/network receipt variant.
-
-    Legacy Codex receipts continue through the byte-for-byte legacy rules
-    below.  This branch is admitted only when its canonical label embeds the
-    source-addressed launch authority and binds the exact invocation control
-    plane, immutable image/profile, network authorization CID, and principals.
-    """
-
-    if invocation_binding is None:
-        return False
-    image = value.get("image_receipt")
-    command = value.get("command_receipt")
-    runtime = value.get("runtime_receipt")
-    mounts = value.get("mount_receipt")
-    environment = value.get("environment_receipt")
-    cleanup = value.get("cleanup_receipt")
-    if (
-        not isinstance(image, Mapping)
-        or set(image) != {"image_id", "image_label"}
-        or not isinstance(image.get("image_label"), str)
-        or len(str(image["image_label"]).encode("utf-8")) > 64 * 1024
-        or not isinstance(command, Mapping)
-        or set(command) != {"create_argv", "start_argv", "provider_argv"}
-        or not isinstance(runtime, Mapping)
-        or set(runtime)
-        != {
-            "path",
-            "device",
-            "inode",
-            "mode",
-            "uid",
-            "size",
-            "mtime_ns",
-            "ctime_ns",
-        }
-        or any(
-            isinstance(runtime.get(name), bool)
-            or not isinstance(runtime.get(name), int)
-            or int(runtime.get(name) or 0) < 0
-            for name in (
-                "device",
-                "inode",
-                "mode",
-                "uid",
-                "size",
-                "mtime_ns",
-                "ctime_ns",
-            )
-        )
-        or runtime.get("uid") != 0
-        or not isinstance(mounts, list)
-        or not mounts
-        or any(not isinstance(item, str) or not item for item in mounts)
-        or not isinstance(environment, Mapping)
-        or set(environment) != {"docker_cli", "container"}
-        or not isinstance(cleanup, Mapping)
-        or set(cleanup)
-        != {
-            "schema",
-            "lease_root",
-            "docker_config",
-            "cidfile",
-            "provider_home",
-            "prompt_path",
-            "watchdog_pid",
-            "watchdog_start_ticks",
-            "receipt_id",
-        }
-    ):
-        return False
-
-    def unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        result: dict[str, object] = {}
-        for key, item in pairs:
-            if key in result:
-                raise ValueError("duplicate EAAEF image receipt key")
-            result[key] = item
-        return result
-
-    try:
-        receipt = json.loads(str(image["image_label"]), object_pairs_hook=unique)
-        from ipfs_accelerate_py.agent_supervisor.runtime.worker_network_dispatch import (
-            parse_worker_network_launch_authority,
-        )
-
-        if not isinstance(receipt, Mapping) or set(receipt) != {
-            "schema",
-            "launch_authority",
-            "network_authorization_artifact_cid",
-            "network_authorization_id",
-            "network_approval_cid",
-            "worker_principal_did",
-            "provider_principal_did",
-        }:
-            return False
-        launch = parse_worker_network_launch_authority(
-            receipt.get("launch_authority"),
-            accepted_control_plane_pin=invocation_binding.control_plane,
-            require_admitted=True,
-        )
-    except (ImportError, TypeError, ValueError, json.JSONDecodeError):
-        return False
-    sha_cid = re.compile(r"sha256:[0-9a-f]{64}")
-    image_digest = str(launch["qualified_worker_image_digest"])
-    profile_cid = str(launch["qualified_worker_container_profile_cid"])
-    network_artifact_cid = str(
-        receipt.get("network_authorization_artifact_cid") or ""
-    )
-    network_authorization_id = str(receipt.get("network_authorization_id") or "")
-    network_approval_cid = str(receipt.get("network_approval_cid") or "")
-    if (
-        receipt.get("schema") != _EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA
-        or any(
-            sha_cid.fullmatch(item) is None
-            for item in (
-                image_digest,
-                profile_cid,
-                network_artifact_cid,
-                network_authorization_id,
-                network_approval_cid,
-            )
-        )
-        or receipt.get("worker_principal_did")
-        != launch["worker_principal_did"]
-        or receipt.get("provider_principal_did")
-        != launch["provider_principal_did"]
-        or value.get("image_id") != image_digest
-        or image.get("image_id") != image_digest
-    ):
-        return False
-
-    argv_values: dict[str, list[str]] = {}
-    for name in ("create_argv", "start_argv", "provider_argv"):
-        raw = command.get(name)
-        if (
-            not isinstance(raw, list)
-            or not raw
-            or any(not isinstance(item, str) for item in raw)
-        ):
-            return False
-        argv_values[name] = raw
-    create_argv = argv_values["create_argv"]
-    provider_argv = argv_values["provider_argv"]
-    start_argv = argv_values["start_argv"]
-    docker_cli = environment.get("docker_cli")
-    container_environment = environment.get("container")
-    if (
-        not isinstance(docker_cli, Mapping)
-        or not isinstance(container_environment, Mapping)
-        or dict(docker_cli) != _EAAEF_QUALIFIED_CONTAINER_ENV
-        or dict(container_environment) != _EAAEF_QUALIFIED_CONTAINER_ENV
-        or len(provider_argv) != 14
-    ):
-        return False
-    provider_workspace = provider_argv[8]
-    expected_provider_tail = [
-        "exec",
-        "--ignore-user-config",
-        "--ignore-rules",
-        "--ephemeral",
-        "-s",
-        "workspace-write",
-        "-C",
-        provider_workspace,
-        "-m",
-        "gpt-5.6-terra",
-        "-c",
-        'model_reasoning_effort="high"',
-        "-",
-    ]
-    if (
-        provider_argv[0] != _EAAEF_QUALIFIED_CODEX_PATH
-        or provider_argv[1:] != expected_provider_tail
-        or provider_workspace != workspace_path
-    ):
-        return False
-    docker_path = str(runtime.get("path") or "")
-    if (
-        docker_path not in {"/usr/bin/docker", "/usr/local/bin/docker"}
-        or create_argv[:5]
-        != [
-            docker_path,
-            "--host=unix:///var/run/docker.sock",
-            "--config",
-            create_argv[3] if len(create_argv) > 3 else "",
-            "create",
-        ]
-        or create_argv.count(image_digest) != 1
-    ):
-        return False
-    try:
-        image_index = create_argv.index(image_digest, 5)
-        config_path = Path(create_argv[3])
-        cidfile = Path(create_argv[create_argv.index("--cidfile", 5, image_index) + 1])
-        container_name = str(value.get("container_name") or "")
-        raw_container_id = str(value.get("container_id") or "").removeprefix(
-            "sha256:"
-        )
-        workdir = create_argv[create_argv.index("--workdir", 5, image_index) + 1]
-        user = create_argv[create_argv.index("--user", 5, image_index) + 1]
-    except (IndexError, ValueError):
-        return False
-    if (
-        not config_path.is_absolute()
-        or config_path.name != "docker-config"
-        or not config_path.parent.name.startswith("asref-codex-container-")
-        or cidfile != config_path.parent / "container.cid"
-        or workdir != workspace_path
-        or re.fullmatch(r"[1-9][0-9]*:[1-9][0-9]*", user) is None
-        or re.fullmatch(r"[0-9a-f]{64}", raw_container_id) is None
-    ):
-        return False
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.worker_network import (
-            PROVIDER_HOSTNAME_ALLOWLISTS,
-            load_worker_network_authorization,
-            worker_network_approval_cid,
-        )
-
-        authorization = load_worker_network_authorization(
-            invocation_binding=invocation_binding,
-            provider="codex",
-            workspace=Path(workspace_path),
-            expected_artifact_cid=network_artifact_cid,
-            expected_container_name=container_name,
-            expected_lease_root=config_path.parent,
-            expected_worker_principal_did=str(launch["worker_principal_did"]),
-            expected_provider_principal_did=str(
-                launch["provider_principal_did"]
-            ),
-        )
-        approval_values = {
-            "provider": "codex",
-            "docker_network": authorization.docker_network,
-            "proxy_endpoint": authorization.proxy_endpoint,
-            "approval_identity": "eaaef-network-approval:signed",
-            "effect_cid": authorization.effect_cid,
-            "workspace": authorization.workspace,
-            "container_name": authorization.container_name,
-            "lease_id": authorization.lease_id,
-            "lease_root": authorization.lease_root,
-        }
-        expected_network_approval_cid = worker_network_approval_cid(
-            **approval_values
-        )
-    except (ImportError, OSError, TypeError, ValueError):
-        return False
-    if (
-        authorization.authorization_id != network_authorization_id
-        or authorization.artifact_cid != network_artifact_cid
-        or authorization.worker_principal_did != launch["worker_principal_did"]
-        or authorization.provider_principal_did
-        != launch["provider_principal_did"]
-        or authorization.allowed_hostnames
-        != PROVIDER_HOSTNAME_ALLOWLISTS["codex"]
-        or network_approval_cid != expected_network_approval_cid
-    ):
-        return False
-    docker_args = create_argv[5:image_index]
-    exact_flags = {
-        "--pull=never",
-        "--interactive",
-        "--read-only",
-        "--dns=127.0.0.1",
-        "--runtime=runc",
-        "--entrypoint=/usr/bin/env",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=1024",
-        "--cpus=4",
-        "--memory=16g",
-        "--memory-swap=16g",
-    }
-    if any(docker_args.count(flag) != 1 for flag in exact_flags):
-        return False
-    networks = [item for item in docker_args if item.startswith("--network=")]
-    if len(networks) != 1 or networks[0] == "--network=none":
-        return False
-    labels: list[str] = []
-    for index, item in enumerate(docker_args[:-1]):
-        if item == "--label":
-            labels.append(docker_args[index + 1])
-    expected_labels = {
-        "ipfs_accelerate.codex_fallback_isolation=true",
-        f"ipfs_accelerate.worker_network_binding={network_approval_cid}",
-        (
-            "ipfs_accelerate.worker_network_effect="
-            + invocation_binding.content_id
-        ),
-        (
-            "ipfs_accelerate.worker_network_authorization="
-            + network_authorization_id
-        ),
-        (
-            "ipfs_accelerate.eaaef.qualified_worker_image_digest="
-            + image_digest
-        ),
-        (
-            "ipfs_accelerate.eaaef.qualified_worker_container_profile_cid="
-            + profile_cid
-        ),
-    }
-    if len(labels) != len(expected_labels) or set(labels) != expected_labels:
-        return False
-    expected_overrides = [
-        "BASH_ENV=",
-        "CUDA_VISIBLE_DEVICES=-1",
-        "ENV=",
-        "LD_LIBRARY_PATH=",
-        "LD_PRELOAD=",
-        "LIBRARY_PATH=",
-        "NVIDIA_DRIVER_CAPABILITIES=",
-        "NVIDIA_REQUIRE_CUDA=",
-        "NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS=",
-        "NVIDIA_VISIBLE_DEVICES=void",
-    ]
-    if any(
-        item in {"--privileged", "-P", "--network", "--dns"}
-        or item.startswith(
-            (
-                "--publish",
-                "--volume",
-                "--device",
-                "--cap-add",
-                "--pid=",
-                "--ipc=",
-            )
-        )
-        for item in docker_args
-    ):
-        return False
-    parsed_mounts = [
-        docker_args[index + 1]
-        for index, item in enumerate(docker_args[:-1])
-        if item == "--mount"
-    ]
-    if parsed_mounts != mounts or any(
-        ".sock" in item.lower()
-        or "containerd" in item.lower()
-        or "podman" in item.lower()
-        or "src=/usr" in item
-        or "dst=/usr" in item
-        or "src=/etc/ssl" in item
-        or "dst=/etc/ssl" in item
-        or "ipfs-task-tools" in item
-        for item in parsed_mounts
-    ):
-        return False
-    writable_mounts: list[tuple[str, str]] = []
-    for mount in parsed_mounts:
-        fields = mount.split(",")
-        if (
-            len(fields) not in {3, 4}
-            or fields[0] != "type=bind"
-            or not fields[1].startswith("src=")
-            or not fields[2].startswith("dst=")
-            or (len(fields) == 4 and fields[3] != "readonly")
-        ):
-            return False
-        source = fields[1].removeprefix("src=")
-        destination = fields[2].removeprefix("dst=")
-        if not Path(source).is_absolute() or not Path(destination).is_absolute():
-            return False
-        if len(fields) == 3:
-            writable_mounts.append((source, destination))
-    if writable_mounts != [(workspace_path, workspace_path)]:
-        return False
-    observed_destinations = {
-        mount.split(",")[2].removeprefix("dst="): mount.split(",")[1].removeprefix(
-            "src="
-        )
-        for mount in parsed_mounts
-    }
-    auth_source = observed_destinations.get("/opt/codex-home/auth.json")
-    if (
-        not auth_source
-        or Path(auth_source).name != "auth.json"
-        or Path(auth_source).is_relative_to(Path(workspace_path))
-    ):
-        return False
-    for destination, source in observed_destinations.items():
-        if destination in {workspace_path, "/opt/codex-home/auth.json"}:
-            continue
-        if source != destination or not (
-            destination.endswith("/.git")
-            or "/.git/worktrees/" in destination
-            or destination.endswith("/worktrees")
-        ):
-            return False
-
-    expected_assignments = [
-        f"{name}={item}"
-        for name, item in sorted(_EAAEF_QUALIFIED_CONTAINER_ENV.items())
-    ]
-    inner = list(provider_argv)
-    inner[6] = "danger-full-access"
-    try:
-        inner_index = create_argv.index(_EAAEF_QUALIFIED_CODEX_PATH, image_index + 1)
-    except ValueError:
-        return False
-    assignments = create_argv[image_index + 2 : inner_index]
-    if (
-        create_argv[image_index + 1] != "-i"
-        or create_argv[inner_index:] != inner
-        or any(item not in assignments for item in expected_assignments)
-        or len(assignments) != len(expected_assignments) + 6
-        or len(assignments) != len(set(assignments))
-    ):
-        return False
-    proxy_assignments = {
-        item.partition("=")[0]: item.partition("=")[2]
-        for item in assignments
-        if item not in expected_assignments
-    }
-    if set(proxy_assignments) != {
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
-        "NO_PROXY",
-        "http_proxy",
-        "https_proxy",
-        "no_proxy",
-    }:
-        return False
-    proxy_endpoint = proxy_assignments["HTTP_PROXY"]
-    if (
-        not re.fullmatch(
-            r"http://(?:10(?:\.[0-9]{1,3}){3}|"
-            r"172\.(?:1[6-9]|2[0-9]|3[01])(?:\.[0-9]{1,3}){2}|"
-            r"192\.168(?:\.[0-9]{1,3}){2}):[1-9][0-9]{0,4}",
-            proxy_endpoint,
-        )
-        or proxy_assignments["HTTPS_PROXY"] != proxy_endpoint
-        or proxy_assignments["http_proxy"] != proxy_endpoint
-        or proxy_assignments["https_proxy"] != proxy_endpoint
-        or proxy_assignments["NO_PROXY"] != ""
-        or proxy_assignments["no_proxy"] != ""
-    ):
-        return False
-    docker_environment_flags = [
-        docker_args[index + 1]
-        for index, item in enumerate(docker_args[:-1])
-        if item == "--env"
-    ]
-    expected_proxy_flags = [
-        f"{name}={proxy_assignments[name]}" for name in sorted(proxy_assignments)
-    ]
-    if docker_environment_flags != [*expected_overrides, *expected_proxy_flags]:
-        return False
-    expected_start = [
-        docker_path,
-        "--host=unix:///var/run/docker.sock",
-        "--config",
-        str(config_path),
-        "start",
-        "--attach",
-        "--interactive",
-        raw_container_id,
-    ]
-    cleanup_body = {
-        key: item for key, item in cleanup.items() if key != "receipt_id"
-    }
-    lease_root = config_path.parent
-    provider_home = Path(str(cleanup.get("provider_home") or ""))
-    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
-    watchdog_pid = cleanup.get("watchdog_pid")
-    watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
-    if (
-        cleanup.get("schema")
-        != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
-        or cleanup.get("lease_root") != str(lease_root)
-        or cleanup.get("docker_config") != str(config_path)
-        or cleanup.get("cidfile") != str(cidfile)
-        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
-        or not provider_home.is_absolute()
-        or provider_home.parent != lease_root.parent
-        or not provider_home.name.startswith("asref-codex-home-")
-        or not prompt_path.is_absolute()
-        or prompt_path.parent != lease_root.parent
-        or not prompt_path.name.startswith("asref-grok-prompt-")
-        or provider_home.is_relative_to(Path(workspace_path))
-        or prompt_path.is_relative_to(Path(workspace_path))
-        or isinstance(watchdog_pid, bool)
-        or not isinstance(watchdog_pid, int)
-        or watchdog_pid <= 0
-        or isinstance(watchdog_start_ticks, bool)
-        or not isinstance(watchdog_start_ticks, int)
-        or watchdog_start_ticks < 0
-    ):
-        return False
-    return bool(
-        start_argv == expected_start
-        and value.get("runtime_id") == _agent_effect_detail_id(runtime)
-        and value.get("command_id") == _agent_effect_detail_id(command)
-        and value.get("mount_id") == _agent_effect_detail_id(mounts)
-        and value.get("environment_id") == _agent_effect_detail_id(environment)
-        and cleanup.get("receipt_id") == _agent_effect_detail_id(cleanup_body)
-        and value.get("cleanup_id") == cleanup.get("receipt_id")
-    )
-
-
 def _agent_effect_launch_details_valid(
     value: Mapping[str, object],
     *,
     workspace_path: str = "",
-    invocation_binding: AgentImplementationInvocationBinding | None = None,
 ) -> bool:
     runtime = value.get("runtime_receipt")
     image = value.get("image_receipt")
@@ -3027,15 +1823,6 @@ def _agent_effect_launch_details_valid(
     mounts = value.get("mount_receipt")
     environment = value.get("environment_receipt")
     cleanup = value.get("cleanup_receipt")
-    if (
-        isinstance(image, Mapping)
-        and image.get("image_label") != AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
-    ):
-        return _agent_eaaef_effect_launch_details_valid(
-            value,
-            workspace_path=workspace_path,
-            invocation_binding=invocation_binding,
-        )
     if (
         not isinstance(runtime, Mapping)
         or set(runtime)
@@ -3129,15 +1916,14 @@ def _agent_effect_launch_details_valid(
     create_argv = argv_values["create_argv"]
     start_argv = argv_values["start_argv"]
     provider_argv = argv_values["provider_argv"]
-    if len(provider_argv) != 15:
+    if len(provider_argv) != 14:
         return False
-    provider_workspace = provider_argv[9]
+    provider_workspace = provider_argv[8]
     expected_provider_tail = [
         "exec",
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
-        "--json",
         "-s",
         "workspace-write",
         "-C",
@@ -3148,12 +1934,8 @@ def _agent_effect_launch_details_valid(
         'model_reasoning_effort="high"',
         "-",
     ]
-    provider_executable = Path(provider_argv[0])
     if (
-        not provider_executable.is_absolute()
-        or provider_executable.name != "codex"
-        or ".." in provider_executable.parts
-        or not provider_executable.is_relative_to(Path("/usr"))
+        not Path(provider_argv[0]).is_absolute()
         or provider_argv[1:] != expected_provider_tail
         or (workspace_path and provider_workspace != workspace_path)
     ):
@@ -3202,11 +1984,6 @@ def _agent_effect_launch_details_valid(
         user_identity,
         "--workdir",
         provider_workspace,
-        "--log-driver=json-file",
-        "--log-opt",
-        "max-size=16m",
-        "--log-opt",
-        "max-file=2",
     ]
     overrides = [
         "BASH_ENV=",
@@ -3242,23 +2019,18 @@ def _agent_effect_launch_details_valid(
     cleanup_body = {
         key: item for key, item in cleanup.items() if key != "receipt_id"
     }
-    cleanup_root = lease_root.parent
     if (
         cleanup.get("schema")
         != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
         or cleanup.get("lease_root") != str(lease_root)
         or cleanup.get("docker_config") != str(config_path)
         or cleanup.get("cidfile") != str(cidfile_path)
-        # This validates immutable receipt semantics, so it must remain true
-        # after an admitted cleanup legitimately retires the private root.
-        # Live ownership, mode, symlink, and inode checks belong to the
-        # recorded-effect mutation paths and their durable @6 binding.
-        or not cleanup_root.is_absolute()
+        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
         or not provider_home.is_absolute()
-        or provider_home.parent != cleanup_root
+        or provider_home.parent != lease_root.parent
         or not provider_home.name.startswith("asref-codex-home-")
         or not prompt_path.is_absolute()
-        or prompt_path.parent != cleanup_root
+        or prompt_path.parent != lease_root.parent
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or (workspace_path and provider_home.is_relative_to(Path(workspace_path)))
         or (workspace_path and prompt_path.is_relative_to(Path(workspace_path)))
@@ -3283,29 +2055,15 @@ def _agent_effect_launch_details_valid(
         f"{name}={item}" for name, item in sorted(expected_container.items())
     ]
     inner = list(provider_argv)
-    sandbox_index = inner.index("-s")
-    inner[sandbox_index + 1] = "danger-full-access"
-    capacity_nonce_index = cursor + 7 + len(expected_assignments)
-    capacity_nonce = (
-        create_argv[capacity_nonce_index]
-        if len(create_argv) > capacity_nonce_index
-        else ""
-    )
+    inner[6] = "danger-full-access"
     expected_suffix = [
         AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
         "-i",
         *expected_assignments,
-        "/opt/ipfs-task-tools/bin/python",
-        "-I",
-        "-c",
-        AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
-        AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA,
-        capacity_nonce,
         *inner,
     ]
     if (
         create_argv[cursor:] != expected_suffix
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", capacity_nonce) is None
         or parsed_mounts != mounts
         or len(parsed_mounts) < 5
         or len(set(parsed_mounts)) != len(parsed_mounts)
@@ -3403,7 +2161,6 @@ def _agent_effect_receipt_valid(
     logical_attempt_id: str,
     reservation_id: str,
     workspace_path: str = "",
-    invocation_binding: AgentImplementationInvocationBinding | None = None,
 ) -> bool:
     expected = {
         "schema",
@@ -3491,7 +2248,6 @@ def _agent_effect_receipt_valid(
         and _agent_effect_launch_details_valid(
             value,
             workspace_path=workspace_path,
-            invocation_binding=invocation_binding,
         )
     )
 
@@ -3935,7 +2691,6 @@ def build_agent_implementation_route_outcome(
     effect_quarantine_terminalization_receipt: Mapping[
         str, object
     ] | None = None,
-    fallback_capacity_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the sole protected v3 terminal record owned by the router."""
 
@@ -3974,7 +2729,6 @@ def build_agent_implementation_route_outcome(
         "effect_quarantine_terminalization_receipt": dict(
             effect_quarantine_terminalization_receipt or {}
         ),
-        "fallback_capacity_receipt": dict(fallback_capacity_receipt or {}),
     }
     outcome["outcome_id"] = _content_addressed_mapping(
         outcome,
@@ -4031,7 +2785,6 @@ def valid_agent_implementation_route_outcome(
         "effect_quarantine_terminalization_receipt",
         "outcome_id",
     }
-    expected_with_capacity = expected | {"fallback_capacity_receipt"}
     invocation = route.invocation_binding
     fallback_returncode = outcome.get("fallback_returncode")
     launch = outcome.get("effect_launch_receipt")
@@ -4039,9 +2792,6 @@ def valid_agent_implementation_route_outcome(
     quarantine = outcome.get("effect_quarantine_receipt")
     quarantine_terminalization = outcome.get(
         "effect_quarantine_terminalization_receipt"
-    )
-    fallback_capacity_receipt = outcome.get(
-        "fallback_capacity_receipt", {}
     )
     quota_evidence = outcome.get("quota_evidence")
     quota_required = bool(
@@ -4051,8 +2801,7 @@ def valid_agent_implementation_route_outcome(
     )
     common = bool(
         invocation is not None
-        and frozenset(outcome)
-        in {frozenset(expected), frozenset(expected_with_capacity)}
+        and set(outcome) == expected
         and outcome.get("schema") == AGENT_IMPLEMENTATION_ROUTE_OUTCOME_SCHEMA
         and outcome.get("source") == "grok_cli_runner"
         and outcome.get("preflight_receipt_id") == receipt.get("receipt_id")
@@ -4102,26 +2851,10 @@ def valid_agent_implementation_route_outcome(
         and isinstance(adoption, Mapping)
         and isinstance(quarantine, Mapping)
         and isinstance(quarantine_terminalization, Mapping)
-        and isinstance(fallback_capacity_receipt, Mapping)
         and outcome.get("outcome_id")
         == _content_addressed_mapping(outcome, identity_field="outcome_id")
     )
     if not common:
-        return False
-    if fallback_capacity_receipt:
-        if (
-            outcome.get("decision") != "fallback_failed"
-            or outcome.get("fallback_dispatched") is not True
-            or not valid_agent_implementation_codex_capacity_receipt(
-                fallback_capacity_receipt,
-                receipt=receipt,
-                route=route,
-                fallback_returncode=runner_returncode,
-                decision_id=str(outcome.get("decision_id") or ""),
-            )
-        ):
-            return False
-    elif "fallback_capacity_receipt" in outcome and fallback_capacity_receipt != {}:
         return False
     if quota_required:
         claimed_at_ms = (
@@ -4176,7 +2909,6 @@ def valid_agent_implementation_route_outcome(
             logical_attempt_id=invocation.logical_attempt_id,
             reservation_id=reservation_id,
             workspace_path=invocation.workspace_path,
-            invocation_binding=invocation,
         )
     ):
         return False
@@ -4294,52 +3026,6 @@ def render_agent_implementation_route_outcome(
     )
 
 
-def render_agent_implementation_codex_capacity_receipt(
-    receipt: Mapping[str, object],
-) -> str:
-    """Render the runner-owned companion to a protected route outcome."""
-
-    return AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX + json.dumps(
-        dict(receipt),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    )
-
-
-def extract_agent_implementation_codex_capacity_receipts(
-    text: str,
-) -> tuple[dict[str, object], ...]:
-    receipts: list[dict[str, object]] = []
-    for line in str(text).split("\n"):
-        if not line.startswith(
-            AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX
-        ):
-            continue
-        raw = line[len(AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX) :]
-        if "\r" in raw or len(raw.encode("utf-8")) > (
-            _AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_MAX_BYTES
-        ):
-            continue
-
-        def unique(pairs: Sequence[tuple[str, object]]) -> dict[str, object]:
-            result: dict[str, object] = {}
-            for key, value in pairs:
-                if key in result:
-                    raise ValueError("duplicate Codex capacity receipt key")
-                result[key] = value
-            return result
-
-        try:
-            value = json.loads(raw, object_pairs_hook=unique)
-        except (ValueError, json.JSONDecodeError):
-            continue
-        if isinstance(value, dict):
-            receipts.append(value)
-    return tuple(receipts[-4:])
-
-
 def extract_agent_implementation_route_outcomes(
     text: str,
 ) -> tuple[dict[str, object], ...]:
@@ -4378,9 +3064,9 @@ class AgentImplementationRouteInvocation:
     failure_receipt_nonce: str
 
 
+_AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES = 255
 _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES = 16 * 1024 * 1024
 _AGENT_IMPLEMENTATION_MAX_STREAM_EVENT_BYTES = 64 * 1024
-_AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES = 255
 _AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
 )
@@ -4409,18 +3095,6 @@ AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS = (
     "use_tool,call_mcp_tool,list_mcp_resources,list_mcp_resource_templates,"
     "read_mcp_resource,fetch_mcp_resource,task,Agent,memory,lsp,spawn_subagent"
 )
-
-
-def _agent_implementation_directory_identity(
-    metadata: os.stat_result,
-) -> tuple[int, ...]:
-    return (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_mode,
-        metadata.st_nlink,
-        metadata.st_uid,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -4589,94 +3263,6 @@ def _read_stable_agent_implementation_evidence_file(
     return raw, after_resolved
 
 
-def _agent_implementation_native_session_record(
-    *,
-    grok_home: Path,
-    expected_session_id: str,
-    verifier_workspace: Path | str | None,
-) -> tuple[Path, Path | None] | None:
-    """Select one native session record from the reviewed Grok layouts.
-
-    Grok CLI 1.0.5 keys sessions by the percent-encoded absolute workspace
-    before the UUID.  Older reviewed releases put the UUID directly below
-    ``sessions``.  Accept only the exact workspace-derived path (or that
-    legacy direct path), reject ambiguous dual materialization, and never
-    search the provider home for a matching UUID.
-    """
-
-    try:
-        home_metadata = grok_home.lstat()
-    except OSError:
-        return None
-    if (
-        grok_home.is_symlink()
-        or not stat_module.S_ISDIR(home_metadata.st_mode)
-        or home_metadata.st_uid != os.geteuid()
-    ):
-        return None
-
-    sessions = grok_home / "sessions"
-    workspace: Path | None = None
-    if verifier_workspace is not None:
-        raw_workspace = Path(verifier_workspace)
-        if (
-            not raw_workspace.is_absolute()
-            or ".." in raw_workspace.parts
-        ):
-            return None
-        try:
-            workspace = raw_workspace.resolve(strict=True)
-            workspace_metadata = workspace.stat()
-            encoded_workspace = quote(str(workspace), safe="!'()*-._~")
-        except (OSError, UnicodeError):
-            return None
-        if not stat_module.S_ISDIR(workspace_metadata.st_mode):
-            return None
-        if (
-            not encoded_workspace
-            or "/" in encoded_workspace
-            or encoded_workspace in {".", ".."}
-        ):
-            return None
-    candidates: list[tuple[Path, Path | None]] = [
-        (sessions / expected_session_id / "updates.jsonl", workspace)
-    ]
-    if workspace is not None:
-        candidates.append(
-            (
-                sessions
-                / encoded_workspace
-                / expected_session_id
-                / "updates.jsonl",
-                workspace,
-            )
-        )
-
-    observed: list[tuple[Path, Path | None]] = []
-    for candidate, workspace in candidates:
-        try:
-            candidate.lstat()
-        except FileNotFoundError:
-            continue
-        except OSError:
-            return None
-        observed.append((candidate, workspace))
-    if len(observed) != 1:
-        return None
-
-    candidate, workspace = observed[0]
-    try:
-        relative = candidate.relative_to(grok_home)
-        cursor = grok_home
-        for component in relative.parts:
-            cursor /= component
-            if stat_module.S_ISLNK(cursor.lstat().st_mode):
-                return None
-    except (OSError, ValueError):
-        return None
-    return candidate, workspace
-
-
 def _agent_native_failure_type(line: str) -> str:
     if (
         not line
@@ -4721,7 +3307,6 @@ def _agent_native_failure_type(line: str) -> str:
 def _canonical_agent_quota_verifier_command(
     command: object,
     *,
-    expected_model: str,
     expected_session_id: str,
     workspace: Path | str | None,
     prompt_path: Path | str | None,
@@ -4730,8 +3315,7 @@ def _canonical_agent_quota_verifier_command(
     """Validate the exact isolated, tool-free native verifier invocation."""
 
     if (
-        not _agent_implementation_probe_contract_id(expected_model)
-        or not isinstance(command, list)
+        not isinstance(command, list)
         or workspace is None
         or prompt_path is None
         or not command
@@ -4774,7 +3358,7 @@ def _canonical_agent_quota_verifier_command(
     expected = [
         str(executable),
         "--model",
-        expected_model,
+        "grok-4.6",
         "--max-turns",
         "1",
         "--cwd",
@@ -4800,87 +3384,17 @@ def _canonical_agent_quota_verifier_command(
     return tuple(command) if command == expected else None
 
 
-def _agent_native_quota_session_paths(
-    *,
-    grok_home: Path,
-    expected_session_id: str,
-    verifier_workspace: Path | str | None,
-) -> tuple[Path, Path, Path | None] | None:
-    """Resolve one unambiguous native Grok session layout.
+def _agent_implementation_directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_uid,
+    )
 
-    Grok originally stored sessions directly below ``sessions/<session-id>``.
-    Current releases scope them below a percent-encoded absolute workspace
-    before the session id.  Accept either exact native layout, but never both,
-    and derive the scoped directory from the verifier workspace rather than
-    searching provider-controlled state.
-    """
-
-    try:
-        home_metadata = grok_home.lstat()
-    except OSError:
-        return None
-    if (
-        grok_home.is_symlink()
-        or not stat_module.S_ISDIR(home_metadata.st_mode)
-        or home_metadata.st_uid != os.geteuid()
-    ):
-        return None
-
-    session_root = grok_home / "sessions"
-    candidates: list[tuple[Path, Path | None]] = [
-        (session_root / expected_session_id, None)
-    ]
-    if verifier_workspace is not None:
-        raw_workspace = Path(verifier_workspace)
-        if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
-            return None
-        try:
-            workspace = raw_workspace.resolve(strict=True)
-            workspace_stat = workspace.stat()
-        except OSError:
-            return None
-        if not stat_module.S_ISDIR(workspace_stat.st_mode):
-            return None
-        encoded_workspace = urllib.parse.quote(str(workspace), safe="!'()*-._~")
-        if (
-            not encoded_workspace
-            or encoded_workspace in {".", ".."}
-            or "/" in encoded_workspace
-            or "\\" in encoded_workspace
-            or "\x00" in encoded_workspace
-        ):
-            return None
-        candidates[-1] = (
-            session_root / expected_session_id,
-            workspace,
-        )
-        candidates.insert(
-            0,
-            (
-                session_root / encoded_workspace / expected_session_id,
-                workspace,
-            ),
-        )
-
-    present = [
-        (directory, workspace)
-        for directory, workspace in candidates
-        if os.path.lexists(directory / "updates.jsonl")
-        or os.path.lexists(directory / "summary.json")
-    ]
-    if len(present) != 1:
-        return None
-    directory, workspace = present[0]
-    try:
-        relative = directory.relative_to(grok_home)
-        cursor = grok_home
-        for component in relative.parts:
-            cursor /= component
-            if stat_module.S_ISLNK(cursor.lstat().st_mode):
-                return None
-    except (OSError, ValueError):
-        return None
-    return directory / "updates.jsonl", directory / "summary.json", workspace
 
 def _agent_implementation_quota_session_directory(
     *,
@@ -4968,7 +3482,6 @@ def _agent_implementation_quota_session_directory(
     return selected, selected_identity
 
 
-
 def validate_agent_implementation_quota_evidence(
     *,
     grok_home: Path | str,
@@ -4989,9 +3502,6 @@ def validate_agent_implementation_quota_evidence(
     preflight_receipt_id = failure_receipt.get("receipt_id")
     preflight_nonce = failure_receipt.get("nonce")
     probe_contract_id = failure_receipt.get("probe_contract_id")
-    expected_probe_contract_id = _agent_implementation_probe_contract_id(
-        expected_model
-    )
     protected = invocation_binding is not None
     timestamp = (
         int(time.time() * 1000)
@@ -5001,9 +3511,6 @@ def validate_agent_implementation_quota_evidence(
     canonical_command = (
         _canonical_agent_quota_verifier_command(
             verifier_command,
-            expected_model=(
-                expected_model if isinstance(expected_model, str) else ""
-            ),
             expected_session_id=expected_session_id,
             workspace=verifier_workspace,
             prompt_path=verifier_prompt_path,
@@ -5012,17 +3519,12 @@ def validate_agent_implementation_quota_evidence(
         else ()
     )
     if (
-        not isinstance(expected_model, str)
-        or not expected_probe_contract_id
+        expected_model != "grok-4.6"
         or not isinstance(preflight_receipt_id, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
         or not isinstance(preflight_nonce, str)
         or re.fullmatch(r"[0-9a-f]{64}", preflight_nonce) is None
-        or probe_contract_id != expected_probe_contract_id
-        or (
-            protected
-            and invocation_binding.primary_model_id != expected_model
-        )
+        or probe_contract_id != _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
         or not isinstance(verifier_returncode, int)
         or isinstance(verifier_returncode, bool)
         or verifier_returncode == 0
@@ -5039,15 +3541,6 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    session_paths = _agent_native_quota_session_paths(
-        grok_home=home,
-        expected_session_id=expected_session_id,
-        verifier_workspace=verifier_workspace,
-    )
-    if session_paths is None:
-        return None
-    record, summary_path, scoped_workspace = session_paths
-    selected_record = (record, scoped_workspace)
     selected_session = _agent_implementation_quota_session_directory(
         grok_home=home,
         expected_session_id=expected_session_id,
@@ -5056,6 +3549,7 @@ def validate_agent_implementation_quota_evidence(
     if selected_session is None:
         return None
     session_directory, session_identity = selected_session
+    record = session_directory / "updates.jsonl"
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -5168,6 +3662,7 @@ def validate_agent_implementation_quota_evidence(
         elif update_type == "user_message_chunk":
             user_message_count += 1
 
+    summary_path = record.parent / "summary.json"
     try:
         summary_read = _read_stable_agent_implementation_evidence_file(
             summary_path,
@@ -5191,23 +3686,16 @@ def validate_agent_implementation_quota_evidence(
         )
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
         return None
-    final_selected_record = _agent_implementation_native_session_record(
-        grok_home=home,
-        expected_session_id=expected_session_id,
-        verifier_workspace=verifier_workspace,
-    )
     if (
-        final_selected_record is None
-        or final_selected_record != selected_record
-        or final_update_type != "turn_completed"
+        final_update_type != "turn_completed"
         or not observed_models.issubset({expected_model})
         or retry_failure_count != 1
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
         or (
-            scoped_workspace is not None
-            and summary_info.get("cwd") != str(scoped_workspace)
+            verifier_workspace is not None
+            and summary_info.get("cwd") != str(Path(verifier_workspace))
         )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
@@ -5215,12 +3703,11 @@ def validate_agent_implementation_quota_evidence(
         or terminal_verdict not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
     ):
         return None
-    selected_session_after = _agent_implementation_quota_session_directory(
+    if _agent_implementation_quota_session_directory(
         grok_home=home,
         expected_session_id=expected_session_id,
         verifier_workspace=verifier_workspace,
-    )
-    if selected_session_after != (session_directory, session_identity):
+    ) != (session_directory, session_identity):
         return None
     evidence_body: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA,
@@ -5397,9 +3884,6 @@ def _valid_agent_implementation_quota_evidence(
     if not isinstance(evidence, AgentImplementationQuotaEvidence):
         return False
     audit = evidence.audit_dict()
-    expected_probe_contract_id = _agent_implementation_probe_contract_id(
-        evidence.primary_model
-    )
     if (
         evidence.schema != _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA
         or evidence._validation_seal
@@ -5413,7 +3897,7 @@ def _valid_agent_implementation_quota_evidence(
         != failure_receipt.get("primary_provider")
         or evidence.primary_model
         != failure_receipt.get("primary_model")
-        or not expected_probe_contract_id
+        or evidence.primary_model != "grok-4.6"
         or evidence.verifier_provider != "grok_cli"
         or evidence.verifier_model != evidence.primary_model
         or isinstance(evidence.verifier_returncode, bool)
@@ -5421,7 +3905,6 @@ def _valid_agent_implementation_quota_evidence(
         or evidence.verifier_returncode == 0
         or evidence.probe_contract_id
         != failure_receipt.get("probe_contract_id")
-        or evidence.probe_contract_id != expected_probe_contract_id
         or evidence.verifier_result
         not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
         or any(
@@ -5466,7 +3949,6 @@ def _valid_agent_implementation_quota_evidence(
         or evidence.invocation_id != invocation.invocation_id
         or evidence.logical_attempt_id != invocation.logical_attempt_id
         or evidence.route_id != invocation.route_id
-        or evidence.primary_model != invocation.primary_model_id
         or evidence.signer_identity_did != invocation.profile_identity_did
         or evidence.signer_key_id != evidence.signer_identity_did
         or evidence.signer_profile_id != invocation.profile_id
@@ -5513,7 +3995,6 @@ def _valid_agent_implementation_quota_evidence(
         prompt_index = command.index("--prompt-file") + 1
         canonical_command = _canonical_agent_quota_verifier_command(
             command,
-            expected_model=evidence.primary_model,
             expected_session_id=evidence.verifier_session_id,
             workspace=command[workspace_index],
             prompt_path=command[prompt_index],
@@ -5867,32 +4348,6 @@ def _agent_verify_historical_authority_snapshot(
     bounds = authorization.authority_bounds
     if bounds is None:
         raise ValueError("historical authority bounds are unavailable")
-    route_policy = _agent_route_authorization_policy(
-        board_namespace=authorization.board_namespace,
-        authorization_path=authorization.artifact_path,
-    )
-    if route_policy is None:
-        raise ValueError(
-            "historical authority is not authorized for this board scope"
-        )
-    if (
-        not _agent_route_authorization_path_matches(
-            route_policy,
-            authorization.artifact_path,
-            source_tree=authorization.source_tree,
-        )
-        or not _agent_route_lifecycle_root_pin_path_matches(
-            route_policy,
-            authorization.lifecycle_root_pin_path,
-            source_tree=authorization.source_tree,
-        )
-        or not _agent_route_lifecycle_witness_path_matches(
-            route_policy,
-            authorization.reviewer_witness_path,
-            source_tree=authorization.source_tree,
-        )
-    ):
-        raise ValueError("historical authority source-addressed paths drifted")
     expected_top = {
         "schema",
         "board_namespace",
@@ -5964,9 +4419,9 @@ def _agent_verify_historical_authority_snapshot(
     ):
         raise ValueError("historical authorization artifact is noncanonical")
     expected_route = {
-        "route_id": route_policy.route_id,
+        "route_id": _V3_AGENT_IMPLEMENTATION_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": route_policy.primary_model_id,
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -6086,7 +4541,7 @@ def _agent_verify_historical_authority_snapshot(
         or profile.budget_cid != bounds.budget_cid
         or profile.resource_cid != bounds.resource_cid
         or profile.content_id != bounds.authority_cid
-        or profile.route_id != route_policy.route_id
+        or profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
         or profile.fallback_provider_id != "codex"
         or profile.fallback_model_id != "gpt-5.6-terra"
         or profile.fallback_reasoning_effort != "high"
@@ -6190,30 +4645,6 @@ def parse_agent_implementation_effect_authorization_context(
     effect_started_at_ms: int,
     expected_signer_parent_pid: int,
     max_age_ms: int,
-) -> AgentImplementationEffectAuthorizationContext | None:
-    """Verify original signed route authority at its durable claim instant.
-
-    This is terminal/recovery validation only.  It deliberately does not
-    grant a new provider effect and must be paired with the exact durable CAS
-    record whose ``effect_started_at_ms`` is supplied here.
-    """
-    return _parse_agent_implementation_effect_authorization_context_core(
-        value,
-        repo_root=repo_root,
-        effect_started_at_ms=effect_started_at_ms,
-        expected_signer_parent_pid=expected_signer_parent_pid,
-        max_age_ms=max_age_ms,
-    )
-
-
-def _parse_agent_implementation_effect_authorization_context_core(
-    value: object,
-    *,
-    repo_root: Path | str,
-    effect_started_at_ms: int,
-    expected_signer_parent_pid: int,
-    max_age_ms: int,
-    _terminal_workspace: str | None = None,
 ) -> AgentImplementationEffectAuthorizationContext | None:
     """Verify original signed route authority at its durable claim instant.
 
@@ -6327,7 +4758,7 @@ def _parse_agent_implementation_effect_authorization_context_core(
         invocation_raw = route_raw.get("invocation_binding")
         if not isinstance(invocation_raw, Mapping):
             return None
-        route = _bind_agent_implementation_route_invocation_core(
+        route = bind_agent_implementation_route_invocation(
             route,
             invocation_raw,
             repo_root=repo_root,
@@ -6335,7 +4766,6 @@ def _parse_agent_implementation_effect_authorization_context_core(
             now_ms=effect_started_at_ms,
             max_age_ms=max_age_ms,
             historical_effect_started_at_ms=effect_started_at_ms,
-            _terminal_workspace=_terminal_workspace,
         )
         invocation = route.invocation_binding
         if (
@@ -6359,7 +4789,7 @@ def _parse_agent_implementation_effect_authorization_context_core(
                 return None
         elif quota_raw:
             return None
-        decision = _decide_agent_implementation_fallback_core(
+        decision = decide_agent_implementation_fallback(
             route,
             repo_root=repo_root,
             failure_receipt=receipt,
@@ -6371,7 +4801,6 @@ def _parse_agent_implementation_effect_authorization_context_core(
             now_ms=effect_started_at_ms,
             max_age_ms=max_age_ms,
             historical_effect_started_at_ms=effect_started_at_ms,
-            _terminal_workspace=_terminal_workspace,
         )
     except (OSError, TypeError, ValueError):
         return None
@@ -6388,186 +4817,6 @@ def _parse_agent_implementation_effect_authorization_context_core(
         decision=decision,
         context_id=str(value.get("context_id")),
     )
-
-
-@dataclass(frozen=True)
-class AgentImplementationTerminalCleanupEvidence:
-    """Immutable historical observation, never a provider launch context.
-
-    The result contains no route-plan, authorization-context, capability, or
-    decision objects. Serialized historical bindings support exact comparison;
-    they remain non-authoritative inputs to the strict public effect APIs.
-    """
-
-    evidence_json: str
-
-
-def observe_agent_implementation_terminal_cleanup(
-    *,
-    store_path: Path | str,
-    expected_store_identity: str,
-    logical_attempt_id: str,
-    repo_root: Path | str,
-    max_age_ms: int,
-) -> AgentImplementationTerminalCleanupEvidence | None:
-    """Reverify completed native Codex cleanup after workspace disposal.
-
-    Only a currently reobserved, noncreating native CAS record admits the
-    private historical lexical-workspace check. Ordinary effect parsing,
-    binding and fallback decisions retain their strict live path checks.
-    """
-    from .agent_supervisor.control.provider_attempt_store import (
-        DurableProviderAttemptCAS,
-    )
-
-    try:
-        if any(
-            not isinstance(v, str) or not v
-            for v in (
-                expected_store_identity,
-                logical_attempt_id,
-            )
-        ):
-            return None
-        store = DurableProviderAttemptCAS(
-            store_path,
-            expected_directory_identity=expected_store_identity,
-            create_if_missing=False,
-        )
-        terminal = store.observe(logical_attempt_id)
-        if terminal is None or terminal.state != "terminal":
-            return None
-        progress = terminal.terminal_cleanup_progress
-        if (
-            terminal.logical_attempt_id != logical_attempt_id
-            or terminal.terminal_returncode != 0
-            or terminal.effect_launch_receipt.get("provider_id") != "codex"
-            or progress.get("phase") != "completion_committed"
-            or not isinstance(progress.get("intent"), Mapping)
-            or progress["intent"].get("docker_absence", {}).get("kind")
-            != "fenced_effect_absence"
-        ):
-            return None
-        captured_route = terminal.authorization_context.get("route_binding")
-        captured_invocation = (
-            captured_route.get("invocation_binding")
-            if isinstance(captured_route, Mapping)
-            else None
-        )
-        workspace = (
-            captured_invocation.get("workspace_path")
-            if isinstance(captured_invocation, Mapping)
-            else None
-        )
-        if not isinstance(workspace, str) or not workspace:
-            return None
-        context = _parse_agent_implementation_effect_authorization_context_core(
-            terminal.authorization_context,
-            repo_root=repo_root,
-            effect_started_at_ms=terminal.effect_started_at_ms,
-            expected_signer_parent_pid=terminal.effect_launch_receipt.get(
-                "effect_owner_pid"
-            ),
-            max_age_ms=max_age_ms,
-            _terminal_workspace=workspace,
-        )
-        if context is None or context.route.invocation_binding is None:
-            return None
-        invocation = context.route.invocation_binding
-        outcome = terminal.terminal_outcome
-        if (
-            invocation.provider_attempt_store != str(store.directory)
-            or invocation.provider_attempt_store_identity != store.directory_identity
-            or invocation.logical_attempt_id != logical_attempt_id
-            or terminal.task_id != invocation.task_id
-            or terminal.worktree_id != invocation.worktree_id
-            or terminal.route_id != context.route.route_id
-            or terminal.decision_id != context.decision.content_id
-            or outcome.get("fallback_dispatched") is not True
-            or outcome.get("fallback_returncode") != 0
-            or outcome.get("fallback_capacity_receipt")
-            or outcome.get("reservation_id") != terminal.reservation_id
-            or outcome.get("decision_id") != terminal.decision_id
-            or outcome.get("effect_launch_receipt") != terminal.effect_launch_receipt
-            or outcome.get("effect_adoption_receipt")
-            != terminal.effect_adoption_receipt
-            or outcome.get("effect_quarantine_receipt") != terminal.quarantine_receipt
-            or outcome.get("effect_quarantine_terminalization_receipt")
-            != terminal.quarantine_terminalization_receipt
-            or not valid_agent_implementation_route_outcome(
-                outcome,
-                receipt=context.failure_receipt,
-                route=context.route,
-                runner_returncode=0,
-            )
-            or terminal.terminal_outcome_id
-            != "sha256:"
-            + hashlib.sha256(
-                json.dumps(
-                    dict(outcome),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=True,
-                    allow_nan=False,
-                ).encode("utf-8")
-            ).hexdigest()
-        ):
-            return None
-        proof = {
-            "schema": "candidate-provider-cleanup@1",
-            "task_id": invocation.task_id,
-            "attempt": invocation.attempt,
-            "task_revision_cid": invocation.task_revision_cid,
-            "workspace_path": invocation.workspace_path,
-            "logical_attempt_id": invocation.logical_attempt_id,
-            "invocation_binding_id": invocation.content_id,
-            "provider_attempt_store": str(store.directory),
-            "provider_attempt_store_identity": store.directory_identity,
-            "reservation_id": terminal.reservation_id,
-            "terminal_outcome_id": terminal.terminal_outcome_id,
-            "cleanup_authority_id": terminal.terminal_cleanup_authority["authority_id"],
-            "cleanup_progress_id": progress["progress_id"],
-            "cleanup_completion_id": progress["completion_id"],
-            "provider_returncode": 0,
-            "completion_authority": False,
-        }
-        proof["proof_id"] = (
-            "sha256:"
-            + hashlib.sha256(
-                json.dumps(
-                    proof,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=True,
-                    allow_nan=False,
-                ).encode("utf-8")
-            ).hexdigest()
-        )
-        evidence = json.dumps(
-            {
-                "schema": "agent-implementation-terminal-cleanup-observation@1",
-                "provider_cleanup": proof,
-                "route_binding": context.route.as_binding_dict(),
-                "invocation_binding": invocation.as_dict(),
-                "failure_receipt": dict(context.failure_receipt),
-                "terminal_outcome": dict(outcome),
-                "reservation_content_id": terminal.content_id,
-                "completion_authority": False,
-                "new_effect_authority": False,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        )
-        if store.observe(logical_attempt_id) != terminal:
-            return None
-        # Repeat component admission after the bounded CAS/signature reads.
-        if str(resolve_agent_implementation_private_state_path(workspace)) != workspace:
-            return None
-        return AgentImplementationTerminalCleanupEvidence(evidence_json=evidence)
-    except (OSError, TypeError, ValueError, KeyError):
-        return None
 
 
 def _agent_implementation_route_id(
@@ -6592,11 +4841,10 @@ def _agent_implementation_route_plan(
     fallback_trigger: str,
     fallback_reasoning_effort: str,
     route_id: str,
-    primary_model_id: str = "grok-4.5",
 ) -> AgentImplementationRoutePlan:
     values = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": primary_model_id,
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": fallback_trigger,
@@ -6685,11 +4933,10 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization repository contains a symlink")
     relative = str(artifact_path or "").strip()
     namespace = str(board_namespace or "").strip()
-    route_policy = _agent_route_authorization_policy(
-        board_namespace=namespace,
-        authorization_path=relative,
-    )
-    if route_policy is None:
+    if (
+        relative != _V3_AGENT_ROUTE_AUTHORIZATION_PATH
+        or namespace != _V3_AGENT_ROUTE_BOARD_NAMESPACE
+    ):
         raise ValueError(
             "auth-or-quota/high route is not authorized for this board scope"
         )
@@ -6704,11 +4951,7 @@ def load_agent_implementation_route_authorization(
         ) from exc
     if candidate != unresolved_candidate or not candidate.is_relative_to(root):
         raise ValueError("agent route authorization artifact is unavailable")
-    raw = _agent_read_stable_file(
-        candidate,
-        maximum_bytes=128 * 1024,
-        allow_group_writable=route_policy.source_addressed,
-    )
+    raw = _agent_read_stable_file(candidate, maximum_bytes=128 * 1024)
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
     expected_digest = str(expected_sha256 or "").strip()
     if expected_digest and (
@@ -6915,7 +5158,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization bounds are invalid") from exc
     expected_route = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": route_policy.primary_model_id,
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -6924,7 +5167,7 @@ def load_agent_implementation_route_authorization(
         payload.get("schema") != _AGENT_ROUTE_AUTHORIZATION_SCHEMA
         or payload.get("board_namespace") != namespace
         or {key: route.get(key) for key in expected_route} != expected_route
-        or route.get("route_id") != route_policy.route_id
+        or route.get("route_id") != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
         or route.get("allowed_trigger_classes")
         != [
             "grok_authentication_unavailable",
@@ -6933,13 +5176,8 @@ def load_agent_implementation_route_authorization(
         or authorization_kind != "explicit_operator_override"
         or source.get("prospective_only") is not True
         or source.get("requires_descendant_tree") is not True
-        or _GIT_OBJECT_ID_RE.fullmatch(source_head) is None
-        or _GIT_OBJECT_ID_RE.fullmatch(source_tree) is None
-        or not _agent_route_authorization_path_matches(
-            route_policy,
-            relative,
-            source_tree=source_tree,
-        )
+        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
         or ownership.get("canonical_route_plan_owner")
         != "ipfs_accelerate_py.llm_router"
         or ownership.get("typed_fallback_decision_owner")
@@ -6983,11 +5221,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError(
             "agent route authorization does not grant the exact scoped route"
         )
-    if not _agent_route_lifecycle_root_pin_path_matches(
-        route_policy,
-        lifecycle_root_pin_path,
-        source_tree=source_tree,
-    ):
+    if lifecycle_root_pin_path != _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH:
         raise ValueError("agent route lifecycle root pin path is invalid")
     unresolved_root_pin = resolve_agent_implementation_private_state_path(
         root / lifecycle_root_pin_path
@@ -7004,7 +5238,6 @@ def load_agent_implementation_route_authorization(
     root_pin_raw = _agent_read_stable_file(
         root_pin_candidate,
         maximum_bytes=32 * 1024,
-        allow_group_writable=route_policy.source_addressed,
     )
     if (
         "sha256:" + hashlib.sha256(root_pin_raw).hexdigest()
@@ -7058,10 +5291,9 @@ def load_agent_implementation_route_authorization(
         or ".." in witness_relative_path.parts
         or witness_relative_path.as_posix() != reviewer_witness_path
         or witness_relative_path.suffix != ".json"
-        or not _agent_route_lifecycle_witness_path_matches(
-            route_policy,
-            reviewer_witness_path,
-            source_tree=source_tree,
+        or not reviewer_witness_path.startswith(
+            "data/agent_supervisor/prompt_only_self_improvement_v3/"
+            "convergence/"
         )
         or reviewer_witness_path == relative
     ):
@@ -7081,7 +5313,6 @@ def load_agent_implementation_route_authorization(
     witness_raw = _agent_read_stable_file(
         witness_candidate,
         maximum_bytes=128 * 1024,
-        allow_group_writable=route_policy.source_addressed,
     )
     if (
         "sha256:" + hashlib.sha256(witness_raw).hexdigest()
@@ -7131,7 +5362,7 @@ def load_agent_implementation_route_authorization(
         or witness_profile.budget_cid != authority_bounds.budget_cid
         or witness_profile.resource_cid != authority_bounds.resource_cid
         or witness_profile.content_id != authority_bounds.authority_cid
-        or witness_profile.route_id != route_policy.route_id
+        or witness_profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
         or witness_profile.fallback_provider_id != "codex"
         or witness_profile.fallback_model_id != "gpt-5.6-terra"
         or witness_profile.fallback_reasoning_effort != "high"
@@ -7261,17 +5492,14 @@ def load_agent_implementation_route_authorization(
         final_raw = _agent_read_stable_file(
             unresolved_candidate,
             maximum_bytes=128 * 1024,
-            allow_group_writable=route_policy.source_addressed,
         )
         final_witness_raw = _agent_read_stable_file(
             unresolved_witness,
             maximum_bytes=128 * 1024,
-            allow_group_writable=route_policy.source_addressed,
         )
         final_root_pin_raw = _agent_read_stable_file(
             unresolved_root_pin,
             maximum_bytes=32 * 1024,
-            allow_group_writable=route_policy.source_addressed,
         )
     except (OSError, ValueError) as exc:
         raise ValueError(
@@ -7281,36 +5509,20 @@ def load_agent_implementation_route_authorization(
         top_level != root
         or re.fullmatch(r"[0-9a-f]{40}", current_head) is None
         or re.fullmatch(
-            (
-                rb"100644"
-                if route_policy.source_addressed
-                else rb"100(?:644|755)"
-            )
-            + rb" blob [0-9a-f]{40}\t"
-            + re.escape(relative.encode()),
+            rb"100(?:644|755) blob [0-9a-f]{40}\t" + re.escape(relative.encode()),
             head_tree_entry,
         )
         is None
         or head_artifact != raw
         or re.fullmatch(
-            (
-                rb"100644"
-                if route_policy.source_addressed
-                else rb"100(?:644|755)"
-            )
-            + rb" blob [0-9a-f]{40}\t"
+            rb"100(?:644|755) blob [0-9a-f]{40}\t"
             + re.escape(reviewer_witness_path.encode()),
             head_witness_entry,
         )
         is None
         or head_witness != witness_raw
         or re.fullmatch(
-            (
-                rb"100644"
-                if route_policy.source_addressed
-                else rb"100(?:644|755)"
-            )
-            + rb" blob [0-9a-f]{40}\t"
+            rb"100(?:644|755) blob [0-9a-f]{40}\t"
             + re.escape(lifecycle_root_pin_path.encode()),
             head_root_pin_entry,
         )
@@ -7412,22 +5624,6 @@ _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE = _agent_implementation_route_plan(
     fallback_reasoning_effort="high",
     route_id=_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID,
 )
-_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE = (
-    _agent_implementation_route_plan(
-        fallback_trigger="primary_quota_exhausted",
-        fallback_reasoning_effort="medium",
-        route_id=_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE_ID,
-        primary_model_id="grok-4.6",
-    )
-)
-_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE = (
-    _agent_implementation_route_plan(
-        fallback_trigger="primary_quota_exhausted",
-        fallback_reasoning_effort="high",
-        route_id=_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID,
-        primary_model_id="grok-4.6",
-    )
-)
 _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
     _agent_implementation_route_plan(
         fallback_trigger="primary_quota_or_auth_unavailable",
@@ -7435,21 +5631,10 @@ _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
         route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
     )
 )
-_EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
-    _agent_implementation_route_plan(
-        fallback_trigger="primary_quota_or_auth_unavailable",
-        fallback_reasoning_effort="high",
-        route_id=_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
-        primary_model_id="grok-4.6",
-    )
-)
 _AGENT_IMPLEMENTATION_ROUTES = (
     _LEGACY_AGENT_IMPLEMENTATION_ROUTE,
     _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE,
-    _GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE,
-    _GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE,
     _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
-    _EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
 )
 
 
@@ -7513,20 +5698,8 @@ def resolve_agent_implementation_route(
     for route in _AGENT_IMPLEMENTATION_ROUTES:
         if values == route.as_dict():
             if route.permits_authentication_unavailable:
-                route_policy = _agent_route_authorization_policy_for_route(
-                    route.route_id,
-                    authorization=authorization,
-                )
                 if (
                     authorization is None
-                    or route_policy is None
-                    or authorization.board_namespace
-                    != route_policy.board_namespace
-                    or not _agent_route_authorization_path_matches(
-                        route_policy,
-                        authorization.artifact_path,
-                        source_tree=authorization.source_tree,
-                    )
                     or authorization._validation_seal
                     != _agent_implementation_private_seal(
                         {
@@ -7595,7 +5768,7 @@ def resolve_agent_implementation_route(
                     )
                 return AgentImplementationRoutePlan(
                     **values,
-                    route_id=route.route_id,
+                    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
                     authorization=authorization,
                     fallback_implementer_identity=(
                         authorization.fallback_implementer_identity
@@ -7612,9 +5785,8 @@ def resolve_agent_implementation_route(
     )
     raise ValueError(
         "agent implementation route must be exactly the reviewed legacy "
-        "quota/medium tuple, quota/high tuple, or a reviewed scoped "
-        "auth-or-quota/high tuple; "
-        + details
+        "quota/medium tuple, quota/high tuple, or auth-or-quota/high "
+        "tuple; " + details
     )
 
 
@@ -7678,171 +5850,6 @@ def _agent_native_required_seals() -> int:
         | fcntl.F_SEAL_GROW
         | fcntl.F_SEAL_SEAL
     )
-
-
-@dataclass(frozen=True)
-class _AgentImmutableVerification:
-    descriptor: int
-    identity: tuple[int, ...]
-    digest: str
-    size_bytes: int
-
-
-# The duplicate descriptors pin the actual immutable objects, preventing inode
-# reuse from turning a previous verification into authority for new bytes.
-# Neither mutable file metadata nor an on-disk receipt is a cache authority.
-_AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES = 4
-_AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES = 128 * 1024 * 1024
-_AGENT_IMMUTABLE_VERIFICATIONS: OrderedDict[
-    tuple[object, ...], _AgentImmutableVerification
-] = OrderedDict()
-_AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
-
-
-def _agent_immutable_descriptor_identity(metadata: os.stat_result) -> tuple[int, ...]:
-    return tuple(
-        int(getattr(metadata, name))
-        for name in (
-            "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
-            "st_size", "st_mtime_ns", "st_ctime_ns",
-        )
-    )
-
-
-def _agent_clear_immutable_verifications() -> None:
-    with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
-        while _AGENT_IMMUTABLE_VERIFICATIONS:
-            _, entry = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
-            os.close(entry.descriptor)
-
-
-def _agent_reset_immutable_verifications_after_fork() -> None:
-    global _AGENT_IMMUTABLE_VERIFICATION_LOCK
-    # A vanished parent thread may have held the inherited lock.  Child
-    # processes establish their own first verification and descriptor budget.
-    _AGENT_IMMUTABLE_VERIFICATION_LOCK = threading.Lock()
-    _agent_clear_immutable_verifications()
-
-
-atexit.register(_agent_clear_immutable_verifications)
-if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_agent_reset_immutable_verifications_after_fork)
-
-
-def _agent_verify_immutable_descriptor(
-    descriptor: int,
-    *,
-    expected_sha256: str,
-    maximum_bytes: int,
-    validation_key: tuple[object, ...] = ("sha256",),
-    validate: Callable[[int, int], str] | None = None,
-) -> None:
-    """Verify once per fully kernel-sealed object and exact validation policy.
-
-    All calls recheck seals, metadata, and the caller's expected digest.  A
-    cache hit cannot admit a writable file or a substituted descriptor.  The
-    optional validator binds additional semantics (the native ELF pin) before
-    admission; its complete expected policy belongs in ``validation_key``.
-    """
-
-    if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_sha256) is None:
-        raise ValueError("immutable descriptor expected digest is invalid")
-    required = _agent_native_required_seals()
-    retained = -1
-    try:
-        # Hash a held duplicate, so caller FD reuse cannot switch the object
-        # halfway through a read.  The public verifier also rechecks its FD.
-        retained = os.dup(descriptor)
-        os.set_inheritable(retained, False)
-        before = os.fstat(retained)
-        identity = _agent_immutable_descriptor_identity(before)
-        seals = int(fcntl.fcntl(retained, fcntl.F_GET_SEALS))
-        if (
-            not stat_module.S_ISREG(before.st_mode)
-            or not 0 < before.st_size <= maximum_bytes
-            or seals & required != required
-        ):
-            raise ValueError("immutable descriptor is not fully sealed")
-        key = (identity, seals, validation_key)
-
-        def check_current_binding() -> None:
-            if (
-                _agent_immutable_descriptor_identity(os.fstat(retained)) != identity
-                or _agent_immutable_descriptor_identity(os.fstat(descriptor)) != identity
-                or int(fcntl.fcntl(retained, fcntl.F_GET_SEALS)) != seals
-                or int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)) != seals
-            ):
-                raise ValueError("immutable descriptor identity changed")
-
-        def reuse_cached() -> bool:
-            # The caller holds the cache lock, but never waits for the process
-            # resource gate while holding it.  Warm hits need no global gate.
-            cached = _AGENT_IMMUTABLE_VERIFICATIONS.get(key)
-            if cached is not None:
-                if (
-                    _agent_immutable_descriptor_identity(os.fstat(cached.descriptor))
-                    != identity
-                    or int(fcntl.fcntl(cached.descriptor, fcntl.F_GET_SEALS)) != seals
-                ):
-                    del _AGENT_IMMUTABLE_VERIFICATIONS[key]
-                    os.close(cached.descriptor)
-                    cached = None
-            if cached is not None:
-                if cached.digest != expected_sha256:
-                    raise ValueError("immutable descriptor digest differs")
-                check_current_binding()
-                _AGENT_IMMUTABLE_VERIFICATIONS.move_to_end(key)
-                return True
-            return False
-
-        with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
-            if reuse_cached():
-                return
-
-        from ._hash_resources import hashing_lock
-
-        # Keep one lock order across callers which already own the resource
-        # gate: resource -> cache.  Recheck after admission so racing misses
-        # still hash the object only once.
-        with hashing_lock(kind="sealed-bundle", exclusive=True):
-            with _AGENT_IMMUTABLE_VERIFICATION_LOCK:
-                if reuse_cached():
-                    return
-                check_current_binding()
-                if validate is None:
-                    digest = hashlib.sha256()
-                    offset = 0
-                    while offset < before.st_size:
-                        chunk = os.pread(
-                            retained, min(1024 * 1024, before.st_size - offset), offset
-                        )
-                        if not chunk:
-                            raise ValueError("immutable descriptor was truncated")
-                        digest.update(chunk)
-                        offset += len(chunk)
-                    observed_digest = "sha256:" + digest.hexdigest()
-                else:
-                    observed_digest = validate(retained, before.st_size)
-                if observed_digest != expected_sha256:
-                    raise ValueError("immutable descriptor digest differs")
-                check_current_binding()
-                if before.st_size <= _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES:
-                    while _AGENT_IMMUTABLE_VERIFICATIONS and (
-                        len(_AGENT_IMMUTABLE_VERIFICATIONS)
-                        >= _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES
-                        or sum(item.size_bytes for item in _AGENT_IMMUTABLE_VERIFICATIONS.values())
-                        + before.st_size > _AGENT_IMMUTABLE_VERIFICATION_MAX_BYTES
-                    ):
-                        _, evicted = _AGENT_IMMUTABLE_VERIFICATIONS.popitem(last=False)
-                        os.close(evicted.descriptor)
-                    if _AGENT_IMMUTABLE_VERIFICATION_MAX_ENTRIES > 0:
-                        _AGENT_IMMUTABLE_VERIFICATIONS[key] = _AgentImmutableVerification(
-                            retained, identity, expected_sha256, before.st_size
-                        )
-                        retained = -1
-    finally:
-        if retained >= 0:
-            os.close(retained)
 
 
 def _agent_native_python_executable_sha256() -> str:
@@ -7912,10 +5919,10 @@ def _agent_native_checked_range(
     return offset, offset + size
 
 
-def _agent_parse_native_dependency_elf(raw: bytes | mmap.mmap) -> dict[str, object]:
+def _agent_parse_native_dependency_elf(raw: bytes) -> dict[str, object]:
     """Parse only the bounded ELF identity needed by native launch policy."""
 
-    if not isinstance(raw, (bytes, mmap.mmap)) or not 64 <= len(raw) <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES:
+    if not isinstance(raw, bytes) or not 64 <= len(raw) <= _AGENT_NATIVE_DEPENDENCY_MAX_BYTES:
         raise ValueError("native dependency ELF payload size is invalid")
     ident = raw[:16]
     if ident[:4] != b"\x7fELF" or ident[4] != 2 or ident[6] != 1:
@@ -8259,7 +6266,7 @@ def _agent_read_stable_native_dependency_source(path: Path | str) -> bytes:
 
 
 def _agent_native_dependency_pin_for_bytes(
-    raw: bytes | mmap.mmap,
+    raw: bytes,
     *,
     extension_filename: str,
     distribution_version: str,
@@ -8494,15 +6501,6 @@ def parse_agent_supervisor_native_dependency_pin(
     ):
         raise ValueError("native dependency pin identity is invalid")
     return pin
-
-
-def current_agent_supervisor_native_dependency_pin(
-) -> AgentSupervisorNativeDependencyPin:
-    """Return the one code-reviewed DuckDB 1.5.5 runtime pin."""
-
-    return parse_agent_supervisor_native_dependency_pin(
-        json.loads(AGENT_SUPERVISOR_CURRENT_DUCKDB_PIN_JSON)
-    )
 
 
 def _agent_parse_native_dependency_descriptor(
@@ -8779,33 +6777,25 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
             != (before.st_dev, before.st_ino, before.st_size)
         ):
             raise ValueError("native dependency sealed fd identity changed")
-        def validate_native(held_descriptor: int, size_bytes: int) -> str:
-            # These bytes have all four kernel seals.  Mapping them read-only
-            # avoids simultaneously retaining a chunk list and its joined copy.
-            with mmap.mmap(held_descriptor, size_bytes, access=mmap.ACCESS_READ) as raw:
-                observed_pin = _agent_native_dependency_pin_for_bytes(
-                    raw,
-                    extension_filename=pin.extension_filename,
-                    distribution_version=pin.distribution_version,
-                    engine_version=pin.engine_version,
-                )
-            if observed_pin != pin:
-                raise ValueError("native dependency sealed payload does not match its pin")
-            return observed_pin.payload_sha256
-
-        _agent_verify_immutable_descriptor(
-            descriptor,
-            expected_sha256=pin.payload_sha256,
-            maximum_bytes=_AGENT_NATIVE_DEPENDENCY_MAX_BYTES,
-            validation_key=("native-elf-pin", pin),
-            validate=validate_native,
-        )
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < binding.size_bytes:
+            chunk = os.pread(
+                descriptor,
+                min(64 * 1024, binding.size_bytes - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            offset += len(chunk)
         after = os.fstat(descriptor)
         after_seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
         after_target = os.readlink(executable)
         after_path = os.stat(executable)
     except OSError as exc:
         raise ValueError("native dependency sealed fd is unavailable") from exc
+    raw = b"".join(chunks)
     observed = {
         "schema": _AGENT_NATIVE_DEPENDENCY_DESCRIPTOR_SCHEMA,
         "descriptor": descriptor,
@@ -8815,7 +6805,7 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         "st_uid": before.st_uid,
         "st_nlink": before.st_nlink,
         "size_bytes": before.st_size,
-        "payload_sha256": pin.payload_sha256,
+        "payload_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
         "seals": before_seals,
     }
     metadata_identity = lambda item: (
@@ -8830,7 +6820,8 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         item.st_ctime_ns,
     )
     if (
-        observed != binding.as_dict()
+        offset != before.st_size
+        or observed != binding.as_dict()
         or before_seals != required_seals
         or after_seals != required_seals
         or before_target != expected_target
@@ -8842,6 +6833,14 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
         != (after.st_dev, after.st_ino, after.st_size)
     ):
         raise ValueError("native dependency sealed fd identity changed")
+    observed_pin = _agent_native_dependency_pin_for_bytes(
+        raw,
+        extension_filename=pin.extension_filename,
+        distribution_version=pin.distribution_version,
+        engine_version=pin.engine_version,
+    )
+    if observed_pin != pin:
+        raise ValueError("native dependency sealed payload does not match its pin")
     return executable
 
 
@@ -8850,7 +6849,6 @@ def _agent_preload_supervisor_native_dependency_once(
 ) -> object:
     """Perform the single process-permitted native extension load."""
 
-    global _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH
     global _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
 
     if not isinstance(launch, AgentSupervisorNativeDependencyLaunch):
@@ -8938,25 +6936,7 @@ def _agent_preload_supervisor_native_dependency_once(
                 if sys.modules.get(name) is module:
                     sys.modules.pop(name, None)
         raise ValueError("native dependency preload failed closed") from exc
-    _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH = verified_launch
     return module
-
-
-def active_agent_supervisor_native_dependency_launch(
-) -> AgentSupervisorNativeDependencyLaunch:
-    """Return the exact successfully preloaded launch for nested sealed births."""
-
-    with _AGENT_NATIVE_DEPENDENCY_PRELOAD_LOCK:
-        launch = _AGENT_NATIVE_DEPENDENCY_ACTIVE_LAUNCH
-        if launch is None:
-            raise ValueError("native dependency has no active admitted launch")
-        verify_agent_supervisor_native_dependency_sealed_fd(launch)
-        if (
-            sys.modules.get(launch.pin.module_name)
-            is not sys.modules.get(launch.pin.public_alias)
-        ):
-            raise ValueError("native dependency active aliases drifted")
-        return launch
 
 
 def preload_agent_supervisor_native_dependency(
@@ -9009,12 +6989,12 @@ def preload_agent_supervisor_native_dependency_from_bootstrap(
         raise ValueError("native dependency bootstrap fd was substituted")
     return preload_agent_supervisor_native_dependency(launch)
 
+
 def _agent_read_stable_file(
     path: Path,
     *,
     maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
     exact_mode: int | None = None,
-    allow_group_writable: bool = False,
 ) -> bytes:
     """Read a bounded stable file through exactly one no-follow descriptor."""
 
@@ -9051,7 +7031,6 @@ def _agent_read_stable_file(
         raise ValueError("accepted control-plane file is unavailable") from exc
     try:
         before = os.fstat(descriptor)
-        write_mask = 0o002 if allow_group_writable else 0o022
         if (
             not stat_module.S_ISREG(before.st_mode)
             or before.st_nlink != 1
@@ -9059,7 +7038,7 @@ def _agent_read_stable_file(
             or (
                 stat_module.S_IMODE(before.st_mode) != exact_mode
                 if exact_mode is not None
-                else bool(stat_module.S_IMODE(before.st_mode) & write_mask)
+                else bool(stat_module.S_IMODE(before.st_mode) & 0o022)
             )
             or before.st_size > maximum_bytes
         ):
@@ -9103,7 +7082,7 @@ def _agent_read_stable_file(
         or (
             stat_module.S_IMODE(after.st_mode) != exact_mode
             if exact_mode is not None
-            else bool(stat_module.S_IMODE(after.st_mode) & write_mask)
+            else bool(stat_module.S_IMODE(after.st_mode) & 0o022)
         )
         or len(raw) > maximum_bytes
         or len(raw) != after.st_size
@@ -9129,9 +7108,8 @@ def _agent_control_plane_source_files(
 
     The daemon has a deliberately broad import graph.  Maintaining a hand-made
     transitive list would silently lose coverage when that graph grows, so the
-    accepted capsule binds the entire supervisor Python tree, every canonical
-    tracked SQL migration, and then verifies the origins of every
-    already-imported supervisor module against that tree.
+    accepted capsule binds the entire supervisor Python tree and then verifies
+    the origins of every already-imported supervisor module against that tree.
     """
 
     supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
@@ -9146,12 +7124,8 @@ def _agent_control_plane_source_files(
         raise ValueError(
             "accepted control-plane package tree is unavailable"
         ) from exc
-    sql_root = supervisor_root / "task_sources" / "sql"
     tree_files = tuple(
-        entry
-        for entry in entries
-        if entry.suffix == ".py"
-        or (entry.parent == sql_root and entry.suffix == ".sql")
+        entry for entry in entries if entry.suffix == ".py"
     )
     required_files = tuple(
         root / relative for relative in _AGENT_CONTROL_PLANE_RELATIVE_FILES
@@ -9168,7 +7142,6 @@ def _agent_control_plane_source_files(
         "ipfs_accelerate_py",
         "ipfs_accelerate_py.llm_router",
         "ipfs_accelerate_py.agent_implementation_route",
-        "ipfs_accelerate_py._hash_resources",
         "ipfs_accelerate_py.router_deps",
         "ipfs_accelerate_py.common",
         "ipfs_accelerate_py.common.meta_model_api",
@@ -9340,65 +7313,25 @@ def _agent_git_output(
 ) -> bytes:
     """Run one bounded, non-interactive Git identity/object query."""
 
-    global _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY
-    try:
-        lexical = os.lstat(_AGENT_CONTROL_PLANE_TRUSTED_GIT)
-        descriptor = os.open(
-            _AGENT_CONTROL_PLANE_TRUSTED_GIT,
-            os.O_RDONLY
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-        )
-        try:
-            opened = os.fstat(descriptor)
-            digest = hashlib.sha256()
-            while True:
-                block = os.read(descriptor, 1024 * 1024)
-                if not block:
-                    break
-                digest.update(block)
-            after = os.fstat(descriptor)
-        finally:
-            os.close(descriptor)
-        current = os.lstat(_AGENT_CONTROL_PLANE_TRUSTED_GIT)
-    except OSError as exc:
-        raise ValueError("trusted Git executable is unavailable") from exc
-    fields = (
-        "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
-        "st_mtime_ns", "st_ctime_ns",
-    )
-    identity = tuple(int(getattr(opened, field)) for field in fields) + (
-        int.from_bytes(digest.digest(), "big"),
-    )
-    if (
-        not stat_module.S_ISREG(opened.st_mode)
-        or opened.st_uid != 0
-        or opened.st_nlink != 1
-        or opened.st_size <= 0
-        or stat_module.S_IMODE(opened.st_mode) & 0o022
-        or any(getattr(lexical, field) != getattr(opened, field) for field in fields)
-        or any(getattr(after, field) != getattr(opened, field) for field in fields)
-        or any(getattr(current, field) != getattr(opened, field) for field in fields)
-        or (
-            _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY is not None
-            and _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY != identity
-        )
-    ):
-        raise ValueError("trusted Git executable identity drifted")
-    _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY = identity
     git_environment = {
-        "PATH": "/usr/bin:/bin",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_NO_REPLACE_OBJECTS": "1",
-        "LC_ALL": "C",
-        "LANG": "C",
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_")
     }
+    git_environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "LC_ALL": "C",
+            "LANG": "C",
+        }
+    )
     try:
         completed = subprocess.run(
             [
-                str(_AGENT_CONTROL_PLANE_TRUSTED_GIT),
+                "git",
                 "-c",
                 "core.quotepath=false",
                 "-c",
@@ -9427,15 +7360,8 @@ def _agent_control_plane_git_state(
     *,
     expected_head: str,
     expected_tree: str,
-    allow_dirty_worktree: bool = False,
 ) -> tuple[str, str]:
-    """Require one exact repository generation at ``root``.
-
-    The default path still requires a porcelain-clean worktree.  Independently
-    signed EAAEF-191 host-bundle admission may overlay host-evidence and
-    nested worktree dirt after HEAD is frozen; the capsule still binds only
-    HEAD blobs for control-plane Python.
-    """
+    """Require one exact, clean repository generation at ``root``."""
 
     top_level = Path(
         os.fsdecode(
@@ -9452,31 +7378,20 @@ def _agent_control_plane_git_state(
     tree = os.fsdecode(
         _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
     ).strip()
-    status = b""
-    records: list[bytes] = [b"H ok"]
-    if not allow_dirty_worktree:
-        status = _agent_git_output(
-            root,
-            (
-                "status",
-                "--porcelain=v1",
-                "-z",
-                "--untracked-files=all",
-            ),
-        )
-        index_flags = _agent_git_output(root, ("ls-files", "-v", "-z"))
-        records = index_flags.split(b"\0")
-        if records and records[-1] == b"":
-            records.pop()
+    status = _agent_git_output(
+        root,
+        (
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ),
+    )
     if (
         exact_top_level != root
         or head != expected_head
         or tree != expected_tree
         or status
-        or any(
-            len(record) < 3 or record[:2] != b"H " or not record[2:]
-            for record in records
-        )
     ):
         raise ValueError(
             "accepted control-plane source is not the exact clean Git generation"
@@ -9502,7 +7417,6 @@ def _agent_control_plane_head_payloads(
             "ipfs_accelerate_py",
             "scripts/ops/agent_supervisor/configured_board_scheduler.py",
             "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
-            "scripts/run_agent_supervisor_efficiency_state_hardening.py",
         ),
         maximum_bytes=_AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES,
     )
@@ -9523,11 +7437,6 @@ def _agent_control_plane_head_payloads(
             or (
                 relative.startswith("ipfs_accelerate_py/agent_supervisor/")
                 and relative.endswith(".py")
-            )
-            or (
-                Path(relative).parent.as_posix()
-                == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
-                and Path(relative).suffix == ".sql"
             )
         )
         if object_type != "blob" or mode not in {"100644", "100755"}:
@@ -9573,7 +7482,6 @@ def materialize_agent_implementation_control_plane_capsule(
     capsule_parent: Path | str,
     source_head: str,
     source_tree: str,
-    allow_dirty_worktree: bool = False,
 ) -> AgentImplementationControlPlanePin:
     """Snapshot the daemon's loaded source generation into a private capsule."""
 
@@ -9589,7 +7497,6 @@ def materialize_agent_implementation_control_plane_capsule(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
-        allow_dirty_worktree=allow_dirty_worktree,
     )
     files = _agent_control_plane_source_files(root, verify_loaded_origins=True)
     payloads = _agent_control_plane_head_payloads(
@@ -9601,27 +7508,12 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
-        if (
-            Path(relative).parent.as_posix()
-            == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
-            and Path(relative).suffix == ".sql"
-        ):
-            # SQL is package data, not already-loaded executable source.  Its
-            # only admitted bytes come from the exact HEAD blobs above and are
-            # written 0400 into the private capsule.  Treating loose-checkout
-            # permission bits as resource authority would reject clean clones
-            # created under a collaborative umask without improving the seal.
-            continue
-        if _agent_read_stable_file(
-            path,
-            allow_group_writable=allow_dirty_worktree,
-        ) != payloads[relative]:
+        if _agent_read_stable_file(path) != payloads[relative]:
             raise ValueError("loaded control-plane module differs from HEAD")
     _agent_control_plane_git_state(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
-        allow_dirty_worktree=allow_dirty_worktree,
     )
     digests = {
         relative: "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -9968,14 +7860,22 @@ def verify_agent_implementation_sealed_control_plane(
             or seals & required != required
         ):
             raise ValueError("accepted control-plane descriptor is not sealed")
-        _agent_verify_immutable_descriptor(
-            descriptor,
-            expected_sha256=pin.archive_sha256,
-            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES,
-        )
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            chunk = os.pread(
+                descriptor,
+                min(64 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            offset += len(chunk)
         after = os.fstat(descriptor)
     except OSError as exc:
         raise ValueError("accepted control-plane descriptor is unavailable") from exc
+    archive = b"".join(chunks)
     identity = lambda item: (
         item.st_dev,
         item.st_ino,
@@ -9987,7 +7887,10 @@ def verify_agent_implementation_sealed_control_plane(
         item.st_ctime_ns,
     )
     if (
-        identity(before) != identity(after)
+        len(archive) != before.st_size
+        or identity(before) != identity(after)
+        or "sha256:" + hashlib.sha256(archive).hexdigest()
+        != pin.archive_sha256
     ):
         raise ValueError("accepted control-plane sealed archive drifted")
     executable = f"/proc/self/fd/{descriptor}"
@@ -10065,2259 +7968,6 @@ def seal_agent_implementation_control_plane_capsule(
         seals=seals,
         capsule_id=pin.capsule_id,
     )
-
-
-# ---------------------------------------------------------------------------
-# LGCVF configured-board live capsule
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class LgcvfConfiguredBoardLivePythonIdentity:
-    """Exact interpreter and ABI identity accepted for the live capsule."""
-
-    executable_path: str
-    executable_sha256: str
-    implementation: str
-    version: str
-    cache_tag: str
-    soabi: str
-    platform: str
-    machine: str
-
-    def as_dict(self) -> dict[str, str]:
-        return {
-            "executable_path": self.executable_path,
-            "executable_sha256": self.executable_sha256,
-            "implementation": self.implementation,
-            "version": self.version,
-            "cache_tag": self.cache_tag,
-            "soabi": self.soabi,
-            "platform": self.platform,
-            "machine": self.machine,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class LgcvfConfiguredBoardLiveExtensionIdentity:
-    """Path-independent bytes and policy for one DuckDB extension."""
-
-    name: str
-    version: str
-    authority_role: str
-    load_policy: str
-    relative_path: str
-    info_relative_path: str
-    member_path: str
-    info_member_path: str
-    payload_sha256: str
-    info_sha256: str
-
-    def as_dict(self) -> dict[str, str]:
-        return {
-            "name": self.name,
-            "version": self.version,
-            "authority_role": self.authority_role,
-            "load_policy": self.load_policy,
-            "relative_path": self.relative_path,
-            "info_relative_path": self.info_relative_path,
-            "member_path": self.member_path,
-            "info_member_path": self.info_member_path,
-            "payload_sha256": self.payload_sha256,
-            "info_sha256": self.info_sha256,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class LgcvfConfiguredBoardLiveCapsulePin:
-    """Closed source, runtime, ABI, and native-acceptance live pin."""
-
-    schema: str
-    capsule_root: str
-    capsule_id: str
-    source_head: str
-    source_tree: str
-    datasets_gitlink: str
-    datasets_head: str
-    datasets_tree: str
-    candidate_config_path: str
-    candidate_config_sha256: str
-    validator_path: str
-    validator_sha256: str
-    materializer_path: str
-    materializer_sha256: str
-    operator_path: str
-    operator_sha256: str
-    superproject_python_root: str
-    datasets_python_root: str
-    python_path_prefixes: tuple[str, ...]
-    duckdb_distribution_version: str
-    duckdb_package_files_root: str
-    duckdb_distribution_files_root: str
-    extension_engine_version: str
-    extension_platform: str
-    quack_extension: LgcvfConfiguredBoardLiveExtensionIdentity
-    httpfs_extension: LgcvfConfiguredBoardLiveExtensionIdentity
-    ducklake_extension: LgcvfConfiguredBoardLiveExtensionIdentity
-    python_identity: LgcvfConfiguredBoardLivePythonIdentity
-    native_authorization_id: str
-    native_dependency_id: str
-    archive_sha256: str
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "schema": self.schema,
-            "capsule_root": self.capsule_root,
-            "capsule_id": self.capsule_id,
-            "source_head": self.source_head,
-            "source_tree": self.source_tree,
-            "datasets_gitlink": self.datasets_gitlink,
-            "datasets_head": self.datasets_head,
-            "datasets_tree": self.datasets_tree,
-            "candidate_config_path": self.candidate_config_path,
-            "candidate_config_sha256": self.candidate_config_sha256,
-            "validator_path": self.validator_path,
-            "validator_sha256": self.validator_sha256,
-            "materializer_path": self.materializer_path,
-            "materializer_sha256": self.materializer_sha256,
-            "operator_path": self.operator_path,
-            "operator_sha256": self.operator_sha256,
-            "superproject_python_root": self.superproject_python_root,
-            "datasets_python_root": self.datasets_python_root,
-            "python_path_prefixes": list(self.python_path_prefixes),
-            "duckdb_distribution_version": self.duckdb_distribution_version,
-            "duckdb_package_files_root": self.duckdb_package_files_root,
-            "duckdb_distribution_files_root": (
-                self.duckdb_distribution_files_root
-            ),
-            "extension_engine_version": self.extension_engine_version,
-            "extension_platform": self.extension_platform,
-            "quack_extension": self.quack_extension.as_dict(),
-            "httpfs_extension": self.httpfs_extension.as_dict(),
-            "ducklake_extension": self.ducklake_extension.as_dict(),
-            "python_identity": self.python_identity.as_dict(),
-            "native_authorization_id": self.native_authorization_id,
-            "native_dependency_id": self.native_dependency_id,
-            "archive_sha256": self.archive_sha256,
-        }
-
-    def to_json(self) -> str:
-        return _lgcvf_live_canonical_json(self.as_dict()).decode("utf-8")
-
-
-@dataclass(frozen=True, slots=True)
-class LgcvfConfiguredBoardLiveSealedCapsule:
-    """Write-sealed archive descriptor for one verified LGCVF capsule."""
-
-    descriptor: int
-    executable_path: str
-    archive_sha256: str
-    seals: int
-    capsule_id: str
-
-    @property
-    def pass_fds(self) -> tuple[int, ...]:
-        return (self.descriptor,)
-
-
-def _lgcvf_live_canonical_json(value: Mapping[str, object]) -> bytes:
-    return json.dumps(
-        dict(value),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def _lgcvf_live_sha256(raw: bytes) -> str:
-    return "sha256:" + hashlib.sha256(raw).hexdigest()
-
-
-def _lgcvf_live_mapping_root(value: Mapping[str, str]) -> str:
-    return _lgcvf_live_sha256(_lgcvf_live_canonical_json(value))
-
-
-def _lgcvf_live_exact_sha256(value: object, noun: str) -> str:
-    if not isinstance(value, str) or re.fullmatch(
-        r"sha256:[0-9a-f]{64}", value
-    ) is None:
-        raise ValueError(f"LGCVF live capsule {noun} is invalid")
-    return value
-
-
-def _lgcvf_live_exact_git_id(value: object, noun: str) -> str:
-    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
-        raise ValueError(f"LGCVF live capsule {noun} is invalid")
-    return value
-
-
-def _lgcvf_live_exact_text(
-    value: object,
-    noun: str,
-    *,
-    maximum_characters: int = 512,
-) -> str:
-    if (
-        not isinstance(value, str)
-        or not value
-        or len(value) > maximum_characters
-        or value != value.strip()
-        or any(character in value for character in "\0\n\r")
-    ):
-        raise ValueError(f"LGCVF live capsule {noun} is invalid")
-    return value
-
-
-def _parse_lgcvf_live_python_identity(
-    value: object,
-) -> LgcvfConfiguredBoardLivePythonIdentity:
-    expected = {
-        "executable_path",
-        "executable_sha256",
-        "implementation",
-        "version",
-        "cache_tag",
-        "soabi",
-        "platform",
-        "machine",
-    }
-    if not isinstance(value, Mapping) or set(value) != expected:
-        raise ValueError("LGCVF live capsule Python identity fields are invalid")
-    strings = {
-        name: _lgcvf_live_exact_text(value.get(name), f"Python {name}")
-        for name in expected
-    }
-    _lgcvf_live_exact_sha256(
-        strings["executable_sha256"], "Python executable digest"
-    )
-    executable = Path(strings["executable_path"])
-    if not executable.is_absolute() or ".." in executable.parts:
-        raise ValueError("LGCVF live capsule Python executable path is invalid")
-    return LgcvfConfiguredBoardLivePythonIdentity(**strings)
-
-
-def _parse_lgcvf_live_extension_identity(
-    value: object,
-    *,
-    expected_name: str,
-) -> LgcvfConfiguredBoardLiveExtensionIdentity:
-    expected = {
-        "name",
-        "version",
-        "authority_role",
-        "load_policy",
-        "relative_path",
-        "info_relative_path",
-        "member_path",
-        "info_member_path",
-        "payload_sha256",
-        "info_sha256",
-    }
-    if not isinstance(value, Mapping) or set(value) != expected:
-        raise ValueError("LGCVF live capsule extension fields are invalid")
-    strings = {
-        name: _lgcvf_live_exact_text(value.get(name), f"extension {name}")
-        for name in expected
-    }
-    role, policy = _LGCVF_LIVE_EXTENSION_ROLES[expected_name]
-    relative = Path(strings["relative_path"])
-    info_relative = Path(strings["info_relative_path"])
-    member = Path(strings["member_path"])
-    info_member = Path(strings["info_member_path"])
-    if (
-        strings["name"] != expected_name
-        or strings["authority_role"] != role
-        or strings["load_policy"] != policy
-        or any(
-            path.is_absolute() or ".." in path.parts
-            for path in (relative, info_relative, member, info_member)
-        )
-        or relative.name != f"{expected_name}.duckdb_extension"
-        or info_relative != Path(str(relative) + ".info")
-        or member
-        != Path(".lgcvf-native-extensions") / relative
-        or info_member != Path(str(member) + ".info")
-    ):
-        raise ValueError("LGCVF live capsule extension identity is invalid")
-    _lgcvf_live_exact_sha256(strings["payload_sha256"], "extension digest")
-    _lgcvf_live_exact_sha256(strings["info_sha256"], "extension info digest")
-    return LgcvfConfiguredBoardLiveExtensionIdentity(**strings)
-
-
-def parse_lgcvf_configured_board_live_capsule_pin(
-    value: object,
-) -> LgcvfConfiguredBoardLiveCapsulePin:
-    """Strictly parse one serialized LGCVF live capsule pin."""
-
-    expected = {
-        "schema",
-        "capsule_root",
-        "capsule_id",
-        "source_head",
-        "source_tree",
-        "datasets_gitlink",
-        "datasets_head",
-        "datasets_tree",
-        "candidate_config_path",
-        "candidate_config_sha256",
-        "validator_path",
-        "validator_sha256",
-        "materializer_path",
-        "materializer_sha256",
-        "operator_path",
-        "operator_sha256",
-        "superproject_python_root",
-        "datasets_python_root",
-        "python_path_prefixes",
-        "duckdb_distribution_version",
-        "duckdb_package_files_root",
-        "duckdb_distribution_files_root",
-        "extension_engine_version",
-        "extension_platform",
-        "quack_extension",
-        "httpfs_extension",
-        "ducklake_extension",
-        "python_identity",
-        "native_authorization_id",
-        "native_dependency_id",
-        "archive_sha256",
-    }
-    if not isinstance(value, Mapping) or set(value) != expected:
-        raise ValueError("LGCVF live capsule pin fields are invalid")
-    strings = {
-        name: _lgcvf_live_exact_text(value.get(name), name)
-        for name in expected
-        if name not in {
-            "quack_extension",
-            "httpfs_extension",
-            "ducklake_extension",
-            "python_identity",
-            "python_path_prefixes",
-        }
-    }
-    if strings["schema"] != _LGCVF_LIVE_CAPSULE_PIN_SCHEMA:
-        raise ValueError("LGCVF live capsule pin schema is invalid")
-    root = Path(strings["capsule_root"])
-    if not root.is_absolute() or ".." in root.parts:
-        raise ValueError("LGCVF live capsule root is invalid")
-    for name in (
-        "capsule_id",
-        "candidate_config_sha256",
-        "validator_sha256",
-        "materializer_sha256",
-        "operator_sha256",
-        "superproject_python_root",
-        "datasets_python_root",
-        "duckdb_package_files_root",
-        "duckdb_distribution_files_root",
-        "native_authorization_id",
-        "native_dependency_id",
-        "archive_sha256",
-    ):
-        _lgcvf_live_exact_sha256(strings[name], name)
-    for name in (
-        "source_head",
-        "source_tree",
-        "datasets_gitlink",
-        "datasets_head",
-        "datasets_tree",
-    ):
-        _lgcvf_live_exact_git_id(strings[name], name)
-    if strings["datasets_gitlink"] != strings["datasets_head"]:
-        raise ValueError("LGCVF live capsule nested gitlink drifted")
-    prefixes = value.get("python_path_prefixes")
-    if prefixes != [".", "ipfs_datasets_py"]:
-        raise ValueError("LGCVF live capsule Python path prefixes drifted")
-    expected_paths = {
-        "candidate_config_path": _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
-        "validator_path": _LGCVF_LIVE_VALIDATOR_PATH,
-        "materializer_path": _LGCVF_LIVE_MATERIALIZER_PATH,
-        "operator_path": _LGCVF_LIVE_OPERATOR_PATH,
-    }
-    if any(strings[name] != path for name, path in expected_paths.items()):
-        raise ValueError("LGCVF live capsule authority path drifted")
-    if (
-        re.fullmatch(
-            r"[0-9][0-9A-Za-z.+_-]{0,63}",
-            strings["duckdb_distribution_version"],
-        )
-        is None
-        or strings["extension_engine_version"]
-        != "v" + strings["duckdb_distribution_version"]
-        or re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}",
-            strings["extension_platform"],
-        )
-        is None
-    ):
-        raise ValueError("LGCVF live capsule DuckDB runtime identity is invalid")
-    quack = _parse_lgcvf_live_extension_identity(
-        value.get("quack_extension"), expected_name="quack"
-    )
-    httpfs = _parse_lgcvf_live_extension_identity(
-        value.get("httpfs_extension"), expected_name="httpfs"
-    )
-    ducklake = _parse_lgcvf_live_extension_identity(
-        value.get("ducklake_extension"), expected_name="ducklake"
-    )
-    expected_parent = Path(strings["extension_engine_version"]) / strings[
-        "extension_platform"
-    ]
-    if (
-        Path(quack.relative_path).parent != expected_parent
-        or Path(httpfs.relative_path).parent != expected_parent
-        or Path(ducklake.relative_path).parent != expected_parent
-    ):
-        raise ValueError("LGCVF live capsule extension layout drifted")
-    python_identity = _parse_lgcvf_live_python_identity(
-        value.get("python_identity")
-    )
-    return LgcvfConfiguredBoardLiveCapsulePin(
-        **strings,
-        quack_extension=quack,
-        httpfs_extension=httpfs,
-        ducklake_extension=ducklake,
-        python_identity=python_identity,
-        python_path_prefixes=tuple(prefixes),
-    )
-
-
-def _lgcvf_live_read_stable_external_file(
-    path: Path | str,
-    *,
-    maximum_bytes: int = _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
-) -> bytes:
-    """Read a stable owned/root-owned regular source without blessing mode."""
-
-    lexical = resolve_agent_implementation_private_state_path(path)
-    nofollow = getattr(os, "O_NOFOLLOW", None)
-    if nofollow is None:
-        raise ValueError("LGCVF live capsule no-follow reads are unavailable")
-    directory_flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-        | nofollow
-    )
-    parent_descriptor = os.open(lexical.anchor, directory_flags)
-    try:
-        for component in lexical.parts[1:-1]:
-            child = os.open(component, directory_flags, dir_fd=parent_descriptor)
-            os.close(parent_descriptor)
-            parent_descriptor = child
-        descriptor = os.open(
-            lexical.name,
-            os.O_RDONLY
-            | nofollow
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NONBLOCK", 0),
-            dir_fd=parent_descriptor,
-        )
-    except OSError as exc:
-        os.close(parent_descriptor)
-        raise ValueError("LGCVF live capsule source is unavailable") from exc
-    try:
-        before = os.fstat(descriptor)
-        if (
-            not stat_module.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or before.st_uid not in {0, os.geteuid()}
-            or not 0 <= before.st_size <= maximum_bytes
-        ):
-            raise ValueError("LGCVF live capsule source is not a bounded file")
-        chunks: list[bytes] = []
-        remaining = maximum_bytes + 1
-        while remaining:
-            chunk = os.read(descriptor, min(64 * 1024, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        raw = b"".join(chunks)
-        after = os.fstat(descriptor)
-        final = os.stat(
-            lexical.name,
-            dir_fd=parent_descriptor,
-            follow_symlinks=False,
-        )
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule source changed") from exc
-    finally:
-        os.close(descriptor)
-        os.close(parent_descriptor)
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_mode,
-        item.st_nlink,
-        item.st_uid,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
-    if (
-        len(raw) != before.st_size
-        or len(raw) > maximum_bytes
-        or identity(before) != identity(after)
-        or identity(after) != identity(final)
-    ):
-        raise ValueError("LGCVF live capsule source changed during admission")
-    return raw
-
-
-def _lgcvf_live_python_identity(
-    python_executable: Path | str,
-) -> LgcvfConfiguredBoardLivePythonIdentity:
-    import sysconfig
-
-    raw_requested = os.fspath(python_executable)
-    requested = Path(raw_requested)
-    if (
-        not requested.is_absolute()
-        or "\0" in raw_requested
-        or Path(os.path.abspath(raw_requested)) != requested
-    ):
-        raise ValueError("LGCVF live capsule Python executable path is invalid")
-    try:
-        # Launcher aliases such as ``~/.local/bin/python`` are expected.  First
-        # canonicalize that alias, then apply every stable/no-follow check to
-        # the resolved regular target and require it to be this process's
-        # kernel-observed executable.
-        executable = requested.resolve(strict=True)
-        running = Path("/proc/self/exe").resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule Python executable is unavailable") from exc
-    if executable != running:
-        raise ValueError(
-            "LGCVF live capsule must bind the currently running executable"
-        )
-    raw = _lgcvf_live_read_stable_external_file(
-        executable,
-        maximum_bytes=32 * 1024 * 1024,
-    )
-    soabi = sysconfig.get_config_var("SOABI")
-    cache_tag = sys.implementation.cache_tag
-    if (
-        not isinstance(soabi, str)
-        or not soabi
-        or not isinstance(cache_tag, str)
-        or not cache_tag
-        or not hasattr(os, "uname")
-    ):
-        raise ValueError("LGCVF live capsule Python ABI is unavailable")
-    identity = LgcvfConfiguredBoardLivePythonIdentity(
-        executable_path=str(executable),
-        executable_sha256=_lgcvf_live_sha256(raw),
-        implementation=sys.implementation.name,
-        version=(
-            f"{sys.version_info.major}.{sys.version_info.minor}."
-            f"{sys.version_info.micro}"
-        ),
-        cache_tag=cache_tag,
-        soabi=soabi,
-        platform=sys.platform,
-        machine=os.uname().machine,
-    )
-    return _parse_lgcvf_live_python_identity(identity.as_dict())
-
-
-def _lgcvf_live_require_current_python(
-    identity: LgcvfConfiguredBoardLivePythonIdentity,
-) -> None:
-    observed = _lgcvf_live_python_identity(identity.executable_path)
-    if observed != identity:
-        raise ValueError("LGCVF live capsule Python identity drifted")
-
-
-def _lgcvf_live_json(raw: bytes, noun: str) -> dict[str, object]:
-    def reject_duplicates(
-        pairs: Sequence[tuple[str, object]],
-    ) -> dict[str, object]:
-        result: dict[str, object] = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError(f"LGCVF live capsule {noun} has duplicate keys")
-            result[key] = value
-        return result
-
-    try:
-        value = json.loads(raw, object_pairs_hook=reject_duplicates)
-    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f"LGCVF live capsule {noun} is invalid") from exc
-    if not isinstance(value, dict):
-        raise ValueError(  # noqa: TRY004
-            f"LGCVF live capsule {noun} is invalid"
-        )
-    return value
-
-
-def _lgcvf_live_validate_candidate_config(raw: bytes) -> None:
-    value = _lgcvf_live_json(raw, "candidate configuration")
-    database = value.get("database_program")
-    source_binding = value.get("source_binding")
-    provider = value.get("provider")
-    authority = value.get("authority_policy")
-    projection = value.get("ducklake_projection_program")
-    lanes = value.get("lanes")
-    protected = value.get("protected_paths")
-    if (
-        value.get("schema")
-        != "ipfs_accelerate_py.agent_supervisor."
-        "logic_governed_compositional_verification_fabric.scheduler_config@1"
-        or value.get("board_namespace")
-        != "logic-governed-compositional-verification-fabric-v1"
-        or value.get("merge_target_branch")
-        != "agent/logic-governed-compositional-verification-fabric-v1"
-        or value.get("validator_path") != _LGCVF_LIVE_VALIDATOR_PATH
-        or value.get("max_lanes") != 4
-        or value.get("strict_task_sharding") is not True
-        or not isinstance(lanes, list)
-        or len(lanes) != 4
-        or [lane.get("index") for lane in lanes if isinstance(lane, Mapping)]
-        != [0, 1, 2, 3]
-        or not isinstance(database, Mapping)
-        or database.get("authority_mode") != "quack"
-        or database.get("task_source_kind") != "duckdb"
-        or database.get("schema_revision")
-        != "datasets-authoritative-operational-v1"
-        or database.get("failover_policy") != "fail_closed"
-        or database.get("authoritative_transactional_data_model") is not True
-        or not isinstance(source_binding, Mapping)
-        or source_binding.get("ipfs_datasets_submodule_path")
-        != "ipfs_datasets_py"
-        or source_binding.get("require_initialized_gitlinks") is not True
-        or source_binding.get(
-            "require_superproject_gitlink_equals_nested_head"
-        )
-        is not True
-        or not isinstance(provider, Mapping)
-        or provider.get("max_concurrency") != 4
-        or not isinstance(authority, Mapping)
-        or authority.get("quack_exclusive_transport_required") is not True
-        or authority.get("direct_multi_process_duckdb_file_open_permitted")
-        is not False
-        or authority.get("ducklake_projection_authoritative") is not False
-        or not isinstance(projection, Mapping)
-        or projection.get("authority") is not False
-        or projection.get("scheduling_prerequisite") is not False
-        or not isinstance(protected, list)
-        or _LGCVF_LIVE_CANDIDATE_CONFIG_PATH not in protected
-        or _LGCVF_LIVE_OPERATOR_PATH not in protected
-        or _LGCVF_LIVE_VALIDATOR_PATH not in protected
-    ):
-        raise ValueError(
-            "LGCVF live capsule candidate configuration is not the exact "
-            "four-lane Quack profile"
-        )
-
-
-def _lgcvf_live_git_state(
-    root: Path,
-    *,
-    expected_head: str,
-    expected_tree: str,
-    include_submodules: bool,
-) -> None:
-    top = Path(
-        os.fsdecode(
-            _agent_git_output(root, ("rev-parse", "--show-toplevel"))
-        ).strip()
-    )
-    try:
-        exact_top = top.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule Git root is unavailable") from exc
-    head = os.fsdecode(
-        _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{commit}"))
-    ).strip()
-    tree = os.fsdecode(
-        _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
-    ).strip()
-    status_arguments = [
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-    ]
-    if include_submodules:
-        status_arguments.append("--ignore-submodules=none")
-    status = _agent_git_output(root, tuple(status_arguments))
-    if (
-        exact_top != root
-        or head != expected_head
-        or tree != expected_tree
-        or status
-    ):
-        raise ValueError("LGCVF live capsule requires an exact clean Git tree")
-
-
-def _lgcvf_live_gitlink(root: Path, source_head: str) -> str:
-    raw = _agent_git_output(
-        root,
-        ("ls-tree", "-z", source_head, "--", "ipfs_datasets_py"),
-        maximum_bytes=1024,
-    )
-    entries = [entry for entry in raw.split(b"\0") if entry]
-    if len(entries) != 1:
-        raise ValueError("LGCVF live capsule nested gitlink is unavailable")
-    try:
-        metadata, path = entries[0].split(b"\t", 1)
-        mode, object_type, object_id = metadata.decode("ascii").split(" ")
-    except (UnicodeError, ValueError) as exc:
-        raise ValueError("LGCVF live capsule nested gitlink is invalid") from exc
-    if (
-        path != b"ipfs_datasets_py"
-        or mode != "160000"
-        or object_type != "commit"
-        or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
-    ):
-        raise ValueError("LGCVF live capsule nested gitlink is invalid")
-    return object_id
-
-
-def _lgcvf_live_git_batch_blobs(
-    root: Path,
-    object_ids: Sequence[str],
-) -> dict[str, bytes]:
-    ordered = tuple(dict.fromkeys(object_ids))
-    if not ordered:
-        return {}
-    git_environment = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("GIT_")
-    }
-    git_environment.update(
-        {
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_NO_REPLACE_OBJECTS": "1",
-            "LC_ALL": "C",
-            "LANG": "C",
-        }
-    )
-    request = b"".join(item.encode("ascii") + b"\n" for item in ordered)
-    try:
-        completed = subprocess.run(
-            [
-                "git",
-                "-c",
-                "core.quotepath=false",
-                "-c",
-                "core.fsmonitor=false",
-                "-c",
-                f"core.hooksPath={os.devnull}",
-                "cat-file",
-                "--batch",
-            ],
-            cwd=root,
-            env=git_environment,
-            input=request,
-            capture_output=True,
-            timeout=120,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise ValueError("LGCVF live capsule Git blob query failed") from exc
-    raw = completed.stdout
-    if (
-        completed.returncode != 0
-        or len(raw) > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
-    ):
-        raise ValueError("LGCVF live capsule Git blob query failed")
-    cursor = 0
-    result: dict[str, bytes] = {}
-    for requested in ordered:
-        line_end = raw.find(b"\n", cursor)
-        if line_end < 0:
-            raise ValueError("LGCVF live capsule Git blob response is truncated")
-        try:
-            observed, object_type, size_text = raw[cursor:line_end].decode(
-                "ascii"
-            ).split(" ")
-            size = int(size_text)
-        except (UnicodeError, ValueError) as exc:
-            raise ValueError("LGCVF live capsule Git blob response is invalid") from exc
-        cursor = line_end + 1
-        end = cursor + size
-        if (
-            observed != requested
-            or object_type != "blob"
-            or not 0 <= size <= _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
-            or end >= len(raw)
-            or raw[end : end + 1] != b"\n"
-        ):
-            raise ValueError("LGCVF live capsule Git blob response is invalid")
-        result[requested] = raw[cursor:end]
-        cursor = end + 1
-    if cursor != len(raw):
-        raise ValueError("LGCVF live capsule Git blob response has trailing data")
-    return result
-
-
-def _lgcvf_live_git_payloads(
-    root: Path,
-    *,
-    revision: str,
-    pathspecs: Sequence[str],
-    required: Sequence[str],
-    select: Any,
-    destination_prefix: str = "",
-) -> dict[str, bytes]:
-    tree = _agent_git_output(
-        root,
-        ("ls-tree", "-lr", "-z", revision, "--", *pathspecs),
-        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
-    )
-    entries: dict[str, tuple[str, int]] = {}
-    total = 0
-    for raw_entry in tree.split(b"\0"):
-        if not raw_entry:
-            continue
-        try:
-            metadata, raw_path = raw_entry.split(b"\t", 1)
-            mode, object_type, object_id, size_text = metadata.decode(
-                "ascii"
-            ).split(" ", 3)
-            relative = raw_path.decode("utf-8")
-        except (UnicodeError, ValueError) as exc:
-            raise ValueError("LGCVF live capsule Git tree is invalid") from exc
-        relative_path = Path(relative)
-        if (
-            relative_path.is_absolute()
-            or ".." in relative_path.parts
-            or not select(relative)
-        ):
-            continue
-        try:
-            size = int(size_text.strip())
-        except ValueError as exc:
-            raise ValueError("LGCVF live capsule Git dependency is invalid") from exc
-        if (
-            object_type != "blob"
-            or mode not in {"100644", "100755"}
-            or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
-            or not 0 <= size <= _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
-            or relative in entries
-        ):
-            raise ValueError("LGCVF live capsule Git dependency is invalid")
-        total += size
-        if total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
-            raise ValueError("LGCVF live capsule Git dependency closure is oversized")
-        entries[relative] = (object_id, size)
-    if not set(required).issubset(entries):
-        missing = sorted(set(required) - set(entries))
-        raise ValueError(
-            "LGCVF live capsule HEAD is missing a dependency: "
-            + ", ".join(missing[:3])
-        )
-    if not 1 <= len(entries) <= _LGCVF_LIVE_CAPSULE_MAX_FILES:
-        raise ValueError("LGCVF live capsule Git dependency count is invalid")
-    blobs = _lgcvf_live_git_batch_blobs(
-        root, [value[0] for value in entries.values()]
-    )
-    payloads: dict[str, bytes] = {}
-    for relative, (object_id, size) in sorted(entries.items()):
-        raw = blobs.get(object_id)
-        if raw is None or len(raw) != size:
-            raise ValueError("LGCVF live capsule Git blob changed")
-        disk = _lgcvf_live_read_stable_external_file(root / relative)
-        if disk != raw:
-            raise ValueError("LGCVF live capsule worktree differs from HEAD")
-        destination = destination_prefix + relative
-        if destination in payloads:
-            raise ValueError("LGCVF live capsule destination path is duplicated")
-        payloads[destination] = raw
-    return payloads
-
-
-def _lgcvf_live_superproject_payloads(
-    root: Path,
-    source_head: str,
-) -> dict[str, bytes]:
-    required = tuple(dict.fromkeys(_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES))
-
-    def selected(relative: str) -> bool:
-        return bool(
-            relative in required
-            or (
-                relative.startswith("ipfs_accelerate_py/agent_supervisor/")
-                and relative.endswith(".py")
-            )
-            or (
-                relative.startswith("scripts/ops/agent_supervisor/")
-                and relative.endswith(".py")
-            )
-        )
-
-    return _lgcvf_live_git_payloads(
-        root,
-        revision=source_head,
-        pathspecs=tuple(
-            dict.fromkeys(
-                (
-                    "ipfs_accelerate_py",
-                    "scripts/ops/agent_supervisor",
-                    *required,
-                )
-            )
-        ),
-        required=required,
-        select=selected,
-    )
-
-
-def _lgcvf_live_datasets_payloads(
-    datasets_root: Path,
-    datasets_head: str,
-) -> dict[str, bytes]:
-    required = ("__init__.py", "ipfs_datasets_py/__init__.py")
-
-    def selected(relative: str) -> bool:
-        return bool(
-            relative == "__init__.py"
-            or (
-                relative.startswith("ipfs_datasets_py/")
-                and relative.endswith(".py")
-            )
-            or (
-                relative.startswith("scripts/ops/")
-                and relative.endswith(".py")
-            )
-        )
-
-    return _lgcvf_live_git_payloads(
-        datasets_root,
-        revision=datasets_head,
-        pathspecs=("__init__.py", "ipfs_datasets_py", "scripts/ops"),
-        required=required,
-        select=selected,
-        destination_prefix="ipfs_datasets_py/",
-    )
-
-
-def _lgcvf_live_external_directory(path: Path | str, noun: str) -> Path:
-    unresolved = resolve_agent_implementation_private_state_path(path)
-    try:
-        resolved = unresolved.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError(f"LGCVF live capsule {noun} is unavailable") from exc
-    if resolved != unresolved:
-        raise ValueError(f"LGCVF live capsule {noun} contains a symlink")
-    metadata = os.lstat(resolved)
-    if (
-        not stat_module.S_ISDIR(metadata.st_mode)
-        or stat_module.S_ISLNK(metadata.st_mode)
-        or metadata.st_uid not in {0, os.geteuid()}
-    ):
-        raise ValueError(f"LGCVF live capsule {noun} custody is invalid")
-    return resolved
-
-
-def _lgcvf_live_validate_record(
-    payloads: Mapping[str, bytes],
-    *,
-    distribution_directory: str,
-) -> None:
-    import csv
-
-    record_name = f"{distribution_directory}/RECORD"
-    metadata_name = f"{distribution_directory}/METADATA"
-    if record_name not in payloads or metadata_name not in payloads:
-        raise ValueError("LGCVF live capsule DuckDB metadata is incomplete")
-    try:
-        rows = tuple(
-            csv.reader(
-                io.StringIO(payloads[record_name].decode("utf-8"), newline="")
-            )
-        )
-    except (UnicodeError, csv.Error) as exc:
-        raise ValueError("LGCVF live capsule DuckDB RECORD is invalid") from exc
-    by_path: dict[str, tuple[str, str]] = {}
-    for row in rows:
-        if len(row) != 3 or row[0] in by_path:
-            raise ValueError("LGCVF live capsule DuckDB RECORD is invalid")
-        path = Path(row[0])
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError("LGCVF live capsule DuckDB RECORD path is invalid")
-        by_path[row[0]] = (row[1], row[2])
-    for relative, raw in payloads.items():
-        if not relative.startswith(
-            ("duckdb/", distribution_directory + "/")
-        ):
-            continue
-        record = by_path.get(relative)
-        if record is None:
-            raise ValueError("LGCVF live capsule DuckDB file is absent from RECORD")
-        digest, size = record
-        if relative == record_name:
-            if digest or size:
-                raise ValueError("LGCVF live capsule DuckDB RECORD self-row is invalid")
-            continue
-        try:
-            algorithm, encoded = digest.split("=", 1)
-            padding = "=" * (-len(encoded) % 4)
-            decoded = base64.urlsafe_b64decode(encoded + padding)
-            recorded_size = int(size)
-        except (ValueError, binascii.Error) as exc:
-            raise ValueError("LGCVF live capsule DuckDB RECORD digest is invalid") from exc
-        if (
-            algorithm != "sha256"
-            or decoded != hashlib.sha256(raw).digest()
-            or recorded_size != len(raw)
-        ):
-            raise ValueError("LGCVF live capsule DuckDB distribution drifted")
-
-
-def _lgcvf_live_duckdb_python_payloads(
-    *,
-    package_root: Path | str,
-    distribution_metadata_root: Path | str,
-    distribution_version: str,
-) -> tuple[dict[str, bytes], str, str]:
-    if re.fullmatch(
-        r"[0-9][0-9A-Za-z.+_-]{0,63}", distribution_version
-    ) is None:
-        raise ValueError("LGCVF live capsule DuckDB version is invalid")
-    package = _lgcvf_live_external_directory(
-        package_root, "DuckDB Python package"
-    )
-    metadata = _lgcvf_live_external_directory(
-        distribution_metadata_root, "DuckDB distribution metadata"
-    )
-    expected_metadata_name = f"duckdb-{distribution_version}.dist-info"
-    if (
-        package.name != "duckdb"
-        or metadata.name != expected_metadata_name
-        or package.parent != metadata.parent
-    ):
-        raise ValueError("LGCVF live capsule DuckDB distribution layout drifted")
-    payloads: dict[str, bytes] = {}
-    for root, destination_root, predicate in (
-        (package, "duckdb", lambda item: item.suffix == ".py"),
-        (metadata, metadata.name, lambda item: item.is_file()),
-    ):
-        entries = tuple(root.rglob("*"))
-        for entry in entries:
-            entry_metadata = os.lstat(entry)
-            if stat_module.S_ISLNK(entry_metadata.st_mode):
-                raise ValueError("LGCVF live capsule DuckDB distribution has a symlink")
-            if not stat_module.S_ISREG(entry_metadata.st_mode) or not predicate(entry):
-                continue
-            relative = entry.relative_to(root).as_posix()
-            destination = f"{destination_root}/{relative}"
-            payloads[destination] = _lgcvf_live_read_stable_external_file(entry)
-    required = {
-        "duckdb/__init__.py",
-        f"{metadata.name}/METADATA",
-        f"{metadata.name}/RECORD",
-        f"{metadata.name}/WHEEL",
-    }
-    if not required.issubset(payloads):
-        raise ValueError("LGCVF live capsule DuckDB Python facade is incomplete")
-    metadata_raw = payloads[f"{metadata.name}/METADATA"]
-    if (
-        re.search(rb"(?m)^Name: duckdb\r?$", metadata_raw) is None
-        or re.search(
-            rb"(?m)^Version: "
-            + re.escape(distribution_version.encode("ascii"))
-            + rb"\r?$",
-            metadata_raw,
-        )
-        is None
-    ):
-        raise ValueError("LGCVF live capsule DuckDB METADATA identity drifted")
-    _lgcvf_live_validate_record(
-        payloads,
-        distribution_directory=metadata.name,
-    )
-    package_files = {
-        path: _lgcvf_live_sha256(raw)
-        for path, raw in payloads.items()
-        if path.startswith("duckdb/")
-    }
-    metadata_files = {
-        path: _lgcvf_live_sha256(raw)
-        for path, raw in payloads.items()
-        if path.startswith(metadata.name + "/")
-    }
-    return (
-        payloads,
-        _lgcvf_live_mapping_root(package_files),
-        _lgcvf_live_mapping_root(metadata_files),
-    )
-
-
-def _lgcvf_live_extension_payload(
-    *,
-    name: str,
-    source_path: Path | str,
-    extension_version: str,
-    duckdb_distribution_version: str,
-) -> tuple[LgcvfConfiguredBoardLiveExtensionIdentity, dict[str, bytes]]:
-    if name not in _LGCVF_LIVE_EXTENSION_ROLES or re.fullmatch(
-        r"[0-9a-f]{7,40}", extension_version
-    ) is None:
-        raise ValueError("LGCVF live capsule extension version is invalid")
-    unresolved = resolve_agent_implementation_private_state_path(source_path)
-    try:
-        source = unresolved.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule extension is unavailable") from exc
-    if source != unresolved or source.name != f"{name}.duckdb_extension":
-        raise ValueError("LGCVF live capsule extension path is invalid")
-    info = Path(str(source) + ".info")
-    raw = _lgcvf_live_read_stable_external_file(source)
-    info_raw = _lgcvf_live_read_stable_external_file(
-        info, maximum_bytes=64 * 1024
-    )
-    engine_version = "v" + duckdb_distribution_version
-    platform_name = source.parent.name
-    if (
-        source.parent.parent.name != engine_version
-        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", platform_name)
-        is None
-        or extension_version.encode("ascii") not in info_raw
-    ):
-        raise ValueError("LGCVF live capsule extension installation drifted")
-    relative = Path(engine_version) / platform_name / source.name
-    member = Path(".lgcvf-native-extensions") / relative
-    role, policy = _LGCVF_LIVE_EXTENSION_ROLES[name]
-    identity = LgcvfConfiguredBoardLiveExtensionIdentity(
-        name=name,
-        version=extension_version,
-        authority_role=role,
-        load_policy=policy,
-        relative_path=relative.as_posix(),
-        info_relative_path=(relative.as_posix() + ".info"),
-        member_path=member.as_posix(),
-        info_member_path=(member.as_posix() + ".info"),
-        payload_sha256=_lgcvf_live_sha256(raw),
-        info_sha256=_lgcvf_live_sha256(info_raw),
-    )
-    parsed = _parse_lgcvf_live_extension_identity(
-        identity.as_dict(), expected_name=name
-    )
-    return parsed, {
-        parsed.member_path: raw,
-        parsed.info_member_path: info_raw,
-    }
-
-
-def _lgcvf_live_manifest_bytes(
-    *,
-    source_head: str,
-    source_tree: str,
-    datasets_gitlink: str,
-    datasets_head: str,
-    datasets_tree: str,
-    payloads: Mapping[str, bytes],
-    duckdb_distribution_version: str,
-    duckdb_package_files_root: str,
-    duckdb_distribution_files_root: str,
-    quack_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
-    httpfs_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
-    ducklake_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
-    python_identity: LgcvfConfiguredBoardLivePythonIdentity,
-    native_authorization_id: str,
-    native_dependency_id: str,
-) -> bytes:
-    digests = {
-        path: _lgcvf_live_sha256(raw)
-        for path, raw in sorted(payloads.items())
-    }
-    superproject_python = {
-        path: digest
-        for path, digest in digests.items()
-        if path.endswith(".py")
-        and not path.startswith("ipfs_datasets_py/")
-        and not path.startswith("duckdb/")
-    }
-    datasets_python = {
-        path: digest
-        for path, digest in digests.items()
-        if path.startswith("ipfs_datasets_py/") and path.endswith(".py")
-    }
-    manifest: dict[str, object] = {
-        "schema": _LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA,
-        "source_head": source_head,
-        "source_tree": source_tree,
-        "datasets_gitlink": datasets_gitlink,
-        "datasets_head": datasets_head,
-        "datasets_tree": datasets_tree,
-        "candidate_config_path": _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
-        "candidate_config_sha256": digests[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH],
-        "validator_path": _LGCVF_LIVE_VALIDATOR_PATH,
-        "validator_sha256": digests[_LGCVF_LIVE_VALIDATOR_PATH],
-        "materializer_path": _LGCVF_LIVE_MATERIALIZER_PATH,
-        "materializer_sha256": digests[_LGCVF_LIVE_MATERIALIZER_PATH],
-        "operator_path": _LGCVF_LIVE_OPERATOR_PATH,
-        "operator_sha256": digests[_LGCVF_LIVE_OPERATOR_PATH],
-        "superproject_python_root": _lgcvf_live_mapping_root(
-            superproject_python
-        ),
-        "datasets_python_root": _lgcvf_live_mapping_root(datasets_python),
-        "python_path_prefixes": [".", "ipfs_datasets_py"],
-        "duckdb_distribution_version": duckdb_distribution_version,
-        "duckdb_package_files_root": duckdb_package_files_root,
-        "duckdb_distribution_files_root": duckdb_distribution_files_root,
-        "extension_engine_version": "v" + duckdb_distribution_version,
-        "extension_platform": Path(quack_extension.relative_path).parent.name,
-        "quack_extension": quack_extension.as_dict(),
-        "httpfs_extension": httpfs_extension.as_dict(),
-        "ducklake_extension": ducklake_extension.as_dict(),
-        "python_identity": python_identity.as_dict(),
-        "native_authorization_id": native_authorization_id,
-        "native_dependency_id": native_dependency_id,
-        "files": digests,
-    }
-    manifest["capsule_id"] = _content_addressed_mapping(
-        manifest, identity_field="capsule_id"
-    )
-    encoded = _lgcvf_live_canonical_json(manifest) + b"\n"
-    if len(encoded) > _LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES:
-        raise ValueError("LGCVF live capsule manifest is oversized")
-    return encoded
-
-
-def _lgcvf_live_parse_manifest(raw: bytes) -> dict[str, object]:
-    manifest = _lgcvf_live_json(raw, "manifest")
-    expected = {
-        "schema",
-        "capsule_id",
-        "source_head",
-        "source_tree",
-        "datasets_gitlink",
-        "datasets_head",
-        "datasets_tree",
-        "candidate_config_path",
-        "candidate_config_sha256",
-        "validator_path",
-        "validator_sha256",
-        "materializer_path",
-        "materializer_sha256",
-        "operator_path",
-        "operator_sha256",
-        "superproject_python_root",
-        "datasets_python_root",
-        "python_path_prefixes",
-        "duckdb_distribution_version",
-        "duckdb_package_files_root",
-        "duckdb_distribution_files_root",
-        "extension_engine_version",
-        "extension_platform",
-        "quack_extension",
-        "httpfs_extension",
-        "ducklake_extension",
-        "python_identity",
-        "native_authorization_id",
-        "native_dependency_id",
-        "files",
-    }
-    if (
-        set(manifest) != expected
-        or manifest.get("schema") != _LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA
-        or manifest.get("capsule_id")
-        != _content_addressed_mapping(manifest, identity_field="capsule_id")
-    ):
-        raise ValueError("LGCVF live capsule manifest identity is invalid")
-    files = manifest.get("files")
-    if (
-        not isinstance(files, dict)
-        or not 1 <= len(files) <= _LGCVF_LIVE_CAPSULE_MAX_FILES
-    ):
-        raise ValueError("LGCVF live capsule manifest file inventory is invalid")
-    normalized_files: dict[str, str] = {}
-    for relative, digest in files.items():
-        path = Path(str(relative))
-        if (
-            not isinstance(relative, str)
-            or not relative
-            or path.is_absolute()
-            or ".." in path.parts
-            or relative != path.as_posix()
-            or relative in normalized_files
-        ):
-            raise ValueError("LGCVF live capsule manifest path is invalid")
-        normalized_files[relative] = _lgcvf_live_exact_sha256(
-            digest, "manifest file digest"
-        )
-    required = set(_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES)
-    required.update(
-        {
-            "ipfs_datasets_py/__init__.py",
-            "ipfs_datasets_py/ipfs_datasets_py/__init__.py",
-            "duckdb/__init__.py",
-        }
-    )
-    if not required.issubset(normalized_files):
-        raise ValueError("LGCVF live capsule manifest misses a dependency")
-    pin_value = {
-        key: value
-        for key, value in manifest.items()
-        if key not in {"files", "schema"}
-    }
-    pin_value.update(
-        {
-            "schema": _LGCVF_LIVE_CAPSULE_PIN_SCHEMA,
-            "capsule_root": "/lgcvf-live-capsule-placeholder",
-            "archive_sha256": "sha256:" + "0" * 64,
-        }
-    )
-    parsed = parse_lgcvf_configured_board_live_capsule_pin(pin_value)
-    if (
-        normalized_files.get(parsed.candidate_config_path)
-        != parsed.candidate_config_sha256
-        or normalized_files.get(parsed.validator_path) != parsed.validator_sha256
-        or normalized_files.get(parsed.materializer_path)
-        != parsed.materializer_sha256
-        or normalized_files.get(parsed.operator_path) != parsed.operator_sha256
-        or normalized_files.get(parsed.quack_extension.member_path)
-        != parsed.quack_extension.payload_sha256
-        or normalized_files.get(parsed.quack_extension.info_member_path)
-        != parsed.quack_extension.info_sha256
-        or normalized_files.get(parsed.httpfs_extension.member_path)
-        != parsed.httpfs_extension.payload_sha256
-        or normalized_files.get(parsed.httpfs_extension.info_member_path)
-        != parsed.httpfs_extension.info_sha256
-        or normalized_files.get(parsed.ducklake_extension.member_path)
-        != parsed.ducklake_extension.payload_sha256
-        or normalized_files.get(parsed.ducklake_extension.info_member_path)
-        != parsed.ducklake_extension.info_sha256
-    ):
-        raise ValueError("LGCVF live capsule authority digest drifted")
-    superproject_python = {
-        path: digest
-        for path, digest in normalized_files.items()
-        if path.endswith(".py")
-        and not path.startswith("ipfs_datasets_py/")
-        and not path.startswith("duckdb/")
-    }
-    datasets_python = {
-        path: digest
-        for path, digest in normalized_files.items()
-        if path.startswith("ipfs_datasets_py/") and path.endswith(".py")
-    }
-    package_python = {
-        path: digest
-        for path, digest in normalized_files.items()
-        if path.startswith("duckdb/")
-    }
-    distribution_prefix = (
-        f"duckdb-{parsed.duckdb_distribution_version}.dist-info/"
-    )
-    distribution_files = {
-        path: digest
-        for path, digest in normalized_files.items()
-        if path.startswith(distribution_prefix)
-    }
-    if (
-        not superproject_python
-        or not datasets_python
-        or not package_python
-        or not distribution_files
-        or _lgcvf_live_mapping_root(superproject_python)
-        != parsed.superproject_python_root
-        or _lgcvf_live_mapping_root(datasets_python)
-        != parsed.datasets_python_root
-        or _lgcvf_live_mapping_root(package_python)
-        != parsed.duckdb_package_files_root
-        or _lgcvf_live_mapping_root(distribution_files)
-        != parsed.duckdb_distribution_files_root
-    ):
-        raise ValueError("LGCVF live capsule runtime inventory root drifted")
-    manifest["files"] = normalized_files
-    return manifest
-
-
-def _lgcvf_live_pin_from_manifest(
-    manifest: Mapping[str, object],
-    *,
-    capsule_root: Path,
-    archive_sha256: str,
-) -> LgcvfConfiguredBoardLiveCapsulePin:
-    value = {
-        key: item
-        for key, item in manifest.items()
-        if key not in {"schema", "files"}
-    }
-    value.update(
-        {
-            "schema": _LGCVF_LIVE_CAPSULE_PIN_SCHEMA,
-            "capsule_root": str(capsule_root),
-            "archive_sha256": archive_sha256,
-        }
-    )
-    return parse_lgcvf_configured_board_live_capsule_pin(value)
-
-
-def _lgcvf_live_archive_bytes(
-    root: Path,
-    *,
-    manifest_raw: bytes,
-    files: Mapping[str, str],
-) -> bytes:
-    main = b"raise SystemExit(78)\n"
-    entries: dict[str, bytes] = {
-        "__main__.py": main,
-        _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME: manifest_raw,
-    }
-    total = len(main) + len(manifest_raw)
-    for relative, digest in sorted(files.items()):
-        raw = _agent_read_stable_file(
-            root / relative,
-            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
-            exact_mode=0o400,
-        )
-        if _lgcvf_live_sha256(raw) != digest:
-            raise ValueError("LGCVF live capsule archive input drifted")
-        total += len(raw)
-        if total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
-            raise ValueError("LGCVF live capsule archive is oversized")
-        entries[relative] = raw
-    stream = io.BytesIO()
-    with zipfile.ZipFile(
-        stream,
-        mode="w",
-        compression=zipfile.ZIP_STORED,
-        allowZip64=False,
-    ) as archive:
-        for name, raw in sorted(entries.items()):
-            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            info.create_system = 3
-            info.compress_type = zipfile.ZIP_STORED
-            info.external_attr = 0o100400 << 16
-            archive.writestr(info, raw)
-    payload = stream.getvalue()
-    if not payload or len(payload) > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
-        raise ValueError("LGCVF live capsule archive is oversized")
-    return payload
-
-
-def build_lgcvf_configured_board_live_capsule_pin(
-    *,
-    capsule_root: Path | str,
-    python_executable: Path | str,
-    native_authorization_id: str,
-    native_dependency_id: str,
-) -> LgcvfConfiguredBoardLiveCapsulePin:
-    """Validate one materialized capsule against externally accepted IDs."""
-
-    accepted_authorization = _lgcvf_live_exact_sha256(
-        native_authorization_id, "native authorization identity"
-    )
-    accepted_dependency = _lgcvf_live_exact_sha256(
-        native_dependency_id, "native dependency identity"
-    )
-    unresolved = resolve_agent_implementation_private_state_path(capsule_root)
-    try:
-        root = unresolved.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule root is unavailable") from exc
-    if root != unresolved:
-        raise ValueError("LGCVF live capsule root contains a symlink")
-    _agent_private_directory(root, mode=0o500)
-    manifest_raw = _agent_read_stable_file(
-        root / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
-        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
-        exact_mode=0o400,
-    )
-    manifest = _lgcvf_live_parse_manifest(manifest_raw)
-    if (
-        manifest.get("native_authorization_id") != accepted_authorization
-        or manifest.get("native_dependency_id") != accepted_dependency
-    ):
-        raise ValueError("LGCVF live capsule native acceptance differs")
-    python_identity = _parse_lgcvf_live_python_identity(
-        manifest.get("python_identity")
-    )
-    observed_python = _lgcvf_live_python_identity(python_executable)
-    if observed_python != python_identity:
-        raise ValueError("LGCVF live capsule Python executable differs")
-    files = manifest.get("files")
-    if not isinstance(files, dict):
-        raise ValueError(  # noqa: TRY004
-            "LGCVF live capsule file inventory is invalid"
-        )
-    expected_entries = {
-        Path(_LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME),
-        *(Path(relative) for relative in files),
-    }
-    actual_files: set[Path] = set()
-    for entry in root.rglob("*"):
-        metadata = os.lstat(entry)
-        if stat_module.S_ISLNK(metadata.st_mode):
-            raise ValueError("LGCVF live capsule contains a symlink")
-        relative = entry.relative_to(root)
-        if stat_module.S_ISDIR(metadata.st_mode):
-            if (
-                metadata.st_uid != os.geteuid()
-                or stat_module.S_IMODE(metadata.st_mode) != 0o500
-            ):
-                raise ValueError("LGCVF live capsule directory is dirty")
-            continue
-        if not stat_module.S_ISREG(metadata.st_mode):
-            raise ValueError("LGCVF live capsule contains a non-file")
-        actual_files.add(relative)
-    if actual_files != expected_entries:
-        raise ValueError("LGCVF live capsule contents are dirty")
-    capsule_payloads: dict[str, bytes] = {}
-    for relative, digest in files.items():
-        raw = _agent_read_stable_file(
-            root / relative,
-            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
-            exact_mode=0o400,
-        )
-        if _lgcvf_live_sha256(raw) != digest:
-            raise ValueError("LGCVF live capsule content drifted")
-        capsule_payloads[str(relative)] = raw
-    _lgcvf_live_validate_candidate_config(
-        capsule_payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
-    )
-    distribution_directory = (
-        f"duckdb-{manifest['duckdb_distribution_version']}.dist-info"
-    )
-    _lgcvf_live_validate_record(
-        capsule_payloads,
-        distribution_directory=distribution_directory,
-    )
-    for name in (
-        "quack_extension",
-        "httpfs_extension",
-        "ducklake_extension",
-    ):
-        extension = _parse_lgcvf_live_extension_identity(
-            manifest.get(name),
-            expected_name=name.removesuffix("_extension"),
-        )
-        if extension.version.encode("ascii") not in capsule_payloads[
-            extension.info_member_path
-        ]:
-            raise ValueError("LGCVF live capsule extension info drifted")
-    archive = _lgcvf_live_archive_bytes(
-        root,
-        manifest_raw=manifest_raw,
-        files={str(path): str(digest) for path, digest in files.items()},
-    )
-    archive_sha256 = _lgcvf_live_sha256(archive)
-    return _lgcvf_live_pin_from_manifest(
-        manifest,
-        capsule_root=root,
-        archive_sha256=archive_sha256,
-    )
-
-
-def materialize_lgcvf_configured_board_live_capsule(
-    *,
-    source_root: Path | str,
-    capsule_parent: Path | str,
-    source_head: str,
-    source_tree: str,
-    python_executable: Path | str,
-    duckdb_package_root: Path | str,
-    duckdb_distribution_metadata_root: Path | str,
-    duckdb_distribution_version: str,
-    quack_extension_path: Path | str,
-    quack_extension_version: str,
-    httpfs_extension_path: Path | str,
-    httpfs_extension_version: str,
-    ducklake_extension_path: Path | str,
-    ducklake_extension_version: str,
-    native_authorization_id: str,
-    native_dependency_id: str,
-) -> LgcvfConfiguredBoardLiveCapsulePin:
-    """Materialize the exact clean LGCVF + datasets + DuckDB generation."""
-
-    accepted_head = _lgcvf_live_exact_git_id(source_head, "source HEAD")
-    accepted_tree = _lgcvf_live_exact_git_id(source_tree, "source tree")
-    accepted_authorization = _lgcvf_live_exact_sha256(
-        native_authorization_id, "native authorization identity"
-    )
-    accepted_dependency = _lgcvf_live_exact_sha256(
-        native_dependency_id, "native dependency identity"
-    )
-    unresolved_root = resolve_agent_implementation_private_state_path(source_root)
-    try:
-        root = unresolved_root.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule source root is unavailable") from exc
-    if root != unresolved_root:
-        raise ValueError("LGCVF live capsule source root contains a symlink")
-    _lgcvf_live_git_state(
-        root,
-        expected_head=accepted_head,
-        expected_tree=accepted_tree,
-        include_submodules=True,
-    )
-    datasets_gitlink = _lgcvf_live_gitlink(root, accepted_head)
-    datasets_root = _lgcvf_live_external_directory(
-        root / "ipfs_datasets_py", "nested datasets Git root"
-    )
-    datasets_head = os.fsdecode(
-        _agent_git_output(
-            datasets_root, ("rev-parse", "--verify", "HEAD^{commit}")
-        )
-    ).strip()
-    datasets_tree = os.fsdecode(
-        _agent_git_output(
-            datasets_root, ("rev-parse", "--verify", "HEAD^{tree}")
-        )
-    ).strip()
-    _lgcvf_live_exact_git_id(datasets_head, "datasets HEAD")
-    _lgcvf_live_exact_git_id(datasets_tree, "datasets tree")
-    if datasets_head != datasets_gitlink:
-        raise ValueError("LGCVF live capsule nested HEAD differs from gitlink")
-    _lgcvf_live_git_state(
-        datasets_root,
-        expected_head=datasets_head,
-        expected_tree=datasets_tree,
-        include_submodules=False,
-    )
-    superproject_payloads = _lgcvf_live_superproject_payloads(root, accepted_head)
-    datasets_payloads = _lgcvf_live_datasets_payloads(
-        datasets_root, datasets_head
-    )
-    duckdb_payloads, package_root, distribution_root = (
-        _lgcvf_live_duckdb_python_payloads(
-            package_root=duckdb_package_root,
-            distribution_metadata_root=duckdb_distribution_metadata_root,
-            distribution_version=duckdb_distribution_version,
-        )
-    )
-    quack, quack_payloads = _lgcvf_live_extension_payload(
-        name="quack",
-        source_path=quack_extension_path,
-        extension_version=quack_extension_version,
-        duckdb_distribution_version=duckdb_distribution_version,
-    )
-    httpfs, httpfs_payloads = _lgcvf_live_extension_payload(
-        name="httpfs",
-        source_path=httpfs_extension_path,
-        extension_version=httpfs_extension_version,
-        duckdb_distribution_version=duckdb_distribution_version,
-    )
-    ducklake, ducklake_payloads = _lgcvf_live_extension_payload(
-        name="ducklake",
-        source_path=ducklake_extension_path,
-        extension_version=ducklake_extension_version,
-        duckdb_distribution_version=duckdb_distribution_version,
-    )
-    if (
-        Path(quack.relative_path).parent
-        != Path(httpfs.relative_path).parent
-        or Path(quack.relative_path).parent
-        != Path(ducklake.relative_path).parent
-    ):
-        raise ValueError("LGCVF live capsule extension platforms differ")
-    payloads: dict[str, bytes] = {}
-    for group in (
-        superproject_payloads,
-        datasets_payloads,
-        duckdb_payloads,
-        quack_payloads,
-        httpfs_payloads,
-        ducklake_payloads,
-    ):
-        overlap = set(payloads).intersection(group)
-        if overlap:
-            raise ValueError("LGCVF live capsule member path is duplicated")
-        payloads.update(group)
-    if (
-        len(payloads) > _LGCVF_LIVE_CAPSULE_MAX_FILES
-        or sum(len(raw) for raw in payloads.values())
-        > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
-    ):
-        raise ValueError("LGCVF live capsule dependency closure is oversized")
-    _lgcvf_live_validate_candidate_config(
-        payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
-    )
-    python_identity = _lgcvf_live_python_identity(python_executable)
-    manifest_raw = _lgcvf_live_manifest_bytes(
-        source_head=accepted_head,
-        source_tree=accepted_tree,
-        datasets_gitlink=datasets_gitlink,
-        datasets_head=datasets_head,
-        datasets_tree=datasets_tree,
-        payloads=payloads,
-        duckdb_distribution_version=duckdb_distribution_version,
-        duckdb_package_files_root=package_root,
-        duckdb_distribution_files_root=distribution_root,
-        quack_extension=quack,
-        httpfs_extension=httpfs,
-        ducklake_extension=ducklake,
-        python_identity=python_identity,
-        native_authorization_id=accepted_authorization,
-        native_dependency_id=accepted_dependency,
-    )
-    manifest = _lgcvf_live_parse_manifest(manifest_raw)
-    _lgcvf_live_git_state(
-        datasets_root,
-        expected_head=datasets_head,
-        expected_tree=datasets_tree,
-        include_submodules=False,
-    )
-    _lgcvf_live_git_state(
-        root,
-        expected_head=accepted_head,
-        expected_tree=accepted_tree,
-        include_submodules=True,
-    )
-    parent = resolve_agent_implementation_private_state_path(capsule_parent)
-    created_parent_identity: tuple[int, int, int, int] | None = None
-    try:
-        os.lstat(parent)
-    except FileNotFoundError:
-        created_parent_identity = _agent_create_private_directory_chain(
-            parent, final_mode=0o700
-        )
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule parent is unavailable") from exc
-    _agent_private_directory(parent, mode=0o700)
-    if created_parent_identity is not None:
-        observed_parent = os.lstat(parent)
-        if (
-            observed_parent.st_dev,
-            observed_parent.st_ino,
-            observed_parent.st_mode,
-            observed_parent.st_uid,
-        ) != created_parent_identity:
-            raise ValueError("LGCVF live capsule parent changed during creation")
-    capsule_id = str(manifest["capsule_id"])
-    destination = parent / capsule_id.removeprefix("sha256:")
-    try:
-        existing = os.lstat(destination)
-    except FileNotFoundError:
-        existing = None
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule destination is unavailable") from exc
-    if existing is not None:
-        if stat_module.S_ISLNK(existing.st_mode):
-            raise ValueError("LGCVF live capsule destination is a symlink")
-        return build_lgcvf_configured_board_live_capsule_pin(
-            capsule_root=destination,
-            python_executable=python_executable,
-            native_authorization_id=accepted_authorization,
-            native_dependency_id=accepted_dependency,
-        )
-    staging = Path(tempfile.mkdtemp(prefix=".lgcvf-live-", dir=parent))
-    try:
-        for relative, raw in payloads.items():
-            _agent_write_capsule_file(staging / relative, raw)
-        _agent_write_capsule_file(
-            staging / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
-            manifest_raw,
-        )
-        directories = sorted(
-            (item for item in staging.rglob("*") if item.is_dir()),
-            key=lambda item: len(item.parts),
-            reverse=True,
-        )
-        for directory in directories:
-            os.chmod(directory, 0o500)
-        os.chmod(staging, 0o500)
-        try:
-            os.rename(staging, destination)
-        except FileExistsError:
-            os.chmod(staging, 0o700)
-            for directory in directories:
-                try:
-                    os.chmod(directory, 0o700)
-                except FileNotFoundError:
-                    pass
-            shutil.rmtree(staging)
-        parent_fd = os.open(
-            parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        )
-        try:
-            os.fsync(parent_fd)
-        finally:
-            os.close(parent_fd)
-    except Exception:
-        if staging.exists():
-            try:
-                os.chmod(staging, 0o700)
-            except OSError:
-                pass
-            for directory in sorted(
-                (item for item in staging.rglob("*") if item.is_dir()),
-                key=lambda item: len(item.parts),
-            ):
-                try:
-                    os.chmod(directory, 0o700)
-                except OSError:
-                    pass
-            shutil.rmtree(staging, ignore_errors=True)
-        raise
-    return build_lgcvf_configured_board_live_capsule_pin(
-        capsule_root=destination,
-        python_executable=python_executable,
-        native_authorization_id=accepted_authorization,
-        native_dependency_id=accepted_dependency,
-    )
-
-
-def _lgcvf_live_verified_archive(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-    descriptor: int,
-) -> tuple[str, bytes, dict[str, object]]:
-    parsed_pin = parse_lgcvf_configured_board_live_capsule_pin(pin.as_dict())
-    if parsed_pin != pin:
-        raise ValueError("LGCVF live capsule pin is not canonical")
-    _lgcvf_live_require_current_python(pin.python_identity)
-    if isinstance(descriptor, bool) or not isinstance(descriptor, int) or descriptor < 3:
-        raise ValueError("LGCVF live capsule descriptor is invalid")
-    required_names = (
-        "F_GET_SEALS",
-        "F_SEAL_WRITE",
-        "F_SEAL_SHRINK",
-        "F_SEAL_GROW",
-        "F_SEAL_SEAL",
-    )
-    if any(not hasattr(fcntl, name) for name in required_names):
-        raise ValueError("LGCVF live capsule descriptor sealing is unavailable")
-    required_seals = (
-        fcntl.F_SEAL_WRITE
-        | fcntl.F_SEAL_SHRINK
-        | fcntl.F_SEAL_GROW
-        | fcntl.F_SEAL_SEAL
-    )
-    try:
-        before = os.fstat(descriptor)
-        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
-        if (
-            not stat_module.S_ISREG(before.st_mode)
-            or before.st_size <= 0
-            or before.st_size > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
-            or seals & required_seals != required_seals
-        ):
-            raise ValueError("LGCVF live capsule descriptor is not sealed")
-        chunks: list[bytes] = []
-        offset = 0
-        while offset < before.st_size:
-            chunk = os.pread(
-                descriptor,
-                min(1024 * 1024, before.st_size - offset),
-                offset,
-            )
-            if not chunk:
-                break
-            chunks.append(chunk)
-            offset += len(chunk)
-        after = os.fstat(descriptor)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule descriptor is unavailable") from exc
-    archive_raw = b"".join(chunks)
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_mode,
-        item.st_uid,
-        item.st_nlink,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
-    if (
-        len(archive_raw) != before.st_size
-        or identity(before) != identity(after)
-        or _lgcvf_live_sha256(archive_raw) != pin.archive_sha256
-    ):
-        raise ValueError("LGCVF live capsule sealed archive drifted")
-    try:
-        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
-            infos = archive.infolist()
-            names = [info.filename for info in infos]
-            if len(names) != len(set(names)):
-                raise ValueError("LGCVF live capsule archive has duplicate members")
-            for info in infos:
-                path = Path(info.filename)
-                if (
-                    not info.filename
-                    or path.is_absolute()
-                    or ".." in path.parts
-                    or info.filename != path.as_posix()
-                    or info.is_dir()
-                    or info.compress_type != zipfile.ZIP_STORED
-                    or info.date_time != (1980, 1, 1, 0, 0, 0)
-                    or info.create_system != 3
-                    or info.external_attr != 0o100400 << 16
-                    or info.file_size > _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
-                ):
-                    raise ValueError("LGCVF live capsule archive member is invalid")
-            manifest_raw = archive.read(
-                _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME
-            )
-            manifest = _lgcvf_live_parse_manifest(manifest_raw)
-            files = manifest.get("files")
-            if not isinstance(files, dict):
-                raise ValueError(  # noqa: TRY004
-                    "LGCVF live capsule archive inventory is invalid"
-                )
-            expected_names = {
-                "__main__.py",
-                _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
-                *files,
-            }
-            if set(names) != expected_names or archive.read("__main__.py") != (
-                b"raise SystemExit(78)\n"
-            ):
-                raise ValueError("LGCVF live capsule archive contents are dirty")
-            total = len(manifest_raw) + len(b"raise SystemExit(78)\n")
-            selected_payloads: dict[str, bytes] = {}
-            distribution_prefix = (
-                f"duckdb-{manifest['duckdb_distribution_version']}.dist-info/"
-            )
-            for relative, digest in files.items():
-                raw = archive.read(relative)
-                total += len(raw)
-                if (
-                    total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
-                    or _lgcvf_live_sha256(raw) != digest
-                ):
-                    raise ValueError("LGCVF live capsule archive member drifted")
-                if (
-                    relative == _LGCVF_LIVE_CANDIDATE_CONFIG_PATH
-                    or relative.startswith(("duckdb/", distribution_prefix))
-                ):
-                    selected_payloads[relative] = raw
-            _lgcvf_live_validate_candidate_config(
-                selected_payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
-            )
-            _lgcvf_live_validate_record(
-                selected_payloads,
-                distribution_directory=distribution_prefix.rstrip("/"),
-            )
-    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise ValueError("LGCVF live capsule sealed archive is invalid") from exc
-    observed_pin = _lgcvf_live_pin_from_manifest(
-        manifest,
-        capsule_root=Path(pin.capsule_root),
-        archive_sha256=_lgcvf_live_sha256(archive_raw),
-    )
-    if observed_pin != pin:
-        raise ValueError("LGCVF live capsule sealed manifest differs from pin")
-    executable = f"/proc/self/fd/{descriptor}"
-    try:
-        path_stat = os.stat(executable)
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule descriptor path is unavailable") from exc
-    if (path_stat.st_dev, path_stat.st_ino) != (before.st_dev, before.st_ino):
-        raise ValueError("LGCVF live capsule descriptor path drifted")
-    return executable, archive_raw, manifest
-
-
-def verify_lgcvf_configured_board_live_sealed_capsule(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-    descriptor: int,
-) -> str:
-    """Verify the sealed live archive and return its isolated import path."""
-
-    executable, _archive, _manifest = _lgcvf_live_verified_archive(
-        pin, descriptor
-    )
-    return executable
-
-
-def seal_lgcvf_configured_board_live_capsule(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-) -> LgcvfConfiguredBoardLiveSealedCapsule:
-    """Copy one validated live capsule into a write-sealed memfd archive."""
-
-    parsed_pin = parse_lgcvf_configured_board_live_capsule_pin(pin.as_dict())
-    if parsed_pin != pin:
-        raise ValueError("LGCVF live capsule pin is not canonical")
-    verified = build_lgcvf_configured_board_live_capsule_pin(
-        capsule_root=pin.capsule_root,
-        python_executable=pin.python_identity.executable_path,
-        native_authorization_id=pin.native_authorization_id,
-        native_dependency_id=pin.native_dependency_id,
-    )
-    if verified != pin:
-        raise ValueError("LGCVF live capsule pin drifted before sealing")
-    root = Path(pin.capsule_root)
-    manifest_raw = _agent_read_stable_file(
-        root / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
-        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
-        exact_mode=0o400,
-    )
-    manifest = _lgcvf_live_parse_manifest(manifest_raw)
-    files = manifest.get("files")
-    if not isinstance(files, dict):
-        raise ValueError(  # noqa: TRY004
-            "LGCVF live capsule manifest inventory is invalid"
-        )
-    archive = _lgcvf_live_archive_bytes(
-        root,
-        manifest_raw=manifest_raw,
-        files={str(path): str(digest) for path, digest in files.items()},
-    )
-    if _lgcvf_live_sha256(archive) != pin.archive_sha256:
-        raise ValueError("LGCVF live capsule archive identity drifted")
-    if not hasattr(os, "memfd_create") or not hasattr(os, "MFD_ALLOW_SEALING"):
-        raise ValueError("LGCVF live capsule memfd sealing is unavailable")
-    descriptor = os.memfd_create(
-        "ipfs-accelerate-lgcvf-live-capsule",
-        flags=getattr(os, "MFD_CLOEXEC", 0) | os.MFD_ALLOW_SEALING,
-    )
-    try:
-        view = memoryview(archive)
-        while view:
-            written = os.write(descriptor, view)
-            if written <= 0:
-                raise ValueError("LGCVF live capsule archive write failed")
-            view = view[written:]
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        required = (
-            fcntl.F_SEAL_WRITE
-            | fcntl.F_SEAL_SHRINK
-            | fcntl.F_SEAL_GROW
-            | fcntl.F_SEAL_SEAL
-        )
-        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, required)
-        executable = verify_lgcvf_configured_board_live_sealed_capsule(
-            pin, descriptor
-        )
-        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
-    except Exception:
-        os.close(descriptor)
-        raise
-    return LgcvfConfiguredBoardLiveSealedCapsule(
-        descriptor=descriptor,
-        executable_path=executable,
-        archive_sha256=pin.archive_sha256,
-        seals=seals,
-        capsule_id=pin.capsule_id,
-    )
-
-
-def read_lgcvf_configured_board_live_capsule_member(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-    descriptor: int,
-    relative_path: Path | str,
-) -> bytes:
-    """Read one exact manifest member after complete descriptor verification."""
-
-    requested = Path(str(relative_path))
-    if (
-        requested.is_absolute()
-        or ".." in requested.parts
-        or not requested.parts
-        or requested.as_posix() != str(relative_path)
-    ):
-        raise ValueError("LGCVF live capsule requested member is invalid")
-    _executable, archive_raw, manifest = _lgcvf_live_verified_archive(
-        pin, descriptor
-    )
-    files = manifest.get("files")
-    relative = requested.as_posix()
-    if not isinstance(files, dict) or relative not in files:
-        raise ValueError("LGCVF live capsule requested member is not admitted")
-    try:
-        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
-            raw = archive.read(relative)
-    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise ValueError("LGCVF live capsule requested member is unavailable") from exc
-    if (
-        len(raw) > _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
-        or _lgcvf_live_sha256(raw) != files[relative]
-    ):
-        raise ValueError("LGCVF live capsule requested member drifted")
-    return raw
-
-
-def _lgcvf_live_verify_projected_home(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-    home: Path,
-) -> None:
-    directory_modes = {
-        Path("."): 0o500,
-        Path(".duckdb"): 0o500,
-        Path(".duckdb/extensions"): 0o500,
-        Path(".duckdb/extensions") / pin.extension_engine_version: 0o500,
-        Path(".duckdb/extensions")
-        / pin.extension_engine_version
-        / pin.extension_platform: 0o500,
-        Path(".python-user-base"): 0o500,
-        Path(".cache"): 0o700,
-        Path(".cache/xdg"): 0o700,
-        Path(".cache/cuda"): 0o700,
-    }
-    extension_files = {
-        Path(".duckdb/extensions") / pin.quack_extension.relative_path: (
-            pin.quack_extension.payload_sha256
-        ),
-        Path(".duckdb/extensions") / pin.quack_extension.info_relative_path: (
-            pin.quack_extension.info_sha256
-        ),
-        Path(".duckdb/extensions") / pin.httpfs_extension.relative_path: (
-            pin.httpfs_extension.payload_sha256
-        ),
-        Path(".duckdb/extensions") / pin.httpfs_extension.info_relative_path: (
-            pin.httpfs_extension.info_sha256
-        ),
-        Path(".duckdb/extensions") / pin.ducklake_extension.relative_path: (
-            pin.ducklake_extension.payload_sha256
-        ),
-        Path(".duckdb/extensions") / pin.ducklake_extension.info_relative_path: (
-            pin.ducklake_extension.info_sha256
-        ),
-    }
-    actual_directories = {Path(".")}
-    actual_files: set[Path] = set()
-    for entry in home.rglob("*"):
-        metadata = os.lstat(entry)
-        if stat_module.S_ISLNK(metadata.st_mode) or metadata.st_uid != os.geteuid():
-            raise ValueError("LGCVF live capsule projected HOME custody drifted")
-        relative = entry.relative_to(home)
-        if stat_module.S_ISDIR(metadata.st_mode):
-            actual_directories.add(relative)
-            expected_mode = directory_modes.get(relative)
-            if expected_mode is None or stat_module.S_IMODE(
-                metadata.st_mode
-            ) != expected_mode:
-                raise ValueError("LGCVF live capsule projected directory drifted")
-        elif stat_module.S_ISREG(metadata.st_mode):
-            actual_files.add(relative)
-        else:
-            raise ValueError("LGCVF live capsule projected HOME has a non-file")
-    root_metadata = os.lstat(home)
-    if (
-        stat_module.S_IMODE(root_metadata.st_mode) != 0o500
-        or actual_directories != set(directory_modes)
-        or actual_files != set(extension_files)
-    ):
-        raise ValueError("LGCVF live capsule projected HOME contents drifted")
-    for relative, digest in extension_files.items():
-        raw = _agent_read_stable_file(
-            home / relative,
-            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
-            exact_mode=0o400,
-        )
-        if _lgcvf_live_sha256(raw) != digest:
-            raise ValueError("LGCVF live capsule projected extension drifted")
-
-
-def project_lgcvf_configured_board_live_extensions(
-    pin: LgcvfConfiguredBoardLiveCapsulePin,
-    descriptor: int,
-    parent: Path | str,
-) -> Path:
-    """Project all sealed extensions into one immutable private DuckDB HOME."""
-
-    _executable, archive_raw, _manifest = _lgcvf_live_verified_archive(
-        pin, descriptor
-    )
-    unresolved_parent = resolve_agent_implementation_private_state_path(parent)
-    created_parent = False
-    try:
-        os.lstat(unresolved_parent)
-    except FileNotFoundError:
-        _agent_create_private_directory_chain(unresolved_parent, final_mode=0o700)
-        created_parent = True
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule projection parent is unavailable") from exc
-    _agent_private_directory(unresolved_parent, mode=0o700)
-    if unresolved_parent.name != "qualification-homes":
-        raise ValueError(
-            "LGCVF live capsule projection parent must be qualification-homes"
-        )
-    home = unresolved_parent / pin.capsule_id.removeprefix("sha256:")
-    try:
-        existing = os.lstat(home)
-    except FileNotFoundError:
-        existing = None
-    except OSError as exc:
-        raise ValueError("LGCVF live capsule projected HOME is unavailable") from exc
-    if existing is not None:
-        if stat_module.S_ISLNK(existing.st_mode):
-            raise ValueError("LGCVF live capsule projected HOME is a symlink")
-        _lgcvf_live_verify_projected_home(pin, home)
-        return home
-    members = (
-        pin.quack_extension,
-        pin.httpfs_extension,
-        pin.ducklake_extension,
-    )
-    try:
-        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
-            extension_payloads = {
-                Path(".duckdb/extensions") / extension.relative_path: archive.read(
-                    extension.member_path
-                )
-                for extension in members
-            }
-            extension_payloads.update(
-                {
-                    Path(".duckdb/extensions")
-                    / extension.info_relative_path: archive.read(
-                        extension.info_member_path
-                    )
-                    for extension in members
-                }
-            )
-    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise ValueError("LGCVF live capsule extension projection failed") from exc
-    staging = Path(tempfile.mkdtemp(prefix=".lgcvf-home-", dir=unresolved_parent))
-    try:
-        private_directories = (
-            staging / ".duckdb" / "extensions" / pin.extension_engine_version
-            / pin.extension_platform,
-            staging / ".python-user-base",
-        )
-        cache_directories = (
-            staging / ".cache",
-            staging / ".cache" / "xdg",
-            staging / ".cache" / "cuda",
-        )
-        for directory in (*private_directories, *cache_directories):
-            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        for relative, raw in extension_payloads.items():
-            _agent_write_capsule_file(staging / relative, raw)
-        for directory in sorted(
-            {
-                staging / ".duckdb",
-                staging / ".duckdb" / "extensions",
-                staging / ".duckdb" / "extensions" / pin.extension_engine_version,
-                *private_directories,
-            },
-            key=lambda item: len(item.parts),
-            reverse=True,
-        ):
-            os.chmod(directory, 0o500)
-        for directory in cache_directories:
-            os.chmod(directory, 0o700)
-        os.chmod(staging, 0o500)
-        os.rename(staging, home)
-        parent_fd = os.open(
-            unresolved_parent,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-        )
-        try:
-            os.fsync(parent_fd)
-        finally:
-            os.close(parent_fd)
-    except Exception:
-        if staging.exists():
-            try:
-                os.chmod(staging, 0o700)
-            except OSError:
-                pass
-            for directory in staging.rglob("*"):
-                if directory.is_dir():
-                    try:
-                        os.chmod(directory, 0o700)
-                    except OSError:
-                        pass
-            shutil.rmtree(staging, ignore_errors=True)
-        if created_parent:
-            # The empty private parent is harmless and intentionally retained;
-            # removing shared state here would make failure cleanup destructive.
-            pass
-        raise
-    _lgcvf_live_verify_projected_home(pin, home)
-    return home
 
 
 def _parse_agent_control_plane_pin(
@@ -12553,31 +8203,6 @@ def verify_agent_implementation_invocation_binding(
     historical_effect_started_at_ms: int | None = None,
 ) -> AgentImplementationInvocationBinding:
     """Verify signature, exact route/authority equality, and accepted provenance."""
-    return _verify_agent_implementation_invocation_binding_core(
-        binding,
-        route=route,
-        repo_root=repo_root,
-        workspace=workspace,
-        expected_binding=expected_binding,
-        now_ms=now_ms,
-        max_age_ms=max_age_ms,
-        historical_effect_started_at_ms=historical_effect_started_at_ms,
-    )
-
-
-def _verify_agent_implementation_invocation_binding_core(
-    binding: AgentImplementationInvocationBinding | Mapping[str, object],
-    *,
-    route: AgentImplementationRoutePlan,
-    repo_root: Path | str,
-    workspace: Path | str,
-    expected_binding: Mapping[str, object] | None = None,
-    now_ms: int | None = None,
-    max_age_ms: int | None = None,
-    historical_effect_started_at_ms: int | None = None,
-    _terminal_workspace: str | None = None,
-) -> AgentImplementationInvocationBinding:
-    """Verify signature, exact route/authority equality, and accepted provenance."""
 
     parsed = (
         binding
@@ -12647,17 +8272,9 @@ def _verify_agent_implementation_invocation_binding_core(
     ):
         raise ValueError("signed invocation does not exactly match route authority")
     try:
-        workspace_root = resolve_agent_implementation_private_state_path(workspace)
-        if _terminal_workspace is None:
-            workspace_root = workspace_root.resolve(strict=True)
-        elif (
-            not historical
-            or not Path(_terminal_workspace).is_absolute()
-            or str(workspace) != _terminal_workspace
-            or parsed.workspace_path != _terminal_workspace
-            or str(workspace_root) != _terminal_workspace
-        ):
-            raise ValueError("terminal observation workspace identity is invalid")
+        workspace_root = resolve_agent_implementation_private_state_path(
+            workspace
+        ).resolve(strict=True)
         if not historical:
             observed_head = os.fsdecode(
                 _agent_git_output(
@@ -12690,10 +8307,8 @@ def _verify_agent_implementation_invocation_binding_core(
     # checks.  The accepted capsule is instead the already imported router's
     # source generation and must never be inferred from that candidate.
     Path(repo_root).expanduser().resolve(strict=True)
-    candidate = workspace_root
-    signed_workspace = resolve_agent_implementation_private_state_path(parsed.workspace_path)
-    if _terminal_workspace is None:
-        signed_workspace = signed_workspace.resolve(strict=True)
+    candidate = Path(workspace).expanduser().resolve(strict=True)
+    signed_workspace = Path(parsed.workspace_path).expanduser().resolve(strict=True)
     attempt_store, attempt_store_identity = (
         bind_agent_implementation_attempt_store(
             parsed.provider_attempt_store,
@@ -12847,41 +8462,6 @@ def bind_agent_implementation_route_invocation(
         max_age_ms=max_age_ms,
         historical_effect_started_at_ms=historical_effect_started_at_ms,
     )
-    return _bind_agent_implementation_route_invocation_core(
-        route,
-        binding,
-        repo_root=repo_root,
-        workspace=workspace,
-        expected_binding=expected_binding,
-        now_ms=now_ms,
-        max_age_ms=max_age_ms,
-        historical_effect_started_at_ms=historical_effect_started_at_ms,
-    )
-
-
-def _bind_agent_implementation_route_invocation_core(
-    route: AgentImplementationRoutePlan,
-    binding: AgentImplementationInvocationBinding | Mapping[str, object],
-    *,
-    repo_root: Path | str,
-    workspace: Path | str,
-    expected_binding: Mapping[str, object] | None = None,
-    now_ms: int | None = None,
-    max_age_ms: int | None = None,
-    historical_effect_started_at_ms: int | None = None,
-    _terminal_workspace: str | None = None,
-) -> AgentImplementationRoutePlan:
-    verified = _verify_agent_implementation_invocation_binding_core(
-        binding,
-        route=route,
-        repo_root=repo_root,
-        workspace=workspace,
-        expected_binding=expected_binding,
-        now_ms=now_ms,
-        max_age_ms=max_age_ms,
-        historical_effect_started_at_ms=historical_effect_started_at_ms,
-        _terminal_workspace=_terminal_workspace,
-    )
     return replace(route, invocation_binding=verified)
 
 
@@ -13016,45 +8596,6 @@ def decide_agent_implementation_fallback(
     Generic/untyped errors, overflowed evidence, and mixed auth diagnostics
     never authorize fallback.
     """
-    return _decide_agent_implementation_fallback_core(
-        route,
-        repo_root=repo_root,
-        failure_receipt=failure_receipt,
-        expected_nonce=expected_nonce,
-        expected_model=expected_model,
-        expected_probe_returncode=expected_probe_returncode,
-        independent_quota_evidence=independent_quota_evidence,
-        expected_invocation_binding=expected_invocation_binding,
-        now_ms=now_ms,
-        max_age_ms=max_age_ms,
-        historical_effect_started_at_ms=historical_effect_started_at_ms,
-    )
-
-
-def _decide_agent_implementation_fallback_core(
-    route: AgentImplementationRoutePlan,
-    *,
-    repo_root: Path | str,
-    failure_receipt: Mapping[str, object],
-    expected_nonce: str,
-    expected_model: str,
-    expected_probe_returncode: int,
-    independent_quota_evidence: object | None = None,
-    expected_invocation_binding: Mapping[str, object] | None = None,
-    now_ms: int | None = None,
-    max_age_ms: int | None = None,
-    historical_effect_started_at_ms: int | None = None,
-    _terminal_workspace: str | None = None,
-) -> AgentImplementationFallbackDecision:
-    """Decide the exceptional typed fallback for side-effecting agent work.
-
-    The function has no ambient defaults and revalidates the explicit route
-    binding against ``repo_root`` at each decision boundary. A caller must
-    supply a canonical frozen plan and the actual nonce-bound receipt;
-    caller-provided booleans/classes/hashes never create authority.
-    Generic/untyped errors, overflowed evidence, and mixed auth diagnostics
-    never authorize fallback.
-    """
 
     if historical_effect_started_at_ms is None:
         canonical_route = resolve_agent_implementation_route_binding(
@@ -13086,7 +8627,7 @@ def _decide_agent_implementation_fallback_core(
             fallback_implementer_identity=route.fallback_implementer_identity,
         )
         if route.invocation_binding is not None:
-            canonical_route = _bind_agent_implementation_route_invocation_core(
+            canonical_route = bind_agent_implementation_route_invocation(
                 canonical_route,
                 route.invocation_binding,
                 repo_root=repo_root,
@@ -13097,7 +8638,6 @@ def _decide_agent_implementation_fallback_core(
                 historical_effect_started_at_ms=(
                     historical_effect_started_at_ms
                 ),
-                _terminal_workspace=_terminal_workspace,
             )
     if canonical_route.route_id != route.route_id:
         raise ValueError("agent implementation route identity is invalid")
@@ -13119,13 +8659,6 @@ def _decide_agent_implementation_fallback_core(
                 invocation.control_plane.capsule_id if invocation else ""
             ),
         )
-    if expected_model != canonical_route.primary_model_id:
-        return decision(
-            authorized=False,
-            requires_independent_quota_verification=False,
-            reason_code="route_primary_model_mismatch",
-            verifier_status="not_run",
-        )
     if reviewer is not None:
         if invocation is None or expected_invocation_binding is None:
             return decision(
@@ -13135,7 +8668,7 @@ def _decide_agent_implementation_fallback_core(
                 verifier_status="not_run",
             )
         try:
-            _verify_agent_implementation_invocation_binding_core(
+            verify_agent_implementation_invocation_binding(
                 invocation,
                 route=canonical_route,
                 repo_root=repo_root,
@@ -13146,7 +8679,6 @@ def _decide_agent_implementation_fallback_core(
             historical_effect_started_at_ms=(
                 historical_effect_started_at_ms
             ),
-                _terminal_workspace=_terminal_workspace,
             )
         except (OSError, ValueError):
             return decision(

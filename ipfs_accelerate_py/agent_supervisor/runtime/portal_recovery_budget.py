@@ -11,6 +11,7 @@ def portal_recovery_budget_consumed(
     *,
     settlement_id: str,
     accepted_source: Mapping[str, object] | None = None,
+    source_rearm_limit: int = 1,
 ) -> bool:
     keys = ("source_head", "source_tree")
     def valid_source(source):
@@ -27,6 +28,13 @@ def portal_recovery_budget_consumed(
     # Keep the original lifetime budget when no sealed source was verified.
     if accepted_source is None:
         return True
+    try:
+        limit = int(source_rearm_limit)
+    except (TypeError, ValueError):
+        return True
+    if isinstance(source_rearm_limit, bool) or limit < 1:
+        return True
+    same_source_rearms = 0
     for event in history:
         if not isinstance(event, Mapping) or not event.get("settlement_id"):
             return True
@@ -38,5 +46,7 @@ def portal_recovery_budget_consumed(
             if not valid_source(prior):
                 return True
             if all(prior[key] == accepted_source[key] for key in keys):
-                return True
+                same_source_rearms += 1
+                if same_source_rearms >= limit:
+                    return True
     return False

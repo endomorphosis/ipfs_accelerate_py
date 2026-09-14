@@ -1,7 +1,6 @@
 """Actual peer sockets and kernel writer locks authenticate bounded observations."""
 from __future__ import annotations
 
-import contextlib
 import fcntl
 import errno
 import json
@@ -108,25 +107,28 @@ def _owner(directory, control):
                 elif command == "long_query_once":
                     original_bounded_snapshot = listener._bounded_snapshot
                     long_query_pending = True
-                    def long_query_once(read_connection):
+                    def long_query_once():
                         nonlocal long_query_pending
                         if long_query_pending:
                             long_query_pending = False
                             connection.execute("SELECT SUM(a.i * b.i) FROM range(10000000) a(i), range(10000000) b(i)")
-                        return original_bounded_snapshot(read_connection)
+                        return original_bounded_snapshot()
                     listener._bounded_snapshot = long_query_once
                 elif command == "forbid_parameter_conversion":
-                    original_snapshot = listener._bounded_snapshot
-                    def without_conversion(connection):
-                        class ReadConnection:
-                            def execute(self, query, *args, **kwargs):
-                                if args or kwargs:
-                                    raise AssertionError("optional parameter conversion entered")
-                                return connection.execute(query)
-                        return original_snapshot(ReadConnection())
-                    listener._bounded_snapshot = without_conversion
+                    execute = DuckDBConnection.execute
+                    def without_conversion(self, query, *args, **kwargs):
+                        if args or kwargs:
+                            raise AssertionError("optional parameter conversion entered")
+                        return execute(self, query)
+                    DuckDBConnection.execute = without_conversion
                 elif command == "normal_mutation":
                     connection.execute("UPDATE tasks SET revision=revision+1 WHERE task_cid='task:b'")
+                elif command == "cooldown":
+                    # Exercise the existing not-due branch without depending on
+                    # the test reader being scheduled again within one second.
+                    listener.next_sample = time.monotonic() + 60
+                    control.send({"ready": True})
+                    continue
                 elif command == "state":
                     control.send({"tasks": connection.execute("SELECT * FROM tasks ORDER BY task_cid").fetchall(),
                                   "events": connection.execute("SELECT * FROM domain_events").fetchall()})
@@ -146,58 +148,27 @@ def _owner(directory, control):
             os.close(fd)
 
 
-@contextlib.contextmanager
-def _native_owner(tmp_path, *, owner_target=_owner):
-    # Earlier tests may initialize DuckDB native threads. A fresh interpreter
-    # must own this disposable database, without inheriting their locks.
-    context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe()
-    process = context.Process(target=owner_target, args=(str(tmp_path), child))
-    try:
-        process.start()
-        child.close()
-        assert parent.poll(20), "isolated owner startup exceeded test budget"
-        ready = parent.recv()
-        assert ready.get("ready") is True, ready
-        yield tmp_path, parent, process, ready["scope"]
-    finally:
-        try:
-            if process.pid is not None:
-                if process.is_alive():
-                    try:
-                        parent.send("stop")
-                    except (BrokenPipeError, EOFError, OSError):
-                        pass
-                process.join(5)
-                if process.is_alive():
-                    process.terminate()
-                    process.join(5)
-                if process.is_alive():
-                    process.kill()
-                    process.join(5)
-                assert not process.is_alive()
-        finally:
-            child.close()
-            parent.close()
-
-
 @pytest.fixture
 def native_owner(tmp_path):
-    with _native_owner(tmp_path) as native:
-        yield native
-
-
-def _failed_owner_startup(directory, pipe):
-    pipe.send({"ready": False, "error_type": "DisposableStartupFailure"})
-    assert pipe.recv() == "stop"
-
-
-def test_failed_owner_startup_reaps_its_child(tmp_path):
-    previous = {p.pid for p in multiprocessing.active_children()}
-    with pytest.raises(AssertionError, match="DisposableStartupFailure"):
-        with _native_owner(tmp_path, owner_target=_failed_owner_startup):
-            pytest.fail("failed owner cannot yield a reader")
-    assert {p.pid for p in multiprocessing.active_children()} == previous
+    context = multiprocessing.get_context("fork")
+    parent, child = context.Pipe()
+    process = context.Process(target=_owner, args=(str(tmp_path), child))
+    process.start()
+    child.close()
+    assert parent.poll(20), "isolated owner startup exceeded test budget"
+    ready = parent.recv()
+    assert ready.get("ready") is True, ready
+    try:
+        yield tmp_path, parent, process, ready["scope"]
+    finally:
+        if process.is_alive():
+            parent.send("stop")
+        process.join(5)
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+        parent.close()
+        assert not process.is_alive()
 
 
 def _read(base, **changes):
@@ -349,11 +320,11 @@ def test_native_query_budget_cancels_long_query_and_preserves_next_mutation(monk
     started = time.monotonic()
     try:
         with pytest.raises(duckdb.InterruptException):
-            with observation._query_budget(connection) as read_connection:
+            with observation._query_budget(connection):
                 # The budget may expire between custody checks/read statements;
                 # cancellation must remain armed until the observation returns.
                 time.sleep(delay_before_query)
-                read_connection.execute("SELECT SUM(a.i * b.i) FROM range(10000000) a(i), range(10000000) b(i)")
+                connection.execute("SELECT SUM(a.i * b.i) FROM range(10000000) a(i), range(10000000) b(i)")
         assert time.monotonic() - started < 2
         assert not any(t.name == "native-owner-observation-deadline" for t in threading.enumerate())
         connection.execute("INSERT INTO progress VALUES (1)")
@@ -414,6 +385,65 @@ def test_transient_observer_failure_preserves_owner_and_recovers(native_owner, c
     assert process.is_alive()
 
 
+def test_native_loop_retries_listener_without_losing_existing_owner_work(tmp_path, monkeypatch):
+    from test.api.semantic_world.test_semantic_addressed_world_model_board import _load, _m58_rearm_probe_receipt
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server
+
+    operator = _load("scripts/ops/agent_supervisor/semantic_addressed_world_model.py", "sawm_peer_observer_loop_test")
+    state_dir = tmp_path / "quack-owner"
+    state_dir.mkdir()
+    clock = {"now": 0.0}
+    events = {"mutation_passes": 0, "starts": 0, "polls": 0, "stops": 0, "rearms": 0}
+    token = "native-owner-local-test-token"
+    handle = "env://LOCAL_TEST_TOKEN"
+    server = SimpleNamespace(lifecycle=SimpleNamespace(value="ready"),
+        identity=SimpleNamespace(secret_handle=handle), secret_handle=handle,
+        config=SimpleNamespace(state_dir=state_dir),
+        _vault=SimpleNamespace(_path=state_dir / "token", resolve=lambda _handle: token),
+        _sawm_observation_context={"frozen_launch_scope": True},
+        stop_control_path=lambda: state_dir / "stop")
+
+    def stop():
+        events["stops"] += 1
+        return {"stopped": True}
+    server.stop = stop
+
+    class Listener:
+        def __init__(self, owner, **context):
+            assert owner is server and context == {"frozen_launch_scope": True}
+            events["starts"] += 1
+            if events["starts"] == 1:
+                raise OSError(errno.EMFILE, "temporary exhaustion")
+        def poll(self):
+            events["polls"] += 1
+            if events["starts"] == 2:
+                raise RuntimeError("listener unexpectedly failed")
+        def close(self):
+            if events["starts"] == 2:
+                raise OSError("close also failed")
+
+    def mutations(owner, *, max_requests):
+        assert owner is server and max_requests == 32
+        events["mutation_passes"] += 1
+        if events["mutation_passes"] == 130:
+            server.lifecycle.value = "stopped"
+
+    def rearm(**kwargs):
+        assert kwargs["expected_token"] == token
+        events["rearms"] += 1
+        return _m58_rearm_probe_receipt(secret_handle=handle, token=token,
+            reason="handoff_already_present", rearmed=False, pid_quarantined=False)
+
+    monkeypatch.setattr(observation, "OwnerStatusObservation", Listener)
+    monkeypatch.setattr(operator, "_process_mutation_inbox", mutations)
+    monkeypatch.setattr(operator.signal, "signal", lambda *_: None)
+    monkeypatch.setattr(operator.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(operator.time, "sleep", lambda _: clock.__setitem__("now", clock["now"] + 0.1))
+    monkeypatch.setattr(quack_state_server, "rearm_token_handoff_if_coordinator_absent", rearm)
+    assert operator._serve_sawm_owner(server) == {"stopped": True}
+    assert events["starts"] == 3
+    assert events["mutation_passes"] == 130 and events["stops"] == 1
+    assert events["polls"] > 1 and events["rearms"] > 10
 
 
 @pytest.mark.parametrize("mismatch", ["scope", "birth", "extra"])
@@ -452,35 +482,136 @@ def test_cold_owner_observation_does_not_require_optional_parameter_conversion(n
     assert process.is_alive()
 
 
-def test_observation_retires_interrupt_before_queued_typed_mutation(monkeypatch):
-    import duckdb
-    connection = DuckDBConnection.wrap(duckdb.connect(":memory:", config={"threads": 1}))
-    connection.execute("CREATE TABLE progress (value BIGINT)")
-    monkeypatch.setattr(observation, "QUERY_BUDGET_SECONDS", 0.05)
-    attempting, completed = threading.Event(), threading.Event()
-    errors = []
-    def mutate():
-        attempting.set()
-        try:
-            connection.execute("INSERT INTO progress VALUES (1)")
-        except Exception as exc:
-            errors.append(type(exc).__name__)
-        finally:
-            completed.set()
-    worker = threading.Thread(target=mutate)
-    try:
-        with pytest.raises(duckdb.InterruptException):
-            with observation._query_budget(connection) as read_connection:
-                worker.start()
-                assert attempting.wait(1)
-                assert not completed.wait(0.01)
-                read_connection.execute("SELECT SUM(a.i * b.i) FROM range(10000000) a(i), range(10000000) b(i)")
-        worker.join(2)
-        assert completed.is_set() and not errors
-        assert [row[0] for row in connection.execute("SELECT * FROM progress").fetchall()] == [1]
-        assert not connection._poisoned
-        assert not any(t.name == "native-owner-observation-deadline" for t in threading.enumerate())
-    finally:
-        if worker.ident is not None:
-            worker.join(2)
-        connection.close()
+@pytest.mark.parametrize("failure", ["scope", "custody", "receive"])
+def test_failed_observation_retains_only_fixed_stage_and_kind(native_owner, monkeypatch, failure):
+    base, control, process, _scope = native_owner
+    options = {}
+    if failure == "scope":
+        options["configuration"] = {"foreign": SECRET}
+        expected = {"stage": "scope_validation", "kind": "validation"}
+    elif failure == "custody":
+        control.send("release")
+        assert control.recv() == {"ready": True}
+        expected = {"stage": "custody_before", "kind": "validation"}
+    else:
+        def lost_reply(_connection):
+            raise TimeoutError(SECRET + "\n" + "x" * 100000)
+        monkeypatch.setattr(observation, "_receive", lost_reply)
+        expected = {"stage": "peer_receive", "kind": "timeout"}
+    with pytest.raises(observation.OwnerObservationUnavailable) as error:
+        _read(base, **options)
+    assert error.value.diagnostic == expected
+    assert SECRET not in str(error.value)
+    assert SECRET not in json.dumps(error.value.diagnostic)
+    assert len(json.dumps(error.value.diagnostic)) < 128
+    assert process.is_alive()
+
+
+def test_sample_cooldown_is_diagnostic_only_and_next_native_mutation_still_works(native_owner):
+    base, control, process, _scope = native_owner
+    assert _read(base)["peer_authenticated_observation"] is True
+    control.send("cooldown")
+    assert control.recv() == {"ready": True}
+    with pytest.raises(observation.OwnerObservationUnavailable) as error:
+        _read(base)
+    assert error.value.diagnostic == {"stage": "sample_not_due", "kind": "unavailable"}
+    control.send("normal_mutation")
+    assert control.recv() == {"ready": True}
+    assert _read(base)["task_authority"]["task_revisions"]["TEST-002"] == 4
+    assert process.is_alive()
+
+
+def test_owner_snapshot_failure_emits_no_exception_text_and_keeps_mutations_working(native_owner):
+    base, control, process, _scope = native_owner
+    control.send("query_error")
+    assert control.recv() == {"ready": True}
+    with pytest.raises(observation.OwnerObservationUnavailable) as error:
+        _read(base)
+    assert error.value.diagnostic == {"stage": "snapshot", "kind": "internal"}
+    assert SECRET not in str(error.value) + json.dumps(error.value.diagnostic)
+    control.send("normal_mutation")
+    assert control.recv() == {"ready": True}
+    assert _read(base)["task_authority"]["task_revisions"]["TEST-002"] == 4
+    assert process.is_alive()
+
+
+@pytest.mark.parametrize("shape", ["unknown", "extra", "oversized", "stale", "nonce", "scope", "success", "legacy"])
+def test_failure_diagnostic_never_admits_invalid_reply_or_success_metadata(native_owner, monkeypatch, shape):
+    base, _control, process, _scope = native_owner
+    receive = observation._receive
+    def changed(connection):
+        result = receive(connection)
+        assert isinstance(result["task_authority"], dict)
+        if shape != "success":
+            result["task_authority"] = None
+        diagnostic = {"stage": "snapshot", "kind": "internal"}
+        if shape == "unknown": diagnostic["kind"] = SECRET
+        if shape == "extra": diagnostic["token"] = SECRET
+        if shape == "oversized": diagnostic["stage"] = SECRET * 10000
+        if shape == "stale": result["observed_at"] -= 100
+        if shape == "nonce": result["nonce"] = "f" * 32
+        if shape == "scope": result["scope_cid"] = "0" * 64
+        if shape != "legacy": result["observation_error"] = diagnostic
+        return result
+    monkeypatch.setattr(observation, "_receive", changed)
+    with pytest.raises(observation.OwnerObservationUnavailable) as error:
+        _read(base)
+    assert error.value.diagnostic == ({"stage": "remote_snapshot_unavailable", "kind": "unavailable"}
+                                      if shape == "legacy" else
+                                      {"stage": "reply_validation", "kind": "validation"})
+    assert SECRET not in str(error.value) + json.dumps(error.value.diagnostic)
+    assert process.is_alive()
+
+
+def test_successful_wire_shape_and_facts_remain_unchanged(native_owner, monkeypatch):
+    base, _control, _process, _scope = native_owner
+    receive = observation._receive
+    packets = []
+    def retained(connection):
+        result = receive(connection)
+        packets.append(result)
+        return result
+    monkeypatch.setattr(observation, "_receive", retained)
+    result = _read(base)
+    assert result["peer_authenticated_observation"] is True
+    assert set(packets[0]) == {"schema", "scope_cid", "nonce", "observed_at", "task_authority",
+                               "completion_authority", "source_transition_authority"}
+    assert packets[0]["completion_authority"] is False
+    assert packets[0]["source_transition_authority"] is False
+
+
+def test_real_native_error_reaches_operator_as_bounded_diagnostic_without_replay(native_owner, monkeypatch, capsys):
+    from test.api.semantic_world.test_semantic_addressed_world_model_board import _load
+    base, _control, _process, _scope = native_owner
+    def lost_reply(_connection):
+        raise TimeoutError(SECRET + "\x1b[31m\n" + "x" * 100000)
+    monkeypatch.setattr(observation, "_receive", lost_reply)
+    with pytest.raises(observation.OwnerObservationUnavailable) as captured:
+        _read(base)
+    operator = _load("scripts/ops/agent_supervisor/semantic_addressed_world_model.py", "sawm_status_diagnostic_operator_test")
+    config = {**CONFIG, "quack_owner": {"database_path": str(base / "control.duckdb"),
+        "state_dir": str(base), "store_id": EXPECTED["store_id"], "repository_id": EXPECTED["repository_id"]}}
+    monkeypatch.setattr(operator, "_config", lambda _: config)
+    monkeypatch.setattr(operator, "_materializer", lambda: SimpleNamespace(build_population=lambda _: {
+        "taskboard": [{"task_cid": "task:a", "task_id": "TEST-001"}, {"task_cid": "task:b", "task_id": "TEST-002"}]}))
+    calls = []
+    def failed(**kwargs):
+        calls.append(kwargs)
+        raise captured.value
+    monkeypatch.setattr(operator, "_owner_status_observation_runtime", lambda: SimpleNamespace(
+        read_owner_status=failed, OwnerObservationUnavailable=observation.OwnerObservationUnavailable))
+    assert operator.main(["status"]) == 2
+    output = capsys.readouterr()
+    result = json.loads(output.out)
+    assert result == {"schema": "sawm/operator-error@1", "valid": False,
+                      "error": "OwnerObservationUnavailable: native owner observation unavailable",
+                      "observation_error": {"stage": "peer_receive", "kind": "timeout"}}
+    assert len(calls) == 1 and not output.err
+    assert SECRET not in output.out and "\x1b" not in output.out and len(output.out) < 512
+
+
+def test_diagnostic_fields_cannot_serialize_arbitrary_exception_attributes():
+    failure = observation.OwnerObservationUnavailable(stage=SECRET, kind=[SECRET])
+    failure.stage = {SECRET: SECRET}
+    failure.kind = SECRET * 10000
+    assert failure.diagnostic == {"stage": "unavailable", "kind": "internal"}
