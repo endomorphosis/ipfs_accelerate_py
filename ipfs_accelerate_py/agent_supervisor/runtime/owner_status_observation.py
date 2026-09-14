@@ -38,11 +38,47 @@ _OWNER_FIELDS = {"server_id", "store_id", "database_uuid", "generation", "fence_
 _SCOPE_FIELDS = {"schema", "program_id", "configuration_cid", "source_head", "source_tree",
                  "owner_identity", "owner_birth", "uid", "store_identity", "lock_identities",
                  "task_registry_cid"}
+_DIAGNOSTIC_STAGES = frozenset({
+    "unavailable", "expected_owner", "descriptor_read", "scope_validation",
+    "custody_before", "peer_connect", "peer_credentials_before", "peer_send",
+    "peer_receive", "peer_credentials_after", "custody_after", "reply_validation",
+    "reply_facts", "remote_snapshot_unavailable", "request_credentials",
+    "request_receive", "request_validation", "requester_recheck", "sample_not_due",
+    "snapshot",
+})
+_DIAGNOSTIC_KINDS = frozenset({"unavailable", "validation", "timeout", "io", "malformed", "internal"})
 
 
 class OwnerObservationUnavailable(RuntimeError):
-    def __init__(self):
+    def __init__(self, *, stage="unavailable", kind="validation"):
         super().__init__("native owner observation unavailable")
+        self.stage = stage if type(stage) is str and stage in _DIAGNOSTIC_STAGES else "unavailable"
+        self.kind = kind if type(kind) is str and kind in _DIAGNOSTIC_KINDS else "internal"
+
+    @property
+    def diagnostic(self) -> dict[str, str]:
+        # Never render exception messages, paths, notes, credentials or payloads.
+        return {"stage": self.stage if type(self.stage) is str and self.stage in _DIAGNOSTIC_STAGES else "unavailable",
+                "kind": self.kind if type(self.kind) is str and self.kind in _DIAGNOSTIC_KINDS else "internal"}
+
+
+def _unavailable(stage: str, error: Exception) -> OwnerObservationUnavailable:
+    if type(error) is OwnerObservationUnavailable:
+        diagnostic = error.diagnostic
+        return OwnerObservationUnavailable(stage=stage if diagnostic["stage"] == "unavailable" else diagnostic["stage"],
+                                           kind=diagnostic["kind"])
+    kind = ("timeout" if isinstance(error, TimeoutError) else
+            "io" if isinstance(error, OSError) else
+            "malformed" if isinstance(error, (ValueError, TypeError)) else "internal")
+    return OwnerObservationUnavailable(stage=stage, kind=kind)
+
+
+def _validated_diagnostic(value: Any) -> dict[str, str]:
+    if (type(value) is not dict or set(value) != {"stage", "kind"}
+            or type(value["stage"]) is not str or value["stage"] not in _DIAGNOSTIC_STAGES
+            or type(value["kind"]) is not str or value["kind"] not in _DIAGNOSTIC_KINDS):
+        raise OwnerObservationUnavailable()
+    return dict(value)
 
 
 def _encoded(value: Any) -> bytes:
@@ -394,10 +430,14 @@ class OwnerStatusObservation:
                 connection.settimeout(0.02)
                 nonce = None
                 status = None
+                failure = {"stage": "sample_not_due", "kind": "unavailable"}
+                stage = "request_credentials"
                 observed_at = time.time()
                 try:
                     pid, uid = _peer(connection)
+                    stage = "request_receive"
                     packet = _receive(connection)
+                    stage = "request_validation"
                     if (uid != self.scope["uid"] or set(packet) != {"schema", "scope_cid", "requester_birth", "nonce"}
                             or packet["schema"] != SCHEMA or packet["scope_cid"] != _digest(self.scope)
                             or _encoded(packet["requester_birth"]) != _encoded(_birth(pid))
@@ -410,14 +450,20 @@ class OwnerStatusObservation:
                         # Do not hide a slow canonical query behind a new
                         # response timestamp. The reader admits sample age.
                         observed_at = time.time()
+                        stage = "snapshot"
                         status = self._snapshot()
+                    stage = "requester_recheck"
                     if _birth(pid) != packet["requester_birth"]:
                         status = None
-                except Exception:
+                        failure = {"stage": stage, "kind": "validation"}
+                except Exception as error:
                     status = None
+                    failure = _unavailable(stage, error).diagnostic
                 response = {"schema": SCHEMA, "scope_cid": _digest(self.scope), "nonce": nonce,
                     "observed_at": observed_at, "task_authority": status,
                     "completion_authority": False, "source_transition_authority": False}
+                if status is None:
+                    response["observation_error"] = failure
                 raw = _encoded(response)
                 if len(raw) <= MAX_PACKET:
                     connection.sendall(raw)
@@ -429,41 +475,63 @@ def read_owner_status(*, database: Path, state_dir: Path, program_id: str,
                       configuration: Mapping[str, Any], expected_owner: Mapping[str, Any],
                       expected_task_registry: Mapping[str, str]) -> dict[str, Any]:
     """Read fresh facts; descriptors and old replies never establish authority."""
+    stage = "expected_owner"
     try:
         if (not {"store_id", "repository_id", "generation"} <= set(expected_owner)
                 or not set(expected_owner) <= _OWNER_FIELDS):
             raise OwnerObservationUnavailable()
+        stage = "descriptor_read"
         scope = _validated_scope(_decode(_read_bounded(state_dir / DESCRIPTOR, 8192)))
+        stage = "scope_validation"
         if (scope["program_id"] != program_id or scope["configuration_cid"] != _digest(configuration)
                 or scope["task_registry_cid"] != _digest(expected_task_registry)
                 or _encoded({k: scope["owner_identity"].get(k) for k in expected_owner}) != _encoded(expected_owner)):
             raise OwnerObservationUnavailable()
+        stage = "custody_before"
         _custody(scope, database)
         nonce = uuid.uuid4().hex
         started = time.monotonic()
+        stage = "peer_connect"
         with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:
             connection.settimeout(REQUEST_TIMEOUT_SECONDS)
             connection.connect(_address(scope))
+            stage = "peer_credentials_before"
             if _peer(connection) != (scope["owner_birth"]["pid"], scope["uid"]):
                 raise OwnerObservationUnavailable()
+            stage = "peer_send"
             connection.sendall(_encoded({"schema": SCHEMA, "scope_cid": _digest(scope),
                 "requester_birth": _birth(os.getpid()), "nonce": nonce}))
+            stage = "peer_receive"
             reply = _receive(connection)
+            stage = "peer_credentials_after"
             if _peer(connection) != (scope["owner_birth"]["pid"], scope["uid"]):
                 raise OwnerObservationUnavailable()
+        stage = "custody_after"
         _custody(scope, database)
-        if (set(reply) != {"schema", "scope_cid", "nonce", "observed_at", "task_authority",
-                          "completion_authority", "source_transition_authority"}
+        stage = "reply_validation"
+        fields = {"schema", "scope_cid", "nonce", "observed_at", "task_authority",
+                  "completion_authority", "source_transition_authority"}
+        # Failure-only metadata never broadens the admitted success envelope.
+        if reply.get("task_authority") is None and "observation_error" in reply:
+            fields.add("observation_error")
+        if (set(reply) != fields
                 or reply["schema"] != SCHEMA or reply["scope_cid"] != _digest(scope) or reply["nonce"] != nonce
                 or reply["completion_authority"] is not False or reply["source_transition_authority"] is not False
                 or type(reply["observed_at"]) not in (int, float)
                 or not 0 <= time.time() - reply["observed_at"] <= MAX_AGE_SECONDS
-                or time.monotonic() - started > REQUEST_TIMEOUT_SECONDS + 1
-                or not isinstance(reply["task_authority"], dict)):
+                or time.monotonic() - started > REQUEST_TIMEOUT_SECONDS + 1):
             raise OwnerObservationUnavailable()
+        if reply["task_authority"] is None:
+            diagnostic = (_validated_diagnostic(reply["observation_error"])
+                          if "observation_error" in reply else
+                          {"stage": "remote_snapshot_unavailable", "kind": "unavailable"})
+            raise OwnerObservationUnavailable(**diagnostic)
+        if not isinstance(reply["task_authority"], dict):
+            raise OwnerObservationUnavailable()
+        stage = "reply_facts"
         _validate_facts(reply["task_authority"])
         return {**reply, "owner_ready": True, "peer_authenticated_observation": True,
                 "owner_identity": scope["owner_identity"], "source_head": scope["source_head"], "source_tree": scope["source_tree"],
                 "source_context_only": True, "source_verified": False}
-    except Exception:
-        raise OwnerObservationUnavailable() from None
+    except Exception as error:
+        raise _unavailable(stage, error) from None
