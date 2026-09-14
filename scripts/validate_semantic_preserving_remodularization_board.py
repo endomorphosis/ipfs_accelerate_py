@@ -89,54 +89,17 @@ def validate() -> dict[str, Any]:
             errors.append(name)
 
     render_report = spec.render(ROOT, check=True)
-    mismatches = list(render_report.get("mismatches") or [])
-    repair = (
-        config.get("authoritative_board_projection_repair")
-        if isinstance(config.get("authoritative_board_projection_repair"), dict)
-        else {}
-    )
-    allow_suffix = (
-        repair.get("allowed_drift") == "supervisor_generated_guardrail_suffix_only"
-    )
-    todo_rel = "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md"
-    if allow_suffix and todo_rel in mismatches:
-        sealed_todo = spec.render_payloads().get(todo_rel)
-        current_todo = TASK_PATH.read_bytes()
-        if (
-            isinstance(sealed_todo, (bytes, bytearray))
-            and current_todo.startswith(bytes(sealed_todo))
-            and current_todo != bytes(sealed_todo)
-        ):
-            # Markdown is not authority. A suffix after the sealed 51-task
-            # projection must not trap launch/preflight of a drained owner.
-            mismatches = [item for item in mismatches if item != todo_rel]
-    check("deterministic_controls", not mismatches, mismatches)
+    check("deterministic_controls", render_report["valid"], render_report["mismatches"])
 
     tasks = _blocks(TASK_PATH.read_text(encoding="utf-8"), re.compile(r"^## (SPAR-\d{3}) (.+)$", re.MULTILINE))
     goals = _blocks(GOAL_PATH.read_text(encoding="utf-8"), re.compile(r"^## (SPAR-G\d{3}) (.+)$", re.MULTILINE))
     expected_tasks = {task.task_id: task for task in spec.TASKS}
     expected_goals = {goal.goal_id: goal for goal in spec.GOALS}
-    observed_ids = tuple(row[0] for row in tasks)
-    expected_ids = tuple(expected_tasks)
-    suffix_ids = observed_ids[len(expected_ids) :]
-    suffix_ok = (
-        allow_suffix
-        and observed_ids[: len(expected_ids)] == expected_ids
-        and all(task_id not in expected_tasks for task_id in suffix_ids)
-    )
-    check(
-        "task_ids",
-        observed_ids == expected_ids or suffix_ok,
-        {
-            "observed": observed_ids,
-            "generated_suffix": list(suffix_ids) if suffix_ok else [],
-        },
-    )
+    check("task_ids", tuple(row[0] for row in tasks) == tuple(expected_tasks), tuple(row[0] for row in tasks))
     check("goal_ids", tuple(row[0] for row in goals) == tuple(expected_goals), tuple(row[0] for row in goals))
 
     task_errors: list[str] = []
-    canonical_tasks = tasks[: len(expected_ids)] if suffix_ok else tasks
-    for task_id, title, fields in canonical_tasks:
+    for task_id, title, fields in tasks:
         expected = expected_tasks.get(task_id)
         if expected is None:
             task_errors.append(f"{task_id}:unknown")
