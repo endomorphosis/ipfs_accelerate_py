@@ -143,6 +143,7 @@ from ..rescue.supervisor_watchdog import (
     AutonomousUnstallPolicy,
 )
 from .core import ManagedDaemonSpec, terminate_pid_tree
+from .supervisor_activity import SupervisorMaintenanceWindow
 from .database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS,
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
@@ -9937,13 +9938,29 @@ class PortalImplementationSupervisor:
         error: str = "",
         daemon_pid: int | None = None,
         daemon_process_birth: ProcessBirthIdentity | None = None,
+        maintenance_window: SupervisorMaintenanceWindow | None = None,
     ) -> None:
         """Refresh supervisor status while recovery/refill work is running."""
 
         status_path = self._supervisor_status_path()
         payload = load_json_dict(status_path) or {}
         now = utc_now()
-        timeout_seconds = self._supervisor_maintenance_timeout_seconds()
+        window = (
+            SupervisorMaintenanceWindow.begin(
+                started_at=started_at,
+                timeout_seconds=self._supervisor_maintenance_timeout_seconds(),
+            )
+            if maintenance_window is None
+            else maintenance_window
+        )
+        if (
+            not isinstance(window, SupervisorMaintenanceWindow)
+            or window != SupervisorMaintenanceWindow.begin(
+                started_at=started_at, timeout_seconds=window.timeout_seconds
+            )
+        ):
+            raise ValueError("maintenance window differs from its original start")
+        timeout_seconds = window.timeout_seconds
         active = status == "running"
         daemon_birth_payload: dict[str, Any] | None = None
         if daemon_process_birth is not None:
@@ -9957,6 +9974,9 @@ class PortalImplementationSupervisor:
                 raise RuntimeError(
                     "maintenance daemon PID differs from its managed process birth"
                 )
+        supervisor_birth = read_process_birth(os.getpid())
+        if supervisor_birth is None:
+            raise RuntimeError("maintenance supervisor process birth unavailable")
         daemon_alive = bool(
             daemon_process_birth is not None
             and owner_liveness(daemon_process_birth) is OwnerLiveness.ALIVE
@@ -9968,6 +9988,7 @@ class PortalImplementationSupervisor:
                 "updated_at": now,
                 "supervisor_pid": os.getpid(),
                 "supervisor_pid_alive": True,
+                "supervisor_process_birth": supervisor_birth.to_dict(),
                 "daemon_pid": int(daemon_pid) if daemon_pid else None,
                 "daemon_pid_alive": daemon_alive,
                 "daemon_process_birth": daemon_birth_payload,
@@ -9982,6 +10003,7 @@ class PortalImplementationSupervisor:
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
                 "last_agentic_maintenance_status": status,
+                "supervisor_maintenance": window.event(phase=status, observed_at=now),
                 "last_agentic_maintenance_phase": phase,
                 "last_agentic_maintenance_reason": f"recovery_phase:{phase}",
                 "active_agentic_maintenance_started_at": started_at if active else "",
@@ -10048,6 +10070,10 @@ class PortalImplementationSupervisor:
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
 
         started_at = utc_now()
+        maintenance_window = SupervisorMaintenanceWindow.begin(
+            started_at=started_at,
+            timeout_seconds=self._supervisor_maintenance_timeout_seconds(),
+        )
         current = {"phase": phase}
         stop_event = threading.Event()
         interval = max(5.0, min(30.0, float(self.config.check_interval) / 2.0))
@@ -10061,6 +10087,7 @@ class PortalImplementationSupervisor:
                     error=error,
                     daemon_pid=daemon_pid,
                     daemon_process_birth=daemon_process_birth,
+                    maintenance_window=maintenance_window,
                 )
             except Exception:
                 logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
