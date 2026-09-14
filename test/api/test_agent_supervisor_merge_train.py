@@ -3859,8 +3859,10 @@ def test_false_completion_reopen_merges_and_seals_qualification_receipt(
         log_path: Path,
         *,
         force_uncached: bool = False,
+        baseline_ref: str = "",
     ) -> dict[str, object]:
         nonlocal validation_count
+        assert baseline_ref
         validation_count += 1
         assert validation_task.task_id == "REF-040"
         assert force_uncached is True

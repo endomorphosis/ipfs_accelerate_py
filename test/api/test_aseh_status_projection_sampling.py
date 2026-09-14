@@ -66,7 +66,9 @@ def project(fixture, *, projection=None, status=None):
 def test_full_projection_matches_existing_snapshot_and_task_records(portfolio):
     snapshot, tasks = project(portfolio)
     assert snapshot == portfolio[1]
-    assert tasks == portfolio[2]
+    # Intent plan projections deliberately exclude wall-clock metadata; status
+    # consumes the canonical task fields and never emits updated_at.
+    assert tasks == tuple(replace(task, updated_at="") for task in portfolio[2])
     assert len(tasks) == 40 and len(portfolio[3]["goals"]) == 9
     assert snapshot["terminal"] is True
     assert all(task.status == "completed" for task in tasks)
