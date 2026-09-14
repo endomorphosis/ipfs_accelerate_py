@@ -91,6 +91,17 @@ def _producer_fail_extra(raw: Any) -> dict[str, Any]:
     return extra
 
 
+def _sealed_current_rollout_mode() -> str:
+    """Read the sealed in-code SPAR current mode. Not acceptance authority."""
+    try:
+        from ..semantic_refactoring.rollout import sealed_rollout_baseline
+    except Exception:  # noqa: BLE001 - missing rollout contract is not acceptance
+        return ""
+    baseline = sealed_rollout_baseline()
+    mode = baseline.get("current_mode") if isinstance(baseline, Mapping) else ""
+    return mode if type(mode) is str else ""
+
+
 def _source_clause_probes(source: Mapping[str, Any]) -> dict[str, Any]:
     """Classify nominated reports as non-admission; never copy their booleans."""
     reports = source.get("reports") if isinstance(source.get("reports"), list) else []
@@ -101,10 +112,15 @@ def _source_clause_probes(source: Mapping[str, Any]) -> dict[str, Any]:
     }
     forest = source.get("source_forest") if isinstance(source.get("source_forest"), Mapping) else {}
     current_root = forest.get("source_forest_root")
+    current_mode = _sealed_current_rollout_mode()
     probes: dict[str, Any] = {}
     for name, paths in CLAUSE_REPORTS.items():
         blockers: list[str] = []
         digests: list[str] = []
+        if name != "safety_floors_noncompensable_accepted" and current_mode != "required":
+            blockers.append(
+                f"current_rollout_mode_is_not_required:{current_mode or 'unobserved'}"
+            )
         for path in paths:
             row = by_path.get(path)
             if not isinstance(row, Mapping) or row.get("available") is not True:
@@ -135,6 +151,7 @@ def _source_clause_probes(source: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "blockers": blockers,
             "report_digests": digests,
+            "current_rollout_mode": current_mode,
             "semantic_acceptance_authority": False,
         }
     return probes

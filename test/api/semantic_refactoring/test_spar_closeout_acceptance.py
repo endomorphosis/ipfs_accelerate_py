@@ -600,10 +600,13 @@ def test_admit_accepted_root_probes_nominated_reports_without_accepting(monkeypa
     assert all(row["accepted"] is False for row in probes.values())
     assert all(row["semantic_acceptance_authority"] is False for row in probes.values())
     capstone = probes["self_hosted_capstone_accepted"]
-    assert "nominated_report_cannot_authorize_clause:" in capstone["reason"]
+    assert capstone["reason"].startswith("current_rollout_mode_is_not_required:")
+    assert "nominated_report_cannot_authorize_clause:" in ",".join(capstone["blockers"])
     assert "nominated_report_source_forest_mismatch:" in ",".join(capstone["blockers"])
+    assert probes["required_mode_roots_accepted"]["current_rollout_mode"] == "bootstrap"
     floors = probes["safety_floors_noncompensable_accepted"]
     assert floors["report_digests"] == ["sha256:benchmark"]
+    assert not any(item.startswith("current_rollout_mode_is_not_required:") for item in floors["blockers"])
     assert result["completion_authority"] is False
 
 
