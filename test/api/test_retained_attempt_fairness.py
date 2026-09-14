@@ -286,6 +286,43 @@ def test_normal_exact_claim_guard_remains_required(tmp_path, monkeypatch):
         daemon.close()
 
 
+def test_operator_stop_rearms_blocked_peer_without_settlement_phase(tmp_path):
+    from types import SimpleNamespace
+    daemon, old, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, old, artifact)
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(old.task_cid,)), "context"
+    )
+    assert peer.task_alias == "SAWM-023"
+    state = tmp_path / "portal-task-state.json"
+    state.write_text(json.dumps({"last_implementation_returncode": -15}))
+    daemon._provider_fn = SimpleNamespace(
+        __self__=SimpleNamespace(_paths=lambda _attempt: SimpleNamespace(state=state))
+    )
+    task = daemon.task_source.get(peer.task_cid)
+    daemon._cas_task_status_database(
+        peer.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        receipt={
+            "operation": "database_claim",
+            "attempt_id": peer.attempt_id,
+            "claim_id": peer.claim_id,
+        },
+    )
+    assert daemon.task_source.get(peer.task_cid).status == "blocked"
+    try:
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms()
+        assert rearms
+        assert rearms[0]["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert rearms[0]["task_alias"] == "SAWM-023"
+        assert daemon.task_source.get(peer.task_cid).status == "retrying"
+        assert snapshot(daemon, old, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 def test_operator_stop_projection_reads_sigterm_returncode(tmp_path):
     from types import SimpleNamespace
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (

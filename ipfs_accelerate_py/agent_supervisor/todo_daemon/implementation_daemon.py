@@ -70440,6 +70440,20 @@ class DatabaseImplementationDaemon:
             return False
         return state.get("last_implementation_returncode") in _OPERATOR_STOP_RETURNCODES
 
+    def _operator_stop_attempt_for_task(self, task: Any) -> Any:
+        """Find the in-lane attempt whose Portal projection recorded SIGTERM."""
+
+        rows = self._require_connection().execute(
+            "SELECT attempt_id FROM database_task_attempts WHERE task_cid = ? "
+            "ORDER BY started_at_ms DESC, attempt_id DESC",
+            [str(getattr(task, "task_cid", "") or "")],
+        ).fetchall()
+        for row in rows:
+            attempt = self.get_attempt(str(row[0]))
+            if attempt is not None and self._attempt_operator_stop_projection(attempt):
+                return attempt
+        return None
+
     def _portal_recovery_source_rearm_limit(self) -> int:
         """Return how many distinct settlements one sealed source may rearm.
 
@@ -70589,9 +70603,31 @@ class DatabaseImplementationDaemon:
                 continue
             body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
             control_receipt = body.get("completion_receipt")
+            if not isinstance(control_receipt, Mapping):
+                control_receipt = {}
+            stop_attempt = self._operator_stop_attempt_for_task(task)
+            if stop_attempt is not None:
+                settlement_id = str(
+                    control_receipt.get("settlement_id") or stop_attempt.attempt_id
+                )
+                matched = (
+                    stop_attempt,
+                    {
+                        **dict(control_receipt),
+                        "task_cid": task_cid,
+                        "attempt_id": stop_attempt.attempt_id,
+                        "settlement_id": settlement_id,
+                    },
+                    _RECOVERABLE_OPERATOR_SESSION_STOP_REASON,
+                )
+            else:
+                matched = None
             if (
-                not isinstance(control_receipt, Mapping)
-                or control_receipt.get("task_cid") != task_cid
+                matched is None
+                and (
+                    not control_receipt
+                    or str(control_receipt.get("task_cid") or "") != task_cid
+                )
             ):
                 continue
             rows = self._require_connection().execute(
@@ -70600,7 +70636,6 @@ class DatabaseImplementationDaemon:
                 "ORDER BY started_at_ms DESC, attempt_id DESC",
                 [task_cid],
             ).fetchall()
-            matched: tuple[DatabaseTaskAttempt | None, dict[str, Any], str] | None = None
             for row in rows:
                 attempt = self.get_attempt(str(row[0]))
                 if attempt is None:
@@ -70745,7 +70780,8 @@ class DatabaseImplementationDaemon:
                     observation=observation,
                 )
             except Exception:
-                continue
+                if reason != _RECOVERABLE_OPERATOR_SESSION_STOP_REASON:
+                    continue
             record = {
                 "task_cid": task_cid,
                 "task_alias": str(getattr(updated, "task_alias", "") or ""),
