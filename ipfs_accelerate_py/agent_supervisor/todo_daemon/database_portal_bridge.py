@@ -6004,7 +6004,9 @@ class DatabasePortalExecutionBridge:
         ):
             return self._owned_post_merge_recovery_projection(request)
         projection = self._owned_post_merge_recovery_projection(
-            request, allow_callback_append_lineage=True
+            request,
+            allow_callback_append_lineage=True,
+            allow_shared_lane_source=True,
         )
         if (
             projection is None
@@ -31072,7 +31074,10 @@ class DatabasePortalExecutionBridge:
 
         if completion_page:
             acquired, replay_result = train.run_under_consumer_lease(
-                lambda: replay_completed_page(completion_page)
+                lambda: replay_completed_page(
+                    completion_page,
+                    allow_shared_lane_source=True,
+                )
             )
             if not acquired:
                 return None

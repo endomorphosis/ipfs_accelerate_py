@@ -18634,6 +18634,18 @@ def test_current_recovery_task_status_records_read_rejection() -> None:
     assert trace["gate"] == "canonical_task_read_rejected"
 
 
+def test_completed_post_merge_replay_shares_lane_scope():
+    import inspect
+
+    source = inspect.getsource(
+        DatabasePortalExecutionBridge.recover_post_merge_declared_outputs
+    )
+    # A completed already-merged row can outlive the owning lane daemon.
+    # Recycled siblings must be able to replay it after a source upgrade.
+    assert source.count("allow_shared_lane_source=True") >= 2
+    assert "replay_completed_page(" in source
+
+
 def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
     tmp_path: Path,
 ) -> None:
