@@ -38,6 +38,44 @@ def _deferred(reason: str, **extra: Any) -> dict[str, Any]:
     return result
 
 
+def _task_receipt_cid(receipt: Any) -> str:
+    """Bind the live completion receipt identity; never invent a CID."""
+    if not isinstance(receipt, Mapping):
+        return ""
+    for key in ("receipt_cid", "completion_receipt_cid"):
+        value = receipt.get(key)
+        if type(value) is str and value.strip():
+            return value
+    return ""
+
+
+def _producer_fail_extra(raw: Any) -> dict[str, Any]:
+    """Retain producer diagnostics; never copy an admitted boolean."""
+    extra: dict[str, Any] = {}
+    if not isinstance(raw, Mapping):
+        return extra
+    error = raw.get("error")
+    if type(error) is str and error:
+        extra["producer_error"] = error[:512]
+    producer_reason = raw.get("reason")
+    if type(producer_reason) is str and producer_reason:
+        extra["producer_reason"] = producer_reason[:256]
+    outcomes = raw.get("clause_outcomes")
+    if isinstance(outcomes, Mapping):
+        closed: dict[str, Any] = {}
+        for name in REQUIRED_CLAUSES:
+            row = outcomes.get(name)
+            if not isinstance(row, Mapping):
+                continue
+            closed[name] = {
+                "accepted": row.get("accepted") is True,
+                "reason": str(row.get("reason") or "")[:256],
+            }
+        if closed:
+            extra["clause_outcomes"] = closed
+    return extra
+
+
 def closed_subject(
     profile: Mapping[str, Any],
     profile_cid: str,
@@ -63,12 +101,7 @@ def closed_subject(
         "goal_cids": [row["goal_cid"] for row in profile["goals"]],
         "goal_contract_cids": [row["contract_cid"] for row in goal_requirements],
         "task_cids": [row["task_cid"] for row in profile["tasks"]],
-        "task_receipt_cids": [
-            (row.get("receipt") or {}).get("receipt_cid")
-            if isinstance(row.get("receipt"), Mapping)
-            else None
-            for row in task_evidence
-        ],
+        "task_receipt_cids": [_task_receipt_cid(row.get("receipt")) for row in task_evidence],
         "semantic_acceptance_authority": False,
         "completion_authority": False,
     }
@@ -115,6 +148,14 @@ def admit_accepted_root(
             task_evidence_count=len(task_evidence),
             goal_requirement_count=len(goal_requirements),
         )
+    missing_receipt_cids = sum(
+        1 for row in task_evidence if not _task_receipt_cid(row.get("receipt"))
+    )
+    if missing_receipt_cids:
+        return _deferred(
+            "task_receipt_identity_incomplete",
+            missing_receipt_cid_count=missing_receipt_cids,
+        )
     subject = closed_subject(
         profile,
         profile_cid,
@@ -154,7 +195,7 @@ def admit_accepted_root(
             reason = MODE_FLOORS
         else:
             reason = MISSING
-        return _deferred(reason)
+        return _deferred(reason, **_producer_fail_extra(raw))
     return {
         "schema": SCHEMA,
         "admitted": True,
