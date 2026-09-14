@@ -22,7 +22,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.unknown_callback_quarantine
     continuation_receipt,
     dual_identity_observation,
     is_dual_pending_merge_identity_block,
+    is_successor_admitted_unknown_retrying,
     successor_attempt_number,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+    TypedDatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     TaskSourceIntegrityError,
@@ -286,6 +290,124 @@ def test_dual_identity_block_is_explicit_and_does_not_reopen(
         assert independent.task_cid == "task:cid:002"
     finally:
         daemon.close()
+
+
+def test_successor_admitted_unknown_retrying_predicate() -> None:
+    task = SimpleNamespace(
+        task_cid="task:cid:044",
+        status="retrying",
+        body={
+            "completion_receipt": {
+                "operation": OPERATION,
+                "successor_attempt_admitted": True,
+                "unknown_preserved": True,
+                "completion_authoritative": False,
+                "history_rewritten": False,
+            }
+        },
+    )
+    assert is_successor_admitted_unknown_retrying(task)
+    task.status = "quarantined"
+    assert not is_successor_admitted_unknown_retrying(task)
+
+
+def test_continuation_stale_same_attempt_cooldown_bumps_identity() -> None:
+    receipt = {
+        "operation": OPERATION,
+        "successor_attempt_admitted": True,
+        "unknown_preserved": True,
+        "completion_authoritative": False,
+        "history_rewritten": False,
+        "attempt_id": "attempt:044",
+        "claim_id": "claim:044",
+        "lease_id": "lease:044",
+        "owner_session_id": "session:044",
+        "attempt_number": 1,
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "queue_reason": f"{OPERATION}:attempt:044",
+        "backoff_ms": 0,
+        "retry_not_before_ms": 1,
+        "control_expected_revision": 8,
+        "preserved_unknown_receipt": {
+            "operation": "database_portal_neutral_failure_quarantine",
+            "retry_suppressed": True,
+        },
+    }
+    task = SimpleNamespace(
+        task_cid="task:044",
+        task_alias="DOEP-044",
+        status="retrying",
+        revision=9,
+        body={"completion_receipt": receipt},
+        dependencies=(),
+    )
+    stale = {
+        "attempt": 1,
+        "extension": {
+            "expected_task_revision": 4,
+            "attempt_number": 1,
+            "reason": "stale",
+        },
+    }
+    cas_calls: list[object] = []
+    cooldown_calls: list[dict[str, object]] = []
+
+    source = object.__new__(TypedDatabaseTaskSource)
+
+    def list_tasks(**_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(tasks=[task])
+
+    def cooldown_row(_cid: str) -> dict[str, object]:
+        return stale
+
+    def is_current(_task: object, row: object) -> bool:
+        return False
+
+    def cas(
+        task_cid: str,
+        expected_revision: int,
+        status: str,
+        bumped: dict[str, object],
+        *,
+        expected_control_receipt: object,
+    ) -> SimpleNamespace:
+        cas_calls.append((task_cid, expected_revision, status, bumped["attempt_number"]))
+        assert status == "retrying"
+        assert expected_revision == 9
+        assert expected_control_receipt == receipt
+        assert bumped["attempt_number"] == 2
+        assert bumped["preserved_unknown_receipt"] == receipt["preserved_unknown_receipt"]
+        updated = SimpleNamespace(
+            task_cid=task.task_cid,
+            task_alias=task.task_alias,
+            status="retrying",
+            revision=10,
+            body={"completion_receipt": dict(bumped)},
+            dependencies=(),
+        )
+        task.revision = 10
+        task.body = updated.body
+        return SimpleNamespace(task=updated)
+
+    def record(**payload: object) -> SimpleNamespace:
+        cooldown_calls.append(dict(payload))
+        return SimpleNamespace(changed=True)
+
+    source.list_tasks = list_tasks  # type: ignore[method-assign]
+    source._retry_cooldown_row = cooldown_row  # type: ignore[method-assign]
+    source._retrying_cooldown_is_current = is_current  # type: ignore[method-assign]
+    source.compare_and_set_status = cas  # type: ignore[method-assign]
+    source.record_task_retry_cooldown = record  # type: ignore[method-assign]
+
+    outcomes = TypedDatabaseTaskSource.repair_retrying_cooldown_bindings(source)
+    assert cas_calls == [("task:044", 9, "retrying", 2)]
+    assert cooldown_calls[0]["attempt_number"] == 2
+    assert cooldown_calls[0]["expected_task_revision"] == 9
+    assert outcomes[0]["changed"] is True
+    assert outcomes[0]["reason"] == "retrying_cooldown_rebound_to_control_receipt"
+    assert task.body["completion_receipt"]["unknown_preserved"] is True
+    assert task.body["completion_receipt"]["completion_authoritative"] is False
 
 
 def test_continuation_cooldown_mismatch_does_not_abort_sibling_claim() -> None:
