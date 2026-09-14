@@ -48,10 +48,33 @@ PROVIDER_MODULES = frozenset({
     "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
     "ipfs_accelerate_py.agent_supervisor.runtime.provider_fallback_runner",
 })
+# Closed native owner-observation diagnostics; never import a board's code or
+# expose its arbitrary exception/stderr text while collecting fleet health.
+OWNER_OBSERVATION_STAGES = frozenset({
+    "unavailable", "expected_owner", "descriptor_read", "scope_validation",
+    "custody_before", "peer_connect", "peer_credentials_before", "peer_send",
+    "peer_receive", "peer_credentials_after", "custody_after", "reply_validation",
+    "reply_facts", "remote_snapshot_unavailable", "request_credentials",
+    "request_receive", "request_validation", "requester_recheck", "sample_not_due",
+    "snapshot",
+})
+OWNER_OBSERVATION_KINDS = frozenset({"unavailable", "validation", "timeout", "io", "malformed", "internal"})
 
 
 def _object(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _native_status_diagnostic(native: Mapping[str, Any], error: str) -> dict[str, str]:
+    if (error != "native_status_nonzero" or native.get("schema") != "sawm/operator-error@1"
+            or native.get("valid") is not False):
+        return {}
+    value = native.get("observation_error")
+    if (type(value) is not dict or set(value) != {"stage", "kind"}
+            or type(value["stage"]) is not str or value["stage"] not in OWNER_OBSERVATION_STAGES
+            or type(value["kind"]) is not str or value["kind"] not in OWNER_OBSERVATION_KINDS):
+        return {}
+    return dict(value)
 
 
 def _owner_writer_custody(board: Mapping[str, Any], owner_status: Mapping[str, Any],
@@ -758,6 +781,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "source_integrity": source_integrity,
             "completion_gate": "separate_authoritative_closeout_verification_required"},
     }
+    diagnostic = _native_status_diagnostic(native, command_error)
+    if diagnostic:
+        result["details"]["native_status_diagnostic"] = diagnostic
     if health == "stopped" and board.get("ensure_argv"):
         result["recovery_action"] = "ensure"
     return result

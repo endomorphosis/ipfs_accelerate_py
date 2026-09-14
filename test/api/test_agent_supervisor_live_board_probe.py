@@ -186,6 +186,52 @@ def test_all_tasks_complete_only_proposes_separate_gate(board, monkeypatch):
     assert result["complete"] is False
 
 
+def test_native_failure_keeps_closed_diagnostic_without_retry_or_authority(board, monkeypatch, tmp_path):
+    config, _, _ = board
+    secret = "private-token-must-not-appear"
+    native = {"schema": "sawm/operator-error@1", "valid": False, "error": secret,
+              "observation_error": {"stage": "sample_not_due", "kind": "unavailable"}}
+    script = tmp_path / "failed_status.py"
+    script.write_text("import sys\nprint(" + repr(json.dumps(native)) + ")\n"
+                      "sys.stderr.write(" + repr(secret * 10000) + ")\nraise SystemExit(2)\n")
+    config["status_argv"] = [sys.executable, "-I", "-S", "-B", str(script)]
+    original = probe._status_command
+    calls = []
+    def observed(value):
+        calls.append(value)
+        return original(value)
+    monkeypatch.setattr(probe, "_status_command", observed)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["native_status_diagnostic"] == native["observation_error"]
+    assert len(calls) == 1 and result["details"]["native_status_attempts"] == 1
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["task_counts"] == {}
+    assert result["complete"] is False and result["completion_candidate"] is False
+    assert result["reason_codes"] == ["native_status_nonzero"]
+    assert secret not in json.dumps(result) and "recovery_action" not in result
+
+
+@pytest.mark.parametrize("change", ["unknown_stage", "unknown_kind", "extra", "array", "oversized", "schema", "valid", "zero_exit"])
+def test_malformed_or_success_diagnostic_is_omitted_without_changing_health(board, monkeypatch, change):
+    config, _, _ = board
+    error = "native_status_nonzero"
+    native = {"schema": "sawm/operator-error@1", "valid": False,
+              "observation_error": {"stage": "peer_receive", "kind": "timeout"}}
+    if change == "unknown_stage": native["observation_error"]["stage"] = "secret"
+    if change == "unknown_kind": native["observation_error"]["kind"] = "secret"
+    if change == "extra": native["observation_error"]["secret"] = "credential"
+    if change == "array": native["observation_error"] = ["secret"]
+    if change == "oversized": native["observation_error"]["stage"] = "secret" * 10000
+    if change == "schema": native["schema"] = "foreign/error"
+    if change == "valid": native["valid"] = True
+    if change == "zero_exit": error = ""
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, error))
+    result = probe.observe_board(config, now=1000)
+    assert "native_status_diagnostic" not in result["details"]
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["complete"] is False and result["completion_candidate"] is False
+
+
 def test_progress_token_excludes_heartbeats_and_projection_refreshes():
     before = {"task_statuses": {"T-001": "todo"}, "source_revision": 1,
               "heartbeat_at": "yesterday", "last_progress_at": "yesterday", "source_projection_cid": "old",
