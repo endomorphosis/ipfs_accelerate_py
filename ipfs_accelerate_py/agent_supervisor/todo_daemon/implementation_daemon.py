@@ -93346,6 +93346,10 @@ class DatabaseImplementationDaemon:
                 attempt,
                 task,
             )
+            or self._is_typed_deferral_budget_exhausted_terminal(
+                attempt,
+                task,
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge declared-output recovery does not supersede this "
@@ -105386,6 +105390,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
             DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
             DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+            "typed_portal_deferral_budget_exhausted",
         }
         try:
             phase_reason = self._canonical_portal_failure_reason(
@@ -105407,7 +105412,11 @@ class DatabaseImplementationDaemon:
         receipt_reason = (
             self._canonical_portal_failure_reason(receipt.get("reason"))
             if isinstance(receipt, Mapping)
-            and receipt.get("operation") == "database_portal_terminal_failure"
+            and receipt.get("operation")
+            in {
+                "database_portal_terminal_failure",
+                "database_portal_typed_deferral_budget_exhausted",
+            }
             and receipt.get("attempt_id") == attempt.attempt_id
             else ""
         )
@@ -118226,6 +118235,10 @@ class DatabaseImplementationDaemon:
                 latest,
                 task,
             )
+            and not self._is_typed_deferral_budget_exhausted_terminal(
+                latest,
+                task,
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery is limited to an exact durable "
@@ -118278,7 +118291,17 @@ class DatabaseImplementationDaemon:
             else self._require_control_attempt_receipt(
                 task,
                 latest,
-                operations=("database_portal_terminal_failure",),
+                operations=(
+                    "database_portal_terminal_failure",
+                    *(
+                        ("database_portal_typed_deferral_budget_exhausted",)
+                        if self._is_typed_deferral_budget_exhausted_terminal(
+                            latest,
+                            task,
+                        )
+                        else ()
+                    ),
+                ),
             )
         )
         completion_terminal_reason = (
@@ -118538,9 +118561,15 @@ class DatabaseImplementationDaemon:
         }
 
         exhausted_post_merge_recovery = bool(
-            crash_source_admitted
-            and control_receipt.get("operation")
+            control_receipt.get("operation")
             == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            and (
+                crash_source_admitted
+                or self._is_typed_deferral_budget_exhausted_terminal(
+                    latest,
+                    task,
+                )
+            )
         )
         typed_exhausted_recovery = getattr(
             self.task_source, "recover_exhausted_post_merge_retry", None

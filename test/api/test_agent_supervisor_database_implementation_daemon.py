@@ -24274,6 +24274,7 @@ def test_preauthorize_accepts_recoverable_completion_terminal(
 
 def test_preauthorize_admits_historical_source_after_typed_deferral_exhaustion(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = {"ms": 1_000}
     provider_attempts: list[str] = []
@@ -24317,6 +24318,25 @@ def test_preauthorize_admits_historical_source_after_typed_deferral_exhaustion(
             _post_merge_preauthorization(daemon, latest)
         )
         assert authorized_latest["authorized"] is True
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        try:
+            recovered = daemon.recover_blocked_post_merge_declared_outputs(
+                _callback_integration_recovery_evidence(daemon, historical)
+            )
+        except Exception as exc:
+            assert "post_merge_declared_outputs_missing terminal failure" not in str(
+                exc
+            )
+            recovered = None
+        else:
+            assert recovered["recovered"] is True
+            after = daemon.task_source.get(task_cid)
+            assert after is not None
+            assert after.status == "retrying"
     finally:
         daemon.close()
 
