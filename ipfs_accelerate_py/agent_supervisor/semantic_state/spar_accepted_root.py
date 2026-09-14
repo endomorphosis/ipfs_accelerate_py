@@ -125,9 +125,18 @@ def admit_accepted_root(
         return _deferred(MISSING, error_class="TypeError")
     clauses_ok = all(raw.get(name) is True for name in REQUIRED_CLAUSES)
     evidence = raw.get("evidence_cids")
+    subject_bound = raw.get("subject_cid") == subject_cid or (
+        raw.get("goal_cids") == subject["goal_cids"]
+        and raw.get("task_cids") == subject["task_cids"]
+        and raw.get("kit_transition_cid") == subject["kit_transition_cid"]
+    )
+    if raw.get("admitted") is not True:
+        reason = raw.get("reason")
+        if reason not in {MISSING, MODE_FLOORS}:
+            reason = MISSING
+        return _deferred(reason, producer_interface=raw.get("producer_interface"))
     if (
-        raw.get("admitted") is not True
-        or raw.get("subject_cid") != subject_cid
+        not subject_bound
         or raw.get("profile_cid") != profile_cid
         or raw.get("source_forest_root") != subject["source_forest_root"]
         or raw.get("producer_interface") != PRODUCER_INTERFACE
@@ -137,7 +146,7 @@ def admit_accepted_root(
         or len(evidence) < 1
         or any(not isinstance(item, str) or not item for item in evidence)
     ):
-        return _deferred(MODE_FLOORS if raw.get("admitted") is True else MISSING)
+        return _deferred(MODE_FLOORS)
     return {
         "schema": SCHEMA,
         "admitted": True,
