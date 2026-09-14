@@ -82,7 +82,7 @@ def test_bootstrap_and_runtime_serialize_on_the_same_lock() -> None:
         body=[
             node for node in tree.body
             if isinstance(node, (ast.Import, ast.ImportFrom))
-            or isinstance(node, ast.FunctionDef) and node.name == "_hash_budget"
+            or isinstance(node, ast.FunctionDef) and node.name in {"_die", "_hash_budget"}
         ],
         type_ignores=[],
     )

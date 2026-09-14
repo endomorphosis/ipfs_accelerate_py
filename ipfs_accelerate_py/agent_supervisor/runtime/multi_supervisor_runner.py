@@ -167,6 +167,12 @@ SEALED_CONTROL_PLANE_MODULES = frozenset(
 )
 SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import array,ctypes,fcntl,hashlib,json,os,socket,stat,struct,sys,time
 from contextlib import contextmanager
+def _die(why):
+    try:
+        sys.stderr.buffer.write(b'sealed-bootstrap:'+str(why).encode('ascii','replace')+b'\n'); sys.stderr.buffer.flush()
+    except Exception:
+        pass
+    raise SystemExit(78)
 @contextmanager
 def _hash_budget():
     # Same lock as _hash_resources, before any capsule code is trusted/imported.
@@ -175,16 +181,16 @@ def _hash_budget():
     acquired=False
     try:
         metadata=os.fstat(lock)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or metadata.st_nlink!=1 or stat.S_IMODE(metadata.st_mode)&0o022: raise SystemExit(78)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or metadata.st_nlink!=1 or stat.S_IMODE(metadata.st_mode)&0o022: _die('hash_lock_meta')
         deadline=time.monotonic()+60.0
         while True:
             try:
                 fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB); acquired=True; break
             except BlockingIOError:
-                if time.monotonic()>=deadline: raise SystemExit(78)
+                if time.monotonic()>=deadline: _die('hash_lock_timeout')
                 time.sleep(0.05)
         current=os.stat(path,follow_symlinks=False)
-        if (current.st_dev,current.st_ino)!=(metadata.st_dev,metadata.st_ino) or os.fstat(lock).st_nlink!=1: raise SystemExit(78)
+        if (current.st_dev,current.st_ino)!=(metadata.st_dev,metadata.st_ino) or os.fstat(lock).st_nlink!=1: _die('hash_lock_identity')
         yield
     finally:
         if acquired: fcntl.flock(lock,fcntl.LOCK_UN)
@@ -194,77 +200,77 @@ def _state_authority_handoff():
     values={name:os.environ.get(name,'').strip() for name in names}
     if not any(values.values()): return
     if '--run-plan-bound-launch-gate' in sys.argv[1:]: return
-    if not all(values.values()) or not sys.platform.startswith('linux'): raise SystemExit(78)
+    if not all(values.values()) or not sys.platform.startswith('linux'): _die('handoff_incomplete')
     try:
         executable_fd=os.open('/proc/self/exe',getattr(os,'O_PATH',os.O_RDONLY)|getattr(os,'O_CLOEXEC',0))
         executable_metadata=os.fstat(executable_fd); executable_path_metadata=os.stat('/proc/self/exe')
-    except OSError: raise SystemExit(78)
+    except OSError: _die('handoff_exe_open')
     if not stat.S_ISREG(executable_metadata.st_mode) or executable_metadata.st_uid!=0 or executable_metadata.st_nlink!=1 or stat.S_IMODE(executable_metadata.st_mode)&0o022 or (executable_metadata.st_dev,executable_metadata.st_ino,executable_metadata.st_mode,executable_metadata.st_uid,executable_metadata.st_gid,executable_metadata.st_nlink,executable_metadata.st_size)!=(executable_path_metadata.st_dev,executable_path_metadata.st_ino,executable_path_metadata.st_mode,executable_path_metadata.st_uid,executable_path_metadata.st_gid,executable_path_metadata.st_nlink,executable_path_metadata.st_size):
-        os.close(executable_fd); raise SystemExit(78)
+        os.close(executable_fd); _die('handoff_exe_meta')
     libc=ctypes.CDLL(None,use_errno=True)
     if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:
-        os.close(executable_fd); raise SystemExit(78)
+        os.close(executable_fd); _die('handoff_prctl')
     try:
         parent=int(values[names[1]]); parent_start=int(values[names[2]])
         raw=open('/proc/self/stat','r',encoding='ascii').read(); fields=raw[raw.rfind(')')+2:].split()
         own_parent=int(fields[1]); own_start=int(fields[19])
         parent_raw=open('/proc/'+str(parent)+'/stat','r',encoding='ascii').read(); parent_fields=parent_raw[parent_raw.rfind(')')+2:].split()
         observed_parent_start=int(parent_fields[19]); boot=open('/proc/sys/kernel/random/boot_id','r',encoding='ascii').read().strip()
-    except (OSError,IndexError,UnicodeError,ValueError): raise SystemExit(78)
+    except (OSError,IndexError,UnicodeError,ValueError): _die('handoff_parent_stat')
     policy=values[names[4]]
-    if own_parent!=parent or observed_parent_start!=parent_start or boot!=values[names[3]] or policy not in {'terminate_with_parent','independent_detached'}: raise SystemExit(78)
+    if own_parent!=parent or observed_parent_start!=parent_start or boot!=values[names[3]] or policy not in {'terminate_with_parent','independent_detached'}: _die('handoff_parent_mismatch')
     if policy=='terminate_with_parent':
-        if libc.prctl(1,15,0,0,0)!=0: raise SystemExit(78)
+        if libc.prctl(1,15,0,0,0)!=0: _die('handoff_pdeath')
         try:
             after_raw=open('/proc/self/stat','r',encoding='ascii').read(); after_fields=after_raw[after_raw.rfind(')')+2:].split()
             parent_after=int(after_fields[1]); parent_raw_after=open('/proc/'+str(parent)+'/stat','r',encoding='ascii').read(); parent_fields_after=parent_raw_after[parent_raw_after.rfind(')')+2:].split()
             parent_start_after=int(parent_fields_after[19])
-        except (OSError,IndexError,UnicodeError,ValueError): raise SystemExit(78)
-        if parent_after!=parent or parent_start_after!=parent_start: raise SystemExit(78)
+        except (OSError,IndexError,UnicodeError,ValueError): _die('handoff_parent_after')
+        if parent_after!=parent or parent_start_after!=parent_start: _die('handoff_peer')
     channel=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); received=[]
     try:
         channel.settimeout(10.0); channel.connect('\0'+values[names[0]])
         peer=struct.unpack('3i',channel.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,struct.calcsize('3i')))
-        if peer[0]!=parent or peer[1]!=os.geteuid(): raise SystemExit(78)
+        if peer[0]!=parent or peer[1]!=os.geteuid(): _die('handoff_recv')
         request=json.dumps({'pid':os.getpid(),'parent_pid':parent,'start_time_ticks':own_start,'boot_id':boot,'address':values[names[0]],'parent_loss_policy':policy},sort_keys=True,separators=(',',':')).encode()+b'\n'
         descriptors=array.array('i',[executable_fd])
         channel.sendmsg([request],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,descriptors.tobytes())])
         os.close(executable_fd); executable_fd=-1
         data,ancillary,flags,_=channel.recvmsg(1,socket.CMSG_SPACE(array.array('i').itemsize))
-        if data!=b'F' or flags&getattr(socket,'MSG_CTRUNC',0): raise SystemExit(78)
+        if data!=b'F' or flags&getattr(socket,'MSG_CTRUNC',0): _die('handoff_fdcount')
         for level,kind,payload in ancillary:
             if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:
                 descriptors=array.array('i'); descriptors.frombytes(payload[:len(payload)-(len(payload)%descriptors.itemsize)]); received.extend(descriptors)
-        if len(received)!=1: raise SystemExit(78)
+        if len(received)!=1: _die('handoff_secret')
         secret_fd=int(received[0]); metadata=os.fstat(secret_fd)
         required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or not 32<=metadata.st_size<=256 or fcntl.fcntl(secret_fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=os.geteuid() or not 32<=metadata.st_size<=256 or fcntl.fcntl(secret_fd,fcntl.F_GET_SEALS)&required!=required: _die('handoff_other')
         os.set_inheritable(secret_fd,False); os.environ['IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD']=str(secret_fd)
         for name in names: os.environ.pop(name,None)
         channel.sendall(b'A')
     except SystemExit: raise
-    except BaseException: raise SystemExit(78)
+    except BaseException: _die('pairs_dup')
     finally:
         if executable_fd>=0: os.close(executable_fd)
         channel.close()
 def _pairs(items):
     result={}
     for key,value in items:
-        if key in result: raise SystemExit(78)
+        if key in result: _die('pin_shape')
         result[key]=value
     return result
 try:
     fd=int(sys.argv.pop(1)); pin=json.loads(sys.argv.pop(1),object_pairs_hook=_pairs)
     native_authorization=sys.argv.pop(1); native_fd=int(sys.argv.pop(1)); native_text=sys.argv.pop(1); system_text=sys.argv.pop(1)
     module=sys.argv.pop(1); expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
-    if fd<3 or native_fd<3 or fd==native_fd or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
-    if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
-    if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
-    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
-    if not sys.flags.isolated or not sys.flags.no_site or any(name.startswith(('LD_','DYLD_','PYTHON','PYTEST')) or name=='GLIBC_TUNABLES' for name in os.environ): raise SystemExit(78)
+    if fd<3 or native_fd<3 or fd==native_fd or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: _die('pin_values')
+    if any(type(value) is not str or not value for value in pin.values()): _die('pin_schema')
+    if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': _die('module_name')
+    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: _die('isolated_env')
+    if not sys.flags.isolated or not sys.flags.no_site or any(name.startswith(('LD_','DYLD_','PYTHON','PYTEST')) or name=='GLIBC_TUNABLES' for name in os.environ): _die('bootstrap_hash')
     command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
     code_index=command_line.index(b'-c')+1
-    if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
+    if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: _die('python_hash')
     with _hash_budget():
         executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
         try:
@@ -274,64 +280,64 @@ try:
                 if not block: break
                 executable_hash.update(block)
         finally: os.close(executable)
-        if 'sha256:'+executable_hash.hexdigest()!=expected_python: raise SystemExit(78)
+        if 'sha256:'+executable_hash.hexdigest()!=expected_python: _die('archive_seals')
         required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
         metadata=os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: raise SystemExit(78)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(fd,fcntl.F_GET_SEALS)&required!=required: _die('archive_hash')
         archive_hash=hashlib.sha256(); offset=0
         while offset<metadata.st_size:
             block=os.pread(fd,min(65536,metadata.st_size-offset),offset)
             if not block: break
             archive_hash.update(block); offset+=len(block)
-        if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: raise SystemExit(78)
+        if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=pin['archive_sha256']: _die('archive_path')
     archive='/proc/self/fd/'+str(fd)
     path_metadata=os.stat(archive)
-    if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): raise SystemExit(78)
+    if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): _die('system_json')
     try: system=json.loads(system_text,object_pairs_hook=_pairs)
-    except BaseException: raise SystemExit(78)
-    if type(system) is not list or json.dumps(system,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)!=system_text: raise SystemExit(78)
+    except BaseException: _die('system_canon')
+    if type(system) is not list or json.dumps(system,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)!=system_text: _die('system_item')
     expected_paths={'/usr/local/lib/python'+str(sys.version_info.major)+'.'+str(sys.version_info.minor)+'/dist-packages','/usr/lib/python3/dist-packages'}
     observed_paths=[]
     for item in system:
-        if type(item) is not dict or set(item)!={'path','st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns'} or type(item['path']) is not str or item['path'] not in expected_paths or any(type(item[name]) is not int for name in set(item)-{'path'}): raise SystemExit(78)
+        if type(item) is not dict or set(item)!={'path','st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns'} or type(item['path']) is not str or item['path'] not in expected_paths or any(type(item[name]) is not int for name in set(item)-{'path'}): _die('system_lstat')
         current=os.lstat(item['path']); identity=(current.st_dev,current.st_ino,current.st_mode,current.st_uid,current.st_nlink,current.st_mtime_ns,current.st_ctime_ns)
-        if identity!=tuple(item[name] for name in ('st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns')) or not stat.S_ISDIR(current.st_mode) or current.st_uid!=0 or stat.S_IMODE(current.st_mode)&0o022 or os.path.realpath(item['path'])!=item['path']: raise SystemExit(78)
+        if identity!=tuple(item[name] for name in ('st_dev','st_ino','st_mode','st_uid','st_nlink','st_mtime_ns','st_ctime_ns')) or not stat.S_ISDIR(current.st_mode) or current.st_uid!=0 or stat.S_IMODE(current.st_mode)&0o022 or os.path.realpath(item['path'])!=item['path']: _die('system_paths')
         observed_paths.append(item['path'])
-    if len(observed_paths)!=len(set(observed_paths)) or '/usr/lib/python3/dist-packages' not in observed_paths: raise SystemExit(78)
+    if len(observed_paths)!=len(set(observed_paths)) or '/usr/lib/python3/dist-packages' not in observed_paths: _die('root_origin')
     sys.path.insert(0,archive); sys.path.extend(observed_paths)
     import importlib,importlib.machinery,runpy,types
     import ipfs_accelerate_py as accepted_root
     prefix=archive+'/'
     root_origin=getattr(accepted_root,'__file__',None)
-    if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
+    if type(root_origin) is not str or not root_origin.startswith(prefix): _die('native_pin')
     from ipfs_accelerate_py.agent_implementation_route import _agent_parse_native_dependency_launch_json,preload_agent_supervisor_native_dependency,verify_agent_supervisor_native_dependency_sealed_fd
     native=_agent_parse_native_dependency_launch_json(native_text)
-    if native.accepted_authorization_id!=native_authorization or native.descriptor.descriptor!=native_fd or native.pin.python_executable_sha256!=expected_python or verify_agent_supervisor_native_dependency_sealed_fd(native)!='/proc/self/fd/'+str(native_fd): raise SystemExit(78)
+    if native.accepted_authorization_id!=native_authorization or native.descriptor.descriptor!=native_fd or native.pin.python_executable_sha256!=expected_python or verify_agent_supervisor_native_dependency_sealed_fd(native)!='/proc/self/fd/'+str(native_fd): _die('package_preloaded')
     preload_agent_supervisor_native_dependency(native)
     package_name='ipfs_accelerate_py.agent_supervisor'
-    if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
+    if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): _die('package_origin')
     package=importlib.import_module(package_name)
     package_origin=getattr(package,'__file__',None)
-    if type(package_origin) is not str or not package_origin.startswith(prefix): raise SystemExit(78)
+    if type(package_origin) is not str or not package_origin.startswith(prefix): _die('module_preloaded')
     setattr(accepted_root,'agent_supervisor',package)
-    if module in sys.modules: raise SystemExit(78)
+    if module in sys.modules: _die('module_origin')
     specification=importlib.util.find_spec(module)
     module_origin=getattr(specification,'origin',None)
-    if type(module_origin) is not str or not module_origin.startswith(prefix): raise SystemExit(78)
+    if type(module_origin) is not str or not module_origin.startswith(prefix): _die('module_still_loaded')
     _state_authority_handoff()
     namespace=runpy.run_module(module,run_name=module,alter_sys=True)
-    if module in sys.modules: raise SystemExit(78)
+    if module in sys.modules: _die('target_origin')
     target_origin=namespace.get('__file__')
-    if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
+    if type(target_origin) is not str or not target_origin.startswith(prefix): _die('loaded_origin')
     for name,loaded in tuple(sys.modules.items()):
         if name in {'ipfs_accelerate_py','ipfs_accelerate_py.llm_router','ipfs_accelerate_py.agent_implementation_route','ipfs_accelerate_py._hash_resources'} or name.startswith('ipfs_accelerate_py.agent_supervisor'):
             origin=getattr(loaded,'__file__',None)
-            if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
+            if type(origin) is not str or not origin.startswith(prefix): _die('no_main')
     main=namespace.get('main')
-    if not callable(main): raise SystemExit(78)
+    if not callable(main): _die('unhandled')
     raise SystemExit(main())
 except SystemExit: raise
-except BaseException: raise SystemExit(78)
+except BaseException: _die('unhandled2')
 '''
 SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
     "sha256:"
