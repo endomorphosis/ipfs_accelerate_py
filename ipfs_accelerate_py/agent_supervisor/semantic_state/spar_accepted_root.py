@@ -23,6 +23,21 @@ REQUIRED_CLAUSES = (
     "self_hosted_capstone_accepted",
     "fixed_point_accepted",
 )
+CLAUSE_REPORTS = {
+    "required_mode_roots_accepted": (
+        "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+        "benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json",
+    ),
+    "safety_floors_noncompensable_accepted": (
+        "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json",
+    ),
+    "self_hosted_capstone_accepted": (
+        "benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json",
+    ),
+    "fixed_point_accepted": (
+        "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+    ),
+}
 
 
 def _deferred(reason: str, **extra: Any) -> dict[str, Any]:
@@ -74,6 +89,55 @@ def _producer_fail_extra(raw: Any) -> dict[str, Any]:
         if closed:
             extra["clause_outcomes"] = closed
     return extra
+
+
+def _source_clause_probes(source: Mapping[str, Any]) -> dict[str, Any]:
+    """Classify nominated reports as non-admission; never copy their booleans."""
+    reports = source.get("reports") if isinstance(source.get("reports"), list) else []
+    by_path = {
+        str(row.get("path") or ""): row
+        for row in reports
+        if isinstance(row, Mapping)
+    }
+    forest = source.get("source_forest") if isinstance(source.get("source_forest"), Mapping) else {}
+    current_root = forest.get("source_forest_root")
+    probes: dict[str, Any] = {}
+    for name, paths in CLAUSE_REPORTS.items():
+        blockers: list[str] = []
+        digests: list[str] = []
+        for path in paths:
+            row = by_path.get(path)
+            if not isinstance(row, Mapping) or row.get("available") is not True:
+                blockers.append(f"nominated_report_unavailable:{path}")
+                continue
+            digest = row.get("content_digest")
+            if type(digest) is str and digest:
+                digests.append(digest)
+            if (
+                row.get("nomination_only") is True
+                or row.get("can_authorize_completion") is not True
+            ):
+                blockers.append(f"nominated_report_cannot_authorize_clause:{path}")
+            roots = row.get("authority_roots") if isinstance(row.get("authority_roots"), Mapping) else {}
+            report_forest = roots.get("repository_forest_cid")
+            if (
+                type(current_root) is str
+                and current_root
+                and report_forest != current_root
+            ):
+                blockers.append(f"nominated_report_source_forest_mismatch:{path}")
+        probes[name] = {
+            "accepted": False,
+            "reason": (
+                blockers[0]
+                if blockers
+                else "nominated_report_is_not_independent_clause_evidence"
+            ),
+            "blockers": blockers,
+            "report_digests": digests,
+            "semantic_acceptance_authority": False,
+        }
+    return probes
 
 
 def closed_subject(
@@ -195,7 +259,9 @@ def admit_accepted_root(
             reason = MODE_FLOORS
         else:
             reason = MISSING
-        return _deferred(reason, **_producer_fail_extra(raw))
+        extra = _producer_fail_extra(raw)
+        extra["source_clause_probes"] = _source_clause_probes(source)
+        return _deferred(reason, **extra)
     return {
         "schema": SCHEMA,
         "admitted": True,
