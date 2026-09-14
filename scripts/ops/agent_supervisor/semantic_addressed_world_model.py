@@ -29930,7 +29930,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "status":
             owner = config["quack_owner"]
             population = _materializer().build_population(REPO_ROOT)
-            return _emit(_owner_status_observation_runtime().read_owner_status(
+            owner_observer = _owner_status_observation_runtime()
+            return _emit(owner_observer.read_owner_status(
                 database=(REPO_ROOT / owner["database_path"]).resolve(),
                 state_dir=(REPO_ROOT / owner["state_dir"]).resolve(),
                 program_id=str(config["board_namespace"]), configuration=config,
@@ -30335,6 +30336,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except QuackExtensionCustodyBlocker as exc:
         return _emit(exc.as_dict())
     except Exception as exc:
+        if (args.command == "status" and "owner_observer" in locals()
+                and type(exc) is owner_observer.OwnerObservationUnavailable):
+            return _emit({"schema": "sawm/operator-error@1", "valid": False,
+                          "error": _credential_safe_error(exc),
+                          "observation_error": exc.diagnostic})
         if (args.command in {"writer-recovery-inspect", "writer-recovery-close"}
                 and "recovery" in locals()
                 and isinstance(exc, recovery.NativeScopeProcessObserved)):
