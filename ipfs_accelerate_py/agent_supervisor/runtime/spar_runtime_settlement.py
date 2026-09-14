@@ -1,8 +1,9 @@
 """SPAR three-lane runtime and merge-queue settlement, never goal acceptance.
 
 The producer holds the configured merge queue and re-reads lane sidecars. A WAL,
-live pid, active claim, or missing lane remains a typed non-admission. This
-module does not checkpoint or delete sidecar state.
+live pid, active claim, or missing lane remains a typed non-admission. Observe
+and hold paths never checkpoint or delete sidecar state. Owner closeout may
+CHECKPOINT leftover WALs only on lanes with no live pid.
 """
 
 from __future__ import annotations
@@ -36,6 +37,9 @@ MISSING = "runtime_lane_and_merge_queue_settlement_receipt_required"
 WAL_OUTSTANDING = "runtime_lane_outstanding_wal"
 LIVE_PROCESS = "runtime_lane_process_live"
 LANE_MISSING = "runtime_lane_artifact_missing"
+CHECKPOINT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/spar-stopped-sidecar-checkpoint@1"
+)
 EXPECTED_LANES = (
     {"index": 0, "name": "spar-lane-0", "strict_shard_remainder": 0},
     {"index": 1, "name": "spar-lane-1", "strict_shard_remainder": 1},
@@ -133,6 +137,93 @@ def _live_pid(path: Path) -> bool:
         return pid > 1 and os.path.exists(f"/proc/{pid}")
     except (OSError, ValueError, IndexError):
         return True
+
+
+def checkpoint_stopped_lane_sidecars(repository_root: str | Path) -> dict[str, Any]:
+    """CHECKPOINT leftover WALs on lanes with no live pid. Never unlink WAL files.
+
+    Observe/hold remain read-only. Live supervisor or daemon pids are skipped so
+    a drained SPAR closeout can absorb SIGTERM leftover WALs without deleting
+    sidecar state.
+    """
+    try:
+        profile = read_spar_runtime_profile(repository_root)
+    except Exception as exc:  # noqa: BLE001 - closeout must fail closed
+        return {
+            "schema": CHECKPOINT_SCHEMA,
+            "attempted": False,
+            "completion_authority": False,
+            "semantic_acceptance_authority": False,
+            "reason": MISSING,
+            "error_class": type(exc).__name__,
+            "error": str(exc)[:256],
+            "remaining_wal": [],
+            "settled": False,
+        }
+    import duckdb
+
+    lanes: list[dict[str, Any]] = []
+    remaining: list[str] = []
+    state_path = Path(profile["state_path"])
+    for spec in profile["lanes"]:
+        index = spec["index"]
+        paths = lane_paths(state_path, index)
+        live = _live_pid(paths["supervisor_pid"]) or _live_pid(paths["daemon_pid"])
+        row: dict[str, Any] = {
+            "index": index,
+            "live": live,
+            "checkpointed": [],
+            "skipped": [],
+            "errors": [],
+        }
+        for kind in ("coordination", "execution"):
+            wal = paths[f"{kind}_wal"]
+            database = paths[kind]
+            if not wal.exists():
+                continue
+            label = f"lane-{index}-{kind}"
+            if live:
+                row["skipped"].append(kind)
+                remaining.append(label)
+                continue
+            if database.is_symlink() or not database.is_file():
+                row["errors"].append({"kind": kind, "error_class": "missing_database"})
+                remaining.append(label)
+                continue
+            try:
+                connection = connect_duckdb_with_policy(
+                    duckdb, database, read_only=False
+                )
+                try:
+                    connection.execute("CHECKPOINT")
+                finally:
+                    connection.close()
+                if wal.exists():
+                    row["errors"].append(
+                        {"kind": kind, "error_class": "wal_remained_after_checkpoint"}
+                    )
+                    remaining.append(label)
+                else:
+                    row["checkpointed"].append(kind)
+            except Exception as exc:  # noqa: BLE001 - leftover WAL stays a blocker
+                row["errors"].append(
+                    {
+                        "kind": kind,
+                        "error_class": type(exc).__name__,
+                        "error": str(exc)[:256],
+                    }
+                )
+                remaining.append(label)
+        lanes.append(row)
+    return {
+        "schema": CHECKPOINT_SCHEMA,
+        "attempted": True,
+        "completion_authority": False,
+        "semantic_acceptance_authority": False,
+        "lanes": lanes,
+        "remaining_wal": remaining,
+        "settled": not remaining,
+    }
 
 
 def _count_active(connection: Any, sql: str) -> int:

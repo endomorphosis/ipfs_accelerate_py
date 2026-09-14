@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement import 
     CONFIG_SCHEMA,
     PROGRAM,
     BOARD,
+    checkpoint_stopped_lane_sidecars,
     hold_spar_runtime_settlement,
     observe_spar_runtime_settlement,
 )
@@ -195,6 +196,77 @@ def test_runtime_settlement_refuses_execution_wal(tmp_path):
     assert observed["admitted"] is False
     assert observed["reason"] == "runtime_lane_outstanding_wal"
     assert "outstanding WAL" in str(observed.get("error") or "")
+
+
+def test_checkpoint_stopped_sidecars_absorbs_leftover_execution_wal(tmp_path):
+    import subprocess
+    import sys
+
+    root = _runtime_root(tmp_path)
+    execution = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_execution.duckdb"
+    )
+    wal = Path(str(execution) + ".wal")
+    script = (
+        "import duckdb, os\n"
+        f"c = duckdb.connect({str(execution)!r})\n"
+        "c.execute('CREATE TABLE IF NOT EXISTS leftover(x INTEGER)')\n"
+        "c.execute('INSERT INTO leftover VALUES (1)')\n"
+        "os._exit(1)\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=False)
+    assert wal.exists(), "unclean DuckDB exit must leave a WAL"
+    owner = {"generation": 1, "store_id": "control.duckdb", "repository_id": _TARGET}
+    blocked = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert blocked["reason"] == "runtime_lane_outstanding_wal"
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert receipt["attempted"] is True
+    assert receipt["completion_authority"] is False
+    assert "execution" in receipt["lanes"][0]["checkpointed"]
+    assert not wal.exists()
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is True, observed
+
+
+def test_checkpoint_stopped_sidecars_skips_live_pid(tmp_path):
+    root = _runtime_root(tmp_path)
+    lane = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-1"
+    )
+    wal = lane / "spar_lane_1_database_execution.duckdb.wal"
+    wal.write_text("dirty")
+    (lane / "spar_lane_1_managed_daemon.pid").write_text(str(os.getpid()))
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert receipt["lanes"][1]["live"] is True
+    assert "execution" in receipt["lanes"][1]["skipped"]
+    assert wal.exists()
+    assert "lane-1-execution" in receipt["remaining_wal"]
+
+
+def test_checkpoint_stopped_sidecars_does_not_delete_corrupt_wal(tmp_path):
+    root = _runtime_root(tmp_path)
+    wal = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_execution.duckdb.wal"
+    )
+    wal.write_text("dirty")
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert wal.exists()
+    assert receipt["settled"] is False
+    assert "lane-0-execution" in receipt["remaining_wal"]
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["reason"] == "runtime_lane_outstanding_wal"
 
 
 def test_runtime_settlement_refuses_live_process(tmp_path):

@@ -274,7 +274,10 @@ class SparCloseoutProfile:
         from .closeout_snapshot import capture_closeout_facts
         from .intent_repository import completion_evidence_projection_on_connection
         from .spar_goal_settlement import settle_spar_goals
-        from ..runtime.spar_runtime_settlement import hold_spar_runtime_settlement
+        from ..runtime.spar_runtime_settlement import (
+            checkpoint_stopped_lane_sidecars,
+            hold_spar_runtime_settlement,
+        )
         from ..semantic_state.spar_accepted_root import admit_accepted_root
 
         try:
@@ -296,6 +299,7 @@ class SparCloseoutProfile:
                 row["goal_cid"]: row for row in facts["relations"]["goals"]["rows"]
             }
             target = str(owner_identity.get("repository_id") or "repository:ipfs_accelerate_py")
+            checkpoint_stopped_lane_sidecars(self._repository_root)
             with hold_spar_runtime_settlement(
                 self._repository_root,
                 owner_identity=owner_identity,
