@@ -61,6 +61,7 @@ from ..control.provider_attempt_store import (
 )
 
 from .. import implementation_timeout as _implementation_timeout
+from ..git_environment import git_subprocess_environment
 from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
@@ -81182,7 +81183,10 @@ class PortalImplementationDaemon:
         return result.stdout.strip()
 
     def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, text=True, capture_output=True, check=False,
+            env=git_subprocess_environment(),
+        )
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result

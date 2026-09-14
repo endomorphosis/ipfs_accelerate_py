@@ -9025,6 +9025,23 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
         "CUDA_CACHE_PATH": str(qualification_home / ".cache" / "cuda"),
         "CUDA_CACHE_DISABLE": "1",
     }
+    # Parent forwards verified R45 admission pins into the positive birth env.
+    # Dropping them here is compared as drift and becomes SystemExit(78).
+    admission_path = str(
+        os.environ.get("IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH")
+        or ""
+    )
+    admission_sha256 = str(
+        os.environ.get("IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256")
+        or ""
+    )
+    if admission_path and admission_sha256:
+        exact_environment[
+            "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH"
+        ] = admission_path
+        exact_environment[
+            "IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256"
+        ] = admission_sha256
     if (
         dict(os.environ) != exact_environment
         or _identity(exact_environment) != expected_environment_identity
