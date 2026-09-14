@@ -134,7 +134,7 @@ def test_direct_retained_mutations_cannot_escape_commit_fence(tmp_path, operatio
         daemon.close()
 
 
-@pytest.mark.parametrize("admission", ["explicit", "automatic"])
+@pytest.mark.parametrize("admission", ["explicit", "automatic", "automatic_terminal_conflict"])
 def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_independent(
     tmp_path, monkeypatch, admission
 ):
@@ -155,7 +155,10 @@ def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_indepe
         _admitted_observation,
     )
 
-    repo, daemon, _, attempt, _ = entered(tmp_path)
+    repo, daemon, _, attempt, _ = (
+        legacy_finalizer_conflict(tmp_path, monkeypatch, terminal=True)
+        if admission == "automatic_terminal_conflict" else entered(tmp_path)
+    )
     server = None
     consumer = None
     stopping = threading.Event()
@@ -210,7 +213,7 @@ def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_indepe
         )
         daemon._database_portal_bridge.task_source = daemon._task_source
         before = local.capture(daemon, attempt)
-        if admission == "automatic":
+        if admission.startswith("automatic"):
             # The disposable source image is now owned by the real Quack
             # producer/consumer above. Exercise the normal Quack recovery policy.
             daemon.authority_mode = "quack"
@@ -236,9 +239,9 @@ def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_indepe
         assert (
             daemon._current_owner_task_quarantines()[attempt.attempt_id] == ack["head"]
         )
-        assert [item.attempt_id for item in daemon.list_running_attempts()] == [
-            attempt.attempt_id
-        ]
+        assert [item.attempt_id for item in daemon.list_running_attempts()] == (
+            [] if admission == "automatic_terminal_conflict" else [attempt.attempt_id]
+        )
         assert daemon._running_attempts_for_independent_work() == []
         with pytest.raises(
             QuarantineDenied, match="remaining_population_audit_required"
@@ -285,10 +288,18 @@ def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_indepe
         assert provider_result["status"] == "workspace_created" and not duplicated
         assert len(fresh_leases) == 1
         assert local.capture(daemon, attempt) == before
-        with pytest.raises(QuarantineDenied):
-            daemon.resume_attempt(
+        if admission == "automatic_terminal_conflict":
+            resumed = daemon.resume_attempt(
                 attempt, provider_fn=lambda _: pytest.fail("retained provider called")
             )
+            assert resumed["resumed"] is False and resumed["reason"] == "attempt_failed"
+            with pytest.raises(QuarantineDenied):
+                daemon._assert_task_not_owner_quarantined(attempt.task_cid)
+        else:
+            with pytest.raises(QuarantineDenied):
+                daemon.resume_attempt(
+                    attempt, provider_fn=lambda _: pytest.fail("retained provider called")
+                )
         assert local.capture(daemon, attempt) == before
         daemon._require_connection().execute(
             "UPDATE daemon_execution_metadata SET value = ? WHERE key = ?",
@@ -308,15 +319,14 @@ def test_native_daemon_and_real_quack_keep_unknown_attempt_while_claiming_indepe
             server.stop()
 
 
-def test_actual_legacy_finalizer_conflict_is_captured_without_repairing_old_rows(
-    tmp_path, monkeypatch
-):
+def legacy_finalizer_conflict(tmp_path, monkeypatch, *, terminal=False, change_payload=None):
+    """Run the frozen finalizer, then the native immutable receipt/index producer."""
     import types
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         implementation_daemon as native,
     )
 
-    _, daemon, bridge, attempt, _ = _seed_interrupted_database_portal_attempt(tmp_path)
+    repo, daemon, bridge, attempt, paths = _seed_interrupted_database_portal_attempt(tmp_path)
     try:
         original = daemon.task_source.get(attempt.task_cid)
         _, binding = bridge._ensure_attempt_projection(attempt, original)
@@ -397,18 +407,55 @@ def test_actual_legacy_finalizer_conflict_is_captured_without_repairing_old_rows
         monkeypatch.setattr(daemon, "_finalize_failed_attempt", finalize)
         retained = daemon.get_attempt(attempt.attempt_id)
         assert retained.status == "failed"
+        if terminal:
+            saga = daemon._database_portal_terminal_reconciliation_saga(retained)
+            evidence = daemon._terminal_reconciliation_evidence_from_saga(
+                attempt=retained, saga=saga, bridge=bridge,
+            )
+            prepared = bridge.load_reconciliation_receipt(
+                retained, saga["prepared_reconciliation_receipt_id"], required_stage="prepared",
+            )
+            barrier = bridge.load_reconciliation_receipt(
+                retained, saga["commit_barrier_receipt_id"], required_stage="commit_barrier",
+            )
+            phase = next(p for p in daemon.phase_history(retained.attempt_id) if p["phase"] == "failed")
+            payload = daemon._terminal_reconciliation_receipt_payload(
+                prepared=prepared, barrier=barrier, evidence=evidence,
+                attempt=retained, actual_disposition=phase["body"]["database_disposition"],
+            )
+            if change_payload is not None:
+                change_payload(payload)
+            receipt = bridge.persist_reconciliation_receipt(retained, payload)
+            daemon._record_database_portal_terminal_reconciliation(retained, receipt["receipt_id"])
+        return repo, daemon, bridge, retained, paths
+    except BaseException:
+        daemon.close()
+        raise
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_actual_legacy_finalizer_conflict_is_captured_without_repairing_old_rows(
+    tmp_path, monkeypatch, terminal,
+):
+    _, daemon, bridge, retained, paths = legacy_finalizer_conflict(
+        tmp_path, monkeypatch, terminal=terminal,
+    )
+    try:
+        before_files = {p.name: p.read_bytes() for p in paths.reconciliation.iterdir()}
         observed = local.capture(daemon, retained)
         assert observed["retained"]["diagnosis"] == "terminal_disposition_conflict"
         before = install_custody(daemon, retained)
         audit = daemon.reconcile_quiesced_database_portal_attempts(
-            trigger="unacknowledged-conflict", force=True
+            trigger="unacknowledged-conflict", force=True,
         )
         assert audit["blocked"] is True
+        assert any(row.get("error") == "terminal phase changed its actual database disposition"
+                   for row in audit["attempts"])
         assert local.capture(daemon, retained) == before
-        assert (
-            daemon._database_portal_terminal_reconciliation_saga(retained)["stage"]
-            == "commit_barrier"
+        assert daemon._database_portal_terminal_reconciliation_saga(retained)["stage"] == (
+            "terminal" if terminal else "commit_barrier"
         )
+        assert {p.name: p.read_bytes() for p in paths.reconciliation.iterdir()} == before_files
     finally:
         daemon.close()
 

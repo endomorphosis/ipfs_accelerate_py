@@ -5511,6 +5511,61 @@ def terminal_task_state_fields(
     }
 
 
+@dataclass
+class SupervisorStatusReadWindow:
+    """Require sustained unavailable status reads for one retained track launch.
+
+    Missing/invalid projections remain unknown. This only defers their restart
+    recommendation; it does not reuse an old heartbeat or change fencing.
+    A different Popen object, a good observation, or a gap in sampling resets
+    the window, so time spent not observing cannot become recovery authority.
+    """
+
+    grace_seconds: float = 30.0
+    max_sample_gap_seconds: float = 30.0
+    process: object | None = None
+    first_unavailable: float | None = None
+    last_sample: float | None = None
+
+    def observe(
+        self, fields: Mapping[str, object], *, process: object, now: float
+    ) -> dict[str, object]:
+        result = dict(fields)
+        unavailable = fields.get("supervisor_status_reason") in {
+            "status_projection_missing", "status_timestamp_invalid"
+        }
+        if (
+            self.process is not process
+            or not unavailable
+            or fields.get("restart_supervisor") is not True
+            or not math.isfinite(now)
+            or (self.last_sample is not None and (
+                now < self.last_sample
+                or now - self.last_sample > self.max_sample_gap_seconds
+            ))
+        ):
+            self.first_unavailable = None
+            self.last_sample = None
+        self.process = process
+        if not unavailable or fields.get("restart_supervisor") is not True:
+            return result
+        if not math.isfinite(now):
+            result["restart_supervisor"] = False
+            result["supervisor_status_recovery_deferred"] = "observation_clock_invalid"
+            return result
+        if self.first_unavailable is None:
+            self.first_unavailable = now
+        self.last_sample = now
+        elapsed = now - self.first_unavailable
+        remaining = max(0.0, self.grace_seconds - elapsed)
+        result["supervisor_status_unavailable_seconds"] = round(elapsed, 1)
+        result["supervisor_status_unavailable_grace_remaining_seconds"] = round(remaining, 1)
+        if elapsed < self.grace_seconds:
+            result["restart_supervisor"] = False
+            result["supervisor_status_recovery_deferred"] = "projection_unavailable_grace"
+        return result
+
+
 def supervisor_status_health_fields(
     track: SupervisorTrack,
     *,
@@ -5631,6 +5686,13 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
+    for key in (
+        "supervisor_status_unavailable_seconds",
+        "supervisor_status_unavailable_grace_remaining_seconds",
+        "supervisor_status_recovery_deferred",
+    ):
+        if key in fields:
+            parts.append(f"{key}={fields[key]}")
     reason = fields.get("supervisor_status_reason")
     if reason:
         parts.append(f"supervisor_status_reason={reason}")
@@ -8459,6 +8521,9 @@ def run_supervisor_tracks(
         raise ValueError(
             "supervisor_startup_grace_seconds must be finite and nonnegative"
         )
+    status_read_interval = max(0.05, float(heartbeat_interval_seconds))
+    if not math.isfinite(float(heartbeat_interval_seconds)) or not math.isfinite(status_read_interval * 3):
+        raise ValueError("heartbeat_interval_seconds must support a finite observation window")
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
     }
@@ -8511,6 +8576,7 @@ def run_supervisor_tracks(
     processes: dict[str, subprocess.Popen[bytes]] = {}
     track_launch_epoch_seconds: dict[str, float] = {}
     track_launch_monotonic: dict[str, float] = {}
+    status_read_windows: dict[str, SupervisorStatusReadWindow] = {}
 
     def launch_track(track: SupervisorTrack) -> subprocess.Popen[bytes]:
         """Start one exact track birth and reset its projection freshness gate."""
@@ -8528,6 +8594,11 @@ def run_supervisor_tracks(
         )
         track_launch_epoch_seconds[track.name] = launched_epoch
         track_launch_monotonic[track.name] = launched_monotonic
+        status_read_windows[track.name] = SupervisorStatusReadWindow(
+            grace_seconds=max(30.0, status_read_interval),
+            max_sample_gap_seconds=max(30.0, status_read_interval * 3),
+            process=process,
+        )
         return process
 
     def _handle_signal(signum: int, _frame: object) -> None:
@@ -8872,6 +8943,9 @@ def run_supervisor_tracks(
                     ),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
+                    supervisor_fields = status_read_windows[track.name].observe(
+                        supervisor_fields, process=process, now=time.monotonic()
+                    )
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
                     heartbeat_parts = [
                         f"heartbeat {track.name} supervisor_pid={process.pid}",
