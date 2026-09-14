@@ -27,7 +27,9 @@ custody observation and requires the same authenticated owner/pause reply.
 It does not send a `preclaim` acknowledgement while unresolved work remains.
 A proven pause still refuses new dispatch. Missing peer support or unavailable
 typed custody no longer starves a different ready task: only the retained
-canonical ID is excluded. The ordinary wire format and every owner
+canonical ID is excluded. Operator SIGTERM or live-owner loss during that
+independent attempt is not task-integrity failure and must not settle the
+peer blocked. The ordinary wire format and every owner
 credential/source/peer/freshness check stay unchanged. The final pass report
 includes the retained UNKNOWN obligation.
 

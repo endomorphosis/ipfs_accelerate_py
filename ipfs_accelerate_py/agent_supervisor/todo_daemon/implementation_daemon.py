@@ -68135,6 +68135,30 @@ _RECOVERABLE_ZERO_PROVIDER_PORTAL_FAILURE_REASON = (
 _LIVE_OWNER_PORTAL_CLAIM_FAILURE_REARM_REASON = (
     "live_owner_zero_provider_portal_claim_failure"
 )
+_RECOVERABLE_OPERATOR_SESSION_STOP_REASON = (
+    "operator_session_stop_unsettled_independent_attempt"
+)
+_OPERATOR_STOP_RETURNCODES = frozenset(
+    {
+        -signal.SIGTERM,
+        -signal.SIGINT,
+        -signal.SIGHUP,
+        128 + signal.SIGTERM,
+        128 + signal.SIGINT,
+    }
+)
+
+
+def operator_session_stop_failure(exc: BaseException) -> bool:
+    """True when stop/owner-loss IO is not a task-integrity failure."""
+
+    text = str(exc)
+    if "Could not connect to server" in text and "/quack" in text:
+        return True
+    code = getattr(exc, "returncode", None)
+    if code in _OPERATOR_STOP_RETURNCODES:
+        return True
+    return False
 _AUTOMATIC_PORTAL_FAILURE_REARM_EVENT = (
     "automatic_recoverable_portal_failure_rearmed"
 )
@@ -70401,6 +70425,21 @@ class DatabaseImplementationDaemon:
         ).hexdigest()
         return str(receipt.get("failure_payload_digest") or "") == expected
 
+    def _attempt_operator_stop_projection(self, attempt: Any) -> bool:
+        """True when the local Portal projection recorded an operator stop."""
+
+        bridge = getattr(getattr(self, "_provider_fn", None), "__self__", None)
+        paths_fn = getattr(bridge, "_paths", None)
+        if not callable(paths_fn):
+            return False
+        try:
+            state = json.loads(paths_fn(attempt).state.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(state, dict):
+            return False
+        return state.get("last_implementation_returncode") in _OPERATOR_STOP_RETURNCODES
+
     def _portal_recovery_source_rearm_limit(self) -> int:
         """Return how many distinct settlements one sealed source may rearm.
 
@@ -70606,6 +70645,21 @@ class DatabaseImplementationDaemon:
                 if recoverable_reason:
                     matched = (attempt, receipt, recoverable_reason)
                     break
+                if (
+                    attempt is not None
+                    and self._portal_failure_matches_recoverable_reason(
+                        receipt,
+                        attempt,
+                        _RECOVERABLE_ZERO_PROVIDER_PORTAL_FAILURE_REASON,
+                    )
+                    and self._attempt_operator_stop_projection(attempt)
+                ):
+                    matched = (
+                        attempt,
+                        receipt,
+                        _RECOVERABLE_OPERATOR_SESSION_STOP_REASON,
+                    )
+                    break
             if matched is None:
                 if self._portal_claim_failure_is_live_owner_rearmable(control_receipt):
                     if str(control_receipt.get("task_cid") or "") != task_cid:
@@ -70620,6 +70674,7 @@ class DatabaseImplementationDaemon:
             attempt, receipt, reason = matched
             if (
                 reason != _RECOVERABLE_ACCEPTED_SOURCE_PORTAL_FAILURE_REASON
+                and reason != _RECOVERABLE_OPERATOR_SESSION_STOP_REASON
                 and not self._portal_zero_provider_callback_rearm_ready(attempt, receipt)
             ):
                 continue
@@ -73815,12 +73870,46 @@ class DatabaseImplementationDaemon:
                 exc = DatabasePortalBridgeError(reason)
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
+            if operator_session_stop_failure(exc) or self._attempt_operator_stop_projection(
+                attempt
+            ):
+                try:
+                    self._renew_attempt_lease(
+                        attempt
+                        if isinstance(attempt, DatabaseTaskAttempt)
+                        else self.get_attempt(
+                            str(getattr(attempt, "attempt_id", "") or attempt)
+                        )
+                        or attempt
+                    )
+                except Exception:
+                    pass
+                return {
+                    "resumed": True,
+                    "deferred": True,
+                    "reason": _RECOVERABLE_OPERATOR_SESSION_STOP_REASON,
+                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                    "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                    "status": "running",
+                }
             try:
                 settlement = self._settle_terminal_portal_failure(
                     attempt,
                     failure=exc,
                 )
             except Exception as fail_exc:
+                if operator_session_stop_failure(fail_exc) or operator_session_stop_failure(
+                    exc
+                ):
+                    return {
+                        "resumed": True,
+                        "deferred": True,
+                        "reason": _RECOVERABLE_OPERATOR_SESSION_STOP_REASON,
+                        "fail_error": str(fail_exc),
+                        "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                        "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                        "status": "running",
+                    }
                 quarantined = self._quarantine_unsettled_portal_attempt(
                     attempt,
                     failure=exc,

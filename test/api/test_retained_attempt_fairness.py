@@ -286,6 +286,62 @@ def test_normal_exact_claim_guard_remains_required(tmp_path, monkeypatch):
         daemon.close()
 
 
+def test_operator_stop_projection_reads_sigterm_returncode(tmp_path):
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DatabaseImplementationDaemon,
+    )
+
+    state = tmp_path / "portal-task-state.json"
+    state.write_text(json.dumps({"last_implementation_returncode": -15}))
+    daemon = DatabaseImplementationDaemon.__new__(DatabaseImplementationDaemon)
+    daemon._provider_fn = SimpleNamespace(
+        __self__=SimpleNamespace(_paths=lambda _attempt: SimpleNamespace(state=state))
+    )
+    assert daemon._attempt_operator_stop_projection(SimpleNamespace()) is True
+    state.write_text(json.dumps({"last_implementation_returncode": 1}))
+    assert daemon._attempt_operator_stop_projection(SimpleNamespace()) is False
+
+
+def test_operator_session_stop_does_not_block_independent_peer(tmp_path, monkeypatch):
+    daemon, attempt, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, attempt, artifact)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalBridgeError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        operator_session_stop_failure,
+    )
+
+    assert operator_session_stop_failure(
+        DatabasePortalBridgeError(
+            "IO Error: Failed to send message: IO Error: Could not connect to server "
+            "error for HTTP POST to 'http://127.0.0.1:24070/quack'"
+        )
+    )
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(attempt.task_cid,)), "context"
+    )
+    assert peer.task_alias == "SAWM-023"
+
+    def boom(_current):
+        raise DatabasePortalBridgeError(
+            "IO Error: Failed to send message: IO Error: Could not connect to server "
+            "error for HTTP POST to 'http://127.0.0.1:24070/quack'"
+        )
+
+    monkeypatch.setattr(daemon, "resume_attempt", boom)
+    try:
+        result = daemon._resume_attempt_without_process_crash(peer)
+        assert result["status"] == "running"
+        assert result["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert daemon.task_source.get(peer.task_cid).status != "blocked"
+        assert snapshot(daemon, attempt, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 def test_retention_read_allows_a_replaced_daemon_session(tmp_path):
     daemon, attempt, _, calls, artifact = setup(tmp_path)
     before = snapshot(daemon, attempt, artifact)
