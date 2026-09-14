@@ -467,3 +467,20 @@ def test_goal_cas_is_all_or_none_and_status_rpc_cannot_write(native_source, monk
         owner_identity=gateway.identity,
     )
     assert replay["admitted"] is True and replay["idempotent_replay"] is True
+
+
+def test_closeout_acceptance_republishes_kit_source_forest(native_source, monkeypatch):
+    gateway, connection, profile, client, cids, _root = native_source
+    calls: list[bool] = []
+    original = sp.SparCloseoutProfile.publish_source_forest
+
+    def wrapped(self, *args, **kwargs):
+        receipt = original(self, *args, **kwargs)
+        calls.append(receipt.get("admitted") is True)
+        return receipt
+
+    monkeypatch.setattr(sp.SparCloseoutProfile, "publish_source_forest", wrapped)
+    deferred = gateway.publish_spar_closeout_acceptance()
+    assert deferred["admitted"] is False
+    assert calls and calls[-1] is True
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 32

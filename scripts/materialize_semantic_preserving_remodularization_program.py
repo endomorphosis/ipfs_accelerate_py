@@ -3677,6 +3677,8 @@ def _retain_closeout_owner(
         if server is None:
             return
         try:
+            kit_receipt = server.publish_spar_source_forest()
+            print("native kit source forest persistence: " + json.dumps(kit_receipt), flush=True)
             receipt = server.publish_spar_closeout_acceptance()
             print("native SPAR closeout acceptance: " + json.dumps(receipt), flush=True)
         except Exception as exc:  # noqa: BLE001 - retain owner; producer fail-closes

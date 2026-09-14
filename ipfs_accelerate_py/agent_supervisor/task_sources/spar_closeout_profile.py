@@ -281,6 +281,14 @@ class SparCloseoutProfile:
         from ..semantic_state.spar_accepted_root import admit_accepted_root
 
         try:
+            # Republish the current clean source forest before datasets
+            # admission. A later source amendment otherwise leaves kit.observe
+            # bound to a predecessor HEAD and fail-closes as generic MISSING.
+            kit_published = self.publish_source_forest(
+                connection,
+                transaction_lock=transaction_lock,
+                owner_identity=owner_identity,
+            )
             facts = capture_closeout_facts(connection)
             projection = completion_evidence_projection_on_connection(
                 connection,
@@ -294,6 +302,8 @@ class SparCloseoutProfile:
             }
             observed = self.evaluate(facts, snapshot)
             kit = observed["kit_source_forest_persistence"]
+            if kit.get("admitted") is not True and kit_published.get("admitted") is True:
+                kit = kit_published
             datasets = observed["datasets_accepted_root"]
             native_goals = {
                 row["goal_cid"]: row for row in facts["relations"]["goals"]["rows"]

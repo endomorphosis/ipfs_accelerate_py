@@ -13,7 +13,7 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "460b126356b0cb7d9e7b89f9957778b1e90937c80e5766557c732bd24647c68f",
     "ipfs_accelerate_py/agent_supervisor/task_sources/launch_source_amendment.py": "17d537f6e77ace1998162c50ea34e85ad08caf07c5932d6d6d64689839c7e6fb",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py": "906b792ae520915666f8ec12aef25e353d21a038a2827f6934fe07e16e14841d",
-    "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py": "924455d0ced26363f00a74db294030e8bb632111a8d387d9bb3f68f366367768",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/spar_closeout_profile.py": "107278687fc96b0961528f5e3ebf1378ab0ebbbd31248c6bc56f65dbd1868ae9",
     "ipfs_accelerate_py/agent_supervisor/task_sources/spar_goal_settlement.py": "d6dceb8ca7c7084af6349ee8b455072af9fe16754ecb855feac9eefcc73117b8",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "8f4b3b6bd4e38bdcbcbf12c9b1fa38e6cf582a756aa816081f12c69f0c931639",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "92ae856681fe8e59c45a4ad1cd76aa8b757d405aefe045f4443c0a1064bd3662",
@@ -55,7 +55,7 @@
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/overlap_gap_matrix.json": "4c59e622a6497ad3538e20b23557b1acd37a6e14e78ba7de4dfc0321cce445d8",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json": "6ef71a960844a5b49b13293de74b9ae8dc8c70e714beac4e1671f3c7ba61107a",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json": "b77373a0cefd1ea29058ed8a30cd1bb97be8bef6e420385629c5ff69fd5d3f39",
-    "scripts/materialize_semantic_preserving_remodularization_program.py": "ef924fb6242928116e63bd57141beda4abec75f39c8b821453b29d0e8f80680b",
+    "scripts/materialize_semantic_preserving_remodularization_program.py": "9ac52d6239f4205bda1f1dad933e307c0233356580d19d381e0fb5404fa211a1",
     "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "db55189bf2f5dc15eb4d16d44f0a87802f759e6b01b02701be871d1a3520b468",
     "scripts/validate_semantic_preserving_remodularization_board.py": "2f6cbe622e97e207ac6c901ccf1e70244739214b25e710c244d9c5b2b7c8d00d",
     "scripts/validate_semantic_preserving_remodularization_dependencies.py": "d42033c1c2f51c1f9d208bba2ec8e4144cc6e4b8c8625d318ae789ec2496af23",
@@ -517,7 +517,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:796c75def2fd6b5badcc3b3cdb6b9e05fa4afe52bff56a842f434fe4a101c9b1",
+  "seal_cid": "sha256:ef4256d0caa389cecc332239469c3a6f747bb31dcb534d03fbb48e1c9599cd55",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
