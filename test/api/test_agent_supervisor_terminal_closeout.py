@@ -62,6 +62,21 @@ def test_owner_failure_reaches_existing_restart_path():
         )
 
 
+def test_closeout_producer_runs_before_acceptance_read():
+    produced = []
+    observations = iter([{"completion_authority": True, "complete": True}])
+    result = retain_owner_for_closeout(
+        observe=lambda: next(observations),
+        wait=lambda _: False,
+        stopped=lambda: False,
+        check_owner=lambda: None,
+        output=lambda _: None,
+        produce=lambda: produced.append("ran"),
+    )
+    assert result == "accepted"
+    assert produced == ["ran"]
+
+
 def test_stop_during_acceptance_read_does_not_report_completion():
     stopping = []
     def observe():

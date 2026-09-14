@@ -19,6 +19,7 @@ def retain_owner_for_closeout(
     check_owner: Callable[[], None],
     output: Callable[[str], None],
     interval_seconds: float = 10.0,
+    produce: Callable[[], Mapping[str, Any] | None] | None = None,
 ) -> str:
     """Wait for native acceptance or an explicit stop, preserving the owner.
 
@@ -36,6 +37,8 @@ def retain_owner_for_closeout(
     output("implementation lanes drained; retaining native owner for acceptance")
     while not stopped():
         check_owner()
+        if produce is not None:
+            produce()
         observation = observe()
         if (
             observation.get("completion_authority") is True

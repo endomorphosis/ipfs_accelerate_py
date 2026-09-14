@@ -46,6 +46,11 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
             calls["kit_persistence"] = True
             return {"admitted": False, "completion_authority": False}
 
+        def publish_spar_closeout_acceptance(self):
+            assert calls.get("kit_persistence") is True
+            calls["closeout_acceptance"] = True
+            return {"admitted": False, "completion_authority": False}
+
         def stop(self):
             calls["stopped"] = True
 
@@ -70,6 +75,7 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
     else:
         m._start_state_owner(tmp_path / "config")
         assert calls["kit_persistence"] is True
+        assert calls["closeout_acceptance"] is True
         assert calls["binding"] == {
             "board_namespace": "board:sealed",
             "plan_root_cid": "plan:sealed",
