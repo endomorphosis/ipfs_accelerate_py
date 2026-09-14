@@ -13703,9 +13703,15 @@ class DatabasePortalExecutionBridge:
             if source_type == "worktree_reconciliation_candidate_queued"
             else set()
         )
+        required_source_fields = set(common_source_required_fields)
+        projected_source = source_type == "worktree_reconciliation_candidate_queued"
+        effective_task_key = source.get("canonical_task_key")
+        if projected_source and not effective_task_key:
+            required_source_fields.discard("canonical_task_key")
+            effective_task_key = source_merge.get("canonical_task_key")
         if (
             not source_fields
-            or not common_source_required_fields <= set(source)
+            or not required_source_fields <= set(source)
             or not set(source) <= source_fields
             or str(source.get("task_id") or "") != alias
             or str(source.get("canonical_task_cid") or "") != task_cid
@@ -13723,7 +13729,7 @@ class DatabasePortalExecutionBridge:
             or source_merge.get("branch") != source_branch
             or source_merge.get("implementation_commit") != implementation
             or source_merge.get("canonical_task_cid") != task_cid
-            or source.get("canonical_task_key") != task_key
+            or effective_task_key != task_key
             or source_merge.get("canonical_task_key")
             != task_key
             or not str(source_merge.get("target_repository_id") or "")
@@ -13832,7 +13838,11 @@ class DatabasePortalExecutionBridge:
                 or provenance_body.get("task_id") != alias
                 or provenance_body.get("task_cid") != task_cid
                 or provenance_body.get("canonical_task_key")
-                != str(source.get("canonical_task_key") or "")
+                != str(
+                    source.get("canonical_task_key")
+                    or source_merge.get("canonical_task_key")
+                    or ""
+                )
                 or source_projection_id != content_identity(provenance_body)
             ):
                 return False
@@ -13999,8 +14009,13 @@ class DatabasePortalExecutionBridge:
             "task_source_identity",
         }
         reconciliation_fields = set(reconciliation)
+        required_reconciliation_fields = set(reconciliation_required_fields)
+        effective_reconciliation_key = reconciliation.get("canonical_task_key")
+        if projected_source and not effective_reconciliation_key:
+            required_reconciliation_fields.discard("canonical_task_key")
+            effective_reconciliation_key = effective_task_key
         if (
-            not reconciliation_required_fields <= reconciliation_fields
+            not required_reconciliation_fields <= reconciliation_fields
             or not reconciliation_fields
             <= (
                 reconciliation_required_fields
@@ -14012,7 +14027,7 @@ class DatabasePortalExecutionBridge:
             != "merge_queue_callback_completed"
             or str(reconciliation.get("task_id") or "") != alias
             or str(reconciliation.get("canonical_task_cid") or "") != task_cid
-            or str(reconciliation.get("canonical_task_key") or "") != task_key
+            or str(effective_reconciliation_key or "") != task_key
             or reconciliation.get("attempt") != source_attempt
             or branch != source_branch
             or ("board_namespace" in reconciliation)
@@ -14213,7 +14228,10 @@ class DatabasePortalExecutionBridge:
             or receipt_id != content_identity(receipt_body)
         ):
             return False
-        source_task_key = source.get("canonical_task_key")
+        source_task_key = (
+            source.get("canonical_task_key")
+            or source_merge.get("canonical_task_key")
+        )
         source_board_namespace = source.get("board_namespace")
         receipt_cids: dict[str, str] = {}
         for receipt in receipts:

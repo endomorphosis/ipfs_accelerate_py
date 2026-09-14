@@ -20,6 +20,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.append_reconciliation_recov
     REVIVAL_REASON,
     append_quarantine_lineage,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
 from test.api.test_agent_supervisor_merge_train import (
     _DatabaseProjectionTaskSource,
     _database_projection_attempt,
@@ -203,6 +206,60 @@ def test_native_append_quarantine_is_selected_without_implementation_finished(
     assert projection is not None
     assert fixture.daemon.merge_queue.get(request.request_id).status == "quarantined"
     assert fixture.paths.events.read_bytes() == events_before
+
+
+def test_projected_callback_uses_merge_result_task_key_when_top_level_omitted(
+    tmp_path, monkeypatch
+):
+    fixture = native_append_quarantine(
+        tmp_path, monkeypatch, record_implementation_finished=False
+    )
+    events = [
+        json.loads(line)
+        for line in fixture.paths.events.read_text().splitlines()
+        if line.strip()
+    ]
+    source = next(
+        event
+        for event in events
+        if event.get("reason") == "merge_queue_synchronous_source_projected"
+    )
+    reconciliation = next(
+        event
+        for event in events
+        if event.get("type") == "merge_reconciled"
+        and event.get("request_id") == fixture.request.request_id
+    )
+    source = dict(source)
+    reconciliation = dict(reconciliation)
+    assert source.get("canonical_task_key")
+    source.pop("canonical_task_key")
+    reconciliation.pop("canonical_task_key", None)
+    request = fixture.request
+    assert (
+        DatabasePortalExecutionBridge._exact_callback_reconciliation_for_completion_source(
+            reconciliation,
+            source,
+            alias=request.task_id,
+            task_cid=request.canonical_task_id,
+            task_key=request.canonical_task_key,
+            repository_root=fixture.repo,
+        )
+        is True
+    )
+    source["merge_result"] = dict(source["merge_result"])
+    source["merge_result"]["canonical_task_key"] = "foreign"
+    assert (
+        DatabasePortalExecutionBridge._exact_callback_reconciliation_for_completion_source(
+            reconciliation,
+            source,
+            alias=request.task_id,
+            task_cid=request.canonical_task_id,
+            task_key=request.canonical_task_key,
+            repository_root=fixture.repo,
+        )
+        is False
+    )
 
 
 def test_native_append_quarantine_is_selected_without_effects(tmp_path, monkeypatch):
