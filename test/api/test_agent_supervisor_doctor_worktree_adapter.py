@@ -84,6 +84,38 @@ def test_interface_and_scrubbed_no_network_no_secret_git_environment(
     )
 
 
+@pytest.mark.parametrize(
+    ("key", "configured", "expected"),
+    [
+        ("gc.auto", "1", "0"),
+        ("gc.autoDetach", "true", "false"),
+        ("maintenance.auto", "true", "false"),
+        ("maintenance.autoDetach", "true", "false"),
+    ],
+)
+def test_native_git_disables_automatic_maintenance_without_rewriting_config(
+    tmp_path: Path, key: str, configured: str, expected: str,
+) -> None:
+    root = _repository(tmp_path)
+    _git(root, "config", key, configured)
+    original_config = (root / ".git/config").read_bytes()
+    adapter = DoctorWorktreeAdapter(root, tmp_path / "state", ("pkg/a.py",))
+
+    # Exercise Git's effective configuration, including a linked callback
+    # worktree. A completed native Git command must not detach maintenance
+    # writers outside the callback's process/effect custody.
+    assert adapter._git(root, "config", "--get", key).stdout.strip().decode() == expected
+    session = adapter.prepare(session_id="no-background-maintenance")
+    try:
+        result = adapter._git(session.worktree_root, "config", "--get", key)
+        assert result.stdout.strip().decode() == expected
+    finally:
+        session.restore(reason="test")
+        session.close()
+    assert (root / ".git/config").read_bytes() == original_config
+    assert _git(root, "config", "--get", key) == configured
+
+
 def test_create_materializes_disposable_no_checkout_worktree_and_cids(
     tmp_path: Path,
 ) -> None:

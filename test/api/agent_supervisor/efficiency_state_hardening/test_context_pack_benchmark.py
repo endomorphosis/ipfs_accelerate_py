@@ -43,7 +43,7 @@ def _load_benchmark() -> ModuleType:
 
 
 BENCHMARK = _load_benchmark()
-BENCHMARK.write_sealed_artifacts()
+# Validate the recorded artifacts; generation must be requested explicitly.
 _CAMPAIGN: dict[str, Any] | None = None
 
 

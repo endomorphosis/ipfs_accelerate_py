@@ -86,6 +86,30 @@ def _cid(value: Any) -> str:
     return "sha256:" + hashlib.sha256(_json(value).encode()).hexdigest()
 
 
+def _migration_payload_cid(value: Any) -> str:
+    """Hash bounded local history without imposing a single wire-frame limit.
+
+    Keep the exact canonical encoding used by existing migration receipts so
+    replay identities do not change. Individual receipt and request limits
+    remain enforced separately by ``_cid`` and the closed import contracts.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    try:
+        for chunk in encoder.iterencode(value):
+            encoded = chunk.encode()
+            size += len(encoded)
+            if size > MAX_PRESERVED_HISTORY_BYTES:
+                raise OwnerRecoveryRuntimeError("migration history exceeds byte bound")
+            digest.update(encoded)
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise OwnerRecoveryRuntimeError("migration history is not bounded JSON") from exc
+    return "sha256:" + digest.hexdigest()
+
+
 def _json_object(raw: Any) -> dict:
     if type(raw) is not str or len(raw.encode()) > MAX_JSON_BYTES:
         raise OwnerRecoveryRuntimeError("recovery wire JSON exceeds bound")
@@ -913,7 +937,7 @@ def provision_legacy_merge_recovery_schema(
         "receipt_imports": list(receipt_imports),
         "cursor_imports": list(cursor_imports),
     }
-    payload_cid = _cid(payload)
+    payload_cid = _migration_payload_cid(payload)
     with _BorrowedConnection(service) as connection:
         connection.execute("BEGIN TRANSACTION")
         names = [

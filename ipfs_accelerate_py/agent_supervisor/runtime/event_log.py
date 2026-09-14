@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import tempfile
 import threading
 from collections import deque
@@ -42,6 +43,69 @@ LEGACY_EVENT_LOG_MANIFEST_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-lo
 EVENT_CURSOR_CHECKPOINT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.event-cursor-checkpoint@1"
 SEMANTIC_CHANGE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/semantic-change@1"
 SEMANTIC_CHANGE_EVENT_TYPE: Final = "decision_runtime_semantic_change"
+# Read compatibility with native causal envelopes; the main writer remains legacy.
+_CAUSAL_ENVELOPE_NONCOALESCING_TOKENS: Final[tuple[str, ...]] = (
+    "lease", "fence", "proof", "payment", "receipt", "semantic_change",
+    "security", "legal", "irreversible",
+)
+MAX_CAUSAL_PARENTS: Final = 256
+MAX_COALESCING_KEY_BYTES: Final = 256
+LEGACY_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset({
+    "event_id", "previous_event_id", "sequence", "snapshot_id",
+    "stream_id", "timestamp", "type",
+})
+CAUSAL_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset({
+    "causal_parent_ids", "coalescing_key", "coalescing_forbidden",
+})
+
+
+def strict_event_envelope_fields(event: Mapping[str, Any]) -> frozenset[str]:
+    """Identify the legacy or complete causal envelope without changing bytes.
+
+    This validates shape and producer coalescing policy. The caller still
+    verifies the entire event hash/chain and its closed payload schema. No field
+    is removed from the event or from a content-addressed receipt.
+    """
+    if not isinstance(event, Mapping):
+        raise ValueError("event envelope must be an object")
+    present = CAUSAL_EVENT_ENVELOPE_FIELDS.intersection(event)
+    if not present:
+        return LEGACY_EVENT_ENVELOPE_FIELDS
+    if present != CAUSAL_EVENT_ENVELOPE_FIELDS:
+        raise ValueError("causal event envelope is incomplete")
+    parents = event["causal_parent_ids"]
+    key = event["coalescing_key"]
+    if (
+        type(parents) is not list
+        or len(parents) > MAX_CAUSAL_PARENTS
+        or any(
+            type(parent) is not str
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", parent) is None
+            for parent in parents
+        )
+        or len(set(parents)) != len(parents)
+        or event.get("event_id") in parents
+        or type(event["coalescing_forbidden"]) is not bool
+        or type(key) is not str
+        or "\x00" in key
+        or key != key.strip()
+    ):
+        raise ValueError("causal event envelope is malformed")
+    try:
+        encoded = key.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("causal event key is not UTF-8") from exc
+    if len(encoded) > MAX_COALESCING_KEY_BYTES:
+        raise ValueError("causal event key exceeds its bound")
+    forbidden = event["coalescing_forbidden"]
+    if (forbidden and key) or (
+        any(token in str(event.get("type") or "").casefold()
+            for token in _CAUSAL_ENVELOPE_NONCOALESCING_TOKENS) and not forbidden
+    ):
+        raise ValueError("causal event coalescing conflicts with producer policy")
+    return LEGACY_EVENT_ENVELOPE_FIELDS | CAUSAL_EVENT_ENVELOPE_FIELDS
+
+
 _EVENT_OFFSET_INDEX_STRIDE = 256
 _EVENT_OFFSET_INDEX_MAX_ITEMS = 4096
 _EVENT_RECOVERY_TAIL_MAX_BYTES = 16 * MAX_PROJECTION_BYTES

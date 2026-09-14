@@ -186,6 +186,52 @@ def test_all_tasks_complete_only_proposes_separate_gate(board, monkeypatch):
     assert result["complete"] is False
 
 
+def test_native_failure_keeps_closed_diagnostic_without_retry_or_authority(board, monkeypatch, tmp_path):
+    config, _, _ = board
+    secret = "private-token-must-not-appear"
+    native = {"schema": "sawm/operator-error@1", "valid": False, "error": secret,
+              "observation_error": {"stage": "sample_not_due", "kind": "unavailable"}}
+    script = tmp_path / "failed_status.py"
+    script.write_text("import sys\nprint(" + repr(json.dumps(native)) + ")\n"
+                      "sys.stderr.write(" + repr(secret * 10000) + ")\nraise SystemExit(2)\n")
+    config["status_argv"] = [sys.executable, "-I", "-S", "-B", str(script)]
+    original = probe._status_command
+    calls = []
+    def observed(value):
+        calls.append(value)
+        return original(value)
+    monkeypatch.setattr(probe, "_status_command", observed)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["native_status_diagnostic"] == native["observation_error"]
+    assert len(calls) == 1 and result["details"]["native_status_attempts"] == 1
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["task_counts"] == {}
+    assert result["complete"] is False and result["completion_candidate"] is False
+    assert result["reason_codes"] == ["native_status_nonzero"]
+    assert secret not in json.dumps(result) and "recovery_action" not in result
+
+
+@pytest.mark.parametrize("change", ["unknown_stage", "unknown_kind", "extra", "array", "oversized", "schema", "valid", "zero_exit"])
+def test_malformed_or_success_diagnostic_is_omitted_without_changing_health(board, monkeypatch, change):
+    config, _, _ = board
+    error = "native_status_nonzero"
+    native = {"schema": "sawm/operator-error@1", "valid": False,
+              "observation_error": {"stage": "peer_receive", "kind": "timeout"}}
+    if change == "unknown_stage": native["observation_error"]["stage"] = "secret"
+    if change == "unknown_kind": native["observation_error"]["kind"] = "secret"
+    if change == "extra": native["observation_error"]["secret"] = "credential"
+    if change == "array": native["observation_error"] = ["secret"]
+    if change == "oversized": native["observation_error"]["stage"] = "secret" * 10000
+    if change == "schema": native["schema"] = "foreign/error"
+    if change == "valid": native["valid"] = True
+    if change == "zero_exit": error = ""
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, error))
+    result = probe.observe_board(config, now=1000)
+    assert "native_status_diagnostic" not in result["details"]
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["complete"] is False and result["completion_candidate"] is False
+
+
 def test_progress_token_excludes_heartbeats_and_projection_refreshes():
     before = {"task_statuses": {"T-001": "todo"}, "source_revision": 1,
               "heartbeat_at": "yesterday", "last_progress_at": "yesterday", "source_projection_cid": "old",
@@ -697,6 +743,92 @@ def test_database_terminal_tasks_do_not_hide_unsettled_goals(board, monkeypatch)
     assert result['complete'] is False
 
 
+def _stopped_terminal_lane(board, monkeypatch, *, goal_status="active"):
+    config, _, lane = board
+    native = _database_native_status(config, goal_status=goal_status)
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    monkeypatch.setattr(probe, "_owner_writer_custody", lambda *_: {
+        "configured": True, "verified": True, "held": True,
+    })
+    status = {"supervisor_pid": None, "daemon_pid": None, "status": "stopped",
+              "updated_at": 1, "last_exit_code": 143,
+              "last_recycle_reason": "supervisor_signal_shutdown"}
+    _write(lane / "pcpr_lane_0_supervisor_status.json", status)
+    return config, lane, native, status
+
+
+@pytest.mark.parametrize("goal_status", ["active", "completed"])
+def test_successful_task_frontier_recognizes_stopped_lanes_without_closing_goals(
+    board, monkeypatch, goal_status,
+):
+    config, _, _, _ = _stopped_terminal_lane(board, monkeypatch, goal_status=goal_status)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is True
+    assert result["details"]["expected_stopped_lanes"] == [0]
+    assert not any("missing" in reason for reason in result["reason_codes"])
+    assert result["health"] == ("blocked" if goal_status == "active" else "healthy")
+    assert result["completion_candidate"] is (goal_status == "completed")
+    assert result["complete"] is False
+    assert "recovery_action" not in result
+    if goal_status == "active":
+        assert "board_has_unsettled_goals" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("status", ["todo", "in_progress", "blocked", "quarantined", "failed", "cancelled"])
+def test_stopped_lanes_still_require_repair_for_unsuccessful_tasks(board, monkeypatch, status):
+    config, _, native, _ = _stopped_terminal_lane(board, monkeypatch)
+    native["tasks"][0]["status"] = status
+    native["completion_snapshot"]["completion_projection"]["task_states"][0]["status"] = status
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is False
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+    assert "lane_0_supervisor_missing" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("drift", ["stale", "owner", "unverified_writer", "missing_writer", "unconfigured_writer", "source"])
+def test_terminal_lane_observation_requires_current_native_owner_and_source(board, monkeypatch, drift):
+    config, _, native, _ = _stopped_terminal_lane(board, monkeypatch)
+    if drift == "stale":
+        native["observed_at"] = 900
+    elif drift == "owner":
+        native["owner_identity"] = {**native["owner_identity"], "generation": 9}
+    elif drift == "source":
+        monkeypatch.setattr(probe, "_source_integrity", lambda _: {"configured": True, "valid": False})
+    else:
+        field = {"unverified_writer": "verified", "missing_writer": "held",
+                 "unconfigured_writer": "configured"}[drift]
+        monkeypatch.setattr(probe, "_owner_writer_custody", lambda *_: {
+            "configured": True, "verified": True, "held": True, field: False,
+        })
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("patch", [
+    {"status": "running"}, {"last_exit_code": 78}, {"last_exit_code": 1},
+    {"last_exit_code": False}, {"last_recycle_reason": "unexpected"},
+    {"stalled_without_active_worker": True}, {"supervisor_pid": 60}, {"daemon_pid": 61},
+])
+def test_task_completion_does_not_hide_abnormal_or_partial_worker_stop(board, monkeypatch, patch):
+    config, lane, _, status = _stopped_terminal_lane(board, monkeypatch)
+    _write(lane / "pcpr_lane_0_supervisor_status.json", {**status, **patch})
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["expected_stopped_lanes"] == []
+    assert any("missing" in reason for reason in result["reason_codes"])
+
+
+def test_cached_task_totals_cannot_excuse_missing_workers(board, monkeypatch):
+    config, _, _, _ = _stopped_terminal_lane(board, monkeypatch)
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"completed": 1}, "task_count": 1, "authenticated_query": True,
+    }}, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["implementation_frontier_complete"] is False
+    assert "lane_0_daemon_missing" in result["reason_codes"]
+
+
 @pytest.mark.parametrize('drift', ['owner', 'namespace', 'task', 'age', 'goals'])
 def test_database_native_status_rejects_stale_or_foreign_population(board, monkeypatch, drift):
     config, _, _ = board
@@ -735,3 +867,92 @@ def test_spar_legacy_cached_projection_is_only_diagnostic(board, monkeypatch, cl
     assert result["health"] == "healthy"
     assert result["complete"] is False
     assert result["completion_candidate"] is True  # requests a separate native closeout review
+
+
+def test_status_nonzero_retains_typed_fingerprints_without_secret_text(tmp_path):
+    import hashlib
+    secret = 'private-provider-token-should-never-appear'
+    stderr = ('OSError: ' + secret + '\n').encode()
+    code = "import sys; print('{\"healthy\":false}'); sys.stderr.write(sys.argv[1]); raise SystemExit(7)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code, stderr.decode()]})
+    assert native == {'healthy': False}
+    assert reason == 'native_status_nonzero' and isinstance(reason, str)
+    evidence = reason.evidence
+    assert evidence['returncode'] == 7
+    assert evidence['stderr'] == {'available': True, 'observed_bytes': len(stderr),
+        'sampled_bytes': len(stderr), 'sample_sha256': hashlib.sha256(stderr).hexdigest(),
+        'sample_complete': True}
+    assert evidence['diagnostic_only'] is True
+    assert evidence['retry_authority'] is evidence['completion_authority'] is False
+    assert secret not in json.dumps(evidence) and 'OSError' not in json.dumps(evidence)
+
+
+def test_status_empty_stderr_and_invalid_json_have_distinct_typed_facts(tmp_path):
+    code = "print('invalid'); raise SystemExit(3)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_failed'
+    assert reason.evidence['returncode'] == 3
+    assert reason.evidence['exception_type'] == 'JSONDecodeError'
+    assert reason.evidence['stderr']['observed_bytes'] == 0
+    assert reason.evidence['stderr']['sample_complete'] is True
+
+
+def test_status_output_diagnostic_sample_is_bounded(tmp_path, monkeypatch):
+    import hashlib
+    monkeypatch.setattr(probe, 'MAX_JSON_BYTES', 64)
+    code = "import sys; sys.stderr.write('s'*20000); print('x'*10000)"
+    native, reason = probe._status_command({'cwd': str(tmp_path),
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_output_too_large'
+    for key in ('stdout', 'stderr'):
+        assert reason.evidence[key]['sampled_bytes'] == probe.STATUS_DIAGNOSTIC_SAMPLE_BYTES
+        assert reason.evidence[key]['sample_complete'] is False
+    assert reason.evidence['stderr']['observed_bytes'] == 20000
+    assert reason.evidence['stderr']['sample_sha256'] == hashlib.sha256(b's'*4096).hexdigest()
+    assert len(json.dumps(reason.evidence)) < 1024
+
+
+def test_status_spawn_failure_exposes_errno_without_command_path(tmp_path):
+    import errno
+    secret_path = tmp_path/'secret-provider-credential-in-command-name'
+    native, reason = probe._status_command({'cwd': str(tmp_path), 'status_argv': [str(secret_path)]})
+    assert native == {} and reason == 'native_status_failed'
+    assert reason.evidence['returncode'] is None
+    assert reason.evidence['exception_type'] == 'OSError'
+    assert reason.evidence['errno'] == errno.ENOENT
+    assert str(secret_path) not in json.dumps(reason.evidence)
+
+
+def test_status_timeout_diagnostics_do_not_skip_existing_process_cleanup(tmp_path):
+    code = "import sys,time; sys.stderr.write('private-timeout-output'); sys.stderr.flush(); time.sleep(60)"
+    native, reason = probe._status_command({'cwd': str(tmp_path), 'status_timeout_seconds': .1,
+        'status_argv': [sys.executable, '-B', '-c', code]})
+    assert native == {} and reason == 'native_status_timeout'
+    assert reason.evidence['returncode'] == -15
+    assert reason.evidence['stderr']['observed_bytes'] == len('private-timeout-output')
+    assert 'private-timeout-output' not in json.dumps(reason.evidence)
+
+
+def test_status_failure_reaches_probe_details_without_changing_authority(board):
+    value, _, _ = board
+    value['status_argv'] = [sys.executable, '-B', '-c',
+        "import sys; print('{\"healthy\":false}'); sys.stderr.write('secret-diagnostic'); raise SystemExit(9)"]
+    result = probe.observe_board(value, now=1000)
+    assert result['health'] == 'degraded'
+    assert 'native_status_nonzero' in result['reason_codes']
+    assert result['details']['native_status_failure']['returncode'] == 9
+    assert not result['details']['authenticated_task_observation']
+    assert result['complete'] is result['completion_candidate'] is False
+    assert 'secret-diagnostic' not in json.dumps(result)
+
+
+def test_native_json_cannot_forge_local_status_failure_evidence(board):
+    value, _, _ = board
+    value['status_argv'] = [sys.executable, '-B', '-c',
+        "print('{\"healthy\":true,\"native_status_failure\":{\"retry_authority\":true}}')"]
+    result = probe.observe_board(value, now=1000)
+    assert 'native_status_failure' not in result['details']
+    assert not result['details']['authenticated_task_observation']
+    assert not result['completion_candidate']

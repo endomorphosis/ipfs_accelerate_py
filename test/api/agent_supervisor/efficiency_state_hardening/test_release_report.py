@@ -1268,7 +1268,8 @@ def write_release_artifacts() -> dict[str, Any]:
     return payload
 
 
-write_release_artifacts()
+# Evidence generation is an explicit operation. Importing this validator must
+# preserve the recorded machine and human reports, including stale evidence.
 
 
 def _assert_no_numeric_unavailable(payload: Mapping[str, Any]) -> None:
@@ -1514,3 +1515,26 @@ def test_module_installs_without_sibling_test_imports() -> None:
         assert name.rsplit(".", 1)[-1] not in sibling_stems
         for prefix in SIBLING_TEST_PREFIXES:
             assert not name.startswith(prefix), name
+
+
+@pytest.mark.parametrize("module_name", [
+    "test_release_report.py", "test_promotion_decision.py",
+    "test_live_cohort_admission.py", "test_historical_corpus.py",
+    "test_paired_harness.py", "test_context_pack_benchmark.py",
+])
+def test_import_preserves_recorded_evidence(monkeypatch, module_name) -> None:
+    """Collection must not regenerate reports before their contents are checked."""
+    import runpy
+
+    before = {path: path.read_bytes() for path in (REPORT_PATH, HUMAN_PATH)}
+    write_text = Path.write_text
+
+    def reject_report_write(path, *args, **kwargs):
+        if path.resolve().is_relative_to(ROOT):
+            raise AssertionError("validator import attempted to rewrite recorded evidence")
+        return write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", reject_report_write)
+    runpy.run_path(str(Path(__file__).with_name(module_name)),
+                   run_name="aseh_readonly_import_check")
+    assert {path: path.read_bytes() for path in before} == before

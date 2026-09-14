@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
+from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner as runner_module
 
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     build_arg_parser,
@@ -40,6 +41,32 @@ def _sleeping_worker(path: Path, *, exit_on_sigterm: bool) -> None:
         ).lstrip(),
         encoding="utf-8",
     )
+
+
+@pytest.fixture
+def captured_supervisor_children(monkeypatch: pytest.MonkeyPatch):
+    """Retain exact test-owned births and fence them even when an assertion fails."""
+    children = []
+    capture = runner_module._capture_owned_popen_birth
+    terminate = runner_module._terminate_managed_process
+
+    def record(process, profile):
+        identity = capture(process, profile)
+        children.append((process, identity))
+        return identity
+
+    monkeypatch.setattr(runner_module, "_capture_owned_popen_birth", record)
+    yield children
+    for process, _identity in children:
+        fenced, _members = terminate(process, grace_seconds=0.2)
+        assert fenced, "test-owned supervisor tree could not be fenced"
+
+
+def _assert_captured_children_stopped(children) -> None:
+    assert len(children) == 1
+    process, identity = children[0]
+    assert process.poll() is not None
+    assert not runner_module.LinuxProcessAdapter().identity_alive(identity)
 
 
 def test_cli_parser_accepts_survive_external_sigterm() -> None:
@@ -107,7 +134,7 @@ def test_run_supervisor_tracks_survives_sigterm_when_flag_set(tmp_path: Path) ->
 
 
 def test_run_supervisor_tracks_still_stops_on_sigterm_by_default(
-    tmp_path: Path,
+    tmp_path: Path, captured_supervisor_children,
 ) -> None:
     worker = tmp_path / "worker.py"
     _sleeping_worker(worker, exit_on_sigterm=True)
@@ -121,6 +148,7 @@ def test_run_supervisor_tracks_still_stops_on_sigterm_by_default(
     def emit(message: str) -> None:
         output.append(message)
         if sent["n"] == 0 and "started T supervisor" in message:
+            (tmp_path / "state" / "supervisor.pid").chmod(0o600)
             sent["n"] += 1
             os.kill(os.getpid(), signal.SIGTERM)
 
@@ -138,6 +166,209 @@ def test_run_supervisor_tracks_still_stops_on_sigterm_by_default(
     )
     assert result["completed"] is False
     assert "received signal 15" in str(result["interrupted"])
+    _assert_captured_children_stopped(captured_supervisor_children)
+    assert not (tmp_path / "state" / "supervisor.pid").exists()
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_start_notification_failure_fences_captured_child_and_descendant(
+    tmp_path: Path, captured_supervisor_children, error_type,
+) -> None:
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "import os, signal, time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "child = os.fork()\n"
+        "if child: Path('descendant.pid').write_text(str(child))\n"
+        "while True: time.sleep(0.05)\n"
+    )
+    track = parse_track_spec("T|worker.py|worker.log|state/supervisor.pid|state/daemon.pid")
+    failure = error_type("startup notification failed")
+    births = []
+
+    def emit(message: str) -> None:
+        if "started T supervisor" not in message:
+            return
+        deadline = time.monotonic() + 5
+        while not (tmp_path / "descendant.pid").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert (tmp_path / "descendant.pid").exists()
+        process, _identity = captured_supervisor_children[0]
+        profile = process._agent_supervisor_lifecycle_profile
+        births.extend(runner_module.LinuxProcessAdapter().snapshot(profile).members)
+        assert len(births) == 2
+        (tmp_path / "state" / "supervisor.pid").chmod(0o600)
+        raise failure
+
+    with pytest.raises(error_type) as observed:
+        runner_module.start_track(
+            track, repo_root=tmp_path, common_args=[], python_executable=sys.executable,
+            output=emit,
+        )
+    assert observed.value is failure
+    _assert_captured_children_stopped(captured_supervisor_children)
+    assert all(not runner_module.LinuxProcessAdapter().identity_alive(birth) for birth in births)
+    assert not (tmp_path / "state" / "supervisor.pid").exists()
+
+
+@pytest.mark.parametrize("initial_fence", ["refused", "raises"])
+def test_notification_fence_failure_retains_owned_child_for_runner_shutdown(
+    tmp_path: Path, captured_supervisor_children, monkeypatch: pytest.MonkeyPatch,
+    initial_fence: str,
+) -> None:
+    _sleeping_worker(tmp_path / "worker.py", exit_on_sigterm=True)
+    track = parse_track_spec("T|worker.py|worker.log|state/supervisor.pid|state/daemon.pid")
+    terminate = runner_module._terminate_managed_process
+    calls = []
+
+    def initially_unavailable(process, *, grace_seconds):
+        calls.append(process)
+        if len(calls) == 1:
+            if initial_fence == "raises":
+                raise runner_module.ProcessIdentityMismatch("fixture inspection unavailable")
+            return False, ()
+        return terminate(process, grace_seconds=grace_seconds)
+
+    def emit(message: str) -> None:
+        if "started T supervisor" in message:
+            raise RuntimeError("startup notification failed")
+
+    monkeypatch.setattr(runner_module, "_terminate_managed_process", initially_unavailable)
+    result = run_supervisor_tracks(
+        [track], repo_root=tmp_path, common_args=[], duration_seconds=1,
+        stop_grace_seconds=0.2, python_executable=sys.executable, output=emit,
+    )
+    assert "startup notification" in result["blocked"]
+    assert result["all_trees_fenced"] is True
+    assert len(calls) == 2 and calls[0] is calls[1]
+    _assert_captured_children_stopped(captured_supervisor_children)
+
+
+def test_failed_notification_preserves_substituted_pid_projection(
+    tmp_path: Path, captured_supervisor_children,
+) -> None:
+    _sleeping_worker(tmp_path / "worker.py", exit_on_sigterm=True)
+    track = parse_track_spec("T|worker.py|worker.log|state/supervisor.pid|state/daemon.pid")
+    marker = tmp_path / "state" / "supervisor.pid"
+
+    def emit(message: str) -> None:
+        if "started T supervisor" in message:
+            marker.write_text(str(os.getpid()))
+            raise RuntimeError("notification replaced marker")
+
+    with pytest.raises(RuntimeError, match="notification replaced marker"):
+        runner_module.start_track(
+            track, repo_root=tmp_path, common_args=[], python_executable=sys.executable,
+            output=emit,
+        )
+    _assert_captured_children_stopped(captured_supervisor_children)
+    assert marker.read_text() == str(os.getpid())
+
+
+def test_failed_notification_preserves_group_writable_pid_projection(
+    tmp_path: Path, captured_supervisor_children,
+) -> None:
+    _sleeping_worker(tmp_path / "worker.py", exit_on_sigterm=True)
+    track = parse_track_spec("T|worker.py|worker.log|state/supervisor.pid|state/daemon.pid")
+    marker = tmp_path / "state" / "supervisor.pid"
+    failure = RuntimeError("original notification failure")
+
+    def emit(message: str) -> None:
+        if "started T supervisor" in message:
+            marker.chmod(0o660)
+            raise failure
+
+    with pytest.raises(RuntimeError) as observed:
+        runner_module.start_track(
+            track, repo_root=tmp_path, common_args=[], python_executable=sys.executable,
+            output=emit,
+        )
+    assert observed.value is failure
+    _assert_captured_children_stopped(captured_supervisor_children)
+    assert marker.read_text() == f"{captured_supervisor_children[0][0].pid}\n"
+
+
+@pytest.mark.parametrize("replacement_pid", ["same", "foreign"])
+def test_failed_notification_preserves_marker_replaced_during_retirement(
+    tmp_path: Path, captured_supervisor_children, monkeypatch: pytest.MonkeyPatch,
+    replacement_pid: str,
+) -> None:
+    _sleeping_worker(tmp_path / "worker.py", exit_on_sigterm=True)
+    track = parse_track_spec("T|worker.py|worker.log|state/supervisor.pid|state/daemon.pid")
+    marker = tmp_path / "state" / "supervisor.pid"
+    failure = RuntimeError("original startup notification failure")
+    read_started = threading.Event()
+    replaced = threading.Event()
+    replacement = {}
+    retirement = {"armed": False, "raced": False}
+    terminate = runner_module._terminate_managed_process
+    read_pid = runner_module.read_pid_file
+    read_stable = runner_module._read_stable_regular_bytes
+
+    def replace_after_read() -> None:
+        try:
+            assert read_started.wait(5), "retirement did not read its marker"
+            process, _identity = captured_supervisor_children[0]
+            pid = process.pid if replacement_pid == "same" else os.getpid()
+            payload = f"{pid}\n".encode("ascii")
+            replacement_path = marker.with_name("replacement.pid")
+            replacement_path.write_bytes(payload)
+            replacement_path.chmod(0o600)
+            os.replace(replacement_path, marker)
+            replacement.update(payload=payload, inode=marker.stat().st_ino)
+        except BaseException as exc:
+            replacement["error"] = exc
+        finally:
+            replaced.set()
+
+    def race_retirement_read(path) -> None:
+        if Path(path) == marker and retirement["armed"] and not retirement["raced"]:
+            retirement["raced"] = True
+            read_started.set()
+            assert replaced.wait(5), "replacement actor did not finish"
+            assert "error" not in replacement
+
+    def observed_pid_read(path):
+        value = read_pid(path)
+        race_retirement_read(path)
+        return value
+
+    def observed_stable_read(path, **kwargs):
+        value = read_stable(path, **kwargs)
+        race_retirement_read(path)
+        return value
+
+    def fence_before_retirement(process, *, grace_seconds):
+        result = terminate(process, grace_seconds=grace_seconds)
+        assert result[0], "fixture child must be fenced before marker retirement"
+        retirement["armed"] = True
+        return result
+
+    def emit(message: str) -> None:
+        if "started T supervisor" in message:
+            raise failure
+
+    monkeypatch.setattr(runner_module, "read_pid_file", observed_pid_read)
+    monkeypatch.setattr(runner_module, "_read_stable_regular_bytes", observed_stable_read)
+    monkeypatch.setattr(runner_module, "_terminate_managed_process", fence_before_retirement)
+    actor = threading.Thread(target=replace_after_read)
+    actor.start()
+    try:
+        with pytest.raises(RuntimeError) as observed:
+            runner_module.start_track(
+                track, repo_root=tmp_path, common_args=[], python_executable=sys.executable,
+                output=emit,
+            )
+        assert observed.value is failure
+    finally:
+        actor.join(timeout=6)
+    assert not actor.is_alive() and retirement["raced"]
+    assert "error" not in replacement
+    _assert_captured_children_stopped(captured_supervisor_children)
+    assert marker.exists(), "retirement removed a concurrently replaced marker"
+    assert marker.stat().st_ino == replacement["inode"]
+    assert marker.read_bytes() == replacement["payload"]
 
 
 def test_stop_signal_handlers_default_still_catch_sigterm() -> None:

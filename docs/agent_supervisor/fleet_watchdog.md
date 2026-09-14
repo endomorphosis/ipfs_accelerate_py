@@ -29,6 +29,45 @@ visible. These diagnostics do not authorize signalling or callback replay.
 
 ## Operation
 
+Each board may explicitly configure read-only active-storage checks:
+
+```json
+{
+  "storage_checks": {
+    "filesystems": [{
+      "path": "/home/operator",
+      "min_available_bytes": 10737418240,
+      "min_available_percent": 2
+    }],
+    "git_worktrees": ["/home/operator/worktrees/active-board"]
+  }
+}
+```
+
+The watchdog reports `observation.storage_diagnostics`, including filesystem
+capacity, available bytes for the service user (`f_bavail`, excluding reserved
+blocks), and available percentage. Either threshold independently raises a
+diagnostic when the sample is strictly below it; omitted thresholds default to
+zero. Missing or inaccessible filesystems are reported as unavailable rather
+than zero capacity. Configure every relevant mount explicitly; no ancestor
+filesystem is substituted for a missing path.
+
+Git checks resolve each configured checkout's `.git` marker, linked worktree
+`commondir`, and registration backlink. They check that the resolved metadata
+directories, object directory, and `HEAD` still exist, including when a linked
+worktree survives deletion of its external Git metadata. Pointer reads are
+bounded and reject special files. No Git commands run and no object integrity,
+commit completeness, or unpublished-history recovery is claimed.
+
+Storage faults write `<state_dir>/<board_id>/storage-incident.json` with
+`action: diagnostic_only`; a later healthy sample records resolution there.
+These observations continue under holds and appear alongside native health.
+They do not change task progress, completion gates, recovery budgets, or action
+selection, and do not enqueue a coding repair, delete files, or stop services.
+Existing native failures still follow the normal recovery policy. Runtime
+upgrades preserve configured checks. Configuration allows at most 32 filesystem
+paths and 32 worktrees per board; include active submodules explicitly.
+
 Two user services run continuously:
 
 * `ipfs-taskboard-watchdog.service` probes every 60 seconds. Each board has its

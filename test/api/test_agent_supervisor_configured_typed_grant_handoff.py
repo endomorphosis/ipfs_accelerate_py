@@ -31186,7 +31186,9 @@ def test_aseh_r39_materialized_launch_and_exact_admission_are_wired() -> None:
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
-    parent = inspect.getsource(aseh_operator.run_supervisor)
+    wrapper = inspect.getsource(aseh_operator.run_supervisor)
+    assert "return _run_supervisor_with_retained_child(" in wrapper
+    parent = inspect.getsource(aseh_operator._run_supervisor_with_retained_child)
     owner = inspect.getsource(aseh_operator._run_supervisor_owner_impl)
 
     parent_guard = parent.index("launch_git_guard_scope.__enter__()")
@@ -36629,7 +36631,9 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
     with aseh_operator._bounded_launch_admission(timeout_seconds=1.0):
         assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is True
     assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is False
-    run_supervisor = inspect.getsource(aseh_operator.run_supervisor)
+    wrapper = inspect.getsource(aseh_operator.run_supervisor)
+    assert "return _run_supervisor_with_retained_child(" in wrapper
+    run_supervisor = inspect.getsource(aseh_operator._run_supervisor_with_retained_child)
     assert "retire_launch_admission_bound" in run_supervisor
     assert run_supervisor.index(
         "launch_admission_bound_scope = _bounded_launch_admission"
@@ -36648,14 +36652,16 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
 
 def test_aseh_r45_receipt_id_reuses_memoized_validation_contracts() -> None:
     path = (
-        aseh_operator.ROOT
-        / "data/aseh/evidence/bootstrap"
-        / "bootstrap-repair-historical-live-evidence-revision-closure-transition.json"
+        Path(__file__).parent
+        / "agent_supervisor/efficiency_state_hardening/fixtures"
+        / "aseh_r45_historical_receipt.json"
     )
-    payload = aseh_operator._secure_runtime_json(
-        path,
-        max_bytes=aseh_operator.STATUS_RECEIPT_MAX_BYTES,
+    raw = path.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "1bd74e66204bb95e18aa92d7d1776b8b923e5643a24406eaf252d962b2f6ba50"
     )
+    payload = json.loads(raw)
+    aseh_operator._R45_RECEIPT_ID_BY_PAYLOAD.clear()
     started = time.perf_counter()
     first = aseh_operator._repair_historical_live_evidence_revision_closure_transition_receipt_id(
         payload
@@ -36667,6 +36673,7 @@ def test_aseh_r45_receipt_id_reuses_memoized_validation_contracts() -> None:
     )
     second_elapsed = time.perf_counter() - started
     assert first == second
+    assert first == payload["receipt_cid"]
     assert first.startswith("sha256:")
     assert first_elapsed < 30.0
     assert second_elapsed < 5.0
