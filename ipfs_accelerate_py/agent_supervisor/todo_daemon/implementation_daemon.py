@@ -71117,7 +71117,11 @@ class DatabaseImplementationDaemon:
         if dispatch_control is not None:
             # This is solely the NEW claim boundary. Reconciliation and resume
             # of admitted obligations keep their existing native semantics.
-            boundary = dispatch_control.before_claim()
+            retained = getattr(self, "_retained_attempt_fairness", None)
+            boundary = (
+                retained.claim_boundary(dispatch_control)
+                if retained is not None else dispatch_control.before_claim()
+            )
             self._last_native_dispatch_boundary = dict(boundary)
             if boundary.get("new_dispatch_permitted") is not True:
                 return None
@@ -72613,7 +72617,7 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
-    def reconcile_expired_running_attempts(self) -> list[dict[str, Any]]:
+    def reconcile_expired_running_attempts(self, *, retained: Any = None) -> list[dict[str, Any]]:
         """Retire expired synthetic attempts; preserve unresolved real execution.
 
         No provider/effect receipt from the expired attempt is accepted for a
@@ -72622,9 +72626,18 @@ class DatabaseImplementationDaemon:
         new attempt number and fencing token.
         Production and Portal attempts require the preceding native terminal
         settlement routes; expiry alone never authorizes another callback.
+        A run_once pass may retain one exact already-expired production
+        obligation as an exclusion while selecting a different canonical task.
+        Direct callers retain the original settlement-required refusal.
         """
 
         from .expired_attempt_custody import guard_generic_retirement
+        from .retained_attempt_fairness import RetainedAttemptFairness
+
+        if retained is not None and (
+            type(retained) is not RetainedAttemptFairness or retained.daemon is not self
+        ):
+            raise DatabaseImplementationAuthorityError("invalid retained-attempt exclusion")
 
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
@@ -72728,7 +72741,14 @@ class DatabaseImplementationDaemon:
                 continue
             if claim_state == "accepted" and int(claim.expires_at_ms) > now:
                 continue
-            guard_generic_retirement(self, attempt, reason="claim_authority_expired")
+            from .expired_attempt_custody import ExpiredExecutionCustodyPending
+
+            try:
+                guard_generic_retirement(self, attempt, reason="claim_authority_expired")
+            except ExpiredExecutionCustodyPending as exc:
+                if retained is not None and retained.retain(exc, attempt):
+                    continue
+                raise
             lease = expire_claim(claim, now_ms=now)
             outcome = {
                 "task_cid": attempt.task_cid,
@@ -73886,10 +73906,21 @@ class DatabaseImplementationDaemon:
             task_fence_mismatch_deferral,
         )
         from .expired_attempt_custody import expired_execution_deferral
+        from .retained_attempt_fairness import RetainedAttemptFairness
 
         self._idle_recovery_prefix = None
+        retained = RetainedAttemptFairness(self)
+        self._retained_attempt_fairness = retained
         try:
-            return self._run_once_impl()
+            result = self._run_once_impl()
+            if retained.attempt is not None:
+                if result.get("selection_idle_reason") == "no_ready_tasks":
+                    result.update(retained.observation()[0])
+                    result["recovery_prefix"] = dict(self._idle_recovery_prefix or {})
+                result["retained_attempts"] = retained.observation()
+                if result.get("implementation_result") is None:
+                    result["retained_attempt_settlement_required"] = True
+            return result
         except Exception as exc:
             deferred = missing_completion_deferral(exc)
             if deferred is None:
@@ -73899,8 +73930,13 @@ class DatabaseImplementationDaemon:
             if deferred is None:
                 raise
             deferred["recovery_prefix"] = dict(self._idle_recovery_prefix or {})
+            if retained.attempt is not None:
+                deferred["retained_attempts"] = retained.observation()
+                deferred["retained_attempt_settlement_required"] = True
             return deferred
         finally:
+            retained.report_custody()
+            self._retained_attempt_fairness = None
             self._idle_recovery_prefix = None
 
     def _run_once_impl(self) -> dict[str, Any]:
@@ -73919,7 +73955,8 @@ class DatabaseImplementationDaemon:
 
         declared_continuations = reconcile_declared(self)
         self._idle_recovery_prefix["declared_continuations"] = declared_continuations
-        expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
+        retained = self._retained_attempt_fairness
+        expired_attempt_reconciliations = self.reconcile_expired_running_attempts(retained=retained)
         self._idle_recovery_prefix["expired_attempt_reconciliations"] = expired_attempt_reconciliations
         portal_failure_rearms = self.reconcile_recoverable_portal_failure_rearms()
         self._idle_recovery_prefix["portal_failure_rearms"] = portal_failure_rearms
@@ -73930,10 +73967,14 @@ class DatabaseImplementationDaemon:
             + len(portal_failure_rearms)
         )
         # Prefer resume of this session's running attempts (crash recovery).
-        running = self.list_running_attempts()
+        retained.require_current()
+        running = [
+            item for item in self.list_running_attempts()
+            if item.task_cid not in retained.excluded_task_cids
+        ]
         if running:
             dispatch_control = getattr(self, "_native_dispatch_control", None)
-            if dispatch_control is not None:
+            if dispatch_control is not None and retained.attempt is None:
                 dispatch_control.retained_work(running[0])
             result = self._resume_attempt_without_process_crash(running[0])
             return {
@@ -73956,7 +73997,15 @@ class DatabaseImplementationDaemon:
                 "portal_failure_rearms": portal_failure_rearms,
             }
 
-        attempt = self.claim_next()
+        if retained.attempt is not None and not any(
+            task.task_cid not in retained.excluded_task_cids
+            and self._task_is_in_lane(task, task_cid=task.task_cid)
+            for task in self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks
+        ):
+            # With no different canonical candidate, retain the existing
+            # read-only deferral instead of refreshing coordination ready rows.
+            raise retained.error
+        attempt = self.claim_next(exclude_task_cids=retained.excluded_task_cids)
         orphan_claim_reconciliations = list(
             self._last_orphan_claim_reconciliations
         )
