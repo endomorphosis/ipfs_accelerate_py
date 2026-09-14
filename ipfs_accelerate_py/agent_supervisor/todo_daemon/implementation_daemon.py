@@ -92644,10 +92644,18 @@ class DatabaseImplementationDaemon:
                 crash_context,
             )
         )
-        if not crash_source_admitted and not self._post_merge_source_admitted(
-            raw,
+        typed_deferral_admitted = self._is_typed_deferral_budget_exhausted_terminal(
             latest,
             task,
+        )
+        if (
+            not crash_source_admitted
+            and not typed_deferral_admitted
+            and not self._post_merge_source_admitted(
+                raw,
+                latest,
+                task,
+            )
         ):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization rejected a superseded "
@@ -92655,6 +92663,7 @@ class DatabaseImplementationDaemon:
             )
         if (
             not crash_source_admitted
+            and not typed_deferral_admitted
             and not self._is_post_merge_declared_outputs_missing_terminal(
                 latest,
                 task,
@@ -92707,7 +92716,7 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery preauthorization requires blocked "
                 f"control state, observed {status!r}"
             )
-        if crash_source_admitted:
+        if crash_source_admitted or typed_deferral_admitted:
             result = {
                 **raw,
                 "authorized": True,
@@ -102173,6 +102182,7 @@ class DatabaseImplementationDaemon:
                 latest,
                 task,
             )
+            or self._is_typed_deferral_budget_exhausted_terminal(latest, task)
         )
 
     @staticmethod
@@ -122172,6 +122182,39 @@ class DatabaseImplementationDaemon:
             ):
                 return str(body.get("reason") or "portal_terminal_failure")
         return None
+
+    def _is_typed_deferral_budget_exhausted_terminal(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any | None = None,
+    ) -> bool:
+        """Return whether the latest terminal exhausted typed portal deferrals.
+
+        Later deferral-budget exhaustion can supersede the attempt that
+        actually landed the merge.  Append-quarantine recovery still needs
+        that historical source, so preauthorization admits it when the
+        current blocked receipt is this exact exhausted terminal.
+        """
+
+        if self._post_merge_completion_recovery_was_consumed(attempt):
+            return False
+        current = task if task is not None else self.task_source.get(
+            attempt.task_cid
+        )
+        body = getattr(current, "body", None)
+        receipt = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        return bool(
+            str(getattr(current, "status", "") or "").strip().lower()
+            == "blocked"
+            and isinstance(receipt, Mapping)
+            and receipt.get("operation")
+            == "database_portal_typed_deferral_budget_exhausted"
+            and self._canonical_portal_failure_reason(receipt.get("reason"))
+            == "typed_portal_deferral_budget_exhausted"
+            and receipt.get("attempt_id") == attempt.attempt_id
+        )
 
     def _is_cross_board_completion_terminal(
         self,

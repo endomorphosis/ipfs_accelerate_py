@@ -24272,6 +24272,55 @@ def test_preauthorize_accepts_recoverable_completion_terminal(
         daemon.close()
 
 
+def test_preauthorize_admits_historical_source_after_typed_deferral_exhaustion(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-typed-deferral-historical",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        now["ms"] = 301_001
+        daemon.run_once()
+        now["ms"] = 601_002
+        third = daemon.run_once()
+        assert third["implementation_result"]["retry_budget_exhausted"] is True
+        task = daemon.task_source.get(task_cid)
+        assert task is not None and task.status == "blocked"
+        historical = daemon.get_attempt(provider_attempts[0])
+        latest = daemon.get_attempt(provider_attempts[-1])
+        assert historical is not None and latest is not None
+        assert historical.attempt_id != latest.attempt_id
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, historical)
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+        authorized_latest = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, latest)
+        )
+        assert authorized_latest["authorized"] is True
+    finally:
+        daemon.close()
+
+
 def test_protected_preservation_ancestry_reason_requires_exact_token() -> None:
     forged = (
         "prefix:"
