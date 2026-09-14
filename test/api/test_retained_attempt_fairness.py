@@ -372,6 +372,140 @@ def test_operator_stop_rearms_from_projection_when_execution_attempt_missing(tmp
         daemon.close()
 
 
+def test_operator_stop_rearms_when_blocked_list_omits_peer(tmp_path, monkeypatch):
+    """Historical 023 must rearm even if list_tasks(status=blocked) is empty."""
+
+    from types import SimpleNamespace
+    daemon, old, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, old, artifact)
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(old.task_cid,)), "context"
+    )
+    attempts = tmp_path / "attempts" / "deadbeef"
+    attempts.mkdir(parents=True)
+    (attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "last_implementation_returncode": -15,
+                "last_implementation_task_id": "SAWM-023",
+            }
+        )
+    )
+    (attempts / "database-attempt-binding.json").write_text(
+        json.dumps(
+            {
+                "task_alias": "SAWM-023",
+                "task_cid": peer.task_cid,
+                "attempt_id": peer.attempt_id,
+            }
+        )
+    )
+    daemon._provider_fn = SimpleNamespace(
+        __self__=SimpleNamespace(
+            _paths=lambda _attempt: SimpleNamespace(state=attempts / "missing.json"),
+            attempt_root=tmp_path / "attempts",
+        )
+    )
+    original = daemon.get_attempt
+
+    def hidden(attempt_id):
+        if attempt_id == peer.attempt_id:
+            return None
+        return original(attempt_id)
+
+    monkeypatch.setattr(daemon, "get_attempt", hidden)
+    task = daemon.task_source.get(peer.task_cid)
+    daemon._cas_task_status_database(
+        peer.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        receipt={"operation": "database_claim", "attempt_id": peer.attempt_id},
+    )
+    assert daemon.task_source.get(peer.task_cid).status == "blocked"
+    original_list = daemon.task_source.list_tasks
+
+    def hidden_list(*args, **kwargs):
+        page = original_list(*args, **kwargs)
+        return type(page)(tasks=(), revision=page.revision, next_cursor="")
+
+    monkeypatch.setattr(daemon.task_source, "list_tasks", hidden_list)
+    try:
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms()
+        assert rearms
+        assert rearms[0]["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert rearms[0]["task_alias"] == "SAWM-023"
+        assert daemon.task_source.get(peer.task_cid).status == "retrying"
+        assert snapshot(daemon, old, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
+def test_operator_stop_rearms_from_sealed_lane_attempt_root(tmp_path, monkeypatch):
+    """Lane state_dir is enough when the provider callback has no attempt_root."""
+
+    from types import SimpleNamespace
+    daemon, old, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, old, artifact)
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(old.task_cid,)), "context"
+    )
+    prefix = "sawm_lane_3"
+    attempts = tmp_path / f"{prefix}_database_portal_attempts" / "deadbeef"
+    attempts.mkdir(parents=True)
+    (attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "last_implementation_returncode": -15,
+                "last_implementation_task_id": "SAWM-023",
+            }
+        )
+    )
+    (attempts / "database-attempt-binding.json").write_text(
+        json.dumps(
+            {
+                "task_alias": "SAWM-023",
+                "task_cid": peer.task_cid,
+                "attempt_id": peer.attempt_id,
+            }
+        )
+    )
+    daemon.execution_state_dir = tmp_path
+    daemon.execution_state_prefix = prefix
+    daemon._provider_fn = SimpleNamespace(__self__=SimpleNamespace())
+    original = daemon.get_attempt
+
+    def hidden(attempt_id):
+        if attempt_id == peer.attempt_id:
+            return None
+        return original(attempt_id)
+
+    monkeypatch.setattr(daemon, "get_attempt", hidden)
+    task = daemon.task_source.get(peer.task_cid)
+    daemon._cas_task_status_database(
+        peer.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        receipt={"operation": "database_claim", "attempt_id": peer.attempt_id},
+    )
+    original_list = daemon.task_source.list_tasks
+
+    def hidden_list(*args, **kwargs):
+        page = original_list(*args, **kwargs)
+        return type(page)(tasks=(), revision=page.revision, next_cursor="")
+
+    monkeypatch.setattr(daemon.task_source, "list_tasks", hidden_list)
+    try:
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms()
+        assert rearms
+        assert rearms[0]["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert daemon.task_source.get(peer.task_cid).status == "retrying"
+        assert snapshot(daemon, old, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 def test_operator_stop_projection_reads_sigterm_returncode(tmp_path):
     from types import SimpleNamespace
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (

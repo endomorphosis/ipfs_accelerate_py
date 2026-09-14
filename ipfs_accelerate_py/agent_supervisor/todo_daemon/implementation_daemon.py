@@ -70425,20 +70425,41 @@ class DatabaseImplementationDaemon:
         ).hexdigest()
         return str(receipt.get("failure_payload_digest") or "") == expected
 
+    def _portal_execution_bridge(self) -> Any:
+        for name in ("_provider_fn", "_effect_fn", "_validation_fn"):
+            bridge = getattr(getattr(self, name, None), "__self__", None)
+            if getattr(bridge, "attempt_root", None) is not None:
+                return bridge
+        return getattr(getattr(self, "_provider_fn", None), "__self__", None)
+
+    def _portal_attempt_root(self) -> Path | None:
+        """Return the lane Portal attempt directory, even without a bound method."""
+
+        bridge = self._portal_execution_bridge()
+        root = getattr(bridge, "attempt_root", None)
+        if root is not None:
+            return Path(root)
+        state_dir = getattr(self, "execution_state_dir", None)
+        prefix = str(getattr(self, "execution_state_prefix", "") or "").strip()
+        if state_dir is None or not prefix:
+            return None
+        candidate = Path(state_dir) / f"{prefix}_database_portal_attempts"
+        return candidate if candidate.is_dir() else None
+
     def _attempt_operator_stop_projection(self, attempt: Any) -> bool:
         """True when the local Portal projection recorded an operator stop."""
 
-        bridge = getattr(getattr(self, "_provider_fn", None), "__self__", None)
+        bridge = self._portal_execution_bridge()
         paths_fn = getattr(bridge, "_paths", None)
-        if not callable(paths_fn):
-            return False
-        try:
-            state = json.loads(paths_fn(attempt).state.read_text(encoding="utf-8"))
-        except Exception:
-            return False
-        if not isinstance(state, dict):
-            return False
-        return state.get("last_implementation_returncode") in _OPERATOR_STOP_RETURNCODES
+        if callable(paths_fn):
+            try:
+                state = json.loads(paths_fn(attempt).state.read_text(encoding="utf-8"))
+            except Exception:
+                state = None
+            if isinstance(state, dict):
+                return state.get("last_implementation_returncode") in _OPERATOR_STOP_RETURNCODES
+        alias = str(getattr(attempt, "task_alias", "") or "").strip()
+        return bool(alias and self._operator_stop_projection_for_alias(alias))
 
     def _operator_stop_attempt_for_task(self, task: Any) -> Any:
         """Find the in-lane attempt whose Portal projection recorded SIGTERM."""
@@ -70460,23 +70481,54 @@ class DatabaseImplementationDaemon:
         wanted = str(alias or "").strip()
         if not wanted:
             return ""
-        bridge = getattr(getattr(self, "_provider_fn", None), "__self__", None)
-        root = getattr(bridge, "attempt_root", None)
+        root = self._portal_attempt_root()
         if root is None:
             return ""
-        try:
-            for state_path in Path(root).glob("*/portal-task-state.json"):
+        for state_path in Path(root).glob("*/portal-task-state.json"):
+            try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
-                if (
-                    isinstance(state, dict)
-                    and state.get("last_implementation_returncode")
-                    in _OPERATOR_STOP_RETURNCODES
-                    and str(state.get("last_implementation_task_id") or "") == wanted
-                ):
-                    return str(state.get("last_implementation_task_cid") or wanted)
-        except Exception:
-            return ""
+            except Exception:
+                continue
+            if (
+                isinstance(state, dict)
+                and state.get("last_implementation_returncode")
+                in _OPERATOR_STOP_RETURNCODES
+                and str(state.get("last_implementation_task_id") or "") == wanted
+            ):
+                bind_path = state_path.with_name("database-attempt-binding.json")
+                attempt_id = ""
+                try:
+                    bind = json.loads(bind_path.read_text(encoding="utf-8"))
+                    attempt_id = str(bind.get("attempt_id") or "")
+                except Exception:
+                    attempt_id = ""
+                return str(
+                    attempt_id
+                    or state.get("last_implementation_task_cid")
+                    or wanted
+                )
         return ""
+
+    def _operator_stop_projection_aliases(self) -> tuple[str, ...]:
+        root = self._portal_attempt_root()
+        if root is None:
+            return ()
+        aliases: list[str] = []
+        for state_path in Path(root).glob("*/portal-task-state.json"):
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            alias = str(state.get("last_implementation_task_id") or "").strip()
+            if (
+                isinstance(state, dict)
+                and alias
+                and state.get("last_implementation_returncode")
+                in _OPERATOR_STOP_RETURNCODES
+                and alias not in aliases
+            ):
+                aliases.append(alias)
+        return tuple(aliases)
 
     def _portal_recovery_source_rearm_limit(self) -> int:
         """Return how many distinct settlements one sealed source may rearm.
@@ -70620,8 +70672,60 @@ class DatabaseImplementationDaemon:
             status=("blocked",),
             limit=TASK_SOURCE_QUERY_LIMIT,
         )
+        tasks = list(page.tasks)
+        seen = {str(getattr(task, "task_alias", "") or "") for task in tasks}
+        missing = [
+            alias
+            for alias in self._operator_stop_projection_aliases()
+            if alias not in seen
+        ]
+        getter = getattr(self.task_source, "get", None)
+        if missing and callable(getter):
+            remaining: list[str] = []
+            for alias in missing:
+                try:
+                    task = getter(alias)
+                except Exception:
+                    task = None
+                if (
+                    task is not None
+                    and str(getattr(task, "status", "") or "").lower() == "blocked"
+                ):
+                    tasks.append(task)
+                else:
+                    remaining.append(alias)
+            missing = remaining
+        if missing:
+            broader = list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            for task in broader.tasks:
+                alias = str(getattr(task, "task_alias", "") or "")
+                if alias in missing and str(getattr(task, "status", "") or "").lower() == "blocked":
+                    tasks.append(task)
+                    missing.remove(alias)
+        if missing:
+            root = self._portal_attempt_root()
+            if root is not None and callable(getter):
+                for binding_path in Path(root).glob("*/database-attempt-binding.json"):
+                    try:
+                        bind = json.loads(binding_path.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    alias = str(bind.get("task_alias") or "")
+                    cid = str(bind.get("task_cid") or "")
+                    if alias not in missing or not cid:
+                        continue
+                    try:
+                        task = getter(cid)
+                    except Exception:
+                        continue
+                    if (
+                        task is not None
+                        and str(getattr(task, "status", "") or "").lower() == "blocked"
+                    ):
+                        tasks.append(task)
+                        missing.remove(alias)
         rearmed: list[dict[str, Any]] = []
-        for task in page.tasks:
+        for task in tasks:
             task_cid = str(task.task_cid)
             if not self._task_is_in_lane(task, task_cid=task_cid):
                 continue
