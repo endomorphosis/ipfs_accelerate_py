@@ -3671,8 +3671,21 @@ def _retain_closeout_owner(
     try:
         for sig in prior_signals:
             signal.signal(sig, request_stop)
+        def observe() -> dict[str, Any]:
+            try:
+                return authoritative_status(config_path)
+            except Exception as exc:  # noqa: BLE001 - keep owner while closeout is deferred
+                print(
+                    "native closeout observation deferred: "
+                    + type(exc).__name__
+                    + ":"
+                    + str(exc)[:256],
+                    flush=True,
+                )
+                return {"completion_authority": False, "complete": False}
+
         result = retain_owner_for_closeout(
-            observe=lambda: authoritative_status(config_path),
+            observe=observe,
             wait=stopping.wait,
             stopped=stopped,
             check_owner=check_owner,
