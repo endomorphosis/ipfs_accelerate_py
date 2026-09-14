@@ -1,0 +1,1035 @@
+"""SPAR closeout adapters fail closed and only CAS goals from independent roots."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    DatabaseCoordinator,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement import (
+    CONFIG_SCHEMA,
+    PROGRAM,
+    BOARD,
+    checkpoint_stopped_lane_sidecars,
+    hold_spar_runtime_settlement,
+    observe_spar_runtime_settlement,
+)
+from ipfs_accelerate_py.agent_supervisor.semantic_state import spar_accepted_root as accepted_root
+from ipfs_accelerate_py.agent_supervisor.task_sources import spar_closeout_profile as sp
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement import (
+    settle_spar_goals,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TypedStateOwnerError,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_execution_schema import (
+    install_database_execution_schema,
+)
+from test.api.semantic_refactoring.test_kit_source_forest_native import native_source, view
+from test.api.semantic_refactoring.test_spar_closeout_profile import evaluate, population
+
+
+_TARGET = "repository:ipfs_accelerate_py"
+_BRANCH = "codex/semantic-preserving-autonomous-remodularization-v1"
+
+
+def test_evaluate_still_refuses_task_receipts_without_independent_roots(population):
+    result = evaluate(population)
+    assert sum(t["receipt"] is not None for t in result["task_evidence"]) == 51
+    assert all(not g["accepted"] for g in result["goal_requirements"])
+    assert result["completion_authority"] is False
+    assert result["complete"] is False
+    assert result["datasets_accepted_root"]["reason"] == "kit_source_forest_not_admitted"
+    assert "kit_source_forest_not_admitted" in result["blockers"]
+    assert "spar_native_goal_cas_settlement_adapter_required" in result["blockers"]
+    assert "runtime_lane_and_merge_queue_settlement_receipt_required" in result["blockers"]
+    assert result["datasets_accepted_root"]["admitted"] is False
+    assert result["goal_settlement"]["admitted"] is False
+
+
+def test_forged_datasets_producer_cannot_self_authorize(population, monkeypatch):
+    material, facts, snapshot, source = population
+    source["source_forest"] = {"source_forest_root": "forest:new"}
+    source["repository_tree_id"] = "tree:sealed"
+
+    class Forged:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            return {
+                "admitted": True,
+                "subject_cid": "forged",
+                "profile_cid": "forged",
+                "source_forest_root": subject["source_forest_root"],
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": True,
+                "required_mode_roots_accepted": True,
+                "safety_floors_noncompensable_accepted": True,
+                "self_hosted_capstone_accepted": True,
+                "fixed_point_accepted": True,
+                "evidence_cids": ["cid:fake"],
+                "accepted_root_cid": "cid:fake",
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Forged)
+    result = evaluate(population)
+    assert result["datasets_accepted_root"]["admitted"] is False
+    assert not result["completion_authority"]
+    assert all(not g["accepted"] for g in result["goal_requirements"])
+
+
+def _matching_producer(profile_cid: str):
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            return {
+                "admitted": True,
+                "subject_cid": content_identity(subject),
+                "profile_cid": subject["profile_cid"],
+                "source_forest_root": subject["source_forest_root"],
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": True,
+                "required_mode_roots_accepted": True,
+                "safety_floors_noncompensable_accepted": True,
+                "self_hosted_capstone_accepted": True,
+                "fixed_point_accepted": True,
+                "evidence_cids": ["cid:mode", "cid:floor", "cid:capstone", "cid:fixed"],
+                "accepted_root_cid": "cid:accepted-root",
+            }
+
+    return Producer
+
+
+def test_matching_datasets_producer_still_needs_runtime_and_goal_cas(population, monkeypatch):
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _matching_producer("unused"))
+    result = evaluate(population)
+    # Kit persistence is unbound in this fixture, so datasets admission stays closed.
+    assert result["datasets_accepted_root"]["admitted"] is False
+    assert "spar_native_goal_cas_settlement_adapter_required" in result["blockers"]
+    assert all(not g["accepted"] for g in result["goal_requirements"])
+    assert result["completion_authority"] is False
+
+
+def _spar_config() -> dict:
+    return {
+        "schema": CONFIG_SCHEMA,
+        "program_identifier": PROGRAM,
+        "board_namespace": BOARD,
+        "max_lanes": 3,
+        "merge_target_branch": _BRANCH,
+        "database_program": {"store_id": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/control.duckdb"},
+        "runtime_paths": {
+            "state": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state",
+            "merge_queue": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/merge-queue",
+        },
+        "lanes": [
+            {"index": 0, "name": "spar-lane-0", "strict_shard_remainder": 0},
+            {"index": 1, "name": "spar-lane-1", "strict_shard_remainder": 1},
+            {"index": 2, "name": "spar-lane-2", "strict_shard_remainder": 2},
+        ],
+    }
+
+
+def _runtime_root(tmp_path: Path) -> Path:
+    root = tmp_path / "spar-runtime"
+    config = root / "config" / "agent_supervisor_semantic_preserving_remodularization_scheduler.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps(_spar_config(), indent=2))
+    state = root / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state"
+    queue = root / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/merge-queue"
+    state.mkdir(parents=True)
+    queue.mkdir(parents=True)
+    for index in range(3):
+        lane = state / f"lane-{index}"
+        lane.mkdir()
+        prefix = f"spar_lane_{index}"
+        coordination = lane / f"{prefix}_database_coordination.duckdb"
+        execution = lane / f"{prefix}_database_execution.duckdb"
+        DatabaseCoordinator(coordination).open().close()
+        install_database_execution_schema(
+            execution,
+            metadata={
+                "authority_mode": "quack",
+                "logical_owner_session_id": f"owner-{index}",
+                "process_instance_id": f"process:{index + 1:024x}",
+                "state_schema_revision": "1",
+                "control_schema_profile_id": "bootstrap",
+                "control_schema_fingerprint": "bootstrap",
+            },
+        )
+    MergeQueue(queue, target_repository_id=_TARGET, target_branch=_BRANCH, require_target_binding=True)
+    return root
+
+
+def test_runtime_settlement_admits_private_zero_active_three_lane_fixture(tmp_path):
+    root = _runtime_root(tmp_path)
+    owner = {"generation": 1, "store_id": "control.duckdb", "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
+    assert observed["admitted"] is True, observed
+    assert observed["settled"] is True
+    assert observed["active_count"] == 0
+    with hold_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET) as held:
+        assert held["admitted"] is True and held["held"] is True
+        assert held["receipt_cid"] == observed["receipt_cid"]
+
+
+def _insert_task_claim(coordination: Path, *, claim_id: str, state: str, released_at_ms: int | None) -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+
+    connection = connect_duckdb_with_policy(duckdb, coordination, read_only=False)
+    try:
+        connection.execute(
+            """
+            INSERT INTO task_claims(
+                claim_id, task_cid, owner_session_id, fencing_token,
+                fence_epoch, claimed_at_ms, expires_at_ms, released_at_ms,
+                state, revision, attempt_id, attempt_number, lease_id
+            ) VALUES (?, 'task:settlement', 'session:lane-0', 1, 1, 1, 100, ?, ?, 1,
+                      'attempt:settlement', 1, 'lease:settlement')
+            """,
+            [claim_id, released_at_ms, state],
+        )
+    finally:
+        connection.close()
+
+
+def test_runtime_settlement_ignores_expired_unreleased_task_claims(tmp_path):
+    root = _runtime_root(tmp_path)
+    coordination = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_coordination.duckdb"
+    )
+    _insert_task_claim(
+        coordination,
+        claim_id="claim:expired-historical",
+        state="expired",
+        released_at_ms=None,
+    )
+    owner = {"generation": 1, "store_id": "control.duckdb", "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is True, observed
+    assert observed["active_count"] == 0
+    assert observed["lanes"][0]["coordination_active"] == 0
+
+
+def test_runtime_settlement_counts_accepted_unreleased_task_claims(tmp_path):
+    root = _runtime_root(tmp_path)
+    coordination = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_coordination.duckdb"
+    )
+    _insert_task_claim(
+        coordination,
+        claim_id="claim:accepted-live",
+        state="accepted",
+        released_at_ms=None,
+    )
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is False
+    assert observed["active_count"] == 1
+    assert observed["lanes"][0]["coordination_active"] == 1
+    assert observed["reason"] == "runtime_lane_and_merge_queue_settlement_receipt_required"
+
+
+def test_runtime_settlement_refuses_execution_wal(tmp_path):
+    root = _runtime_root(tmp_path)
+    wal = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_execution.duckdb.wal"
+    )
+    wal.write_text("dirty")
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
+    assert observed["admitted"] is False
+    assert observed["reason"] == "runtime_lane_outstanding_wal"
+    assert "outstanding WAL" in str(observed.get("error") or "")
+
+
+def test_checkpoint_stopped_sidecars_absorbs_leftover_execution_wal(tmp_path):
+    import subprocess
+    import sys
+
+    root = _runtime_root(tmp_path)
+    execution = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_execution.duckdb"
+    )
+    wal = Path(str(execution) + ".wal")
+    script = (
+        "import duckdb, os\n"
+        f"c = duckdb.connect({str(execution)!r})\n"
+        "c.execute('CREATE TABLE IF NOT EXISTS leftover(x INTEGER)')\n"
+        "c.execute('INSERT INTO leftover VALUES (1)')\n"
+        "os._exit(1)\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=False)
+    assert wal.exists(), "unclean DuckDB exit must leave a WAL"
+    owner = {"generation": 1, "store_id": "control.duckdb", "repository_id": _TARGET}
+    blocked = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert blocked["reason"] == "runtime_lane_outstanding_wal"
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert receipt["attempted"] is True
+    assert receipt["completion_authority"] is False
+    assert "execution" in receipt["lanes"][0]["checkpointed"]
+    assert not wal.exists()
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is True, observed
+
+
+def test_checkpoint_stopped_sidecars_skips_live_pid(tmp_path):
+    root = _runtime_root(tmp_path)
+    lane = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-1"
+    )
+    wal = lane / "spar_lane_1_database_execution.duckdb.wal"
+    wal.write_text("dirty")
+    (lane / "spar_lane_1_managed_daemon.pid").write_text(str(os.getpid()))
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert receipt["lanes"][1]["live"] is True
+    assert "execution" in receipt["lanes"][1]["skipped"]
+    assert wal.exists()
+    assert "lane-1-execution" in receipt["remaining_wal"]
+
+
+def test_checkpoint_stopped_sidecars_does_not_delete_corrupt_wal(tmp_path):
+    root = _runtime_root(tmp_path)
+    wal = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_execution.duckdb.wal"
+    )
+    wal.write_text("dirty")
+    receipt = checkpoint_stopped_lane_sidecars(root)
+    assert wal.exists()
+    assert receipt["settled"] is False
+    assert "lane-0-execution" in receipt["remaining_wal"]
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["reason"] == "runtime_lane_outstanding_wal"
+
+
+def test_runtime_settlement_refuses_live_process(tmp_path):
+    root = _runtime_root(tmp_path)
+    pid_path = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-1"
+        / "spar_lane_1_managed_daemon.pid"
+    )
+    pid_path.write_text(str(os.getpid()))
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
+    assert observed["admitted"] is False
+    assert observed["reason"] == "runtime_lane_process_live"
+
+
+def test_admit_accepted_root_reports_kit_not_admitted() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": False, "reason": "kit_source_forest_publication_deferred"},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 51,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "kit_source_forest_not_admitted"
+    assert result["kit_reason"] == "kit_source_forest_publication_deferred"
+    assert result["completion_authority"] is False
+
+
+def test_admit_accepted_root_reports_population_mismatch() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 50,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "sealed_task_or_goal_population_mismatch"
+    assert result["task_evidence_count"] == 50
+    assert result["goal_requirement_count"] == 32
+
+
+def test_admit_accepted_root_reports_missing_receipt_identity() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 51,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "task_receipt_identity_incomplete"
+    assert result["missing_receipt_cid_count"] == 51
+    assert result["completion_authority"] is False
+
+
+def _closed_profile() -> dict:
+    return {
+        "bootstrap_receipt_id": "sealed:bootstrap",
+        "plan_root_cid": "plan:sealed",
+        "board_namespace": "semantic-preserving-autonomous-remodularization-v1",
+        "goals": [{"goal_cid": f"goal:{i}"} for i in range(32)],
+        "tasks": [{"task_cid": f"task:{i}"} for i in range(51)],
+    }
+
+
+def test_closed_subject_binds_completion_receipt_cid() -> None:
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    subject = accepted_root.closed_subject(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "repository_tree_id": "tree:sealed",
+            "source_forest": {
+                "source_forest_root": "forest:sealed",
+                "source_head": "head:sealed",
+            },
+        },
+        kit={
+            "admitted": True,
+            "transition_cid": "kit:transition",
+            "manifest_cid": "kit:manifest",
+        },
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert subject["task_receipt_cids"] == [f"receipt:{i}" for i in range(51)]
+    assert "" not in subject["task_receipt_cids"]
+    assert None not in subject["task_receipt_cids"]
+
+
+def test_admit_accepted_root_surfaces_producer_clause_outcomes(monkeypatch) -> None:
+    captured = {}
+
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            captured["task_receipt_cids"] = list(subject["task_receipt_cids"])
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": False,
+                "reason": accepted_root.MODE_FLOORS,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "repository_tree_id": "tree:sealed",
+            "source_forest": {
+                "source_forest_root": "forest:sealed",
+                "source_head": "head:sealed",
+            },
+        },
+        kit={
+            "admitted": True,
+            "transition_cid": "kit:transition",
+            "manifest_cid": "kit:manifest",
+        },
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert captured["task_receipt_cids"] == [f"receipt:{i}" for i in range(51)]
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    assert result["producer_reason"] == accepted_root.MODE_FLOORS
+    assert result["current_rollout_mode"] == "bootstrap"
+    outcomes = result["clause_outcomes"]
+    assert set(outcomes) == set(accepted_root.REQUIRED_CLAUSES)
+    assert all(row["accepted"] is False for row in outcomes.values())
+    assert all(
+        row["reason"] == "current_source_clause_evidence_unavailable"
+        for row in outcomes.values()
+    )
+    assert result["completion_authority"] is False
+
+
+def test_admit_accepted_root_surfaces_producer_validate_subject_error(monkeypatch) -> None:
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(_subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "reason": accepted_root.MISSING,
+                "error": "task_receipt_cids entries must be nonempty strings",
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MISSING
+    assert result["producer_error"] == "task_receipt_cids entries must be nonempty strings"
+    assert result["producer_reason"] == accepted_root.MISSING
+
+
+def test_admit_accepted_root_probes_nominated_reports_without_accepting(monkeypatch) -> None:
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(_subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "reason": accepted_root.MODE_FLOORS,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "source_forest": {"source_forest_root": "forest:current"},
+            "reports": [
+                {
+                    "path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:final",
+                    "authority_roots": {"repository_forest_cid": "forest:old"},
+                },
+                {
+                    "path": "benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:capstone",
+                    "authority_roots": {"repository_forest_cid": "forest:old"},
+                },
+                {
+                    "path": "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:benchmark",
+                },
+            ],
+        },
+        kit={"admitted": True, "transition_cid": "kit:t", "manifest_cid": "kit:m"},
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    probes = result["source_clause_probes"]
+    assert set(probes) == set(accepted_root.REQUIRED_CLAUSES)
+    assert all(row["accepted"] is False for row in probes.values())
+    assert all(row["semantic_acceptance_authority"] is False for row in probes.values())
+    capstone = probes["self_hosted_capstone_accepted"]
+    assert capstone["reason"].startswith("current_rollout_mode_is_not_required:")
+    assert "nominated_report_cannot_authorize_clause:" in ",".join(capstone["blockers"])
+    assert "nominated_report_source_forest_mismatch:" in ",".join(capstone["blockers"])
+    assert probes["required_mode_roots_accepted"]["current_rollout_mode"] == "bootstrap"
+    floors = probes["safety_floors_noncompensable_accepted"]
+    assert floors["report_digests"] == ["sha256:benchmark"]
+    assert not any(item.startswith("current_rollout_mode_is_not_required:") for item in floors["blockers"])
+    assert result["completion_authority"] is False
+
+
+def test_kit_plus_matching_producer_admits_datasets_without_settling_goals(native_source, monkeypatch):
+    gateway, connection, _profile, _client, _cids, _root = native_source
+    assert gateway.publish_spar_source_forest()["admitted"] is True
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _matching_producer("unused"))
+    observed = view(native_source)
+    assert observed["datasets_accepted_root"]["admitted"] is True, observed["datasets_accepted_root"]
+    assert "datasets_independent_accepted_root_producer_and_admission_required" not in observed["blockers"]
+    assert "spar_native_goal_cas_settlement_adapter_required" in observed["blockers"]
+    assert all(not g["accepted"] for g in observed["goal_requirements"])
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 32
+
+
+def test_goal_cas_is_all_or_none_and_status_rpc_cannot_write(native_source, monkeypatch):
+    gateway, connection, profile, client, cids, _root = native_source
+    produced = gateway.publish_spar_source_forest()
+    assert produced["admitted"] is True
+    before = connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0]
+    assert before == 32
+    with pytest.raises(TypedStateOwnerError):
+        client._request("publish_spar_closeout_acceptance")
+    deferred = gateway.publish_spar_closeout_acceptance()
+    assert deferred["admitted"] is False
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 32
+    observed = view(native_source)
+    native_goals = {row["goal_cid"]: row for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall()}
+    # DuckDB rows are tuples; settle uses mapping from closeout facts instead.
+    facts_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        facts_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    datasets = {
+        "admitted": True,
+        "accepted_root_cid": "cid:accepted-root",
+    }
+    runtime = {"admitted": True, "receipt_cid": "cid:runtime"}
+    kit = observed["kit_source_forest_persistence"]
+    settled = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=facts_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=kit,
+        owner_identity=gateway.identity,
+    )
+    assert settled["admitted"] is True, settled
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='completed'").fetchone()[0] == 32
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 0
+    replay = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals={
+            row[0]: {
+                "goal_cid": row[0],
+                "goal_alias": row[1],
+                "title": row[2],
+                "status": row[3],
+                "revision": row[4],
+                "parent_goal_cid": row[5],
+                "body_json": row[6],
+            }
+            for row in connection.execute(
+                "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+            ).fetchall()
+        },
+        task_evidence=observed["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=kit,
+        owner_identity=gateway.identity,
+    )
+    assert replay["admitted"] is True and replay["idempotent_replay"] is True
+
+
+def test_closeout_acceptance_republishes_kit_source_forest(native_source, monkeypatch):
+    gateway, connection, profile, client, cids, _root = native_source
+    calls: list[bool] = []
+    original = sp.SparCloseoutProfile.publish_source_forest
+
+    def wrapped(self, *args, **kwargs):
+        receipt = original(self, *args, **kwargs)
+        calls.append(receipt.get("admitted") is True)
+        return receipt
+
+    monkeypatch.setattr(sp.SparCloseoutProfile, "publish_source_forest", wrapped)
+    deferred = gateway.publish_spar_closeout_acceptance()
+    assert deferred["admitted"] is False
+    assert calls and calls[-1] is True
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='active'").fetchone()[0] == 32
+
+
+def _clause_missing_producer():
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": False,
+                "reason": accepted_root.MODE_FLOORS,
+                "profile_cid": subject["profile_cid"],
+                "source_forest_root": subject["source_forest_root"],
+                "subject_cid": content_identity(subject),
+                "required_mode_roots_accepted": False,
+                "safety_floors_noncompensable_accepted": False,
+                "self_hosted_capstone_accepted": False,
+                "fixed_point_accepted": False,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    return Producer
+
+
+def _bootstrap_inputs():
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    source = {
+        "available": True,
+        "clean": True,
+        "repository_tree_id": "tree:sealed",
+        "source_forest": {
+            "source_forest_root": "forest:sealed",
+            "source_head": "head:sealed",
+        },
+        "reports": [
+            {
+                "path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+                "available": True,
+                "nomination_only": True,
+                "can_authorize_completion": False,
+                "final_root_accepted": True,
+                "content_digest": "sha256:final",
+                "authority_roots": {"repository_forest_cid": "forest:old"},
+            }
+        ],
+    }
+    kit = {
+        "admitted": True,
+        "transition_cid": "kit:transition",
+        "manifest_cid": "kit:manifest",
+    }
+    runtime = {
+        "admitted": True,
+        "settled": True,
+        "receipt_cid": "cid:runtime",
+    }
+    return evidence, source, kit, runtime
+
+
+def test_bootstrap_subject_verified_without_runtime_is_not_admitted(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, _runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.RUNTIME_MISSING
+    assert result["current_rollout_mode"] == "bootstrap"
+    assert result.get("required_mode_roots_accepted") is not True
+    assert result["completion_authority"] is False
+
+
+def test_bootstrap_admits_from_kit_runtime_and_native_receipts(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.rollout import (
+        sealed_rollout_baseline,
+    )
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    assert result["admitted"] is True, result
+    assert result["admission_mode"] == "bootstrap"
+    assert result["current_rollout_mode"] == "bootstrap"
+    assert result["semantic_acceptance_authority"] is False
+    assert result["completion_authority"] is False
+    assert result.get("required_mode_roots_accepted") is not True
+    assert result.get("safety_floors_noncompensable_accepted") is not True
+    assert result.get("self_hosted_capstone_accepted") is not True
+    assert result.get("fixed_point_accepted") is not True
+    assert result.get("final_root_accepted") is not True
+    assert result["accepted_root_cid"]
+    assert result["runtime_receipt_cid"] == "cid:runtime"
+    assert result["kit_transition_cid"] == "kit:transition"
+    baseline = sealed_rollout_baseline()
+    assert baseline["current_mode"] == "bootstrap"
+    assert baseline["worker_may_change_mode"] is False
+    shifted = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime={"admitted": True, "settled": True, "receipt_cid": "cid:runtime-later"},
+    )
+    assert shifted["admitted"] is True
+    assert shifted["accepted_root_cid"] == result["accepted_root_cid"]
+    assert shifted["runtime_receipt_cid"] == "cid:runtime-later"
+
+
+def test_bootstrap_does_not_copy_nominated_report_booleans(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    encoded = json.dumps(result)
+    assert "final_root_accepted" not in encoded
+    assert result["admitted"] is True
+    probes = accepted_root._source_clause_probes(source)
+    assert all(row["accepted"] is False for row in probes.values())
+    assert all(row["semantic_acceptance_authority"] is False for row in probes.values())
+
+
+def test_required_mode_still_requires_independent_clauses(monkeypatch) -> None:
+    monkeypatch.setattr(accepted_root, "_sealed_current_rollout_mode", lambda: "required")
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    evidence, source, kit, runtime = _bootstrap_inputs()
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime=runtime,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    assert result["completion_authority"] is False
+
+
+def test_bootstrap_evaluate_settles_goals_from_native_receipts(native_source, monkeypatch) -> None:
+    gateway, connection, profile, client, cids, _root = native_source
+    assert gateway.publish_spar_source_forest()["admitted"] is True
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime"}
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement.observe_spar_runtime_settlement",
+        lambda *args, **kwargs: runtime,
+    )
+    observed = view(native_source)
+    datasets = observed["datasets_accepted_root"]
+    assert datasets["admitted"] is True, datasets
+    assert datasets["admission_mode"] == "bootstrap"
+    assert datasets["current_rollout_mode"] == "bootstrap"
+    assert "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required" not in observed["blockers"]
+    assert not any(
+        item.startswith("report_is_not_acceptance_authority:") for item in observed["blockers"]
+    )
+    assert "final_report_current_source_forest_mismatch" not in observed["blockers"]
+    facts_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        facts_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    settled = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=facts_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=observed["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert settled["admitted"] is True, settled
+    assert connection.execute("SELECT COUNT(*) FROM goals WHERE status='completed'").fetchone()[0] == 32
+    replay_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        replay_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    observed_after = view(native_source)
+    assert observed_after["goal_settlement"]["admitted"] is True, observed_after["goal_settlement"]
+    assert observed_after["goal_contracts_accepted"] is True
+    assert all(g["accepted"] for g in observed_after["goal_requirements"])
+    assert observed_after["datasets_accepted_root"]["admission_mode"] == "bootstrap"
+    assert observed_after["datasets_accepted_root"]["semantic_acceptance_authority"] is False
+    assert observed_after["completion_authority"] is False, observed_after["blockers"]
+    replay = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=replay_goals,
+        task_evidence=observed_after["task_evidence"],
+        accepted_root=datasets,
+        runtime=runtime,
+        kit=observed_after["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert replay["admitted"] is True and replay["idempotent_replay"] is True
+
+
+def test_bootstrap_goal_observe_survives_later_runtime_receipt(native_source, monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement import (
+        observe_goal_settlement,
+    )
+
+    gateway, connection, profile, client, cids, _root = native_source
+    assert gateway.publish_spar_source_forest()["admitted"] is True
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime-hold"}
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement.observe_spar_runtime_settlement",
+        lambda *args, **kwargs: runtime,
+    )
+    observed = view(native_source)
+    facts_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        facts_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    settled = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=facts_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=runtime,
+        kit=observed["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert settled["admitted"] is True, settled
+    later_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        later_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    later_runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime-observe"}
+    observed_later = observe_goal_settlement(
+        native_goals=later_goals,
+        profile=profile._profile,
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=later_runtime,
+        kit=observed["kit_source_forest_persistence"],
+    )
+    assert observed_later["admitted"] is True, observed_later
+    replay = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=later_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=later_runtime,
+        kit=observed["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert replay["admitted"] is True and replay["idempotent_replay"] is True

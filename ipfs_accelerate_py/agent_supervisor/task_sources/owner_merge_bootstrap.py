@@ -407,11 +407,11 @@ def request_owner_merge_bootstrap(
                 _send_frame(channel, request)
                 response = receive_bundle_frame(channel)
                 break
-            except (OSError, StateOwnerBootstrapError):
+            except (OSError, StateOwnerBootstrapError) as exc:
                 if attempt:
                     raise StateOwnerBootstrapError(
                         "native paired bootstrap transport unavailable"
-                    ) from None
+                    ) from exc
             finally:
                 if channel is not None:
                     channel.close()

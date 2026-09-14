@@ -19,14 +19,16 @@ def retain_owner_for_closeout(
     check_owner: Callable[[], None],
     output: Callable[[str], None],
     interval_seconds: float = 10.0,
+    produce: Callable[[], Mapping[str, Any] | None] | None = None,
 ) -> str:
     """Wait for native acceptance or an explicit stop, preserving the owner.
 
     ``observe`` is the native board's trusted acceptance reader, not worker
     output or a configurable shell success code. Its completion_authority
     flag must mean the full board contract was verified against current
-    receipts and source heads. An ordinary authenticated progress snapshot
-    explicitly lacks that authority and therefore cannot end this phase.
+    receipts and source heads. Bootstrap closeout admission, task drain,
+    and an ordinary authenticated progress snapshot explicitly lack that
+    authority and therefore cannot end this phase.
 
     Owner faults propagate to the existing qualified restart path. Stop
     markers and signals end the phase without claiming completion.
@@ -36,6 +38,8 @@ def retain_owner_for_closeout(
     output("implementation lanes drained; retaining native owner for acceptance")
     while not stopped():
         check_owner()
+        if produce is not None:
+            produce()
         observation = observe()
         if (
             observation.get("completion_authority") is True

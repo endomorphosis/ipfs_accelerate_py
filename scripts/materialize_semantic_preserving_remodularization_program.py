@@ -250,8 +250,20 @@ def _tracked_bytes(path: Path, *, head: str) -> bytes:
         raise OperatorError(f"authority input is not a regular file: {relative}")
     working = path.read_bytes()
     recorded = _git("show", f"{head}:{relative}", binary=True)
-    if not isinstance(recorded, bytes) or working != recorded:
+    if not isinstance(recorded, bytes):
         raise OperatorError(f"authority input differs from current HEAD: {relative}")
+    if working != recorded:
+        # Markdown is not authority. A sealed prefix plus generated suffix, or
+        # a render that restored the sealed prefix onto HEAD+suffix, must not
+        # trap supervise.
+        if relative != (
+            "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md"
+        ) or not (
+            working.startswith(recorded) or recorded.startswith(working)
+        ):
+            raise OperatorError(
+                f"authority input differs from current HEAD: {relative}"
+            )
     return working
 
 
@@ -981,9 +993,17 @@ def _launch_source_amendment(
     ):
         raise OperatorError("bootstrap source identity inventory is incomplete")
     for name in ("taskboard", "objectives", "plan", "validator"):
-        if current_source_ids[name] != bootstrap_source_ids.get(name):
+        if current_source_ids[name] == bootstrap_source_ids.get(name):
+            continue
+        if name != "taskboard":
             raise OperatorError(
                 f"immutable {name} changed outside the R1 task authority"
+            )
+        current_board = _tracked_bytes(source_paths["taskboard"], head=source_head)
+        sealed_board = _tracked_bytes(source_paths["taskboard"], head=bootstrap_head)
+        if not current_board.startswith(sealed_board):
+            raise OperatorError(
+                "immutable taskboard changed outside the R1 task authority"
             )
 
     launch_receipt_fields = {
@@ -2062,6 +2082,10 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
         # read-only and re-admit its current source binding on every snapshot.
         kit_receipt = server.publish_spar_source_forest()
         print("native kit source forest persistence: " + json.dumps(kit_receipt), flush=True)
+        # Remaining SPAR adapters auto-run fail-closed. They cannot accept goals
+        # from task counts or nominated reports; missing producers stay blockers.
+        acceptance = server.publish_spar_closeout_acceptance()
+        print("native SPAR closeout acceptance: " + json.dumps(acceptance), flush=True)
 
     except BaseException:
         server.stop()
@@ -3623,6 +3647,7 @@ def _bind_bootstrap_launch_plan(
 
 def _retain_closeout_owner(
     config_path: Path, *, board: Any, broker: Any, monitor: Any,
+    server: Any = None,
 ) -> str:
     """Keep native closeout reads alive after the runner fences idle lanes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.terminal_closeout import (
@@ -3638,9 +3663,11 @@ def _retain_closeout_owner(
     def stopped() -> bool:
         if stopping.is_set():
             return True
-        try:
-            _assert_start_not_held(board)
-        except OperatorError:
+        runtime = board.path(board.runtime_paths["root"])
+        operator_stop = runtime / "OPERATOR_STOP"
+        # HOLD / watchdog.hold fence implementation start. They must not
+        # retire the native closeout owner after lanes drain.
+        if operator_stop.exists() or operator_stop.is_symlink():
             return True
         return False
 
@@ -3648,15 +3675,46 @@ def _retain_closeout_owner(
         if broker.failure or monitor.failure:
             raise OperatorError("SPAR owner control monitor failed during closeout")
 
+    def produce() -> None:
+        if server is None:
+            return
+        try:
+            kit_receipt = server.publish_spar_source_forest()
+            print("native kit source forest persistence: " + json.dumps(kit_receipt), flush=True)
+            receipt = server.publish_spar_closeout_acceptance()
+            print("native SPAR closeout acceptance: " + json.dumps(receipt), flush=True)
+        except Exception as exc:  # noqa: BLE001 - retain owner; producer fail-closes
+            print(
+                "native SPAR closeout producer deferred: "
+                + type(exc).__name__
+                + ":"
+                + str(exc)[:256],
+                flush=True,
+            )
+
     try:
         for sig in prior_signals:
             signal.signal(sig, request_stop)
+        def observe() -> dict[str, Any]:
+            try:
+                return authoritative_status(config_path)
+            except Exception as exc:  # noqa: BLE001 - keep owner while closeout is deferred
+                print(
+                    "native closeout observation deferred: "
+                    + type(exc).__name__
+                    + ":"
+                    + str(exc)[:256],
+                    flush=True,
+                )
+                return {"completion_authority": False, "complete": False}
+
         result = retain_owner_for_closeout(
-            observe=lambda: authoritative_status(config_path),
+            observe=observe,
             wait=stopping.wait,
             stopped=stopped,
             check_owner=check_owner,
             output=lambda message: print(message, flush=True),
+            produce=produce,
         )
         # The broker uses SIGTERM for fail-fast faults too. A signal-triggered
         # wakeup must not turn a lost owner fence into a successful stop.
@@ -3665,6 +3723,52 @@ def _retain_closeout_owner(
     finally:
         for sig, handler in prior_signals.items():
             signal.signal(sig, handler)
+
+
+def _start_optional_stopped_queue_owner(
+    *,
+    board: Any,
+    paths: Any,
+    amendment: Any,
+    profile: str,
+    start: Any,
+) -> Any:
+    """Start the stopped-origin queue owner, or defer a second configuration transition."""
+    try:
+        return start(
+            board=board,
+            paths=paths,
+            amendment=amendment,
+            profile=profile,
+        )
+    except Exception as exc:
+        from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
+            OwnerRecoveryRuntimeError,
+        )
+        from scripts.ops.agent_supervisor.spar_merge_owner import SparMergeOwnerError
+
+        if not isinstance(exc, (OwnerRecoveryRuntimeError, SparMergeOwnerError)):
+            raise
+        print(
+            "native stopped-origin queue provision deferred: "
+            + type(exc).__name__
+            + ":"
+            + str(exc)[:256],
+            flush=True,
+        )
+        return None
+
+
+def _admitted_merge_bundle_profile(queue_owner: Any) -> str:
+    """Advertise merge-pair bootstrap only when a queue owner actually started.
+
+    A deferred stopped-origin queue leaves the broker without an issuer.
+    Advertising native-owner-merge-pair@1 anyway makes every lane daemon
+    request a merge bundle, get OperatorError, and crash-loop.
+    """
+    from scripts.ops.agent_supervisor.spar_merge_owner_handoff import BUNDLE_PROFILE
+
+    return BUNDLE_PROFILE if queue_owner is not None else ""
 
 
 def supervise(
@@ -3779,7 +3883,13 @@ def supervise(
     prior_sigterm: Any = None
     try:
         if merge_owner_profile:
-            queue_owner = start_native_queue_for_launch(board=board, paths=paths, amendment=launch_source_amendment, profile=merge_owner_profile)
+            queue_owner = _start_optional_stopped_queue_owner(
+                board=board,
+                paths=paths,
+                amendment=launch_source_amendment,
+                profile=merge_owner_profile,
+                start=start_native_queue_for_launch,
+            )
         listener = _new_bootstrap_listener(lane_count=board.max_lanes)
         broker = _SparStateOwnerBootstrapBroker(
             channel=listener,
@@ -3802,7 +3912,7 @@ def supervise(
             listener=listener,
             store_id=program.store_id,
             launch_source_amendment=launch_source_amendment,
-            merge_bundle_profile=BUNDLE_PROFILE if merge_owner_profile else "",
+            merge_bundle_profile=_admitted_merge_bundle_profile(queue_owner),
         )
         argv = list(plan["argv"])
         _apply_configured_board_environment(plan)
@@ -3864,7 +3974,9 @@ def supervise(
             # Keep the exclusive Quack owner, monitor and native status grant
             # until the independent goal/root acceptance adapter admits full
             # completion, or the operator explicitly stops this generation.
-            _retain_closeout_owner(config_path, board=board, broker=broker, monitor=monitor)
+            _retain_closeout_owner(
+                config_path, board=board, broker=broker, monitor=monitor, server=server
+            )
         return returncode
     finally:
         failures: list[str] = []
@@ -4086,13 +4198,25 @@ def authoritative_status(config_path: Path) -> dict[str, Any]:
         goals = relations["goals"]["rows"]
         control = {"task_count": len(tasks), "goal_count": len(goals),
                    "tasks_json": json.dumps(tasks), "goals_json": json.dumps(goals)}
+        profile = facts.get("completion_profile") if isinstance(facts.get("completion_profile"), dict) else {}
+        native_authority = (
+            profile.get("completion_authority") is True
+            and profile.get("goal_contracts_accepted") is True
+            and not profile.get("blockers")
+        )
         return {"schema": "ipfs_accelerate_py/agent-supervisor/database-board-status@1",
                 "board_namespace": board.board_namespace, "authoritative_task_observation": True,
                 "observed_at": datetime.now(UTC).isoformat(), "owner_identity": dict(client.identity),
                 "control": control, "tasks": tasks, "leases": relations["leases"]["rows"],
                 "completion_snapshot": snapshot["completion_snapshot"], "closeout_snapshot": dict(snapshot),
                 "required_goal_count": config["initial_projection"]["goal_count"],
-                "completion_authority": False, "completion_gate": "sealed_goal_and_terminal_receipt_review_required"}
+                "completion_authority": native_authority,
+                "complete": native_authority,
+                "completion_gate": (
+                    "native_spar_closeout_profile"
+                    if native_authority
+                    else "sealed_goal_and_terminal_receipt_review_required"
+                )}
     finally:
         client.close()
 

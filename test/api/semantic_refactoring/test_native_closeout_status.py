@@ -46,6 +46,11 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
             calls["kit_persistence"] = True
             return {"admitted": False, "completion_authority": False}
 
+        def publish_spar_closeout_acceptance(self):
+            assert calls.get("kit_persistence") is True
+            calls["closeout_acceptance"] = True
+            return {"admitted": False, "completion_authority": False}
+
         def stop(self):
             calls["stopped"] = True
 
@@ -70,6 +75,7 @@ def test_start_binds_readonly_population_and_never_rewrites_authority(
     else:
         m._start_state_owner(tmp_path / "config")
         assert calls["kit_persistence"] is True
+        assert calls["closeout_acceptance"] is True
         assert calls["binding"] == {
             "board_namespace": "board:sealed",
             "plan_root_cid": "plan:sealed",
@@ -199,6 +205,33 @@ def test_native_closeout_honors_hold_without_reading_state(tmp_path, monkeypatch
                                    broker=healthy, monitor=healthy) == "stopped"
 
 
+@pytest.mark.parametrize("name", ["HOLD", "watchdog.disabled", "watchdog.hold"])
+def test_native_closeout_start_hold_does_not_retire_owner(tmp_path, monkeypatch, name):
+    import signal
+
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    (tmp_path / name).write_text("implementation fence")
+    reads = []
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+
+    def observe(_):
+        reads.append(True)
+        signal.raise_signal(signal.SIGTERM)
+        return {
+            "admitted": True,
+            "completion_authority": False,
+            "complete": True,
+        }
+
+    monkeypatch.setattr(m, "authoritative_status", observe)
+    healthy = SimpleNamespace(failure="")
+    assert m._retain_closeout_owner(tmp_path / "config", board=board,
+                                   broker=healthy, monitor=healthy) == "stopped"
+    assert reads
+    assert {sig: signal.getsignal(sig) for sig in previous} == previous
+
+
 def test_native_closeout_signal_stops_and_restores_handlers(tmp_path, monkeypatch):
     import signal
     m = _materializer()
@@ -222,3 +255,90 @@ def test_native_closeout_owner_fault_propagates(tmp_path, monkeypatch):
         m._retain_closeout_owner(tmp_path / "config", board=board,
                                 broker=SimpleNamespace(failure="lost fence"),
                                 monitor=SimpleNamespace(failure=""))
+
+
+def test_stopped_origin_second_configuration_does_not_kill_owner():
+    from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
+        OwnerRecoveryRuntimeError,
+    )
+
+    m = _materializer()
+
+    def start(**_kwargs):
+        raise OwnerRecoveryRuntimeError("migration id already binds different preserved state")
+
+    assert (
+        m._start_optional_stopped_queue_owner(
+            board=object(),
+            paths={},
+            amendment=object(),
+            profile="stopped",
+            start=start,
+        )
+        is None
+    )
+    assert m._admitted_merge_bundle_profile(None) == ""
+
+
+def test_admitted_queue_owner_advertises_merge_pair_bootstrap():
+    m = _materializer()
+    assert m._admitted_merge_bundle_profile(object()) == "native-owner-merge-pair@1"
+
+
+def test_unrelated_queue_start_failure_still_propagates():
+    m = _materializer()
+
+    def start(**_kwargs):
+        raise RuntimeError("unrelated")
+
+    with pytest.raises(RuntimeError, match="unrelated"):
+        m._start_optional_stopped_queue_owner(
+            board=object(),
+            paths={},
+            amendment=object(),
+            profile="stopped",
+            start=start,
+        )
+
+
+def test_merge_bootstrap_preserves_transport_cause(monkeypatch):
+    import os
+    import socket
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap import (
+        request_owner_merge_bootstrap,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+        StateOwnerBootstrapError,
+    )
+
+    inner = StateOwnerBootstrapError("state-owner bootstrap socket could not be opened")
+
+    def boom(*_args, **_kwargs):
+        raise inner
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap._connect_inherited_listener",
+        boom,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap.validate_state_owner_bootstrap_listener",
+        lambda *_args, **_kwargs: None,
+    )
+    held, extra = socket.socketpair()
+    extra.close()
+    descriptor = os.dup(held.fileno())
+    held.close()
+    with pytest.raises(
+        StateOwnerBootstrapError,
+        match="native paired bootstrap transport unavailable",
+    ) as excinfo:
+        request_owner_merge_bootstrap(
+            descriptor,
+            client_id="database-implementation-daemon:ns-0",
+            store_id="store",
+            config_cid="config",
+            plan_cid="plan",
+            timeout_seconds=0.2,
+        )
+    assert excinfo.value.__cause__ is inner

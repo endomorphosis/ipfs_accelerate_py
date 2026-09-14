@@ -2057,19 +2057,28 @@ def bind_database_portal_execution_from_args(
     recovery_queue: Any = None
     from ..semantic_refactoring.residual_authority import SPAR_BOARD_NAMESPACE
 
-    owner_recovery_required = (
+    advertised_merge_pair = (
+        str(getattr(parsed, "owner_merge_bootstrap_profile", "") or "")
+        == "native-owner-merge-pair@1"
+    )
+    spar_board = (
         str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE
-        or (
-            str(getattr(parsed, "authority_mode", "") or "") == "quack"
-            and configured_merge_queue_dir is not None
-            and bool(configured_merge_target_branch)
-        )
+    )
+    owner_recovery_required = advertised_merge_pair or (
+        not spar_board
+        and str(getattr(parsed, "authority_mode", "") or "") == "quack"
+        and configured_merge_queue_dir is not None
+        and bool(configured_merge_target_branch)
     )
     if owner_recovery_required and owner_merge_runtime is None:
         raise RuntimeError(
             "owner-backed merge recovery runtime is not admitted; "
             "native migration and paired grants are required"
         )
+    if spar_board and not advertised_merge_pair:
+        # Queue owner was not admitted this generation. Do not crash-loop and
+        # do not open a filesystem merge queue.
+        configured_merge_queue_dir = None
     if owner_merge_runtime is not None:
         from ..merge.owner_recovery_adapter import OwnerMergeRecoveryRuntime
 

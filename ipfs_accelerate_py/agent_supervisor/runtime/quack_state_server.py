@@ -3839,6 +3839,18 @@ class QuackStateServer:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         return gateway.publish_spar_source_forest()
 
+    def publish_spar_closeout_acceptance(self) -> dict[str, Any]:
+        """Run SPAR closeout adapters from the qualified launcher."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "SPAR closeout acceptance requires a ready owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        return gateway.publish_spar_closeout_acceptance()
+
     def bind_database_status_scope(self, **binding: Any) -> None:
         """Bind a non-federated sealed board to peer-bound read-only status."""
         with self._lock:

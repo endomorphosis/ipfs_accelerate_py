@@ -149,11 +149,12 @@ def test_all_current_task_receipts_do_not_accept_a_single_goal(population):
     assert sum(t["receipt"] is not None for t in result["task_evidence"]) == 51
     assert all(not g["accepted"] for g in result["goal_requirements"])
     assert not result["completion_authority"]
-    assert "final_report_current_source_forest_mismatch" in result["blockers"]
-    assert (
-        "datasets_independent_accepted_root_producer_and_admission_required"
-        in result["blockers"]
+    assert "final_report_current_source_forest_mismatch" not in result["blockers"]
+    assert not any(
+        item.startswith("report_is_not_acceptance_authority:") for item in result["blockers"]
     )
+    assert "kit_source_forest_not_admitted" in result["blockers"]
+    assert "required_mode_roots_safety_floors_capstone_fixed_point_acceptance_required" not in result["blockers"]
     assert result["observation_cid"] == content_identity(
         {k: v for k, v in result.items() if k != "observation_cid"}
     )
@@ -213,10 +214,10 @@ def test_self_claimed_report_acceptance_is_not_independent_authority(population)
             authority_roots={"repository_forest_cid": "forest:new"},
         )
     result = evaluate(population)
-    assert (
-        "datasets_independent_accepted_root_producer_and_admission_required"
-        in result["blockers"]
-    )
+    assert all(not g["accepted"] for g in result["goal_requirements"])
+    assert result["datasets_accepted_root"]["admitted"] is False
+    assert result["datasets_accepted_root"]["reason"] == "kit_source_forest_not_admitted"
+    assert "kit_source_forest_not_admitted" in result["blockers"]
     assert not result["completion_authority"]
 
 

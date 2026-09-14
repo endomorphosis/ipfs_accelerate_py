@@ -5742,6 +5742,21 @@ class TypedStateOwnerGateway:
                 owner_identity=self.identity,
             )
 
+    def publish_spar_closeout_acceptance(self) -> dict[str, Any]:
+        """Launcher-only SPAR adapters on this existing owner; no RPC writer grant."""
+        from .spar_closeout_profile import SparCloseoutProfile
+        with self._transaction_lock:
+            if (not self._database_status_binding
+                    or type(self._database_closeout_profile) is not SparCloseoutProfile):
+                raise TypedStateOwnerAuthorizationError(
+                    "SPAR closeout acceptance requires sealed SPAR launcher scope"
+                )
+            self._resolve_database_status_scope()
+            return self._database_closeout_profile.publish_closeout_acceptance(
+                self._connection, transaction_lock=self._transaction_lock,
+                owner_identity=self.identity,
+            )
+
     def bind_database_status_scope(
         self,
         *,
