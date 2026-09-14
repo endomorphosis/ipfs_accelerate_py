@@ -494,6 +494,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+        "database_unknown_callback_quarantine_continuation",
     }
 )
 _PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(

@@ -220,7 +220,7 @@ def test_native_dead_admitted_candidate_rearm(tmp_path, monkeypatch, case):
                 lambda task_cid: {"revisions": []},
             )
         native_before = _typed_owner_completion_state(server._connection)
-        if case in {"no_candidate", "bad_candidate"}:
+        if case == "bad_candidate":
             result = daemon._reopen_unimplemented_unknown_callback_task(task)
             assert result["reopened"] is False
             assert result["reason"] == "post_commit_recovery_evidence_rejected"
@@ -243,9 +243,23 @@ def test_native_dead_admitted_candidate_rearm(tmp_path, monkeypatch, case):
                 assert (
                     daemon._reopen_unimplemented_unknown_callback_task(updated) is None
                 )
+            elif case == "no_candidate":
+                assert result["reopened"] is True
+                assert result["reason"] == "owner_continuation_preserves_unknown"
+                assert result["unknown_preserved"] is True
+                assert result["completion_authoritative"] is False
+                assert result["provider_dispatched"] is False
+                updated = source.get_task(task.task_cid)
+                assert updated.status == "retrying"
+                preserved = updated.body["completion_receipt"][
+                    "preserved_unknown_receipt"
+                ]
+                assert preserved["operation"] == (
+                    "database_dead_admitted_provider_outcome_unknown_quarantine"
+                )
             else:
                 assert not result["reopened"]
-        if case not in {"exact", "cas_race"}:
+        if case not in {"exact", "no_candidate", "cas_race"}:
             assert _typed_owner_completion_state(server._connection) == native_before
         if case not in {"exact", "no_candidate", "bad_candidate", "cas_race"}:
             assert recovered == []

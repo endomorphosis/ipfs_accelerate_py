@@ -127708,6 +127708,106 @@ class DatabaseImplementationDaemon:
         ):
             return False
 
+    def _admit_unknown_callback_quarantine_continuation(
+        self,
+        task: Any,
+    ) -> dict[str, Any]:
+        """Admit a successor attempt while preserving the historical unknown."""
+
+        from .unknown_callback_quarantine_continuation import (
+            OPERATION as continuation_operation,
+            SUCCESSOR_REASON,
+            continuation_receipt,
+            identity_incomplete_observation,
+        )
+
+        current = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
+        if current is None:
+            current = task
+        expected_revision = int(getattr(current, "revision", 0) or 0)
+        receipt = continuation_receipt(
+            current,
+            expected_revision=expected_revision,
+        )
+        if receipt is None:
+            return identity_incomplete_observation(current)
+        current_body = getattr(current, "body", None)
+        expected_control = (
+            current_body.get("completion_receipt")
+            if isinstance(current_body, Mapping)
+            else None
+        )
+        if not isinstance(expected_control, Mapping):
+            return identity_incomplete_observation(current)
+        guarded = getattr(
+            self.task_source,
+            "record_queue_backoff_and_cas_status",
+            None,
+        )
+        if callable(guarded):
+            guarded(
+                task_cid=str(current.task_cid),
+                expected_revision=expected_revision,
+                expected_control_receipt=expected_control,
+                status="retrying",
+                receipt=receipt,
+                delay_ms=0,
+                reason=str(receipt["queue_reason"]),
+            )
+        else:
+            self._cas_task_status_database(
+                str(current.task_cid),
+                expected_revision=expected_revision,
+                new_status="retrying",
+                receipt=receipt,
+                expected_control_receipt=expected_control,
+            )
+        updated = self.task_source.get(str(current.task_cid))
+        updated_receipt = (
+            updated.body.get("completion_receipt")
+            if updated is not None and isinstance(updated.body, Mapping)
+            else None
+        )
+        if (
+            updated is None
+            or str(updated.status).strip().lower() != "retrying"
+            or not isinstance(updated_receipt, Mapping)
+            or updated_receipt.get("operation") != continuation_operation
+            or updated_receipt.get("preserved_unknown_receipt")
+            != dict(expected_control)
+            or updated_receipt.get("unknown_preserved") is not True
+            or updated_receipt.get("completion_authoritative") is not False
+            or updated_receipt.get("history_rewritten") is not False
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "unknown-callback quarantine continuation did not persist"
+            )
+        self._record_event(
+            "unknown_callback_quarantine_continuation_admitted",
+            attempt_id=str(receipt["attempt_id"]),
+            task_cid=str(updated.task_cid),
+            body={
+                "reason": SUCCESSOR_REASON,
+                "provider_dispatched": False,
+                "unknown_preserved": True,
+                "completion_authoritative": False,
+            },
+        )
+        return {
+            "task_cid": str(updated.task_cid),
+            "reopened": True,
+            "changed": True,
+            "status": "retrying",
+            "reason": SUCCESSOR_REASON,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "unknown_preserved": True,
+            "completion_authoritative": False,
+            "history_rewritten": False,
+            "successor_attempt_admitted": True,
+            "operator_review_required": False,
+        }
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -127720,6 +127820,14 @@ class DatabaseImplementationDaemon:
         becomes an explicit budget stop.
         """
 
+        from .unknown_callback_quarantine_continuation import (
+            admits_owner_continuation,
+            dual_identity_observation,
+            is_dual_pending_merge_identity_block,
+        )
+
+        if is_dual_pending_merge_identity_block(task):
+            return dual_identity_observation(task)
         task_status = str(getattr(task, "status", "") or "").strip().lower()
         body = getattr(task, "body", None)
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
@@ -127806,6 +127914,11 @@ class DatabaseImplementationDaemon:
                 attempt,
             )
         if attempt is None:
+            if callable(recover) and admits_owner_continuation(task):
+                # Owner restart can drop the local attempt cursor while the
+                # typed unknown receipt remains. Admit a successor under the
+                # current owner instead of freezing the DAG.
+                return self._admit_unknown_callback_quarantine_continuation(task)
             # Another shard owns the execution cursor.  Do not advertise
             # operator review for a task this lane cannot source-match.
             return None
@@ -127834,6 +127947,10 @@ class DatabaseImplementationDaemon:
             )
             if (dead_admitted_source and recovered_schema
                     != DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA):
+                if admits_owner_continuation(task):
+                    return self._admit_unknown_callback_quarantine_continuation(
+                        task
+                    )
                 raise DatabaseImplementationAuthorityError(
                     "dead admitted recovery requires an exact committed candidate"
                 )
