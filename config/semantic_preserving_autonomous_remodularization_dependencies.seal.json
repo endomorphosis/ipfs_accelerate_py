@@ -3,7 +3,7 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py": "411a10323b0eeb9129159a49366c06e63f002f95e498ddc24c906302d62c4cad",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "3d8c16ff20838068bc2f2223a0930b28b46d696c77ce4c8e5ee922a734b24b74",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "1250e1d2ae1946be5a809e74da5c29794c742cbb98a5155bdd20bee61ebfca21",
-    "ipfs_accelerate_py/agent_supervisor/runtime/spar_runtime_settlement.py": "2711cbde7b0e4973f76365ff03a59fb97e7cf7f0f6a9870e88ccd39f5337d89e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/spar_runtime_settlement.py": "2c98b23540b4957491901a1230d72de1569fdcda9963b0c2ec6581ffafd337a7",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py": "8ec4d49f2f6937f04e4dfd8b36f47b0aca34413b8226db6ff59e3bfc028caa14",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py": "0ec3b29ef6e6de35b93e40b2553f4a26bb092f3cdf8f7f19720b6ee125ce7600",
     "ipfs_accelerate_py/agent_supervisor/semantic_state/kit_source_forest.py": "2637a4717f3604c5201b5759ee34b3bc6e50048abeb98ca90d2046374e046cc4",
@@ -517,7 +517,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:bfa90ad887417ee9b8dcdd7ffc45cd599504fde11763c938a448416710fa7a91",
+  "seal_cid": "sha256:45a529d18ef649e29fce90ad935a814cace19b98d75c51720853d99bcadf5b94",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

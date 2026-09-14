@@ -247,7 +247,12 @@ def _sidecar_active(path: Path, kind: str) -> int:
             if not required.issubset(tables):
                 raise ValueError("coordination sidecar schema is incomplete")
             return (
-                _count_active(connection, "SELECT COUNT(*) FROM task_claims WHERE released_at_ms IS NULL")
+                _count_active(
+                    connection,
+                    "SELECT COUNT(*) FROM task_claims "
+                    "WHERE released_at_ms IS NULL "
+                    "AND state NOT IN ('released', 'expired')",
+                )
                 + _count_active(
                     connection,
                     "SELECT COUNT(*) FROM fenced_leases WHERE state NOT IN ('released', 'expired')",

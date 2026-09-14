@@ -183,6 +183,75 @@ def test_runtime_settlement_admits_private_zero_active_three_lane_fixture(tmp_pa
         assert held["admitted"] is True and held["held"] is True
 
 
+def _insert_task_claim(coordination: Path, *, claim_id: str, state: str, released_at_ms: int | None) -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+
+    connection = connect_duckdb_with_policy(duckdb, coordination, read_only=False)
+    try:
+        connection.execute(
+            """
+            INSERT INTO task_claims(
+                claim_id, task_cid, owner_session_id, fencing_token,
+                fence_epoch, claimed_at_ms, expires_at_ms, released_at_ms,
+                state, revision, attempt_id, attempt_number, lease_id
+            ) VALUES (?, 'task:settlement', 'session:lane-0', 1, 1, 1, 100, ?, ?, 1,
+                      'attempt:settlement', 1, 'lease:settlement')
+            """,
+            [claim_id, released_at_ms, state],
+        )
+    finally:
+        connection.close()
+
+
+def test_runtime_settlement_ignores_expired_unreleased_task_claims(tmp_path):
+    root = _runtime_root(tmp_path)
+    coordination = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_coordination.duckdb"
+    )
+    _insert_task_claim(
+        coordination,
+        claim_id="claim:expired-historical",
+        state="expired",
+        released_at_ms=None,
+    )
+    owner = {"generation": 1, "store_id": "control.duckdb", "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is True, observed
+    assert observed["active_count"] == 0
+    assert observed["lanes"][0]["coordination_active"] == 0
+
+
+def test_runtime_settlement_counts_accepted_unreleased_task_claims(tmp_path):
+    root = _runtime_root(tmp_path)
+    coordination = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-0"
+        / "spar_lane_0_database_coordination.duckdb"
+    )
+    _insert_task_claim(
+        coordination,
+        claim_id="claim:accepted-live",
+        state="accepted",
+        released_at_ms=None,
+    )
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(
+        root, owner_identity=owner, target_repository_id=_TARGET
+    )
+    assert observed["admitted"] is False
+    assert observed["active_count"] == 1
+    assert observed["lanes"][0]["coordination_active"] == 1
+    assert observed["reason"] == "runtime_lane_and_merge_queue_settlement_receipt_required"
+
+
 def test_runtime_settlement_refuses_execution_wal(tmp_path):
     root = _runtime_root(tmp_path)
     wal = (
