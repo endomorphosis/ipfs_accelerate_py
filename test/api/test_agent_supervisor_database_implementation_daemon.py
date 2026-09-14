@@ -24328,9 +24328,9 @@ def test_preauthorize_admits_historical_source_after_typed_deferral_exhaustion(
                 _callback_integration_recovery_evidence(daemon, historical)
             )
         except Exception as exc:
-            assert "post_merge_declared_outputs_missing terminal failure" not in str(
-                exc
-            )
+            detail = str(exc)
+            assert "post_merge_declared_outputs_missing terminal failure" not in detail
+            assert "process-local atomic admission" not in detail
             recovered = None
         else:
             assert recovered["recovered"] is True

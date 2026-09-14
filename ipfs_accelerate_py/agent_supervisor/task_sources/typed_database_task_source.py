@@ -3871,6 +3871,11 @@ class TypedDatabaseTaskSource:
         if (
             expected_control_receipt.get("operation")
             == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            and transition.get("operation")
+            != (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            )
         ):
             raise TaskSourceConflictError(
                 "typed-deferral post-merge prior requires its dedicated authority"

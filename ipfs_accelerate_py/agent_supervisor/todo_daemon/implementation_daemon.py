@@ -118587,8 +118587,28 @@ class DatabaseImplementationDaemon:
             # still runs inside the existing physical/coordinator authority
             # checks below; a process-local seal never crosses Quack.
             guarded_queue_status = typed_exhausted_recovery
+        mint_admission = getattr(
+            self._task_source,
+            "_mint_post_merge_queue_admission",
+            None,
+        )
+        dedicated_post_merge_retry = getattr(
+            self.task_source, "recover_post_merge_retry", None
+        )
+        if (
+            exhausted_post_merge_recovery
+            and not use_typed_exhausted_recovery
+            and not callable(mint_admission)
+            and callable(dedicated_post_merge_retry)
+        ):
+            # Quack lanes cannot mint a process-local admission seal.
+            # Route historical typed-deferral append recovery through the
+            # closed owner post-merge retry command instead.
+            guarded_queue_status = dedicated_post_merge_retry
         requires_post_merge_queue_admission = bool(
-            exhausted_post_merge_recovery and not use_typed_exhausted_recovery
+            exhausted_post_merge_recovery
+            and not use_typed_exhausted_recovery
+            and callable(mint_admission)
         )
         post_merge_queue_admission_spec = (
             {

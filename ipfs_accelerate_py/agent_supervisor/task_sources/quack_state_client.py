@@ -5123,8 +5123,15 @@ class QuackStateClient:
             or not isinstance(expected_task_revision, int)
             or expected_task_revision < 1
             or prior_body.get("completion_receipt") != prior_receipt
-            or prior_receipt.get("operation")
-            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            or (
+                prior_receipt.get("operation")
+                == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+                and transition.get("operation")
+                != (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                )
+            )
             or transition.get("queue_receipt") != {}
             or transition.get("control_expected_status") != "blocked"
             or transition.get("control_expected_revision")
