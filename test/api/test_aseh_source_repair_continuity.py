@@ -357,6 +357,25 @@ def test_positive_owner_environment_retains_only_verified_registration(fixture, 
     assert projected[contract.PATH_ENV] == f.pin["path"]
     assert projected[contract.SHA_ENV] == f.pin["sha256"]
     assert "UNRELATED_SECRET" not in projected and "PYTHONPATH" not in projected
+    scheduler = BASE / "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
+    tree = ast.parse(scheduler.read_text())
+    names = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    sealed_owner = ast.get_source_segment(scheduler.read_text(), names["_run_aseh_sealed_owner"])
+    assert contract.PATH_ENV in sealed_owner and contract.SHA_ENV in sealed_owner
+    exact = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(f.tmp),
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+        "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(f.tmp),
+        "XDG_CACHE_HOME": str(f.tmp / ".cache" / "xdg"),
+        "CUDA_CACHE_PATH": str(f.tmp / ".cache" / "cuda"),
+        "CUDA_CACHE_DISABLE": "1",
+        contract.PATH_ENV: projected[contract.PATH_ENV],
+        contract.SHA_ENV: projected[contract.SHA_ENV],
+    }
+    assert exact == projected
     # A real clean child receives the exact positive projection. Its independent
     # contract read uses the same retained Git source/artifacts, no native import.
     code = '''import importlib.util,json,os,pathlib,subprocess,sys
