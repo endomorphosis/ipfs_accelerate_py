@@ -3701,6 +3701,40 @@ def _retain_closeout_owner(
             signal.signal(sig, handler)
 
 
+def _start_optional_stopped_queue_owner(
+    *,
+    board: Any,
+    paths: Any,
+    amendment: Any,
+    profile: str,
+    start: Any,
+) -> Any:
+    """Start the stopped-origin queue owner, or defer a second configuration transition."""
+    try:
+        return start(
+            board=board,
+            paths=paths,
+            amendment=amendment,
+            profile=profile,
+        )
+    except Exception as exc:
+        from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
+            OwnerRecoveryRuntimeError,
+        )
+        from scripts.ops.agent_supervisor.spar_merge_owner import SparMergeOwnerError
+
+        if not isinstance(exc, (OwnerRecoveryRuntimeError, SparMergeOwnerError)):
+            raise
+        print(
+            "native stopped-origin queue provision deferred: "
+            + type(exc).__name__
+            + ":"
+            + str(exc)[:256],
+            flush=True,
+        )
+        return None
+
+
 def supervise(
     config_path: Path,
     *,
@@ -3813,7 +3847,13 @@ def supervise(
     prior_sigterm: Any = None
     try:
         if merge_owner_profile:
-            queue_owner = start_native_queue_for_launch(board=board, paths=paths, amendment=launch_source_amendment, profile=merge_owner_profile)
+            queue_owner = _start_optional_stopped_queue_owner(
+                board=board,
+                paths=paths,
+                amendment=launch_source_amendment,
+                profile=merge_owner_profile,
+                start=start_native_queue_for_launch,
+            )
         listener = _new_bootstrap_listener(lane_count=board.max_lanes)
         broker = _SparStateOwnerBootstrapBroker(
             channel=listener,

@@ -228,3 +228,41 @@ def test_native_closeout_owner_fault_propagates(tmp_path, monkeypatch):
         m._retain_closeout_owner(tmp_path / "config", board=board,
                                 broker=SimpleNamespace(failure="lost fence"),
                                 monitor=SimpleNamespace(failure=""))
+
+
+def test_stopped_origin_second_configuration_does_not_kill_owner():
+    from ipfs_accelerate_py.agent_supervisor.merge.owner_recovery_runtime import (
+        OwnerRecoveryRuntimeError,
+    )
+
+    m = _materializer()
+
+    def start(**_kwargs):
+        raise OwnerRecoveryRuntimeError("migration id already binds different preserved state")
+
+    assert (
+        m._start_optional_stopped_queue_owner(
+            board=object(),
+            paths={},
+            amendment=object(),
+            profile="stopped",
+            start=start,
+        )
+        is None
+    )
+
+
+def test_unrelated_queue_start_failure_still_propagates():
+    m = _materializer()
+
+    def start(**_kwargs):
+        raise RuntimeError("unrelated")
+
+    with pytest.raises(RuntimeError, match="unrelated"):
+        m._start_optional_stopped_queue_owner(
+            board=object(),
+            paths={},
+            amendment=object(),
+            profile="stopped",
+            start=start,
+        )
