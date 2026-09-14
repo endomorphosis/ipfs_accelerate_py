@@ -344,7 +344,6 @@ def admit_accepted_root(
                     "profile_cid": profile_cid,
                     "source_forest_root": subject["source_forest_root"],
                     "kit_transition_cid": kit_cid,
-                    "runtime_receipt_cid": runtime_cid,
                     "task_receipt_cids": list(subject["task_receipt_cids"]),
                 }
             )

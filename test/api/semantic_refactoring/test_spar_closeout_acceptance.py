@@ -833,6 +833,18 @@ def test_bootstrap_admits_from_kit_runtime_and_native_receipts(monkeypatch) -> N
     baseline = sealed_rollout_baseline()
     assert baseline["current_mode"] == "bootstrap"
     assert baseline["worker_may_change_mode"] is False
+    shifted = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source=source,
+        kit=kit,
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+        runtime={"admitted": True, "settled": True, "receipt_cid": "cid:runtime-later"},
+    )
+    assert shifted["admitted"] is True
+    assert shifted["accepted_root_cid"] == result["accepted_root_cid"]
+    assert shifted["runtime_receipt_cid"] == "cid:runtime-later"
 
 
 def test_bootstrap_does_not_copy_nominated_report_booleans(monkeypatch) -> None:
@@ -943,6 +955,79 @@ def test_bootstrap_evaluate_settles_goals_from_native_receipts(native_source, mo
         accepted_root=datasets,
         runtime=runtime,
         kit=observed_after["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert replay["admitted"] is True and replay["idempotent_replay"] is True
+
+
+def test_bootstrap_goal_observe_survives_later_runtime_receipt(native_source, monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement import (
+        observe_goal_settlement,
+    )
+
+    gateway, connection, profile, client, cids, _root = native_source
+    assert gateway.publish_spar_source_forest()["admitted"] is True
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: _clause_missing_producer())
+    runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime-hold"}
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.spar_runtime_settlement.observe_spar_runtime_settlement",
+        lambda *args, **kwargs: runtime,
+    )
+    observed = view(native_source)
+    facts_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        facts_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    settled = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=facts_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=runtime,
+        kit=observed["kit_source_forest_persistence"],
+        owner_identity=gateway.identity,
+    )
+    assert settled["admitted"] is True, settled
+    later_goals = {}
+    for row in connection.execute(
+        "SELECT goal_cid, goal_alias, title, status, revision, parent_goal_cid, body_json FROM goals"
+    ).fetchall():
+        later_goals[row[0]] = {
+            "goal_cid": row[0],
+            "goal_alias": row[1],
+            "title": row[2],
+            "status": row[3],
+            "revision": row[4],
+            "parent_goal_cid": row[5],
+            "body_json": row[6],
+        }
+    later_runtime = {"admitted": True, "settled": True, "receipt_cid": "cid:runtime-observe"}
+    observed_later = observe_goal_settlement(
+        native_goals=later_goals,
+        profile=profile._profile,
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=later_runtime,
+        kit=observed["kit_source_forest_persistence"],
+    )
+    assert observed_later["admitted"] is True, observed_later
+    replay = settle_spar_goals(
+        connection,
+        profile=profile._profile,
+        native_goals=later_goals,
+        task_evidence=observed["task_evidence"],
+        accepted_root=observed["datasets_accepted_root"],
+        runtime=later_runtime,
+        kit=observed["kit_source_forest_persistence"],
         owner_identity=gateway.identity,
     )
     assert replay["admitted"] is True and replay["idempotent_replay"] is True

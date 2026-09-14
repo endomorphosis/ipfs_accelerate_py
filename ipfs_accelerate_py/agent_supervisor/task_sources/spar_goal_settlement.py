@@ -83,14 +83,27 @@ def observe_goal_settlement(
                 receipt = body.get("completion_receipt")
         else:
             receipt = None
+        runtime_cid = receipt.get("runtime_receipt_cid") if isinstance(receipt, Mapping) else ""
+        accepted_cid = receipt.get("accepted_root_cid") if isinstance(receipt, Mapping) else ""
+        bootstrap_root = (
+            accepted_root.get("admitted") is True
+            and accepted_root.get("admission_mode") == "bootstrap"
+        )
         if (
             goal is None
             or str(goal.get("status") or "") != "completed"
             or not isinstance(receipt, Mapping)
             or receipt.get("schema") != RECEIPT_SCHEMA
             or receipt.get("goal_cid") != sealed["goal_cid"]
-            or receipt.get("accepted_root_cid") != accepted_root.get("accepted_root_cid")
-            or receipt.get("runtime_receipt_cid") != runtime.get("receipt_cid")
+            or type(accepted_cid) is not str
+            or not accepted_cid.strip()
+            or type(runtime_cid) is not str
+            or not runtime_cid.strip()
+            or runtime.get("admitted") is not True
+            or (
+                accepted_cid != accepted_root.get("accepted_root_cid")
+                and not bootstrap_root
+            )
         ):
             return _deferred()
         accepted.append(sealed["goal_alias"])
