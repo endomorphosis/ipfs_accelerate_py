@@ -48,7 +48,8 @@ def test_evaluate_still_refuses_task_receipts_without_independent_roots(populati
     assert all(not g["accepted"] for g in result["goal_requirements"])
     assert result["completion_authority"] is False
     assert result["complete"] is False
-    assert "datasets_independent_accepted_root_producer_and_admission_required" in result["blockers"]
+    assert result["datasets_accepted_root"]["reason"] == "kit_source_forest_not_admitted"
+    assert "kit_source_forest_not_admitted" in result["blockers"]
     assert "spar_native_goal_cas_settlement_adapter_required" in result["blockers"]
     assert "runtime_lane_and_merge_queue_settlement_receipt_required" in result["blockers"]
     assert result["datasets_accepted_root"]["admitted"] is False
@@ -350,6 +351,36 @@ def test_runtime_settlement_refuses_live_process(tmp_path):
     observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
     assert observed["admitted"] is False
     assert observed["reason"] == "runtime_lane_process_live"
+
+
+def test_admit_accepted_root_reports_kit_not_admitted() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": False, "reason": "kit_source_forest_publication_deferred"},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 51,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "kit_source_forest_not_admitted"
+    assert result["kit_reason"] == "kit_source_forest_publication_deferred"
+    assert result["completion_authority"] is False
+
+
+def test_admit_accepted_root_reports_population_mismatch() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 50,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "sealed_task_or_goal_population_mismatch"
+    assert result["task_evidence_count"] == 50
+    assert result["goal_requirement_count"] == 32
 
 
 def test_kit_plus_matching_producer_admits_datasets_without_settling_goals(native_source, monkeypatch):

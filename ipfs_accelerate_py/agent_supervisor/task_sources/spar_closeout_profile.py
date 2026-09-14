@@ -334,9 +334,18 @@ class SparCloseoutProfile:
                 "goal_settlement": goals,
             }
             if goals.get("admitted") is not True:
-                receipt["reason"] = goals.get("reason") or self._closeout_acceptance_error or (
-                    "spar_native_goal_cas_settlement_adapter_required"
-                )
+                if datasets.get("admitted") is not True:
+                    receipt["reason"] = str(
+                        datasets.get("reason") or "datasets_independent_accepted_root_producer_and_admission_required"
+                    )
+                elif runtime.get("admitted") is not True:
+                    receipt["reason"] = str(
+                        runtime.get("reason") or "runtime_lane_and_merge_queue_settlement_receipt_required"
+                    )
+                else:
+                    receipt["reason"] = goals.get("reason") or self._closeout_acceptance_error or (
+                        "spar_native_goal_cas_settlement_adapter_required"
+                    )
             return receipt
         except Exception as error:  # noqa: BLE001 - retain owner and exact missing component
             self._closeout_acceptance_error = type(error).__name__ + ":" + str(error)[:512]

@@ -98,15 +98,23 @@ def admit_accepted_root(
     goal_requirements: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Re-admit a datasets producer result against the exact current subject."""
-    if (
-        source.get("available") is not True
-        or source.get("clean") is not True
-        or kit.get("admitted") is not True
-        or any(not row.get("receipt") or row.get("blockers") for row in task_evidence)
-        or len(task_evidence) != 51
-        or len(goal_requirements) != 32
-    ):
-        return _deferred(MISSING)
+    if source.get("available") is not True:
+        return _deferred(MISSING, source_available=False)
+    if source.get("clean") is not True:
+        return _deferred("current_source_observation_unclean")
+    if kit.get("admitted") is not True:
+        return _deferred(
+            "kit_source_forest_not_admitted",
+            kit_reason=kit.get("reason"),
+        )
+    if any(not row.get("receipt") or row.get("blockers") for row in task_evidence):
+        return _deferred("task_evidence_incomplete")
+    if len(task_evidence) != 51 or len(goal_requirements) != 32:
+        return _deferred(
+            "sealed_task_or_goal_population_mismatch",
+            task_evidence_count=len(task_evidence),
+            goal_requirement_count=len(goal_requirements),
+        )
     subject = closed_subject(
         profile,
         profile_cid,
