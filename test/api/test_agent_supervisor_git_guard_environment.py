@@ -148,3 +148,20 @@ def test_launch_admission_skips_write_protocol_when_source_repair_is_registered(
     monkeypatch.delenv('IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_PATH', raising=False)
     monkeypatch.delenv('IPFS_ACCELERATE_ASEH_SOURCE_REPAIR_ADMISSION_SHA256', raising=False)
     assert op._launch_uses_observational_index_custody() is False
+    assert op._source_repair_launch_skips_disposable_event_replay() is False
+
+
+def test_source_repair_skips_disposable_event_replay_and_run_reports_child_exit():
+    tree = ast.parse(Path(op.__file__).read_text())
+    names = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    continuity = ast.get_source_segment(Path(op.__file__).read_text(), names['_read_continuity_state'])
+    admit = ast.get_source_segment(Path(op.__file__).read_text(), names['_admit_materialized_launch'])
+    main = ast.get_source_segment(Path(op.__file__).read_text(), names['main'])
+    skip = ast.get_source_segment(
+        Path(op.__file__).read_text(), names['_source_repair_launch_skips_disposable_event_replay'])
+    assert '_source_repair_launch_skips_disposable_event_replay' in continuity
+    assert '_source_repair_launch_skips_disposable_event_replay' in admit
+    assert '_projection_matches_events_on_disposable_copy' not in skip
+    assert 'return run_supervisor(' not in main
+    assert 'SealedOwnerNonzeroExit' in main
+    assert 'returncode' in main

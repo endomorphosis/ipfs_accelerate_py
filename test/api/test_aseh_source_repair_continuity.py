@@ -293,6 +293,15 @@ def test_canonical_completion_still_refuses_linear_even_with_registration(fixtur
         ns["_admit_r45_or_canonical_descendant"](SimpleNamespace(protected_paths=[]), source_repair_bundle=None, **kwargs)
 
 
+def test_source_repair_skips_disposable_event_replay_when_registered(fixture):
+    f = fixture; ns, _, _ = operator(f)
+    functions(["_source_repair_launch_skips_disposable_event_replay"], ns)
+    ns["_launch_uses_observational_index_custody"] = lambda: True
+    assert ns["_source_repair_launch_skips_disposable_event_replay"]() is True
+    ns["_launch_uses_observational_index_custody"] = lambda: False
+    assert ns["_source_repair_launch_skips_disposable_event_replay"]() is False
+
+
 def test_observational_index_custody_binds_without_write_guard(fixture):
     f = fixture; ns, witness, _ = operator(f)
     ns["_ASEH_CANDIDATE_GIT_GUARD"] = None

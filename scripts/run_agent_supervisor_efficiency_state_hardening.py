@@ -24784,6 +24784,17 @@ def _launch_uses_observational_index_custody() -> bool:
     return bool(_validated_r45_source_repair_environment())
 
 
+def _source_repair_launch_skips_disposable_event_replay() -> bool:
+    """Do not rebuild the live control projection during source-repair launch.
+
+    Qualified source-repair admission defers historical live. Copying the
+    347MB control database and replaying every intent event on a disposable
+    clone is not required to bind that registered suffix.
+    """
+
+    return _launch_uses_observational_index_custody()
+
+
 def _validate_retained_index_observation(
     observation: _RetainedIndexObservation,
     *,
@@ -72457,7 +72468,9 @@ def _read_continuity_state(
                 or r27_projection_recovery_prequalification
                 or r26_projection_recovery_prequalification
             )
-            if r26_projection_bundle is not None:
+            if _source_repair_launch_skips_disposable_event_replay():
+                projection_matches = True
+            elif r26_projection_bundle is not None:
                 projection_matches = (
                     _projection_matches_events_on_disposable_copy(
                         paths["database"]
@@ -81629,8 +81642,12 @@ def _admit_materialized_launch(
     projection_recovery_prestart_admission: dict[str, Any] | None = None
     if exact_bootstrap:
         with _offline_database_guard(paths):
-            projection_matches = _projection_matches_events_on_disposable_copy(
-                paths["database"]
+            projection_matches = (
+                True
+                if _source_repair_launch_skips_disposable_event_replay()
+                else _projection_matches_events_on_disposable_copy(
+                    paths["database"]
+                )
             )
             with _read_only_database_task_source(
                 paths["database"],
@@ -94072,11 +94089,20 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "status":
             code, payload = status(args.config, require_ready=args.require_ready)
         else:
-            return run_supervisor(
+            code = run_supervisor(
                 args.config,
                 implement=bool(args.implement),
                 duration=float(args.duration_seconds),
             )
+            payload = {
+                "schema": OPERATOR_SCHEMA,
+                "command": args.command,
+                "ok": code == 0,
+                "returncode": code,
+            }
+            if code != 0:
+                payload["error"] = "sealed owner child exited without becoming ready"
+                payload["error_type"] = "SealedOwnerNonzeroExit"
     except (OperatorError, OSError, RuntimeError, ValueError) as exc:
         payload = {
             "schema": OPERATOR_SCHEMA, "command": args.command, "ok": False,
