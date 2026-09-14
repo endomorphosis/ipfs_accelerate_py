@@ -50672,6 +50672,33 @@ def _validated_r45_source_repair_environment() -> dict[str, str]:
         raise OperatorError(f"R45 source repair child environment refused: {exc}") from exc
 
 
+def _r45_source_repair_receipt_identity(
+    authority: Mapping[str, Any],
+    receipt: Mapping[str, Any] | None,
+) -> bool:
+    """Bind the sealed R45 receipt by CID/head/tree, not in-memory dict equality.
+
+    Native validators copy and normalize nested evidence onto the loaded
+    receipt object. Full-dict equality against the pinned historical file
+    then refuses an otherwise identical sealed identity, which is the
+    linear-descendant stall this route exists to heal. A rewritten CID,
+    schema, head, or tree is still refused.
+    """
+
+    if receipt is None:
+        return True
+    if not isinstance(receipt, Mapping):
+        return False
+    receipt_cid = str(authority.get("receipt_cid") or "")
+    return (
+        bool(receipt_cid)
+        and str(receipt.get("schema") or "") == str(authority.get("schema") or "")
+        and str(receipt.get("repair_head") or "") == str(authority.get("repair_head") or "")
+        and str(receipt.get("repair_tree") or "") == str(authority.get("repair_tree") or "")
+        and str(receipt.get("receipt_cid") or "") == receipt_cid
+    )
+
+
 def _r45_source_repair_registration(
     *, anchor_head: str, anchor_tree: str, target_head: str, target_tree: str,
     receipt: Mapping[str, Any] | None = None,
@@ -50686,10 +50713,13 @@ def _r45_source_repair_registration(
         if value is None:
             raise OperatorError("R45 linear source repair is not explicitly registered")
         history = value["history"]
+        authority = contract.pinned_json(value["authority"])
         if (
             history["anchor_head"] != anchor_head
             or history["anchor_tree"] != anchor_tree
-            or (receipt is not None and contract.pinned_json(value["authority"]) != dict(receipt))
+            or str(authority.get("repair_head") or "") != anchor_head
+            or str(authority.get("repair_tree") or "") != anchor_tree
+            or not _r45_source_repair_receipt_identity(authority, receipt)
         ):
             raise OperatorError("R45 source repair registered authority/target differs")
         contract.current_target(value, _git, head=target_head, tree=target_tree)

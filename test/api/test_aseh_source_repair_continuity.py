@@ -148,7 +148,8 @@ def operator(f):
           "checkout_repository_id": lambda root: "private-repository",
           "_git_changed_paths": lambda base, target: tuple(r["path"] for r in contract.raw_delta(f.raw, base, target)),
           "ASEH_SEALED_LINE_DESCENDANT_TASK_ALIAS": "ASEH-SEALED-LINE"}
-    names = ["_validated_r45_source_repair_environment", "_r45_source_repair_registration",
+    names = ["_validated_r45_source_repair_environment", "_r45_source_repair_receipt_identity",
+             "_r45_source_repair_registration",
              "_validate_r45_source_repair_continuity", "_r45_descendant_parent_shape",
              "_admit_r45_or_canonical_descendant", "_validate_r29_historical_live_effect_continuity",
              "_admit_canonical_merge_suffix", "_sealed_owner_delegation_environment", "preflight"]
@@ -180,6 +181,27 @@ def test_registered_linear_suffix_uses_actual_canonical_prefix(fixture):
     assert "integrations" not in proof and "task_alias" not in proof and "request_id" not in proof
     assert ns["_r45_descendant_parent_shape"](parents=[f.middle], continuity={"repair_to_current": proof},
         transition=f.authority, candidate_head=f.target, candidate_tree=witness["tree"])
+
+
+def test_operator_normalized_historical_receipt_still_admits(fixture):
+    f = fixture; ns, witness, _ = operator(f)
+    normalized = copy.deepcopy(f.authority)
+    normalized["candidate_authorization_witness"] = {
+        **dict(normalized.get("candidate_authorization_witness") or {}),
+        "normalized_by_validator": True,
+    }
+    bundle = {"source_only_repair_selected": True, "transition": f.authority,
+              "receipt": normalized, "active_source_tree": witness["tree"],
+              "active_source_witness": witness}
+    proof = ns["_admit_r45_or_canonical_descendant"](
+        SimpleNamespace(protected_paths=[]), source_repair_bundle=bundle, **options(f))
+    assert proof["schema"] == contract.CONTINUITY_SCHEMA
+    rewritten = copy.deepcopy(normalized)
+    rewritten["receipt_cid"] = "sha256:" + "b" * 64
+    bundle["receipt"] = rewritten
+    with pytest.raises(ValueError, match="authority/target differs"):
+        ns["_admit_r45_or_canonical_descendant"](
+            SimpleNamespace(protected_paths=[]), source_repair_bundle=bundle, **options(f))
 
 
 @pytest.mark.parametrize("mutation", ["missing_pin", "missing_path", "unregistered", "changed_bytes", "qualification_deleted", "qualification_changed", "authority_changed"])
