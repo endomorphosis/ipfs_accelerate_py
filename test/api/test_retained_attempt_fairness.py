@@ -286,6 +286,22 @@ def test_normal_exact_claim_guard_remains_required(tmp_path, monkeypatch):
         daemon.close()
 
 
+def test_retention_read_allows_a_replaced_daemon_session(tmp_path):
+    daemon, attempt, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, attempt, artifact)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness import RetainedAttemptFairness
+    original = daemon.owner_session_id
+    daemon.owner_session_id = "session:replaced-owner"
+    try:
+        retained = RetainedAttemptFairness(daemon)
+        assert retained._read(attempt) is not None
+        assert snapshot(daemon, attempt, artifact) == before
+        assert calls == []
+    finally:
+        daemon.owner_session_id = original
+        daemon.close()
+
+
 def test_restart_reconstructs_exclusion_from_durable_authorities(tmp_path):
     daemon, attempt, now, calls, artifact = setup(tmp_path)
     before = snapshot(daemon, attempt, artifact)

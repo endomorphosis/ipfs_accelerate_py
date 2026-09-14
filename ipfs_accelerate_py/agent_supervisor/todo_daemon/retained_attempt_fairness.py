@@ -31,7 +31,6 @@ class RetainedAttemptFairness:
             return None
         if (
             current.status != "running"
-            or current.owner_session_id != daemon.owner_session_id
             or _encoded(current.to_dict()) != _encoded(attempt.to_dict())
             or str(getattr(claim.state, "value", claim.state)) != "expired"
             or type(claim.expires_at_ms) is not int
