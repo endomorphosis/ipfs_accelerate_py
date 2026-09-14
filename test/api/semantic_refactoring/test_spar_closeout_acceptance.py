@@ -383,6 +383,155 @@ def test_admit_accepted_root_reports_population_mismatch() -> None:
     assert result["goal_requirement_count"] == 32
 
 
+def test_admit_accepted_root_reports_missing_receipt_identity() -> None:
+    result = accepted_root.admit_accepted_root(
+        {"tasks": [], "goals": []},
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=[{"receipt": {"ok": True}, "blockers": []}] * 51,
+        goal_requirements=[{}] * 32,
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == "task_receipt_identity_incomplete"
+    assert result["missing_receipt_cid_count"] == 51
+    assert result["completion_authority"] is False
+
+
+def _closed_profile() -> dict:
+    return {
+        "bootstrap_receipt_id": "sealed:bootstrap",
+        "plan_root_cid": "plan:sealed",
+        "board_namespace": "semantic-preserving-autonomous-remodularization-v1",
+        "goals": [{"goal_cid": f"goal:{i}"} for i in range(32)],
+        "tasks": [{"task_cid": f"task:{i}"} for i in range(51)],
+    }
+
+
+def test_closed_subject_binds_completion_receipt_cid() -> None:
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    subject = accepted_root.closed_subject(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "repository_tree_id": "tree:sealed",
+            "source_forest": {
+                "source_forest_root": "forest:sealed",
+                "source_head": "head:sealed",
+            },
+        },
+        kit={
+            "admitted": True,
+            "transition_cid": "kit:transition",
+            "manifest_cid": "kit:manifest",
+        },
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert subject["task_receipt_cids"] == [f"receipt:{i}" for i in range(51)]
+    assert "" not in subject["task_receipt_cids"]
+    assert None not in subject["task_receipt_cids"]
+
+
+def test_admit_accepted_root_surfaces_producer_clause_outcomes(monkeypatch) -> None:
+    captured = {}
+
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(subject):
+            captured["task_receipt_cids"] = list(subject["task_receipt_cids"])
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "semantic_acceptance_authority": False,
+                "reason": accepted_root.MODE_FLOORS,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "repository_tree_id": "tree:sealed",
+            "source_forest": {
+                "source_forest_root": "forest:sealed",
+                "source_head": "head:sealed",
+            },
+        },
+        kit={
+            "admitted": True,
+            "transition_cid": "kit:transition",
+            "manifest_cid": "kit:manifest",
+        },
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert captured["task_receipt_cids"] == [f"receipt:{i}" for i in range(51)]
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    assert result["producer_reason"] == accepted_root.MODE_FLOORS
+    outcomes = result["clause_outcomes"]
+    assert set(outcomes) == set(accepted_root.REQUIRED_CLAUSES)
+    assert all(row["accepted"] is False for row in outcomes.values())
+    assert all(
+        row["reason"] == "current_source_clause_evidence_unavailable"
+        for row in outcomes.values()
+    )
+    assert result["completion_authority"] is False
+
+
+def test_admit_accepted_root_surfaces_producer_validate_subject_error(monkeypatch) -> None:
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(_subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "reason": accepted_root.MISSING,
+                "error": "task_receipt_cids entries must be nonempty strings",
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={"available": True, "clean": True},
+        kit={"admitted": True},
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MISSING
+    assert result["producer_error"] == "task_receipt_cids entries must be nonempty strings"
+    assert result["producer_reason"] == accepted_root.MISSING
+
+
 def test_kit_plus_matching_producer_admits_datasets_without_settling_goals(native_source, monkeypatch):
     gateway, connection, _profile, _client, _cids, _root = native_source
     assert gateway.publish_spar_source_forest()["admitted"] is True
