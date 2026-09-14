@@ -25,9 +25,11 @@ after restart; reconciliation is never permanently suppressed.
 For a native lane, the new claim boundary relays the existing typed retained
 custody observation and requires the same authenticated owner/pause reply.
 It does not send a `preclaim` acknowledgement while unresolved work remains.
-Missing peer support or unavailable typed custody refuses new dispatch. The
-ordinary wire format and every owner credential/source/peer/freshness check stay
-unchanged. The final pass report includes the retained UNKNOWN obligation.
+A proven pause still refuses new dispatch. Missing peer support or unavailable
+typed custody no longer starves a different ready task: only the retained
+canonical ID is excluded. The ordinary wire format and every owner
+credential/source/peer/freshness check stay unchanged. The final pass report
+includes the retained UNKNOWN obligation.
 
 This does not settle historical SAWM-016 or retrospectively qualify it for the
 Doctor continuation protocol. It does not prove that the actual SAWM-023 workspace

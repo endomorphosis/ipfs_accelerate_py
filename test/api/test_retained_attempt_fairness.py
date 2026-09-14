@@ -139,7 +139,57 @@ def test_native_pause_boundary_reports_old_custody_and_never_preclaim(tmp_path, 
         daemon.close()
 
 
-@pytest.mark.parametrize("damage", ["missing_claim", "changed_claim", "changed_task_receipt", "boolean_claim_receipt", "oversized_snapshot", "missing_native_method", "unreadable_custody"])
+def test_unavailable_dispatch_observation_does_not_starve_independent_ready_task(tmp_path):
+    daemon, attempt, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, attempt, artifact)
+    client = drain.NativeDispatchClient.__new__(drain.NativeDispatchClient)
+    client.before_independent_claim = lambda *_: {
+        "new_dispatch_permitted": False,
+        "reason": "retained_attempt_dispatch_observation_unavailable",
+    }
+    client.before_claim = lambda: {
+        "new_dispatch_permitted": False,
+        "reason": "native_dispatch_observation_unavailable",
+    }
+    daemon._native_dispatch_control = client
+    try:
+        result = daemon.run_once()
+        assert result["active_task_id"] == "SAWM-023"
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert calls == ["task:cid:002"]
+        assert snapshot(daemon, attempt, artifact) == before
+        assert result["retained_attempts"][0]["attempt_consumed"] == "unknown"
+        assert daemon._last_native_dispatch_boundary["reason"] == (
+            "retained_attempt_observation_unverified_independent_claim"
+        )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("damage", ["missing_native_method", "unreadable_custody"])
+def test_missing_peer_observation_falls_back_to_ordinary_permitted_claim(tmp_path, monkeypatch, damage):
+    daemon, attempt, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, attempt, artifact)
+    client = drain.NativeDispatchClient.__new__(drain.NativeDispatchClient)
+    client.exchange = lambda *_: {"new_dispatch_permitted": True, "reason": "fixture_pause"}
+    daemon._native_dispatch_control = client
+    if damage == "missing_native_method":
+        client.before_independent_claim = None
+    else:
+        from ipfs_accelerate_py.agent_supervisor.runtime import attempt_custody_observation as obs
+        def unavailable(*_):
+            raise obs.AttemptObservationUnavailable()
+        monkeypatch.setattr(obs, "observe_attempt", unavailable)
+    try:
+        result = daemon.run_once()
+        assert result["active_task_id"] == "SAWM-023"
+        assert calls == ["task:cid:002"]
+        assert snapshot(daemon, attempt, artifact) == before
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("damage", ["missing_claim", "changed_claim", "changed_task_receipt", "boolean_claim_receipt", "oversized_snapshot"])
 def test_unverified_retention_never_opens_new_provider(tmp_path, monkeypatch, damage):
     daemon, attempt, _, calls, artifact = setup(tmp_path)
     before = snapshot(daemon, attempt, artifact)
@@ -172,17 +222,6 @@ def test_unverified_retention_never_opens_new_provider(tmp_path, monkeypatch, da
                     body["completion_receipt"] = {}
                 return replace(value, body=body)
             monkeypatch.setattr(daemon.task_source, "get", damaged_task)
-        else:
-            client = drain.NativeDispatchClient.__new__(drain.NativeDispatchClient)
-            client.exchange = lambda *_: {"new_dispatch_permitted": True}
-            daemon._native_dispatch_control = client
-            if damage == "missing_native_method":
-                client.before_independent_claim = None
-            else:
-                from ipfs_accelerate_py.agent_supervisor.runtime import attempt_custody_observation as obs
-                def unavailable(*_):
-                    raise obs.AttemptObservationUnavailable()
-                monkeypatch.setattr(obs, "observe_attempt", unavailable)
         result = daemon.run_once()
         assert result.get("implementation_result") is None
         assert calls == []

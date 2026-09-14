@@ -96,14 +96,27 @@ class RetainedAttemptFairness:
         if self.attempt is None:
             return control.before_claim()
         observe = getattr(control, "before_independent_claim", None)
-        if not callable(observe):
-            return {
-                "new_dispatch_permitted": False,
-                "reason": "retained_attempt_dispatch_observation_unavailable",
-            }
-        result = observe(self.daemon, self.attempt)
+        result = observe(self.daemon, self.attempt) if callable(observe) else None
         self.require_current()
-        return result
+        if result is not None and result.get("new_dispatch_permitted") is True:
+            return result
+        if (
+            result is not None
+            and result.get("reason") != "retained_attempt_dispatch_observation_unavailable"
+        ):
+            return result
+        ordinary = control.before_claim()
+        self.require_current()
+        if ordinary.get("new_dispatch_permitted") is True:
+            return ordinary
+        if ordinary.get("reason") == "native_dispatch_observation_unavailable":
+            # Missing owner/pause observation is not a pause and must not
+            # starve a different ready task. The retained CID stays excluded.
+            return {
+                "new_dispatch_permitted": True,
+                "reason": "retained_attempt_observation_unverified_independent_claim",
+            }
+        return ordinary
 
     def report_custody(self) -> None:
         if self.attempt is None:

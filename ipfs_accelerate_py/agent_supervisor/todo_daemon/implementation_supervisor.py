@@ -20502,7 +20502,9 @@ class PortalImplementationSupervisor:
                 )
                 self._native_dispatch_control = client
             if client is not None:
-                client.register_daemon(expected, hashlib.sha256(("\0".join(child.command) + "\0").encode()).hexdigest())
+                from ..runtime.native_dispatch_drain import _command_sha256
+
+                client.register_daemon(expected, _command_sha256(child.pid))
         except Exception:
             # Failed observation cannot discard or terminate a retained child.
             pass
