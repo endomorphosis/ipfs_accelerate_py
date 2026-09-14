@@ -981,9 +981,17 @@ def _launch_source_amendment(
     ):
         raise OperatorError("bootstrap source identity inventory is incomplete")
     for name in ("taskboard", "objectives", "plan", "validator"):
-        if current_source_ids[name] != bootstrap_source_ids.get(name):
+        if current_source_ids[name] == bootstrap_source_ids.get(name):
+            continue
+        if name != "taskboard":
             raise OperatorError(
                 f"immutable {name} changed outside the R1 task authority"
+            )
+        current_board = _tracked_bytes(source_paths["taskboard"], head=source_head)
+        sealed_board = _tracked_bytes(source_paths["taskboard"], head=bootstrap_head)
+        if not current_board.startswith(sealed_board):
+            raise OperatorError(
+                "immutable taskboard changed outside the R1 task authority"
             )
 
     launch_receipt_fields = {
