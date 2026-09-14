@@ -28,11 +28,16 @@ def gracefully_close_native_lanes(
     closed_children_gate,
     record_phase,
     idle_supervisors=(),
+    lane_indices=None,
+    idle_lane_indices=None,
     timeout_seconds=30,
 ):
     """Close bound active lanes followed by explicitly observed idle wrappers.
 
-    Fence and child-gate indices address active lanes first, then idle wrappers.
+    Explicit indices preserve configured lane identity when active and idle
+    wrappers are separated. Both index sequences must be supplied together
+    and form an exact permutation of the full configured lane population.
+    Without indices, callbacks retain their historical active-first ordering.
     Idle wrappers must have no live child; omitting a daemon is not closure
     evidence. Population and source gates still apply to the complete roster.
     """
@@ -44,6 +49,22 @@ def gracefully_close_native_lanes(
     idle_supervisors = tuple(idle_supervisors)
     supervisors = [lane.supervisor for lane in lanes] + list(idle_supervisors)
     process._require(1 <= len(supervisors) <= 32, "recovery_lane_bound")
+    if lane_indices is None and idle_lane_indices is None:
+        configured_indices = tuple(range(len(supervisors)))
+    else:
+        process._require(
+            type(lane_indices) in {tuple, list}
+            and type(idle_lane_indices) in {tuple, list}
+            and len(lane_indices) == len(lanes)
+            and len(idle_lane_indices) == len(idle_supervisors),
+            "recovery_lane_index_population_changed",
+        )
+        configured_indices = (*lane_indices, *idle_lane_indices)
+        process._require(
+            all(type(index) is int for index in configured_indices)
+            and sorted(configured_indices) == list(range(len(supervisors))),
+            "recovery_lane_indices_not_exact_permutation",
+        )
     bindings = [
         controller,
         *supervisors,
@@ -137,7 +158,7 @@ def gracefully_close_native_lanes(
             pause(controller, "controller")
             # No wrapper may launch another daemon or maintenance helper while
             # another lane closes. Keep the existing native launch fences.
-            for index, supervisor in enumerate(supervisors):
+            for index, supervisor in zip(configured_indices, supervisors):
                 fences.enter_context(lane_fence(index))
                 pause(supervisor, "supervisor")
             for lane in lanes:
@@ -162,7 +183,7 @@ def gracefully_close_native_lanes(
                 )
                 record_phase("daemon_exit_observed")
             wait_quiet()
-            for index, _ in enumerate(supervisors):
+            for index in configured_indices:
                 lane_children_gate(index)
             record_phase("all_daemons_and_helpers_closed")
 
@@ -222,7 +243,7 @@ def gracefully_close_native_lanes(
         record_phase("controller_exit_observed")
     return {
         "controller_exited": True,
-        "closed_lanes": list(range(len(supervisors))),
+        "closed_lanes": sorted(configured_indices),
         "callback_settlement_authority": False,
         "completion_authority": False,
     }

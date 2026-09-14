@@ -69129,6 +69129,11 @@ class DatabaseImplementationDaemon:
                 self.close()
                 raise
 
+    def _shutdown_boundary(self) -> None:
+        shutdown = getattr(self, "_cooperative_shutdown", None)
+        if shutdown is not None:
+            shutdown.checkpoint()
+
     def close(self) -> None:
         with self._lock:
             try:
@@ -70149,8 +70154,10 @@ class DatabaseImplementationDaemon:
 
         # Establish current authority synchronously before dispatch.  This
         # also gives the callback a full lease window before the first beat.
+        self._shutdown_boundary()
         claim = self._attempt_claim(attempt)
         self._renew_attempt_lease(attempt, claim=claim)
+        self._shutdown_boundary()
         stop = threading.Event()
         renewal_failures: list[BaseException] = []
 
@@ -70173,6 +70180,7 @@ class DatabaseImplementationDaemon:
         callback_error: BaseException | None = None
         result: Mapping[str, Any] = {}
         try:
+            self._shutdown_boundary()
             result = callback()
         except BaseException as exc:
             callback_error = exc
@@ -71109,6 +71117,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one ready task for this session; four sessions never share work."""
 
+        self._shutdown_boundary()
         self._last_claim_withdrawal = {}
         self._last_orphan_claim_reconciliations = ()
         self._last_unsettled_quarantine_task_cids = ()
@@ -71147,6 +71156,7 @@ class DatabaseImplementationDaemon:
         if self.strict_task_sharding and self.task_shard_count > 1:
             def accept_task_cid(task_cid: str) -> bool:
                 record = self.task_source.get(task_cid)
+                self._shutdown_boundary()
                 return self._task_belongs_to_shard(
                     self._shard_key_for_task(record, task_cid=task_cid)
                 )
@@ -71157,10 +71167,12 @@ class DatabaseImplementationDaemon:
                 for task in ready.tasks
                 if not accept_task_cid(str(task.task_cid))
             )
+        self._shutdown_boundary()
         claim = self._recover_owned_unadmitted_claim(
             excluded_task_cids=excluded,
         )
         if claim is None:
+            self._shutdown_boundary()
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
@@ -71875,6 +71887,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         from .native_doctor_callback import PROFILE_KEY, NativeDoctorCallback
 
+        self._shutdown_boundary()
         callback = provider_fn or self._provider_fn
         if PROFILE_KEY in attempt.body or type(callback) is NativeDoctorCallback:
             # Recovery uses this same native lock. Keep the bounded callback
@@ -72005,6 +72018,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Apply effect work once per attempt idempotency key."""
 
+        self._shutdown_boundary()
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
@@ -73757,6 +73771,7 @@ class DatabaseImplementationDaemon:
         instead of spinning on the same incomplete projection.
         """
 
+        self._shutdown_boundary()
         try:
             return self.resume_attempt(attempt)
         except Exception as exc:
@@ -74881,9 +74896,18 @@ def main(argv: list[str] | None = None) -> None:
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
+    shutdown = None
+    if use_database_daemon:
+        from .database_shutdown import DatabaseDaemonShutdown
+
+        shutdown = DatabaseDaemonShutdown()
+        daemon._cooperative_shutdown = shutdown
 
     def request_stop(signum: int, _frame: object) -> None:
-        raise SystemExit(128 + signum)
+        if shutdown is not None:
+            shutdown.request(signum)
+        else:
+            raise SystemExit(128 + signum)
 
     if handlers_installed:
         previous_term = signal.signal(signal.SIGTERM, request_stop)
@@ -74926,6 +74950,8 @@ def main(argv: list[str] | None = None) -> None:
         last_idle_info_at: float | None = None
         database_pass_sequence = 0
         while True:
+            if shutdown is not None:
+                shutdown.checkpoint()
             result = daemon.run_once()
             if use_database_daemon:
                 database_pass_sequence += 1
@@ -74964,6 +74990,8 @@ def main(argv: list[str] | None = None) -> None:
             )
             if daemon_pass_is_idle(result) and emit_idle_info:
                 last_idle_info_at = now
+            if shutdown is not None:
+                shutdown.checkpoint()
             if args.once:
                 break
             wait_timeout = bounded_daemon_wait_timeout(
@@ -74988,6 +75016,8 @@ def main(argv: list[str] | None = None) -> None:
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
+    if shutdown is not None:
+        shutdown.checkpoint()
 
 
 def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
