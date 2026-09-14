@@ -95815,9 +95815,27 @@ class DatabaseImplementationDaemon:
                 and dependencies_satisfied
                 and restart_recovery_binding is not None
             )
-            authoritative_attempt_floor = (
-                self._typed_authoritative_attempt_floor(task)
-            )
+            try:
+                authoritative_attempt_floor = (
+                    self._typed_authoritative_attempt_floor(task)
+                )
+            except (TaskSourceIntegrityError, DatabaseTaskSourceIntegrityError):
+                from .unknown_callback_quarantine_continuation import (
+                    OPERATION as continuation_operation,
+                )
+
+                body = getattr(task, "body", None)
+                control = (
+                    body.get("completion_receipt")
+                    if isinstance(body, Mapping)
+                    else None
+                )
+                if (
+                    isinstance(control, Mapping)
+                    and control.get("operation") == continuation_operation
+                ):
+                    continue
+                raise
             projected_attempt_floor = (
                 authoritative_attempt_floor
                 if status != "ready" or task_cid in eligible_ready_cids
@@ -96389,7 +96407,7 @@ class DatabaseImplementationDaemon:
                 expected_reason=str(receipt.get("queue_reason") or ""),
                 expected_delay_ms=receipt.get("backoff_ms"),
             )
-        except TaskSourceIntegrityError:
+        except (TaskSourceIntegrityError, DatabaseTaskSourceIntegrityError):
             from .unknown_callback_quarantine_continuation import (
                 OPERATION as continuation_operation,
             )
