@@ -505,6 +505,13 @@ class SparCloseoutProfile:
         )
         if runtime.get("admitted") is not True:
             blockers.append("runtime_lane_and_merge_queue_settlement_receipt_required")
+            extra = runtime.get("reason")
+            if (
+                isinstance(extra, str)
+                and extra
+                and extra != "runtime_lane_and_merge_queue_settlement_receipt_required"
+            ):
+                blockers.append(extra)
         goals = observe_goal_settlement(
             native_goals=native_goals,
             profile=p,

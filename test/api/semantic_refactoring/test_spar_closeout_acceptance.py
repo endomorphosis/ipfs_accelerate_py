@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -192,7 +193,22 @@ def test_runtime_settlement_refuses_execution_wal(tmp_path):
     owner = {"generation": 1, "repository_id": _TARGET}
     observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
     assert observed["admitted"] is False
-    assert observed["reason"] == "runtime_lane_and_merge_queue_settlement_receipt_required"
+    assert observed["reason"] == "runtime_lane_outstanding_wal"
+    assert "outstanding WAL" in str(observed.get("error") or "")
+
+
+def test_runtime_settlement_refuses_live_process(tmp_path):
+    root = _runtime_root(tmp_path)
+    pid_path = (
+        root
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/lane-1"
+        / "spar_lane_1_managed_daemon.pid"
+    )
+    pid_path.write_text(str(os.getpid()))
+    owner = {"generation": 1, "repository_id": _TARGET}
+    observed = observe_spar_runtime_settlement(root, owner_identity=owner, target_repository_id=_TARGET)
+    assert observed["admitted"] is False
+    assert observed["reason"] == "runtime_lane_process_live"
 
 
 def test_kit_plus_matching_producer_admits_datasets_without_settling_goals(native_source, monkeypatch):

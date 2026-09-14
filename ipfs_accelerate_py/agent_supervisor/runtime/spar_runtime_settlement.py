@@ -33,6 +33,9 @@ SCHEDULER_RELATIVE = (
     "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json"
 )
 MISSING = "runtime_lane_and_merge_queue_settlement_receipt_required"
+WAL_OUTSTANDING = "runtime_lane_outstanding_wal"
+LIVE_PROCESS = "runtime_lane_process_live"
+LANE_MISSING = "runtime_lane_artifact_missing"
 EXPECTED_LANES = (
     {"index": 0, "name": "spar-lane-0", "strict_shard_remainder": 0},
     {"index": 1, "name": "spar-lane-1", "strict_shard_remainder": 1},
@@ -180,15 +183,29 @@ def _sidecar_active(path: Path, kind: str) -> int:
         connection.close()
 
 
+class RuntimeSettlementBlocked(ValueError):
+    """Typed SPAR runtime non-admission; never completion authority."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 def _lane_snapshot(paths: Mapping[str, Path], index: int) -> dict[str, Any]:
     for key in ("directory", "coordination", "execution"):
         path = paths[key]
         if path.is_symlink() or not path.exists():
-            raise ValueError(f"SPAR lane {index} {key} is missing")
+            raise RuntimeSettlementBlocked(
+                LANE_MISSING, f"SPAR lane {index} {key} is missing"
+            )
     if paths["coordination_wal"].exists() or paths["execution_wal"].exists():
-        raise ValueError(f"SPAR lane {index} sidecar has an outstanding WAL")
+        raise RuntimeSettlementBlocked(
+            WAL_OUTSTANDING, f"SPAR lane {index} sidecar has an outstanding WAL"
+        )
     if _live_pid(paths["supervisor_pid"]) or _live_pid(paths["daemon_pid"]):
-        raise ValueError(f"SPAR lane {index} still has a live process")
+        raise RuntimeSettlementBlocked(
+            LIVE_PROCESS, f"SPAR lane {index} still has a live process"
+        )
     coordination_active = _sidecar_active(paths["coordination"], "coordination")
     execution_active = _sidecar_active(paths["execution"], "execution")
     return {
@@ -250,7 +267,10 @@ def observe_spar_runtime_settlement(
         )
         return receipt
     except Exception as exc:  # noqa: BLE001 - settlement failure is a typed blocker
-        return _deferred(error_class=type(exc).__name__)
+        reason = getattr(exc, "reason", None)
+        if reason not in {MISSING, WAL_OUTSTANDING, LIVE_PROCESS, LANE_MISSING}:
+            reason = MISSING
+        return _deferred(reason, error_class=type(exc).__name__, error=str(exc)[:256])
 
 
 @contextmanager
@@ -309,4 +329,7 @@ def hold_spar_runtime_settlement(
             )
             yield receipt
     except (MergeQueueIntegrityError, OSError, ValueError) as exc:
-        yield _deferred(error_class=type(exc).__name__)
+        reason = getattr(exc, "reason", None)
+        if reason not in {MISSING, WAL_OUTSTANDING, LIVE_PROCESS, LANE_MISSING}:
+            reason = MISSING
+        yield _deferred(reason, error_class=type(exc).__name__, error=str(exc)[:256])
