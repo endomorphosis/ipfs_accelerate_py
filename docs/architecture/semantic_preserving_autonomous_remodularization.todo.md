@@ -3250,3 +3250,70 @@ Only tasks in the same wave with disjoint exact scopes may execute concurrently.
 - Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
 - Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
 - Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-052 Close objective gap: Define symbol/module identity and projection contracts
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: identity
+- Depends on: SPAR-000, SPAR-001
+- Outputs: declared child task outputs and compact accepted root manifests
+- Validation: python3 scripts/validate_semantic_preserving_remodularization_board.py --check-all
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Evidence inputs: data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/discovery
+- Discovery evidence: /home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1/data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/discovery/2026-09-14-spar-052-objective-gap-6e6830cc7f24.md
+- Bundle: objective/identity/declared_child_task_outputs_and_compact_accepted_root_manifests/semantic-3502e9c0
+- Bundle shard: data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/objective_bundles/objective-identity-declared_child_task_outputs_and_compact_accepted_root_manifests-semantic-3502e9c0.todo.md
+- Bundle strategy: semantic_ast
+- Graph parents: SPAR-G010
+- Graph depth: 2
+- Objective heap index: 10
+- Parallel lane: objective/identity/declared_child_task_outputs_and_compact_accepted_root_manifests/semantic-3502e9c0
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: declared child task outputs and compact accepted root manifests
+- Changed paths:
+- Context paths: declared child task outputs and compact accepted root manifests
+- AST symbols: exact current-tree receipts, accepted child goal/task receipts, content-addressed proof/test/trace/transition evidence
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: SPAR-G012
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/7009b002f576d7cb5bc4b87238a2c2f9ef1dfa694d86511fb76d146a38d875b1
+- Canonical task CID: baguqeeraoae3aaxvo3l4ww6exbzdriwc7hxr36tjjwdfch5xnukguogyowyq
+- Semantic identity: objective-evidence-obligation/v1/160faf2fee573da92ed528981713158a903e86c4da652eb78e40877d0d097d78
+- Acceptance subset: Markdown status, DuckLake projection, model output, vector score, test pass alone, or worker claim is never completion authority., current-tree, authority-separated, fail-closed, no-self-authorization, fixed-point
+- Preconditions: objective goal SPAR-G012 is schedulable
+- Effects: satisfy evidence requirement: content-addressed proof/test/trace/transition evidence
+- Evidence subset: content-addressed proof/test/trace/transition evidence
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/SPAR-G012
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/160faf2fee573da92ed528981713158a903e86c4da652eb78e40877d0d097d78
+- Missing evidence: content-addressed proof/test/trace/transition evidence
+- Embedding query: Define distinct exact semantic identities and advisory projections.
+- AST query: exact current-tree receipts, accepted child goal/task receipts, content-addressed proof/test/trace/transition evidence
+- Surplus group: objective/SPAR-G012
+- Merge key: 02187766672e0cc4
+- Merge family: objective/SPAR-G012
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 32397af4790171d6
+- Acceptance: Objective scan filed this gap for SPAR-G012. Use evidence in /home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1/data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state/discovery/2026-09-14-spar-052-objective-gap-6e6830cc7f24.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (content-addressed proof/test/trace/transition evidence), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
