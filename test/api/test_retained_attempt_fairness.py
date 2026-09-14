@@ -323,6 +323,55 @@ def test_operator_stop_rearms_blocked_peer_without_settlement_phase(tmp_path):
         daemon.close()
 
 
+def test_operator_stop_rearms_from_projection_when_execution_attempt_missing(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    daemon, old, _, calls, artifact = setup(tmp_path)
+    before = snapshot(daemon, old, artifact)
+    peer = daemon.commit_phase(
+        daemon.claim_next(exclude_task_cids=(old.task_cid,)), "context"
+    )
+    attempts = tmp_path / "attempts" / "deadbeef"
+    attempts.mkdir(parents=True)
+    (attempts / "portal-task-state.json").write_text(
+        json.dumps(
+            {
+                "last_implementation_returncode": -15,
+                "last_implementation_task_id": "SAWM-023",
+            }
+        )
+    )
+    daemon._provider_fn = SimpleNamespace(
+        __self__=SimpleNamespace(
+            _paths=lambda _attempt: SimpleNamespace(state=attempts / "missing.json"),
+            attempt_root=tmp_path / "attempts",
+        )
+    )
+    original = daemon.get_attempt
+
+    def hidden(attempt_id):
+        if attempt_id == peer.attempt_id:
+            return None
+        return original(attempt_id)
+
+    monkeypatch.setattr(daemon, "get_attempt", hidden)
+    task = daemon.task_source.get(peer.task_cid)
+    daemon._cas_task_status_database(
+        peer.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        receipt={"operation": "database_claim", "attempt_id": peer.attempt_id},
+    )
+    try:
+        rearms = daemon.reconcile_recoverable_portal_failure_rearms()
+        assert rearms
+        assert rearms[0]["reason"] == "operator_session_stop_unsettled_independent_attempt"
+        assert daemon.task_source.get(peer.task_cid).status == "retrying"
+        assert snapshot(daemon, old, artifact) == before
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 def test_operator_stop_projection_reads_sigterm_returncode(tmp_path):
     from types import SimpleNamespace
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (

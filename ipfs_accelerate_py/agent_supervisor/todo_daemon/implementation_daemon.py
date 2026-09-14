@@ -70454,6 +70454,30 @@ class DatabaseImplementationDaemon:
                 return attempt
         return None
 
+    def _operator_stop_projection_for_alias(self, alias: str) -> str:
+        """Return attempt id from a SIGTERM projection, else empty."""
+
+        wanted = str(alias or "").strip()
+        if not wanted:
+            return ""
+        bridge = getattr(getattr(self, "_provider_fn", None), "__self__", None)
+        root = getattr(bridge, "attempt_root", None)
+        if root is None:
+            return ""
+        try:
+            for state_path in Path(root).glob("*/portal-task-state.json"):
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                if (
+                    isinstance(state, dict)
+                    and state.get("last_implementation_returncode")
+                    in _OPERATOR_STOP_RETURNCODES
+                    and str(state.get("last_implementation_task_id") or "") == wanted
+                ):
+                    return str(state.get("last_implementation_task_cid") or wanted)
+        except Exception:
+            return ""
+        return ""
+
     def _portal_recovery_source_rearm_limit(self) -> int:
         """Return how many distinct settlements one sealed source may rearm.
 
@@ -70606,16 +70630,23 @@ class DatabaseImplementationDaemon:
             if not isinstance(control_receipt, Mapping):
                 control_receipt = {}
             stop_attempt = self._operator_stop_attempt_for_task(task)
-            if stop_attempt is not None:
+            stop_alias = str(getattr(task, "task_alias", "") or "")
+            stop_marker = self._operator_stop_projection_for_alias(stop_alias)
+            if stop_attempt is not None or stop_marker:
+                attempt_id = str(
+                    getattr(stop_attempt, "attempt_id", "")
+                    or control_receipt.get("attempt_id")
+                    or stop_marker
+                )
                 settlement_id = str(
-                    control_receipt.get("settlement_id") or stop_attempt.attempt_id
+                    control_receipt.get("settlement_id") or attempt_id
                 )
                 matched = (
                     stop_attempt,
                     {
                         **dict(control_receipt),
                         "task_cid": task_cid,
-                        "attempt_id": stop_attempt.attempt_id,
+                        "attempt_id": attempt_id,
                         "settlement_id": settlement_id,
                     },
                     _RECOVERABLE_OPERATOR_SESSION_STOP_REASON,
