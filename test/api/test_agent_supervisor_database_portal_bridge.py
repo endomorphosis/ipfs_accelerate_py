@@ -17841,7 +17841,7 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
         daemon.close()
 
 
-def test_typed_output_rearm_requires_bound_post_merge_recovery() -> None:
+def test_typed_output_rearm_defers_when_post_merge_recovery_unbound() -> None:
     daemon = SimpleNamespace(
         task_source=SimpleNamespace(
             record_task_retry_cooldown=lambda **_kwargs: None,
@@ -17849,13 +17849,14 @@ def test_typed_output_rearm_requires_bound_post_merge_recovery() -> None:
         _post_merge_recovery_fn=None,
     )
 
-    with pytest.raises(
-        DatabaseImplementationAuthorityError,
-        match="requires a bound post-merge recovery callback",
-    ):
-        DatabaseImplementationDaemon._rearm_blocked_tasks_with_outputs_on_head(
-            daemon
-        )
+    result = DatabaseImplementationDaemon._rearm_blocked_tasks_with_outputs_on_head(
+        daemon
+    )
+    assert result["attempted"] is False
+    assert result["rearmed"] == 0
+    assert result["write_count"] == 0
+    assert result["completion_authority"] is False
+    assert result["reason"] == "typed_post_merge_recovery_callback_unbound"
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")

@@ -95022,10 +95022,19 @@ class DatabaseImplementationDaemon:
             # The reconciler verifies exact repair evidence and persists the
             # attempt-bound cooldown before its control CAS.
             if not callable(self._post_merge_recovery_fn):
-                raise DatabaseImplementationAuthorityError(
-                    "typed output rearm requires a bound post-merge recovery "
-                    "callback"
-                )
+                # SPAR (and other CASF boards) may run without a merge-pair
+                # owner. Raising here crash-looped every daemon pass.
+                return {
+                    "schema": schema,
+                    "attempted": False,
+                    "rearmed": 0,
+                    "results": [],
+                    "write_count": 0,
+                    "delegated": False,
+                    "reason": "typed_post_merge_recovery_callback_unbound",
+                    "post_merge_recovery_configured": False,
+                    "completion_authority": False,
+                }
             return {
                 "schema": schema,
                 "attempted": True,
