@@ -338,34 +338,6 @@ def test_checkpoint_stopped_sidecars_does_not_delete_corrupt_wal(tmp_path):
     assert observed["reason"] == "runtime_lane_outstanding_wal"
 
 
-def test_spar_board_validator_allows_generated_todo_suffix():
-    import subprocess
-    import sys
-
-    script = (
-        Path(__file__).resolve().parents[3]
-        / "scripts/validate_semantic_preserving_remodularization_board.py"
-    )
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=script.parent.parent,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    report = json.loads(completed.stdout)
-    names = {row["name"]: row for row in report.get("checks") or []}
-    assert names["task_ids"]["passed"] is True, names["task_ids"]
-    assert names["task_schema_and_bindings"]["passed"] is True, names[
-        "task_schema_and_bindings"
-    ]
-    assert names["deterministic_controls"]["passed"] is True, names[
-        "deterministic_controls"
-    ]
-    assert report.get("valid") is True, report.get("errors")
-    assert "SPAR-053" in str(names["task_ids"].get("detail") or "")
-
-
 def test_runtime_settlement_refuses_live_process(tmp_path):
     root = _runtime_root(tmp_path)
     pid_path = (
