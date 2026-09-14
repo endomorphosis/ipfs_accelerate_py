@@ -30904,6 +30904,7 @@ class DatabasePortalExecutionBridge:
                     self._owned_post_merge_recovery_projection(
                         snapshot,
                         allow_shared_lane_source=allow_shared_lane_source,
+                        allow_callback_append_lineage=True,
                     )
                 )
                 if snapshot_projection is None:
@@ -30920,6 +30921,7 @@ class DatabasePortalExecutionBridge:
                     self._owned_post_merge_recovery_projection(
                         completed,
                         allow_shared_lane_source=allow_shared_lane_source,
+                        allow_callback_append_lineage=True,
                     )
                     if completed is not None
                     else None

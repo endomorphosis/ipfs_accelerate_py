@@ -18642,7 +18642,10 @@ def test_completed_post_merge_replay_shares_lane_scope():
     )
     # A completed already-merged row can outlive the owning lane daemon.
     # Recycled siblings must be able to replay it after a source upgrade.
+    # Append-quarantine completions have no missing-output lineage, so the
+    # completed scan must also pass allow_callback_append_lineage.
     assert source.count("allow_shared_lane_source=True") >= 2
+    assert "allow_callback_append_lineage=True" in source
     assert "replay_completed_page(" in source
 
 

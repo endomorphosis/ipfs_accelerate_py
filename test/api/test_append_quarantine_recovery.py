@@ -191,6 +191,27 @@ def native_append_quarantine(
     )
 
 
+def test_completed_append_quarantine_requires_append_lineage_flag(
+    tmp_path, monkeypatch
+):
+    fixture = native_append_quarantine(
+        tmp_path, monkeypatch, record_implementation_finished=False
+    )
+    request = fixture.daemon.merge_queue.get(fixture.request.request_id)
+    assert (
+        fixture.bridge._owned_post_merge_recovery_projection(
+            request, allow_shared_lane_source=True
+        )
+        is None
+    )
+    admitted = fixture.bridge._owned_post_merge_recovery_projection(
+        request,
+        allow_shared_lane_source=True,
+        allow_callback_append_lineage=True,
+    )
+    assert admitted is not None
+
+
 def test_native_append_quarantine_is_selected_without_implementation_finished(
     tmp_path, monkeypatch
 ):
