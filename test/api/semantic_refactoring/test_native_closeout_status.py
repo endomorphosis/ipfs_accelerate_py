@@ -250,6 +250,12 @@ def test_stopped_origin_second_configuration_does_not_kill_owner():
         )
         is None
     )
+    assert m._admitted_merge_bundle_profile(None) == ""
+
+
+def test_admitted_queue_owner_advertises_merge_pair_bootstrap():
+    m = _materializer()
+    assert m._admitted_merge_bundle_profile(object()) == "native-owner-merge-pair@1"
 
 
 def test_unrelated_queue_start_failure_still_propagates():
@@ -266,3 +272,46 @@ def test_unrelated_queue_start_failure_still_propagates():
             profile="stopped",
             start=start,
         )
+
+
+def test_merge_bootstrap_preserves_transport_cause(monkeypatch):
+    import os
+    import socket
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap import (
+        request_owner_merge_bootstrap,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+        StateOwnerBootstrapError,
+    )
+
+    inner = StateOwnerBootstrapError("state-owner bootstrap socket could not be opened")
+
+    def boom(*_args, **_kwargs):
+        raise inner
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap._connect_inherited_listener",
+        boom,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.owner_merge_bootstrap.validate_state_owner_bootstrap_listener",
+        lambda *_args, **_kwargs: None,
+    )
+    held, extra = socket.socketpair()
+    extra.close()
+    descriptor = os.dup(held.fileno())
+    held.close()
+    with pytest.raises(
+        StateOwnerBootstrapError,
+        match="native paired bootstrap transport unavailable",
+    ) as excinfo:
+        request_owner_merge_bootstrap(
+            descriptor,
+            client_id="database-implementation-daemon:ns-0",
+            store_id="store",
+            config_cid="config",
+            plan_cid="plan",
+            timeout_seconds=0.2,
+        )
+    assert excinfo.value.__cause__ is inner

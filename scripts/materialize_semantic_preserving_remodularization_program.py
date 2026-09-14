@@ -3735,6 +3735,18 @@ def _start_optional_stopped_queue_owner(
         return None
 
 
+def _admitted_merge_bundle_profile(queue_owner: Any) -> str:
+    """Advertise merge-pair bootstrap only when a queue owner actually started.
+
+    A deferred stopped-origin queue leaves the broker without an issuer.
+    Advertising native-owner-merge-pair@1 anyway makes every lane daemon
+    request a merge bundle, get OperatorError, and crash-loop.
+    """
+    from scripts.ops.agent_supervisor.spar_merge_owner_handoff import BUNDLE_PROFILE
+
+    return BUNDLE_PROFILE if queue_owner is not None else ""
+
+
 def supervise(
     config_path: Path,
     *,
@@ -3876,7 +3888,7 @@ def supervise(
             listener=listener,
             store_id=program.store_id,
             launch_source_amendment=launch_source_amendment,
-            merge_bundle_profile=BUNDLE_PROFILE if merge_owner_profile else "",
+            merge_bundle_profile=_admitted_merge_bundle_profile(queue_owner),
         )
         argv = list(plan["argv"])
         _apply_configured_board_environment(plan)
