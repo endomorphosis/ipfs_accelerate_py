@@ -17,6 +17,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ..git_environment import git_subprocess_environment
+
 _TASK_BRANCH_RE = re.compile(
     r"^implementation/(aseh-\d+)",
     re.IGNORECASE,
@@ -38,6 +40,7 @@ def _run_git(workspace: Path, *args: str) -> str:
         check=False,
         capture_output=True,
         text=True,
+        env=git_subprocess_environment(),
     )
     return (completed.stdout or "").strip()
 
@@ -64,6 +67,7 @@ def _changed_paths(workspace: Path) -> tuple[str, ...]:
         cwd=workspace,
         check=False,
         capture_output=True,
+        env=git_subprocess_environment(),
     )
     payload = completed.stdout or b""
     paths: list[str] = []

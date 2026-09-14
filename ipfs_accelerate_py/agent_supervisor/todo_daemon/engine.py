@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
+from ..git_environment import git_subprocess_environment
 from ..runtime.event_log import unique_backup_path
 from ..validation.validation_runtime import (
     ValidationRuntimeError,
@@ -672,16 +673,19 @@ def run_command(
     effective_timeout = timeout_seconds if timeout_seconds is not None else timeout
     if effective_timeout is None:
         raise TypeError("run_command() requires timeout or timeout_seconds")
+    process_environment = (
+        None
+        if environment is None
+        else {str(key): str(value) for key, value in environment.items()}
+    )
+    if command and Path(command[0]).name == "git":
+        process_environment = git_subprocess_environment(process_environment)
     process: Optional[subprocess.Popen[str]] = None
     try:
         process = subprocess.Popen(
             list(command),
             cwd=str(cwd),
-            env=(
-                None
-                if environment is None
-                else {str(key): str(value) for key, value in environment.items()}
-            ),
+            env=process_environment,
             stdin=subprocess.PIPE if stdin is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
