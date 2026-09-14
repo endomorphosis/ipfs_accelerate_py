@@ -532,6 +532,81 @@ def test_admit_accepted_root_surfaces_producer_validate_subject_error(monkeypatc
     assert result["producer_reason"] == accepted_root.MISSING
 
 
+def test_admit_accepted_root_probes_nominated_reports_without_accepting(monkeypatch) -> None:
+    class Producer:
+        PRODUCER_INTERFACE = accepted_root.PRODUCER_INTERFACE
+
+        @staticmethod
+        def admit_spar_accepted_root(_subject):
+            return {
+                "admitted": False,
+                "producer_interface": accepted_root.PRODUCER_INTERFACE,
+                "reason": accepted_root.MODE_FLOORS,
+                "clause_outcomes": {
+                    name: {
+                        "accepted": False,
+                        "reason": "current_source_clause_evidence_unavailable",
+                    }
+                    for name in accepted_root.REQUIRED_CLAUSES
+                },
+            }
+
+    monkeypatch.setattr(accepted_root, "_load_producer", lambda: Producer)
+    evidence = [
+        {"receipt": {"completion_receipt_cid": f"receipt:{i}"}, "blockers": []}
+        for i in range(51)
+    ]
+    result = accepted_root.admit_accepted_root(
+        _closed_profile(),
+        "profile:cid",
+        source={
+            "available": True,
+            "clean": True,
+            "source_forest": {"source_forest_root": "forest:current"},
+            "reports": [
+                {
+                    "path": "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:final",
+                    "authority_roots": {"repository_forest_cid": "forest:old"},
+                },
+                {
+                    "path": "benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:capstone",
+                    "authority_roots": {"repository_forest_cid": "forest:old"},
+                },
+                {
+                    "path": "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json",
+                    "available": True,
+                    "nomination_only": True,
+                    "can_authorize_completion": False,
+                    "content_digest": "sha256:benchmark",
+                },
+            ],
+        },
+        kit={"admitted": True, "transition_cid": "kit:t", "manifest_cid": "kit:m"},
+        task_evidence=evidence,
+        goal_requirements=[{"contract_cid": f"contract:{i}"} for i in range(32)],
+    )
+    assert result["admitted"] is False
+    assert result["reason"] == accepted_root.MODE_FLOORS
+    probes = result["source_clause_probes"]
+    assert set(probes) == set(accepted_root.REQUIRED_CLAUSES)
+    assert all(row["accepted"] is False for row in probes.values())
+    assert all(row["semantic_acceptance_authority"] is False for row in probes.values())
+    capstone = probes["self_hosted_capstone_accepted"]
+    assert "nominated_report_cannot_authorize_clause:" in capstone["reason"]
+    assert "nominated_report_source_forest_mismatch:" in ",".join(capstone["blockers"])
+    floors = probes["safety_floors_noncompensable_accepted"]
+    assert floors["report_digests"] == ["sha256:benchmark"]
+    assert result["completion_authority"] is False
+
+
 def test_kit_plus_matching_producer_admits_datasets_without_settling_goals(native_source, monkeypatch):
     gateway, connection, _profile, _client, _cids, _root = native_source
     assert gateway.publish_spar_source_forest()["admitted"] is True
