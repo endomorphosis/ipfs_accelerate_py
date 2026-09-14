@@ -595,6 +595,26 @@ class NativeDispatchClient:
                 "reason": "native_dispatch_observation_unavailable",
             }
 
+    def before_independent_claim(self, daemon: Any, attempt: Any) -> dict[str, Any]:
+        """Check the same pause gate while continuing to report UNKNOWN custody.
+
+        The canonical daemon exclusions, dependencies, claim and workspace
+        admission still govern the different task. Unlike a preclaim packet,
+        this cannot acknowledge a drained lane or clear its retained attempt.
+        """
+        from .attempt_custody_observation import (
+            AttemptObservationUnavailable, observe_attempt,
+        )
+
+        try:
+            observed = observe_attempt(daemon, attempt)
+            return self.exchange("custody_boundary", {"observation": observed})
+        except (AttemptObservationUnavailable, DispatchObservationUnavailable):
+            return {
+                "new_dispatch_permitted": False,
+                "reason": "retained_attempt_dispatch_observation_unavailable",
+            }
+
     def reconciliation_started(self) -> None:
         try:
             self.exchange("lane_boundary", {"phase": "reconciling"})
