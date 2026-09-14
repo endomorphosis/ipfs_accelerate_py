@@ -439,7 +439,7 @@ def _default_templates() -> dict[str, StatementTemplate]:
             name="select_task_by_cid",
             sql=(
                 "SELECT task_cid, task_alias, goal_cid, status, revision, "
-                "ordinal, body_json FROM tasks WHERE task_cid = ? LIMIT 1"
+                "ordinal, body_json, plan_cid FROM tasks WHERE task_cid = ? LIMIT 1"
             ),
             parameter_names=("task_cid",),
             kind=StatementKind.QUERY,

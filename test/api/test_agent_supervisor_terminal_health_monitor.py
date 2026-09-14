@@ -187,3 +187,65 @@ def test_repeated_refresh_requests_do_not_reset_outage_budget(monkeypatch):
     monkeypatch.setattr(operator, "_status_monitor_loop", with_requests)
     test_retained_observation_preserves_outage_budget(monkeypatch)
     assert len(starts) == 3
+
+
+def terminal_lane_startup_receipt():
+    # Generation 162 reached an admitted terminal corpus while wrappers were
+    # still replacing generation 161 heartbeat files. Every non-lane health
+    # predicate passed; task terminality must not skip lane recovery bounds.
+    return {
+        **terminal_receipt(), "healthy": False,
+        "health_without_lane_admitted": True, "lane_heartbeat_fresh": False,
+        "startup_grace_active": True, "lane_active_worker_count": 0,
+        "active_count": 0, "observed_at": 1789242218.411525,
+        "last_progress_at": 1789242121.2344153,
+        "blocked_recovery_window_seconds": 300.0,
+    }
+
+
+def test_terminal_lane_startup_keeps_same_owner_until_heartbeats_arrive():
+    receipt = terminal_lane_startup_receipt()
+    original = dict(receipt)
+    assert operator._post_admission_health_action(
+        receipt, prior_available=True, current_available=True, unhealthy_edges=0,
+    ) == ("continue", "", 0)
+    assert receipt == original and receipt["healthy"] is False
+    assert operator._post_admission_health_action(
+        {**receipt, "healthy": True, "lane_heartbeat_fresh": True},
+        prior_available=True, current_available=True, unhealthy_edges=0,
+    ) == ("continue", "", 0)
+
+
+def test_terminal_lane_recovery_expires_without_heartbeat_or_progress():
+    receipt = {**terminal_lane_startup_receipt(), "startup_grace_active": False,
+               "observed_at": 1789242600.0}
+    edges = 0
+    for expected in (1, 2):
+        action, reason, edges = operator._post_admission_health_action(
+            receipt, prior_available=True, current_available=True, unhealthy_edges=edges,
+        )
+        assert (action, reason, edges) == ("continue", "", expected)
+    assert operator._post_admission_health_action(
+        receipt, prior_available=True, current_available=True, unhealthy_edges=edges,
+    ) == ("fail", "authoritative_terminal_not_admitted", 3)
+
+
+@pytest.mark.parametrize("change", [
+    {"health_without_lane_admitted": False},
+    {"health_without_lane_admitted": None},
+    {"lane_heartbeat_fresh": True},
+    {"lane_heartbeat_fresh": None},
+])
+def test_terminal_startup_never_admits_non_lane_failure(change):
+    assert operator._post_admission_health_action(
+        {**terminal_lane_startup_receipt(), **change},
+        prior_available=True, current_available=True, unhealthy_edges=0,
+    ) == ("fail", "authoritative_terminal_not_admitted", 0)
+
+
+@pytest.mark.parametrize("prior,current", [(False, True), (True, False)])
+def test_terminal_lane_grace_requires_both_authority_samples(prior, current):
+    assert operator._post_admission_health_action(
+        terminal_lane_startup_receipt(), prior_available=prior,
+        current_available=current, unhealthy_edges=0,
+    ) == ("fail", "authoritative_terminal_not_admitted", 0)

@@ -50,7 +50,7 @@ SIBLING_TEST_PREFIXES: tuple[str, ...] = (
     "test.api.test_agent_supervisor_",
 )
 
-write_sealed_artifacts()
+# Validate the recorded artifacts; generation must be requested explicitly.
 
 
 def _imported_module_names(tree: ast.AST) -> set[str]:
@@ -84,9 +84,9 @@ def test_module_installs_without_sibling_test_imports() -> None:
     assert "ipfs_accelerate_py.agent_supervisor.control.live_cohort_admission" in imported
 
 
-def test_sealed_manifest_binds_immutable_deadline_and_honest_insufficiency() -> None:
+def test_sealed_manifest_binds_immutable_deadline_and_honest_insufficiency(tmp_path) -> None:
     verified = verify_sealed_artifacts()
-    manifest = write_sealed_artifacts()
+    manifest = write_sealed_artifacts(tmp_path / "live_cohort_manifest.json")
     payload = verify_sealed_artifacts(manifest)
     assert payload == verified
     loaded = verify_sealed_artifacts()

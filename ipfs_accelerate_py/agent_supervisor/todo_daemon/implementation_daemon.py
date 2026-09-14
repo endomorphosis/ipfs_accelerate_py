@@ -164,6 +164,7 @@ from ..merge.worktree_lifecycle import (
 )
 from ..runtime.event_log import (
     append_jsonl_event,
+    strict_event_envelope_fields,
     event_log_manifest,
     event_log_sources,
     latest_event_cursor,
@@ -28537,6 +28538,26 @@ class PortalImplementationDaemon:
         )
         if acquired_task_claim_metadata is not None:
             task_claim_metadata = acquired_task_claim_metadata
+        if (not acquired_task_claim
+                and task_claim_reason in {"source_maintenance_drain_active",
+                                          "source_maintenance_drain_unverified",
+                                          "maintenance_coordination_failed"}):
+            result = {
+                "skipped": True,
+                "deferred": True,
+                "retryable": True,
+                "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                "reason": f"implementation_{task_claim_reason}",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "dispatch_intent_created": False,
+                "backoff_seconds": 0,
+            }
+            self._record_event("implementation_retry_deferred", result)
+            return result
         if not acquired_task_claim:
             result = {
                 "skipped": True,
@@ -40195,6 +40216,38 @@ class PortalImplementationDaemon:
                 "reason": "merge_queue_reconciliation_source_invalid",
             }
 
+        # A reconstructed callback daemon may not have populated its display-ID
+        # cache. Carry identity already bound to this exact source/request,
+        # instead of relying on incidental cache enrichment during append.
+        source_identity = {}
+        if "canonical_task_key" in source:
+            source_key = source["canonical_task_key"]
+            if (
+                type(source_key) is not str
+                or not source_key
+                or source_key != str(getattr(request, "canonical_task_key", "") or "")
+            ):
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["canonical_task_key"] = source_key
+        if "board_namespace" in source:
+            namespace = source["board_namespace"]
+            if type(namespace) is not str or not namespace:
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["board_namespace"] = namespace
+        if "task_source_identity" in source:
+            if not isinstance(source["task_source_identity"], Mapping):
+                return {
+                    "recorded": False,
+                    "reason": "merge_queue_reconciliation_source_identity_invalid",
+                }
+            source_identity["task_source_identity"] = dict(source["task_source_identity"])
+
         reconciled_candidate_key = content_identity(
             {
                 "schema": (
@@ -40302,6 +40355,7 @@ class PortalImplementationDaemon:
                 receipt_evidence
             )
             payload: dict[str, Any] = {
+                **source_identity,
                 "task_id": task.task_id,
                 "canonical_task_cid": task_cid,
                 "attempt": source_attempt,
@@ -40361,15 +40415,10 @@ class PortalImplementationDaemon:
                     "board_namespace",
                     identity.board_namespace,
                 )
-            envelope_fields = {
-                "type",
-                "timestamp",
-                "stream_id",
-                "snapshot_id",
-                "sequence",
-                "previous_event_id",
-                "event_id",
-            }
+            try:
+                envelope_fields = strict_event_envelope_fields(event)
+            except ValueError:
+                return False
             previous_event_id = str(event.get("previous_event_id") or "")
             return bool(
                 set(event) == set(enriched) | envelope_fields
@@ -79426,6 +79475,24 @@ class PortalImplementationDaemon:
                     PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS
                 ),
             ):
+                # Source maintenance must close admission before publishing a
+                # new intent. Ordinary maintenance retains its bounded-wait
+                # handoff below; only the explicit native drain opts out.
+                maintenance_claim = (
+                    self._active_protected_path_maintenance_claim_serialized(
+                        maintenance_lock_path
+                    )
+                )
+                if (maintenance_claim is not None
+                        and ("dispatch_admission" in maintenance_claim
+                             or "coordination_error" in maintenance_claim)):
+                    drain_reason = (
+                        "source_maintenance_drain_active"
+                        if maintenance_claim.get("dispatch_admission") == "drain"
+                        and "coordination_error" not in maintenance_claim
+                        else "source_maintenance_drain_unverified"
+                    )
+                    return False, drain_reason, None, None, maintenance_claim
                 acquired, reason, existing = (
                     self._try_acquire_implementation_task_claim(
                         lock_path,
@@ -80006,6 +80073,14 @@ class PortalImplementationDaemon:
         implementation.
         """
 
+        # This legacy ancestry shortcut cannot settle a database claim's
+        # consumed candidate. Releasing it lets run_once dispatch a second
+        # provider inside the same claim, changing the bridge's pending merge
+        # identity. Native queue reconciliation must account for its effects
+        # and independently authorize any fresh database attempt instead.
+        # Presence is a restriction, not proof that a projection is valid.
+        if self.todo_path.name == "task-projection.md":
+            return []
         if not hasattr(self.merge_queue, "get"):
             return []
         results: list[dict[str, Any]] = []
@@ -80016,6 +80091,14 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             request_id = str(event.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
+            metadata = getattr(request, "metadata", None)
+            if isinstance(metadata, Mapping) and Path(
+                str(metadata.get("todo_path") or "")
+            ).name == "task-projection.md":
+                # A non-database consumer also lacks authority to release or
+                # cancel another database attempt's candidate. Do not require
+                # valid receipt metadata to retain this restrictive boundary.
+                continue
             request_status = str(getattr(request, "status", "") or "")
             failure_reason = str(getattr(request, "failure_reason", "") or "")
             if self._implementation_commit_was_reconciled(
@@ -80557,6 +80640,12 @@ class PortalImplementationDaemon:
                                 }
                             )
 
+                        try:
+                            strict_event_envelope_fields(event)
+                        except ValueError as exc:
+                            raise CursorReplayError(
+                                "merge lifecycle causal envelope is invalid"
+                            ) from exc
                         identity_body = dict(event)
                         identity_body.pop("event_id", None)
                         try:

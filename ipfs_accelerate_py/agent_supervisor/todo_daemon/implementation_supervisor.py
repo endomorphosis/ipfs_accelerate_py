@@ -13227,6 +13227,37 @@ class PortalImplementationSupervisor:
             identity.boot_id,
         )
 
+    def _database_portal_callback_lock_matches_child(
+        self,
+        metadata: Mapping[str, Any],
+        child_birth: ProcessBirthIdentity,
+    ) -> bool:
+        """Accept only legacy locks or the exact birth-bearing producer schema."""
+
+        if set(metadata) == _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS:
+            # Legacy producers omitted birth metadata. The caller still
+            # verifies the retained child handle, live birth, and callback.
+            return True
+        if set(metadata) != (
+            _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+            | {"owner_process_birth"}
+        ):
+            return False
+        payload = metadata.get("owner_process_birth")
+        if not isinstance(payload, Mapping) or set(payload) != {
+            "pid", "start_time_ticks", "boot_id", "parent_pid"
+        }:
+            return False
+        # Avoid from_dict's coercions: malformed integer/string/bool fields
+        # must not acquire authority through normalization. Parent PID is
+        # validated but remains outside the stable identity after reparenting.
+        owner_birth = ProcessBirthIdentity(**payload)
+        owner_identity = self._stable_process_birth_identity(owner_birth)
+        return bool(
+            owner_identity is not None
+            and owner_identity == self._stable_process_birth_identity(child_birth)
+        )
+
     def _exact_live_managed_child_birth(
         self,
         child: Any,
@@ -13705,12 +13736,31 @@ class PortalImplementationSupervisor:
             ):
                 continue
 
+            # Current producers bind implementation custody to a process birth.
+            # Retain the legacy shape, but never ignore a supplied birth or
+            # reduce it to a PID check. Parent PID is mutable after reparenting.
+            if "owner_process_birth" in implementation_lock:
+                raw_birth = implementation_lock["owner_process_birth"]
+                if (
+                    not isinstance(raw_birth, Mapping)
+                    or set(raw_birth) != {"pid", "parent_pid", "boot_id", "start_time_ticks"}
+                ):
+                    continue
+                lock_birth = ProcessBirthIdentity(**raw_birth)
+                if (
+                    self._stable_process_birth_identity(lock_birth) is None
+                    or self._stable_process_birth_identity(lock_birth)
+                    != self._stable_process_birth_identity(child_birth)
+                ):
+                    continue
+
             lock_pid = implementation_lock.get("pid")
             lock_attempt = implementation_lock.get("attempt")
             lock_started_at = implementation_lock.get("started_at")
             if (
-                set(implementation_lock)
-                != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                not self._database_portal_callback_lock_matches_child(
+                    implementation_lock, child_birth
+                )
                 or implementation_lock.get("kind") != "implementation"
                 or isinstance(lock_pid, bool)
                 or type(lock_pid) is not int

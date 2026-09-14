@@ -48,10 +48,33 @@ PROVIDER_MODULES = frozenset({
     "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
     "ipfs_accelerate_py.agent_supervisor.runtime.provider_fallback_runner",
 })
+# Closed native owner-observation diagnostics; never import a board's code or
+# expose its arbitrary exception/stderr text while collecting fleet health.
+OWNER_OBSERVATION_STAGES = frozenset({
+    "unavailable", "expected_owner", "descriptor_read", "scope_validation",
+    "custody_before", "peer_connect", "peer_credentials_before", "peer_send",
+    "peer_receive", "peer_credentials_after", "custody_after", "reply_validation",
+    "reply_facts", "remote_snapshot_unavailable", "request_credentials",
+    "request_receive", "request_validation", "requester_recheck", "sample_not_due",
+    "snapshot",
+})
+OWNER_OBSERVATION_KINDS = frozenset({"unavailable", "validation", "timeout", "io", "malformed", "internal"})
 
 
 def _object(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _native_status_diagnostic(native: Mapping[str, Any], error: str) -> dict[str, str]:
+    if (error != "native_status_nonzero" or native.get("schema") != "sawm/operator-error@1"
+            or native.get("valid") is not False):
+        return {}
+    value = native.get("observation_error")
+    if (type(value) is not dict or set(value) != {"stage", "kind"}
+            or type(value["stage"]) is not str or value["stage"] not in OWNER_OBSERVATION_STAGES
+            or type(value["kind"]) is not str or value["kind"] not in OWNER_OBSERVATION_KINDS):
+        return {}
+    return dict(value)
 
 
 def _owner_writer_custody(board: Mapping[str, Any], owner_status: Mapping[str, Any],
@@ -203,6 +226,33 @@ def _lane_process(pid: Any, lane_dir: Path, prefix: str, expected_cwd: str) -> d
     return identity
 
 
+STATUS_DIAGNOSTIC_SAMPLE_BYTES = 4096
+
+
+class _NativeStatusFailure(str):
+    """Keep existing reason strings while carrying bounded private diagnostics.
+
+    Only the local subprocess adapter constructs this type. Native JSON cannot
+    supply these fields or turn them into task, retry, or completion authority.
+    """
+    def __new__(cls, reason: str, evidence: Mapping[str, Any]):
+        value = super().__new__(cls, reason)
+        value.evidence = dict(evidence)
+        return value
+
+
+def _status_output_fingerprint(stream: Any) -> dict[str, Any]:
+    """Expose size and a bounded digest, never stderr/stdout text or paths."""
+    try:
+        size = os.fstat(stream.fileno()).st_size
+        sample = os.pread(stream.fileno(), STATUS_DIAGNOSTIC_SAMPLE_BYTES, 0)
+        return {"available": True, "observed_bytes": size,
+                "sampled_bytes": len(sample), "sample_sha256": hashlib.sha256(sample).hexdigest(),
+                "sample_complete": size == len(sample)}
+    except (OSError, ValueError):
+        return {"available": False}
+
+
 def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     argv = board.get("status_argv")
     if not isinstance(argv, list) or not argv:
@@ -210,6 +260,28 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     # Native status processes can fork. Give them their own process group so a
     # deadline cannot strand a probe child, or signal a live owner by accident.
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        code = None
+        child = None
+        def failure(reason: str, error: Exception | None = None) -> str:
+            returned = getattr(child, "returncode", code)
+            evidence: dict[str, Any] = {
+                "schema": "ipfs_accelerate_py/native-status-failure-evidence@1",
+                "reason": reason,
+                "returncode": returned if type(returned) is int else code,
+                "stdout": _status_output_fingerprint(stdout),
+                "stderr": _status_output_fingerprint(stderr),
+                "diagnostic_only": True,
+                "retry_authority": False, "completion_authority": False,
+            }
+            if error is not None:
+                # Exception messages can contain credentials or command paths.
+                # A fixed type label and errno retain useful local facts only.
+                evidence["exception_type"] = next((kind.__name__ for kind in (
+                    json.JSONDecodeError, OSError, ValueError, TypeError)
+                    if isinstance(error, kind)), "Exception")
+                if isinstance(error, OSError) and type(error.errno) is int:
+                    evidence["errno"] = error.errno
+            return _NativeStatusFailure(reason, evidence)
         try:
             environment = dict(os.environ)
             # A packaged fleet release uses a deliberately minimal package
@@ -240,18 +312,18 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
                 try:
                     child.wait(timeout=2)
                 except subprocess.TimeoutExpired:
-                    return {}, "native_status_cleanup_timeout"
-                return {}, "native_status_timeout"
+                    return {}, failure("native_status_cleanup_timeout")
+                return {}, failure("native_status_timeout")
             stdout.seek(0)
             raw = stdout.read(MAX_JSON_BYTES + 1)
             if len(raw) > MAX_JSON_BYTES:
-                return {}, "native_status_output_too_large"
+                return {}, failure("native_status_output_too_large")
             result = _object(json.loads(raw))
             if not result:
-                return {}, "native_status_invalid_json"
-            return result, "" if code == 0 else "native_status_nonzero"
-        except (OSError, ValueError, TypeError):
-            return {}, "native_status_failed"
+                return {}, failure("native_status_invalid_json")
+            return result, "" if code == 0 else failure("native_status_nonzero")
+        except (OSError, ValueError, TypeError) as error:
+            return {}, failure("native_status_failed", error)
 
 
 def _status_with_receipt_retry(
@@ -718,6 +790,35 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append(owner_writer_custody.get("reason") or "canonical_writer_lock_observation_unavailable")
         elif owner_writer_custody.get("held") is not True:
             reasons.append("canonical_writer_lock_missing")
+    # The native runner can finish its implementation lanes while the Quack
+    # owner remains alive to settle goals and current-source acceptance. A
+    # fresh, owner-bound database population distinguishes that normal stop
+    # from missing workers on an unfinished or merely cached task projection.
+    implementation_frontier_complete = bool(
+        database_authority and authenticated and owner_ready
+        and source_integrity["valid"]
+        and owner_writer_custody.get("configured") is True
+        and owner_writer_custody.get("verified") is True
+        and owner_writer_custody.get("held") is True
+        and counts and sum(counts.values()) > 0
+        and authority.get("task_count") == sum(counts.values())
+        and all(key in COMPLETED for key in counts)
+    )
+    expected_stopped_lanes = []
+    if implementation_frontier_complete:
+        for lane in lanes:
+            if (lane["status"] == "stopped"
+                    and not lane["supervisor"] and not lane["daemon"]
+                    and type(lane["last_exit_code"]) is int
+                    and (lane["last_exit_code"] == 0 or (
+                        lane["last_exit_code"] == 143
+                        and lane["last_recycle_reason"] == "supervisor_signal_shutdown"))
+                    and lane["stalled_without_active_worker"] is False):
+                index = lane["lane"]
+                expected_stopped_lanes.append(index)
+                reasons = [reason for reason in reasons if reason not in {
+                    f"lane_{index}_supervisor_missing", f"lane_{index}_daemon_missing",
+                }]
     if not source_integrity["valid"]:
         reasons.append("source_integrity_not_verified")
         health = "degraded"
@@ -748,6 +849,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "owner_writer_custody": owner_writer_custody,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
+            "implementation_frontier_complete": implementation_frontier_complete,
+            "expected_stopped_lanes": expected_stopped_lanes,
             "unsettled_goal_count": authority.get("unsettled_goal_count"),
             "completion_receipt_count": authority.get("completion_receipt_count"),
             "task_count": authority.get("task_count", sum(counts.values()) if counts else None),
@@ -758,6 +861,11 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "source_integrity": source_integrity,
             "completion_gate": "separate_authoritative_closeout_verification_required"},
     }
+    if isinstance(command_error, _NativeStatusFailure):
+        result["details"]["native_status_failure"] = dict(command_error.evidence)
+    diagnostic = _native_status_diagnostic(native, command_error)
+    if diagnostic:
+        result["details"]["native_status_diagnostic"] = diagnostic
     if health == "stopped" and board.get("ensure_argv"):
         result["recovery_action"] = "ensure"
     return result

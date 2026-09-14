@@ -294,6 +294,19 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             result = {"returncode": None, "stdout": "", "timed_out": False,
                       "stderr": f"{type(exc).__name__}: {exc}"}
         observation = normalize_probe(board_id, result)
+        if "storage_checks" in board:
+            from .storage_diagnostics import observe_storage
+            diagnostics = observe_storage(board["storage_checks"])
+            observation = dict(observation, storage_diagnostics=diagnostics)
+            prior_diagnostics = previous.get("observation", {}).get("storage_diagnostics", {})
+            if diagnostics["reason_codes"] or prior_diagnostics.get("reason_codes"):
+                # Separate evidence only: storage conditions cannot change native
+                # task health, completion authority, holds or recovery budgets.
+                write_json(directory / "storage-incident.json", {
+                    "schema": "agent-supervisor/storage-incident@1", "board_id": board_id,
+                    "observed_at": now, "status": diagnostics["status"],
+                    "action": "diagnostic_only", "diagnostics": diagnostics,
+                })
         state = assess(observation, previous, board, now)
         # Holds fence mutations, not observation. A board assigned to another
         # owner still needs fresh health and progress evidence during a hold.
@@ -414,6 +427,9 @@ def load_config(path: Path) -> dict[str, Any]:
         identifiers.add(identifier)
         if not Path(board["cwd"]).is_absolute() or not board.get("probe"):
             raise ValueError("each board needs an absolute cwd and a probe command")
+        if "storage_checks" in board:
+            from .storage_diagnostics import validate_storage_checks
+            validate_storage_checks(board["storage_checks"])
     return config
 
 

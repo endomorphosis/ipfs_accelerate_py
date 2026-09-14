@@ -1243,6 +1243,7 @@ def release_checkout_mutation_lease(
     lease: CheckoutMutationLease,
     *,
     timeout_seconds: float = 1.0,
+    require_exact_metadata: bool = False,
 ) -> bool:
     """Idempotently release only the exact lease acquired by the caller.
 
@@ -1250,7 +1251,8 @@ def release_checkout_mutation_lease(
     a daemon's in-memory ``release_pending`` context permanently wedged after
     another fenced transaction has legitimately reclaimed and removed the
     durable record.  Existing replacement or malformed records still fail
-    closed and are never removed by this caller.
+    closed and are never removed by this caller. Source-maintenance callers
+    can also require the complete metadata to match at the unlink boundary.
     """
 
     try:
@@ -1265,6 +1267,7 @@ def release_checkout_mutation_lease(
                 current is None
                 or identity != (lease.device, lease.inode)
                 or str(current.get("lease_id") or "") != lease.lease_id
+                or (require_exact_metadata and current != dict(lease.metadata))
             ):
                 return False
             lease.lock_path.unlink()

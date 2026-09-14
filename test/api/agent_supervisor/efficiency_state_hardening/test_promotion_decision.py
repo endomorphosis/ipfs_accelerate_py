@@ -950,7 +950,7 @@ def write_decision_artifact() -> dict[str, Any]:
     return payload
 
 
-write_decision_artifact()
+# Validate the recorded artifacts; generation must be requested explicitly.
 
 
 def test_schema_is_closed_and_binds_the_four_dispositions() -> None:

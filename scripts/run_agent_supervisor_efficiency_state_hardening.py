@@ -87754,6 +87754,88 @@ def _r21_start_server_with_one_safe_retry(
     return fresh_server, identity, recovered
 
 
+def _r45_inherited_owner_start_permission_context(
+    *,
+    board: Any,
+    launch_admission: Mapping[str, Any],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> dict[str, Any]:
+    """Retain R23 permission custody through the admitted R45 receipt chain.
+
+    R45 changes the active receipt, but retains the exact R1-R30 prefix.
+    Revalidate both that prefix and the current launch before projecting the
+    permission context. This does not grant permission from a receipt hint.
+    """
+    unsigned = dict(launch_admission)
+    admission_cid = str(unsigned.pop("admission_cid", "") or "")
+    if admission_cid != _identity(unsigned):
+        raise OperatorError("R45 owner-start launch admission CID differs")
+    chain = _admit_exact_r45_transition_chain(
+        launch_admission.get("repair_transition_chain")
+    )
+    transition = launch_admission.get("repair_transition")
+    if (
+        not isinstance(transition, Mapping)
+        or dict(transition) != dict(chain[-1])
+        or launch_admission.get("historical_live_authorizing_receipt_cid")
+        != transition.get("receipt_cid")
+    ):
+        raise OperatorError("R45 owner-start active receipt differs")
+    _assert_exact_run_launch_admission(
+        launch_admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    r30_chain = _admit_exact_r30_transition_chain(list(chain[:-4]))
+    r23 = r30_chain[-6]
+    r30 = r30_chain[-1]
+    if (
+        r23.get("schema")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        or r23.get("receipt_cid") != ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    ):
+        raise OperatorError("R45 inherited R23 permission receipt differs")
+    durable_value = r30.get("durable_candidate_witness")
+    anchor_witness = r30.get("candidate_authorization_witness")
+    if not isinstance(durable_value, Mapping) or not isinstance(
+        anchor_witness, Mapping
+    ):
+        raise OperatorError("R45 inherited R30 witness is absent")
+    durable = _validate_r30_durable_candidate_witness(durable_value)
+    if (
+        durable.get("head") != r30.get("repair_head")
+        or durable.get("tree") != r30.get("repair_tree")
+        or durable.get("authorization_v1_witness_cid")
+        != _identity(dict(anchor_witness))
+    ):
+        raise OperatorError("R45 inherited R30 witness differs")
+    current_witness = dict(candidate_authorization_witness)
+    _assert_candidate_authorization_witness(
+        current_witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="R45 inherited owner-start permission",
+    )
+    store_id = board.resolved_database_program().store_id
+    return _validate_r23_owner_start_permission_context(
+        {
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "candidate_authorization_witness": current_witness,
+            "bootstrap_receipt_id": str(launch_admission["bootstrap_receipt_id"]),
+            "repair_transition_receipt_cid": str(transition["receipt_cid"]),
+            "materialized_launch_admission_cid": admission_cid,
+            "store_id": store_id,
+        },
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        expected_witness=current_witness,
+        expected_store_id="data/aseh/control.duckdb",
+    )
+
+
 def _r23_owner_start_permission_context_from_launch_admission(
     *,
     board: Any,
@@ -87762,7 +87844,24 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority through retained R30."""
+    """Project unchanged R23 permission authority through admitted repairs."""
+
+    transition = (
+        launch_admission.get("repair_transition")
+        if isinstance(launch_admission, Mapping) else None
+    )
+    if (
+        isinstance(transition, Mapping)
+        and transition.get("schema")
+        == REPAIR_HISTORICAL_LIVE_EVIDENCE_REVISION_CLOSURE_TRANSITION_SCHEMA
+    ):
+        return _r45_inherited_owner_start_permission_context(
+            board=board,
+            launch_admission=launch_admission,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=candidate_authorization_witness,
+        )
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
@@ -89260,7 +89359,113 @@ def _strip_control_plane_group_other_write(root: Path) -> None:
         os.chmod(path, mode & ~0o022)
 
 
-def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
+def _wait_for_sealed_owner_exit(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int,
+    *,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> None:
+    """Retain the original parent through an explicitly admitted maintenance drain.
+
+    Maintenance never forwards an ordinary stop into the old inner forced
+    finalizers. The separately bound native drain closes descendants first.
+    Every incomplete observation keeps this parent and its capsule alive.
+    """
+    shutdown_requested, received_signal = (
+        parent_stop_state if parent_stop_state is not None
+        else (threading.Event(), {})
+    )
+    forwarded = False
+    forwarding_deadline: float | None = None
+    with _call_stop_signal_handlers(
+        shutdown_requested,
+        received_signal,
+        survive_external_sigterm=True,
+    ):
+        while child.poll() is None or (source_maintenance is not None and source_maintenance.requested):
+            if source_maintenance is not None and source_maintenance.requested:
+                if source_maintenance.observe()["complete"]:
+                    child.wait()
+                    break
+                time.sleep(0.2)
+                continue
+            if shutdown_requested.is_set() and not forwarded:
+                if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+                    continue
+                forwarded = True
+                forwarding_deadline = time.monotonic() + 10.0
+                _signal_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    signum=int(
+                        received_signal.get("signum", signal.SIGTERM)
+                    ),
+                )
+            if (
+                forwarding_deadline is not None
+                and time.monotonic() >= forwarding_deadline
+            ):
+                _terminate_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    grace_seconds=0.0,
+                )
+                break
+            try:
+                child.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                continue
+
+
+def _finish_source_maintenance_before_cleanup(source_maintenance: Any | None) -> None:
+    """Retain original custody before any remaining parent resources retire."""
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        source_maintenance.retain_until_closed()
+
+
+def _retire_sealed_owner_child(
+    child: subprocess.Popen[Any],
+    child_start_time_ticks: int | None,
+    *,
+    source_maintenance: Any | None = None,
+) -> None:
+    if source_maintenance is not None and not source_maintenance.reserve_ordinary_shutdown():
+        if not source_maintenance.complete:
+            source_maintenance.retain_until_closed()
+        child.wait()
+        return
+    _terminate_dedicated_process_group(
+        child, start_time_ticks=child_start_time_ticks, grace_seconds=10.0,
+    )
+
+
+def run_supervisor(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+) -> int:
+    """Keep native stop handlers installed through admitted maintenance cleanup."""
+    if source_maintenance is None:
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+        )
+    shutdown_requested = threading.Event()
+    received_signal: dict[str, int] = {}
+    with _call_stop_signal_handlers(
+        shutdown_requested, received_signal, survive_external_sigterm=True,
+    ):
+        return _run_supervisor_with_retained_child(
+            config_path, implement=implement, duration=duration,
+            source_maintenance=source_maintenance,
+            parent_stop_state=(shutdown_requested, received_signal),
+        )
+
+
+def _run_supervisor_with_retained_child(
+    config_path: Path, *, implement: bool, duration: float,
+    source_maintenance: Any | None = None,
+    parent_stop_state: tuple[Any, dict[str, int]] | None = None,
+) -> int:
     """Delegate owner authority to exact code in one retained sealed capsule."""
 
     import shutil
@@ -89529,40 +89734,15 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         os.close(terminal_write)
         terminal_write = -1
         child_start_time_ticks = _dedicated_process_group_birth(child)
-        shutdown_requested = threading.Event()
-        received_signal: dict[str, int] = {}
-        forwarded = False
-        forwarding_deadline: float | None = None
-        with _call_stop_signal_handlers(
-            shutdown_requested,
-            received_signal,
-            survive_external_sigterm=True,
-        ):
-            while child.poll() is None:
-                if shutdown_requested.is_set() and not forwarded:
-                    forwarded = True
-                    forwarding_deadline = time.monotonic() + 10.0
-                    _signal_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        signum=int(
-                            received_signal.get("signum", signal.SIGTERM)
-                        ),
-                    )
-                if (
-                    forwarding_deadline is not None
-                    and time.monotonic() >= forwarding_deadline
-                ):
-                    _terminate_dedicated_process_group(
-                        child,
-                        start_time_ticks=child_start_time_ticks,
-                        grace_seconds=0.0,
-                    )
-                    break
-                try:
-                    child.wait(timeout=0.2)
-                except subprocess.TimeoutExpired:
-                    continue
+        if source_maintenance is not None:
+            source_maintenance.bind(
+                child, start_time_ticks=child_start_time_ticks,
+                source_head=candidate_head, source_tree=candidate_tree,
+            )
+        _wait_for_sealed_owner_exit(
+            child, child_start_time_ticks, source_maintenance=source_maintenance,
+            parent_stop_state=parent_stop_state,
+        )
         child_returncode = int(child.returncode or 0)
         if child_returncode != 0:
             terminal_raw, terminal_read_failed = (
@@ -89586,6 +89766,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         return child_returncode
     finally:
         body_error = sys.exc_info()[1]
+        # Serialize an accepted drain against ordinary teardown before any
+        # launch guards, descriptors or capsule files can be retired. The
+        # maintenance-only outer scope retains original stop handlers here.
+        _finish_source_maintenance_before_cleanup(source_maintenance)
         cleanup_errors: list[BaseException] = []
         try:
             retire_launch_admission_bound(sys.exc_info())
@@ -89597,13 +89781,14 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             cleanup_errors.append(exc)
         if child is not None:
             try:
-                _terminate_dedicated_process_group(
-                    child,
-                    start_time_ticks=child_start_time_ticks,
-                    grace_seconds=10.0,
+                _retire_sealed_owner_child(
+                    child, child_start_time_ticks,
+                    source_maintenance=source_maintenance,
                 )
             except BaseException as exc:
                 cleanup_errors.append(exc)
+        if source_maintenance is not None:
+            source_maintenance.close()
         for descriptor in (
             None if sealed is None else sealed.descriptor,
             None if interpreter is None else interpreter.descriptor,
@@ -90646,6 +90831,423 @@ def _live_projection_reconciliation_admitted(
     return witness.get("cache_key") == expected_cache_key
 
 
+GOAL_LIFECYCLE_STATUS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-goal-lifecycle-status@1"
+)
+
+
+def _unavailable_goal_lifecycle(reason: str) -> dict[str, Any]:
+    return {
+        "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+        "available": False,
+        "reason": reason,
+        "records": None,
+        "status_counts": None,
+    }
+
+
+def _lifecycle_status_rows(value: Any, identity: str) -> list[dict[str, Any]]:
+    """Validate the bounded canonical rows hashed by IntentSnapshot."""
+
+    if not isinstance(value, list) or len(value) > 100:
+        raise OperatorError("goal lifecycle snapshot rows exceed the bound")
+    rows: list[dict[str, Any]] = []
+    identities: set[str] = set()
+    for row in value:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {identity, "status", "revision"}
+            or not isinstance(row[identity], str)
+            or not 0 < len(row[identity]) <= 512
+            or row[identity] in identities
+            or not isinstance(row["status"], str)
+            or re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", row["status"]) is None
+            or type(row["revision"]) is not int
+            or row["revision"] < 1
+        ):
+            raise OperatorError("goal lifecycle snapshot row is invalid")
+        identities.add(row[identity])
+        rows.append(dict(row))
+    if rows != sorted(rows, key=lambda row: row[identity]):
+        raise OperatorError("goal lifecycle snapshot row ordering differs")
+    return rows
+
+
+def _validate_goal_lifecycle_observation(
+    value: Any, snapshot: Mapping[str, Any], goal_records: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Bind lifecycle rows to the existing replay-admitted snapshot CID."""
+
+    if (
+        not isinstance(value, Mapping)
+        or not isinstance(snapshot, Mapping)
+        or set(value)
+        != {
+            "schema",
+            "available",
+            "records",
+            "snapshot_material",
+            "snapshot_projection_cid",
+            "plan_projection_cid",
+        }
+        or value.get("schema") != GOAL_LIFECYCLE_STATUS_SCHEMA
+        or value.get("available") is not True
+        or not isinstance(value.get("plan_projection_cid"), str)
+        or not value["plan_projection_cid"]
+    ):
+        raise OperatorError("goal lifecycle observation is unavailable")
+    material = value.get("snapshot_material")
+    if not isinstance(material, Mapping) or set(material) != {
+        "objectives",
+        "goals",
+        "plans",
+        "tasks",
+        "dependency_count",
+        "event_watermark",
+    }:
+        raise OperatorError("goal lifecycle snapshot material is incomplete")
+    for name in ("objectives", "dependency_count", "event_watermark"):
+        if type(material[name]) is not int or material[name] < 0:
+            raise OperatorError("goal lifecycle snapshot counter is invalid")
+    for name, identity in (
+        ("goals", "goal_cid"),
+        ("plans", "plan_cid"),
+        ("tasks", "task_cid"),
+    ):
+        _lifecycle_status_rows(material[name], identity)
+    expected_counts = {
+        "objective_count": material["objectives"],
+        "goal_count": len(material["goals"]),
+        "plan_count": len(material["plans"]),
+        "task_count": len(material["tasks"]),
+        "dependency_count": material["dependency_count"],
+        "event_cursor": material["event_watermark"],
+    }
+    if (
+        any(
+            type(snapshot.get(key)) is not int or snapshot[key] != count
+            for key, count in expected_counts.items()
+        )
+        or value["snapshot_projection_cid"] != snapshot.get("projection_cid")
+        or content_identity(material) != snapshot.get("projection_cid")
+    ):
+        raise OperatorError("goal lifecycle snapshot fence differs")
+    records = value.get("records")
+    if (
+        not isinstance(records, Mapping)
+        or not isinstance(goal_records, Mapping)
+        or not goal_records
+        or set(records) != set(goal_records)
+        or len(records) != len(material["goals"])
+    ):
+        raise OperatorError("goal lifecycle corpus is incomplete")
+    by_cid = {row["goal_cid"]: row for row in material["goals"]}
+    seen: set[str] = set()
+    for alias, semantic in goal_records.items():
+        if not isinstance(semantic, Mapping) or semantic.get("goal_alias") != alias:
+            raise OperatorError("goal lifecycle semantic identity differs")
+        cid = semantic.get("goal_cid")
+        _lifecycle_status_rows([records[alias]], "goal_cid")
+        if (
+            not isinstance(cid, str)
+            or cid in seen
+            or cid not in by_cid
+            or records[alias] != by_cid[cid]
+        ):
+            raise OperatorError("goal lifecycle canonical record differs")
+        seen.add(cid)
+    return dict(value)
+
+
+def _goal_lifecycle_from_plan_projection(
+    projection: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+    sealed_goal_records: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Use the existing atomic owner projection, without another live read."""
+
+    try:
+        material = dict(projection)
+        projection_cid = material.pop("projection_cid", None)
+        if (
+            material.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/intent-plan-projection@1"
+            or content_identity(material) != projection_cid
+            or any(
+                not isinstance(material.get(name), list) or len(material[name]) > 100
+                for name in ("objectives", "goals", "plans", "tasks")
+            )
+        ):
+            raise OperatorError("goal lifecycle plan projection is invalid")
+        records: dict[str, Any] = {}
+        for goal in material["goals"]:
+            alias = goal["goal_alias"]
+            if alias in records or _immutable_goal_record(
+                goal
+            ) != sealed_goal_records.get(alias):
+                raise OperatorError("goal lifecycle immutable corpus differs")
+            records[alias] = {
+                key: goal[key] for key in ("goal_cid", "status", "revision")
+            }
+        status_material = {
+            "objectives": len(material["objectives"]),
+            **{
+                name: [
+                    {key: row[key] for key in (identity, "status", "revision")}
+                    for row in material[name]
+                ]
+                for name, identity in (
+                    ("goals", "goal_cid"),
+                    ("plans", "plan_cid"),
+                    ("tasks", "task_cid"),
+                )
+            },
+            "dependency_count": sum(
+                len(row["dependencies"]) for row in material["tasks"]
+            ),
+            "event_watermark": material["event_watermark"],
+        }
+        return _validate_goal_lifecycle_observation(
+            {
+                "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+                "available": True,
+                "records": dict(sorted(records.items())),
+                "snapshot_material": status_material,
+                "snapshot_projection_cid": snapshot.get("projection_cid"),
+                "plan_projection_cid": projection_cid,
+            },
+            snapshot,
+            sealed_goal_records,
+        )
+    except (OperatorError, KeyError, TypeError, ValueError):
+        # Keep existing health semantics. Missing or racing lifecycle evidence
+        # is unavailable; immutable source status is never a substitute.
+        return _unavailable_goal_lifecycle(
+            "canonical_lifecycle_unavailable_or_inconsistent"
+        )
+
+
+def _admitted_goal_lifecycle(
+    receipt: Mapping[str, Any], paths: Mapping[str, Path]
+) -> dict[str, Any]:
+    """Project lifecycle only after normal receipt freshness/owner admission."""
+
+    samples = receipt.get("samples")
+    if (
+        receipt.get("broker_authenticated") is not True
+        or not isinstance(samples, list)
+        or len(samples) != 2
+    ):
+        raise OperatorError("goal lifecycle lacks authenticated owner samples")
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
+    if bootstrap.get("bootstrap_receipt_id") != receipt.get("bootstrap_receipt_id"):
+        raise OperatorError("goal lifecycle bootstrap changed during observation")
+    integrity = bootstrap.get("integrity")
+    sealed_goals = (
+        integrity.get("goal_records") if isinstance(integrity, Mapping) else None
+    )
+    if not isinstance(sealed_goals, Mapping) or not sealed_goals:
+        raise OperatorError("goal lifecycle sealed corpus is unavailable")
+    observed_times: list[float] = []
+    admitted: list[dict[str, Any]] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise OperatorError("goal lifecycle sample is invalid")
+        observed_at = sample.get("observed_at")
+        if (
+            type(observed_at) not in (int, float)
+            or not 0 < observed_at < 253402300800
+            or not math.isfinite(observed_at)
+        ):
+            raise OperatorError("goal lifecycle observation time is invalid")
+        observed_times.append(observed_at)
+        authority = sample.get("authority", {})
+        if (
+            not isinstance(authority, Mapping)
+            or authority.get("available") is not True
+            or authority.get("transport") != "quack"
+            or authority.get("credential_path") != "sealed_memfd_broker"
+            or authority.get("projection_matches_events") is not True
+            or authority.get("goal_records") != sealed_goals
+            or not _live_projection_reconciliation_admitted(sample, paths)
+        ):
+            raise OperatorError("goal lifecycle authority is unavailable")
+        admitted.append(
+            _validate_goal_lifecycle_observation(
+                authority.get("goal_lifecycle"),
+                authority.get("snapshot", {}),
+                authority.get("goal_records", {}),
+            )
+        )
+        if (
+            type(authority.get("event_cursor")) is not int
+            or authority["event_cursor"]
+            != admitted[-1]["snapshot_material"]["event_watermark"]
+        ):
+            raise OperatorError("goal lifecycle sample watermark differs")
+    if (
+        observed_times[0] > observed_times[1]
+        or observed_times[1] != receipt.get("observed_at")
+        or observed_times[1] > time.time()
+    ):
+        raise OperatorError("goal lifecycle observation time fence differs")
+    prior, current = admitted
+    prior_watermark = prior["snapshot_material"]["event_watermark"]
+    watermark = current["snapshot_material"]["event_watermark"]
+    if (
+        watermark < prior_watermark
+        or set(prior["records"]) != set(current["records"])
+        or (
+            watermark == prior_watermark
+            and current["snapshot_material"] != prior["snapshot_material"]
+        )
+    ):
+        raise OperatorError("goal lifecycle observation regressed")
+    for alias, row in current["records"].items():
+        previous = prior["records"][alias]
+        if (
+            row["goal_cid"] != previous["goal_cid"]
+            or row["revision"] < previous["revision"]
+            or (
+                row["revision"] == previous["revision"]
+                and row["status"] != previous["status"]
+            )
+        ):
+            raise OperatorError("goal lifecycle revision fence differs")
+    return {
+        "schema": GOAL_LIFECYCLE_STATUS_SCHEMA,
+        "available": True,
+        "reason": "",
+        "records": current["records"],
+        "status_counts": dict(
+            sorted(
+                Counter(row["status"] for row in current["records"].values()).items()
+            )
+        ),
+        "event_watermark": watermark,
+        "snapshot_projection_cid": current["snapshot_projection_cid"],
+        "plan_projection_cid": current["plan_projection_cid"],
+        "owner_binding": dict(samples[-1]["authority"]["owner_binding"]),
+        "observed_at": samples[-1]["observed_at"],
+        "receipt_cid": receipt["receipt_cid"],
+    }
+
+
+def _status_portfolio_from_plan_projection(
+    projection: Mapping[str, Any],
+    intent_snapshot: Any,
+    *,
+    repository_tree_id: str,
+    plan_root_cid: str,
+) -> tuple[dict[str, Any], tuple[Any, ...]]:
+    """Bind one full owner projection to its independently read status fence.
+
+    The health query already needs every task specification and relation. Use
+    that atomic projection for its task rows instead of fetching each full task
+    twice. The independent IntentSnapshot and exact replica replay still bind
+    the complete population; this helper performs no database operation.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DATABASE_TASK_SOURCE_SCHEMA, TaskSourceSnapshot, _as_task_record,
+    )
+
+    try:
+        material = dict(projection)
+        projection_cid = material.pop("projection_cid", None)
+        if (
+            set(material) != {
+                "schema", "event_watermark", "objectives", "goals",
+                "goal_edges", "plans", "tasks",
+            }
+            or material["schema"]
+            != "ipfs_accelerate_py/agent-supervisor/intent-plan-projection@1"
+            or content_identity(material) != projection_cid
+            or any(
+                not isinstance(material[name], list) or len(material[name]) > 100
+                for name in ("objectives", "goals", "goal_edges", "plans", "tasks")
+            )
+            or type(material["event_watermark"]) is not int
+            or material["event_watermark"] < 0
+        ):
+            raise OperatorError("live status plan projection is invalid")
+        status_material = {
+            "objectives": len(material["objectives"]),
+            **{
+                name: _lifecycle_status_rows(
+                    [
+                        {key: row[key] for key in (identity, "status", "revision")}
+                        for row in material[name]
+                    ],
+                    identity,
+                )
+                for name, identity in (
+                    ("goals", "goal_cid"), ("plans", "plan_cid"),
+                    ("tasks", "task_cid"),
+                )
+            },
+            "dependency_count": sum(len(row["dependencies"]) for row in material["tasks"]),
+            "event_watermark": material["event_watermark"],
+        }
+        counters = {
+            "objective_count": status_material["objectives"],
+            "goal_count": len(material["goals"]),
+            "plan_count": len(material["plans"]),
+            "task_count": len(material["tasks"]),
+            "dependency_count": status_material["dependency_count"],
+            "event_watermark": material["event_watermark"],
+        }
+        if (
+            any(
+                type(getattr(intent_snapshot, name)) is not int
+                or getattr(intent_snapshot, name) != count
+                for name, count in counters.items()
+            )
+            or content_identity(status_material) != intent_snapshot.projection_cid
+        ):
+            raise OperatorError("live status projection differs from canonical snapshot")
+        if (
+            not repository_tree_id or not plan_root_cid
+            or plan_root_cid not in {row["plan_cid"] for row in material["plans"]}
+        ):
+            raise OperatorError("live status plan root binding is unavailable")
+        tasks = tuple(
+            _as_task_record({
+                **row,
+                "dependencies": [edge["dependency_task_cid"] for edge in row["dependencies"]],
+            })
+            for row in sorted(material["tasks"], key=lambda row: (row["ordinal"], row["task_cid"]))
+        )
+        if len({task.task_alias for task in tasks}) != len(tasks):
+            raise OperatorError("live status task aliases are ambiguous")
+        # Match DatabaseTaskSource.snapshot exactly, including its distinction
+        # between rejected and completed/cancelled/quarantined task states.
+        terminal = bool(tasks) and all(
+            task.status in {"completed", "skipped", "cancelled", "failed", "quarantined", "complete", "done"}
+            for task in tasks
+        )
+        snapshot = TaskSourceSnapshot(
+            source_schema=DATABASE_TASK_SOURCE_SCHEMA, schema_version=1,
+            plan_root_cid=plan_root_cid, repository_tree_id=repository_tree_id,
+            projection_cid=intent_snapshot.projection_cid, formal_plan_id=plan_root_cid,
+            source_identity=content_identity({
+                "plan_root_cid": plan_root_cid, "repository_tree_id": repository_tree_id,
+                "projection_cid": intent_snapshot.projection_cid,
+            }),
+            revision=max(1, intent_snapshot.event_watermark),
+            event_cursor=intent_snapshot.event_watermark,
+            goal_count=intent_snapshot.goal_count, task_count=intent_snapshot.task_count,
+            dependency_count=intent_snapshot.dependency_count, terminal=terminal,
+            objective_count=intent_snapshot.objective_count, plan_count=intent_snapshot.plan_count,
+        )
+        return snapshot.to_dict(), tasks
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise OperatorError("live status plan projection is malformed") from exc
+
+
 def _broker_status_query(
     board: Any,
     paths: Mapping[str, Path],
@@ -90693,14 +91295,19 @@ def _broker_status_query(
     ) as source:
         if source.intent.uses_quack_transport is not True:
             raise OperatorError("live status did not use the Quack transport")
-        snapshot = source.snapshot().to_dict()
-        page = source.list_tasks(limit=100)
-        if page.next_cursor:
-            raise OperatorError("live task portfolio exceeds the sealed bound")
+        # One full-fidelity canonical read already contains every task, goal,
+        # plan, objective and dependency needed by this health observation.
+        # Keep an independent lightweight status fence and all replay checks.
+        plan_projection = source.plan_projection()
+        snapshot, tasks = _status_portfolio_from_plan_projection(
+            plan_projection, source.intent.snapshot(),
+            repository_tree_id=str(bootstrap.get("repository_tree_id") or ""),
+            plan_root_cid=str(bootstrap.get("plan_root_cid") or ""),
+        )
         ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
         page_statuses = {
             item.task_alias: str(item.status or "").lower()
-            for item in page.tasks
+            for item in tasks
         }
         queue_entries: dict[str, dict[str, Any]] = {}
         # Queue cooldown state matters only at a zero-ready, zero-active
@@ -90708,7 +91315,7 @@ def _broker_status_query(
         if not ready and not any(
             status in ACTIVE_STATUSES for status in page_statuses.values()
         ):
-            for item in page.tasks:
+            for item in tasks:
                 if page_statuses[item.task_alias] not in READY_STATUSES:
                     continue
                 entry = source.get_queue_entry(item.task_cid)
@@ -90722,24 +91329,26 @@ def _broker_status_query(
             sealed_goal_records if isinstance(sealed_goal_records, Mapping) else {}
         )
         goal_records: dict[str, dict[str, Any]] = {}
+        goals_by_cid = {goal["goal_cid"]: goal for goal in plan_projection["goals"]}
         for goal_alias, sealed_record in sealed_goal_records.items():
             sealed_record = (
                 sealed_record if isinstance(sealed_record, Mapping) else {}
             )
-            goal = source.get_goal(str(sealed_record.get("goal_cid") or ""))
+            goal = goals_by_cid.get(str(sealed_record.get("goal_cid") or ""))
             if not isinstance(goal, Mapping):
                 raise OperatorError(f"live goal is missing: {goal_alias}")
             goal_records[str(goal_alias)] = _immutable_goal_record(goal)
         goal_edges = sorted(
-            (dict(item) for item in source.list_goal_edges(limit=100)),
+            (dict(item) for item in plan_projection["goal_edges"]),
             key=_goal_edge_sort_key,
         )
-        plan = source.get_plan(str(bootstrap.get("plan_root_cid") or ""))
+        plan = next((item for item in plan_projection["plans"]
+                     if item["plan_cid"] == str(bootstrap.get("plan_root_cid") or "")), None)
         if not isinstance(plan, Mapping):
             raise OperatorError("live plan root is missing")
         plan_record = _immutable_plan_record(plan)
-        plan_projection = source.plan_projection(
-            task_cids=[item.task_cid for item in page.tasks]
+        goal_lifecycle = _goal_lifecycle_from_plan_projection(
+            plan_projection, snapshot, sealed_goal_records
         )
         task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
         objective_record = _objective_record_from_projection(plan_projection)
@@ -90809,7 +91418,7 @@ def _broker_status_query(
     task_cids: dict[str, str] = {}
     owner_bindings: dict[str, dict[str, Any]] = {}
     task_dependencies: dict[str, list[str]] = {}
-    for task in page.tasks:
+    for task in tasks:
         status_name = str(task.status or "").lower()
         aliases[task.task_alias] = status_name
         revisions[task.task_alias] = int(task.revision)
@@ -90865,6 +91474,7 @@ def _broker_status_query(
         "query_started_at_ms": query_started_at_ms,
         "delayed_ready_task_ids": delayed_ready_task_ids,
         "goal_records": dict(sorted(goal_records.items())),
+        "goal_lifecycle": goal_lifecycle,
         "goal_edges": goal_edges,
         "plan_record": plan_record,
         "status_counts": dict(sorted(statuses.items())),
@@ -91252,6 +91862,7 @@ def _status_sample(
             local_replica_refresh = type(exc) is OperatorError and str(exc) in {
                 "published replica changed during shadow copy",
                 "published replica bytes differ from owner status",
+                "live status projection differs from canonical snapshot",
             }
             retryable_publication_race = bool(
                 transport_refresh or local_replica_refresh
@@ -92278,6 +92889,22 @@ def _post_admission_health_action(
             # the final receipt expires and maintenance/closeout loses its
             # live witness while these processes still hold custody.
             return "continue", "", 0
+        if (
+            prior_available
+            and current_available
+            and receipt.get("health_without_lane_admitted") is True
+            and receipt.get("lane_heartbeat_fresh") is False
+        ):
+            # Terminal task rows may predate this owner's lane startup. Apply
+            # the same bounded lane recovery as an unfinished board, keeping
+            # every source/corpus/owner check and the unhealthy receipt intact.
+            # Waiting for heartbeats supplies no completion or merge authority.
+            if _recent_live_work(receipt):
+                return "continue", "", 0
+            next_edges = unhealthy_edges + 1
+            if next_edges <= 2:
+                return "continue", "", next_edges
+            return "fail", "authoritative_terminal_not_admitted", next_edges
         return "fail", "authoritative_terminal_not_admitted", unhealthy_edges
     if receipt.get("healthy") is True:
         return "continue", "", 0
@@ -92649,6 +93276,14 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
     healthy = bool(
         receipt_available and owner_ready and receipt.get("healthy") is True
     )
+    goal_lifecycle = _unavailable_goal_lifecycle(
+        "authenticated_lifecycle_unavailable_or_inconsistent"
+    )
+    if receipt_available:
+        try:
+            goal_lifecycle = _admitted_goal_lifecycle(receipt, paths)
+        except (OperatorError, OSError, KeyError, TypeError, ValueError):
+            pass
     report = {
         "schema": LIVE_STATUS_SCHEMA,
         "program_id": PROGRAM,
@@ -92660,6 +93295,7 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
         "receipt_age_seconds": age if receipt_available else None,
         "receipt": receipt,
         "receipt_error": receipt_error,
+        "goal_lifecycle": goal_lifecycle,
         "healthy": healthy,
         "blocked": bool(receipt.get("blocked", False)),
         "stuck": bool(receipt.get("stuck", False)),

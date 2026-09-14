@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "live_board_probe",
-           "canonical_writer_custody", "diagnostic_handoff")
+           "canonical_writer_custody", "diagnostic_handoff", "storage_diagnostics")
 
 
 def unit_directory(value: str) -> str:
@@ -190,7 +190,7 @@ Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
         for board in boards:
             for key in ("publication", "stall_seconds", "blocked_grace_seconds", "failure_grace_seconds",
                         "cooldown_seconds", "max_backoff_seconds", "max_ensure_attempts",
-                        "launch_only_hold_files", "diagnostic_handoff"):
+                        "launch_only_hold_files", "diagnostic_handoff", "storage_checks"):
                 if key in prior.get(board["id"], {}):
                     board[key] = prior[board["id"]][key]
         shutil.copy2(config_path, config_path.with_suffix(".json.previous"))

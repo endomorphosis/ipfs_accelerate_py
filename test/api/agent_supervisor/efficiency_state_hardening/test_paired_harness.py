@@ -46,7 +46,7 @@ def _load_harness() -> ModuleType:
 
 
 HARNESS = _load_harness()
-HARNESS.write_sealed_artifacts()
+# Validate the recorded artifacts; generation must be requested explicitly.
 
 
 def _load_json(path: Path) -> dict[str, Any]:

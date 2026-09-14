@@ -379,3 +379,60 @@ def test_rearm_clears_exhausted_inventory_attempts_after_proposal_gate(
     assert rearmed[0]["task_id"] == "IPS-001"
     assert "IPS-001" not in state.implementation_attempts
     assert identity.canonical_task_cid not in state.implementation_attempts_by_cid
+
+
+def test_database_projection_does_not_release_consumed_quarantine(tmp_path):
+    """DOEP063: ancestry must not reopen dispatch inside a database claim."""
+    daemon = _daemon(tmp_path)
+    daemon.todo_path = tmp_path / "attempt" / "task-projection.md"
+
+    class ForbiddenQueue:
+        def get(self, request_id):
+            raise AssertionError("claim-private legacy release must not read the queue")
+
+    daemon.merge_queue = ForbiddenQueue()
+    daemon._queued_merge_candidates = lambda: (_ for _ in ()).throw(
+        AssertionError("legacy release must not inspect or rewrite claim history")
+    )
+    assert daemon._release_stale_quarantined_merges() == []
+    assert not daemon.events_path.exists()
+
+
+def test_foreign_database_candidate_retains_quarantine_and_pending_rows(tmp_path):
+    """A foreign consumer cannot release or cancel a database candidate."""
+    from types import SimpleNamespace
+
+    daemon = _daemon(tmp_path)
+    events = [
+        {"task_id": "DOEP-063", "attempt": 1,
+         "implementation_commit": "a" * 40, "request_id": "old"},
+        {"task_id": "DOEP-063", "attempt": 2,
+         "implementation_commit": "b" * 40, "request_id": "new"},
+    ]
+    rows = {
+        "old": SimpleNamespace(status="quarantined",
+            failure_reason="changed_submodule_merge_unverified",
+            metadata={"todo_path": "/retained/attempt/task-projection.md"}),
+        # Even invalid/missing completion metadata cannot authorize releasing
+        # a previously reconciled pending row via this ancestry shortcut.
+        "new": SimpleNamespace(status="pending", failure_reason="",
+            metadata={"todo_path": "/retained/attempt/task-projection.md",
+                      "schema": "invalid", "completion_task_cids": None}),
+    }
+    cancelled = []
+    daemon.merge_queue = SimpleNamespace(get=rows.__getitem__,
+        cancel=lambda *a, **kw: cancelled.append((a, kw)))
+    daemon._main_branch_name = lambda: "main"
+    daemon._queued_merge_candidates = lambda: events
+    daemon._implementation_commit_was_reconciled = lambda task, commit: commit == "b" * 40
+    daemon._git_ref_is_ancestor = lambda *a: False
+
+    assert daemon._release_stale_quarantined_merges() == []
+    assert cancelled == []
+    assert [rows[k].status for k in ("old", "new")] == ["quarantined", "pending"]
+    assert not daemon.events_path.exists()
+    # The first candidate must still suppress implementation selection.
+    daemon._latest_implementation_finished_by_task = lambda: {
+        "DOEP-063": {**events[0], "merge_result": {"queued": True, "request_id": "old"}}
+    }
+    assert daemon._quarantined_queued_merge_task_ids() == {"DOEP-063"}

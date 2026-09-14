@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from threading import Event
+from time import monotonic
 
 
 def run_retained_observation(
@@ -25,15 +26,21 @@ def run_retained_observation(
 
     This runs synchronously: callers may put it in their existing owner thread.
     It creates no process, credential, connection, or replacement launch owner.
+    The interval measures time between sample starts. A slow sample consumes
+    that interval; it does not add another full sleep before the next sample.
+    Samples never overlap, and an overrun does not schedule a catch-up burst.
     """
     if not math.isfinite(interval) or interval <= 0:
         raise ValueError("observation interval must be finite and positive")
-    while not failed.is_set() and not stop.wait(interval):
+    delay = interval
+    while not failed.is_set() and not stop.wait(delay):
         # Failure may have been published by another owner thread while waiting.
         if failed.is_set() or stop.is_set():
             return
+        started = monotonic()
         try:
             observe_once()
         except Exception as exc:
             on_error(exc)
             return
+        delay = max(0.0, interval - (monotonic() - started))
