@@ -26,8 +26,9 @@ def retain_owner_for_closeout(
     ``observe`` is the native board's trusted acceptance reader, not worker
     output or a configurable shell success code. Its completion_authority
     flag must mean the full board contract was verified against current
-    receipts and source heads. An ordinary authenticated progress snapshot
-    explicitly lacks that authority and therefore cannot end this phase.
+    receipts and source heads. Bootstrap closeout admission, task drain,
+    and an ordinary authenticated progress snapshot explicitly lack that
+    authority and therefore cannot end this phase.
 
     Owner faults propagate to the existing qualified restart path. Stop
     markers and signals end the phase without claiming completion.

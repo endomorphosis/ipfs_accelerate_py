@@ -946,7 +946,9 @@ def test_bootstrap_evaluate_settles_goals_from_native_receipts(native_source, mo
     assert observed_after["goal_settlement"]["admitted"] is True, observed_after["goal_settlement"]
     assert observed_after["goal_contracts_accepted"] is True
     assert all(g["accepted"] for g in observed_after["goal_requirements"])
-    assert observed_after["completion_authority"] is True, observed_after["blockers"]
+    assert observed_after["datasets_accepted_root"]["admission_mode"] == "bootstrap"
+    assert observed_after["datasets_accepted_root"]["semantic_acceptance_authority"] is False
+    assert observed_after["completion_authority"] is False, observed_after["blockers"]
     replay = settle_spar_goals(
         connection,
         profile=profile._profile,

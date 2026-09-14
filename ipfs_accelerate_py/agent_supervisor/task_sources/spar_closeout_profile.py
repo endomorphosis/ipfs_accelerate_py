@@ -560,11 +560,14 @@ class SparCloseoutProfile:
         goal_contracts_accepted = bool(goal_requirements) and all(
             row["accepted"] is True for row in goal_requirements
         )
+        # Bootstrap admitted roots are not semantic-acceptance authority.
+        # Goal CAS of the sealed SPAR aliases still cannot retire the owner.
         completion_authority = (
             not blockers
             and goal_contracts_accepted
             and kit.get("admitted") is True
             and datasets.get("admitted") is True
+            and datasets.get("semantic_acceptance_authority") is True
             and runtime.get("admitted") is True
             and goals.get("admitted") is True
             and source.get("available") is True

@@ -3663,9 +3663,11 @@ def _retain_closeout_owner(
     def stopped() -> bool:
         if stopping.is_set():
             return True
-        try:
-            _assert_start_not_held(board)
-        except OperatorError:
+        runtime = board.path(board.runtime_paths["root"])
+        operator_stop = runtime / "OPERATOR_STOP"
+        # HOLD / watchdog.hold fence implementation start. They must not
+        # retire the native closeout owner after lanes drain.
+        if operator_stop.exists() or operator_stop.is_symlink():
             return True
         return False
 

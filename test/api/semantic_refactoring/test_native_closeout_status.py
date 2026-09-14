@@ -205,6 +205,33 @@ def test_native_closeout_honors_hold_without_reading_state(tmp_path, monkeypatch
                                    broker=healthy, monitor=healthy) == "stopped"
 
 
+@pytest.mark.parametrize("name", ["HOLD", "watchdog.disabled", "watchdog.hold"])
+def test_native_closeout_start_hold_does_not_retire_owner(tmp_path, monkeypatch, name):
+    import signal
+
+    m = _materializer()
+    board = SimpleNamespace(runtime_paths={"root": "runtime"}, path=lambda _: tmp_path)
+    (tmp_path / name).write_text("implementation fence")
+    reads = []
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+
+    def observe(_):
+        reads.append(True)
+        signal.raise_signal(signal.SIGTERM)
+        return {
+            "admitted": True,
+            "completion_authority": False,
+            "complete": True,
+        }
+
+    monkeypatch.setattr(m, "authoritative_status", observe)
+    healthy = SimpleNamespace(failure="")
+    assert m._retain_closeout_owner(tmp_path / "config", board=board,
+                                   broker=healthy, monitor=healthy) == "stopped"
+    assert reads
+    assert {sig: signal.getsignal(sig) for sig in previous} == previous
+
+
 def test_native_closeout_signal_stops_and_restores_handlers(tmp_path, monkeypatch):
     import signal
     m = _materializer()
