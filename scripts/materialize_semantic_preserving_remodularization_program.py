@@ -250,8 +250,20 @@ def _tracked_bytes(path: Path, *, head: str) -> bytes:
         raise OperatorError(f"authority input is not a regular file: {relative}")
     working = path.read_bytes()
     recorded = _git("show", f"{head}:{relative}", binary=True)
-    if not isinstance(recorded, bytes) or working != recorded:
+    if not isinstance(recorded, bytes):
         raise OperatorError(f"authority input differs from current HEAD: {relative}")
+    if working != recorded:
+        # Markdown is not authority. A sealed prefix plus generated suffix, or
+        # a render that restored the sealed prefix onto HEAD+suffix, must not
+        # trap supervise.
+        if relative != (
+            "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md"
+        ) or not (
+            working.startswith(recorded) or recorded.startswith(working)
+        ):
+            raise OperatorError(
+                f"authority input differs from current HEAD: {relative}"
+            )
     return working
 
 
