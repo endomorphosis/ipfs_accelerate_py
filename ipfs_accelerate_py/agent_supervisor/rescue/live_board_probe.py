@@ -638,6 +638,27 @@ def _source_integrity(board: Mapping[str, Any]) -> dict[str, Any]:
         return {**result, "reason": "source_integrity_unavailable"}
 
 
+def _owner_process_birth(owner_status: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    """Prefer status identity; fall back to the exclusive marker if identity is gone.
+
+    A failed competing start can publish lifecycle=failed with identity=null
+    while the exclusive marker process is still this boot's owner.  Treating
+    that as owner-missing authorizes a second ensure.  The marker is
+    observation only and is not completion authority.
+    """
+
+    identity_birth = _object(_object(owner_status.get("identity")).get("process_birth"))
+    if identity_birth.get("pid"):
+        return identity_birth, ""
+    marker_path = str(owner_status.get("owner_marker_path") or "")
+    if not marker_path:
+        return identity_birth, ""
+    marker_birth = _object(read_json(Path(marker_path)).get("process_birth"))
+    if marker_birth.get("pid"):
+        return marker_birth, "owner_status_identity_missing"
+    return identity_birth, ""
+
+
 def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict[str, Any]:
     started = time.monotonic()
     now = time.time() if now is None else now
@@ -645,7 +666,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     reasons: list[str] = []
     source_integrity = _source_integrity(board)
     owner_status = read_json(Path(board["owner_status_path"]))
-    expected_birth = _object(_object(owner_status.get("identity")).get("process_birth"))
+    expected_birth, birth_source_reason = _owner_process_birth(owner_status)
+    if birth_source_reason:
+        reasons.append(birth_source_reason)
     owner = process_identity(expected_birth.get("pid"))
     owner_live = birth_matches(owner, expected_birth)
     owner_ready = owner_live and owner_status.get("lifecycle") == "ready"
@@ -866,7 +889,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     diagnostic = _native_status_diagnostic(native, command_error)
     if diagnostic:
         result["details"]["native_status_diagnostic"] = diagnostic
-    if health == "stopped" and board.get("ensure_argv"):
+    if health == "stopped" and board.get("ensure_argv") and not owner_live:
         result["recovery_action"] = "ensure"
     return result
 

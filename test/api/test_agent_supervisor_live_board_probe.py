@@ -144,6 +144,27 @@ def board(tmp_path, monkeypatch):
     return value, identities, lane
 
 
+def test_null_status_identity_uses_exclusive_owner_marker(board, monkeypatch, tmp_path):
+    config, identities, _ = board
+    marker = tmp_path / ".control.duckdb.state-owner.json"
+    birth = identities[50]
+    _write(marker, {"process_birth": {
+        "pid": birth["pid"], "boot_id": birth["boot_id"],
+        "start_time_ticks": birth["start_time_ticks"],
+    }})
+    _write(Path(config["owner_status_path"]), {
+        "identity": None, "lifecycle": "failed",
+        "owner_marker_path": str(marker),
+    })
+    monkeypatch.setattr(probe, "_status_command", lambda _: pytest.fail("not ready is not completion"))
+    result = probe.observe_board(config, now=1000)
+    assert "owner_status_identity_missing" in result["reason_codes"]
+    assert "owner_not_ready" in result["reason_codes"]
+    assert "owner_process_missing_or_birth_mismatch" not in result["reason_codes"]
+    assert result["details"]["owner_ready"] is False
+    assert "recovery_action" not in result
+
+
 def test_no_offline_status_or_completion_when_owner_is_dead(board, monkeypatch):
     config, identities, _ = board
     identities.clear()

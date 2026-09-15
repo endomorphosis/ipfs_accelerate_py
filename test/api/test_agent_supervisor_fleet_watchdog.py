@@ -606,6 +606,22 @@ def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
         "incident_since": 0, "next_action_at": 0, "attempts": 0,
     }
     assert fleet.select_action(waiting, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100) == ""
+    live_status = {
+        "health": "stopped",
+        "reason_codes": ["owner_status_identity_missing", "owner_not_ready"],
+        "details": {"owner_ready": False, "owner": {"pid": 7136}},
+    }
+    assert fleet.classify_stall(live_status) == "owner_live_status_unreadable"
+    waiting_live = {
+        "health": "stopped", "observation": live_status,
+        "stall_class": "owner_live_status_unreadable",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0, "ensure_attempts": 0,
+    }
+    assert fleet.select_action(
+        waiting_live,
+        {"failure_grace_seconds": 0, "ensure": {"argv": ["ensure"]}, "repair": {"argv": ["r"]}},
+        100,
+    ) == ""
 
 
 def test_run_cycle_writes_ducklake_fleet_health_without_completion_authority(tmp_path):

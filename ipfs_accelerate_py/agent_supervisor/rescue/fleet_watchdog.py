@@ -42,6 +42,14 @@ def classify_stall(observation: dict[str, Any]) -> str:
     if health == "complete" or observation.get("complete") is True:
         return "complete"
     if health == "stopped" and not details.get("owner_ready"):
+        if (
+            "owner_not_ready" in reasons
+            or "owner_status_identity_missing" in reasons
+            or bool(
+                (details.get("owner") if isinstance(details.get("owner"), dict) else {}).get("pid")
+            )
+        ):
+            return "owner_live_status_unreadable"
         return "owner_missing"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
         if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
@@ -326,6 +334,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     recovery = state["observation"].get("recovery_action")
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
     if stall == "in_progress_awaiting_effect":
+        return ""
+    if stall == "owner_live_status_unreadable":
+        # A live exclusive owner with a torn/failed status projection is not
+        # owner-missing. Ensure would start a competing owner.
         return ""
     if (board.get("ensure") and not hold_paths(board)
             and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)
