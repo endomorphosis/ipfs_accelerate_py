@@ -56,10 +56,14 @@ def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[s
             continue
         root = Path(str(entry.get("repository") or ""))
         paths = [str(path) for path in entry.get("paths") or [] if isinstance(path, str) and path]
-        if not root.is_dir() or not paths:
+        allowed = [path for path in paths if path in {
+            "ipfs_accelerate_py/agent_supervisor", "scripts/ops/agent_supervisor",
+        } or path.startswith("ipfs_accelerate_py/agent_supervisor/")
+          or path.startswith("scripts/ops/agent_supervisor/")]
+        if not root.is_dir() or not allowed:
             continue
         completed = subprocess.run(
-            ["git", "-C", str(root), "checkout", "--", *paths],
+            ["git", "-C", str(root), "checkout", "--", *allowed],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False,
         )
         if completed.returncode == 0:
