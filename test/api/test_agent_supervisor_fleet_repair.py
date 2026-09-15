@@ -355,6 +355,15 @@ def test_queue_reports_future_and_held_work_instead_of_idle(tmp_path):
     assert result["held"] == [{"board_id": "sawm", "next_attempt_at": 50}]
 
 
+def test_pythonpath_overlay_is_not_a_pending_runtime_update(tmp_path, monkeypatch):
+    release = tmp_path / "release"
+    release.mkdir()
+    loaded = Path(repair.__file__).resolve().parents[3]
+    monkeypatch.setenv("PYTHONPATH", f"{loaded}:{release}")
+    assert not repair.runtime_update_pending({"runtime_release": str(release)})
+    assert repair.runtime_update_pending({"runtime_release": str(tmp_path / "next")})
+
+
 def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkeypatch):
     cfg = config(tmp_path)
     for board in cfg["boards"]:

@@ -655,7 +655,24 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
 
 def runtime_update_pending(config: dict[str, Any]) -> bool:
     desired = config.get("runtime_release")
-    return bool(desired and Path(desired).resolve() != Path(__file__).resolve().parents[3])
+    if not desired:
+        return False
+    loaded = Path(__file__).resolve().parents[3]
+    target = Path(desired).resolve()
+    if loaded == target:
+        return False
+    path = []
+    for part in os.environ.get("PYTHONPATH", "").split(":"):
+        if not part:
+            continue
+        try:
+            path.append(Path(part).resolve())
+        except OSError:
+            continue
+    # Live fleet puts the supervisor checkout in front of the sealed release.
+    if loaded in path and target in path:
+        return False
+    return True
 
 
 def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path) -> list[str]:
