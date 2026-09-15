@@ -621,7 +621,7 @@ def test_independent_work_with_live_lanes_does_not_enqueue_llm(tmp_path):
     )
     runner = Runner(observation)
     state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
-    assert state["stall_class"] == "independent_work_beside_blocked_peer"
+    assert state["stall_class"] == "independent_todos_unclaimed"
     assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
     assert state.get("last_action") != "repair"
 
@@ -856,6 +856,28 @@ def test_independent_work_with_supervisor_dirt_still_selects_restore():
     ) == "supervisor_heal"
 
 
+def test_unclaimed_independent_todos_are_a_wait_stall():
+    observation = {
+        "health": "blocked",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+        "details": {"task_counts": {"todo": 23, "blocked": 2, "in_progress": 0},
+                    "lanes": [{"daemon": {"pid": 1}}]},
+    }
+    assert fleet.classify_stall(observation) == "independent_todos_unclaimed"
+    state = {"health": "blocked", "observation": observation,
+             "stall_class": "independent_todos_unclaimed",
+             "incident_since": 0, "next_action_at": 0, "attempts": 0}
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
+
+
+def test_board_checkout_missing_is_a_wait_stall():
+    observation = {"health": "unknown", "reason_codes": ["board_checkout_missing"], "complete": False}
+    assert fleet.classify_stall(observation) == "board_checkout_missing"
+    assert "board_checkout_missing" in fleet.WAIT_STALLS
+
+
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():
     observation = {
         "health": "blocked",
@@ -863,7 +885,7 @@ def test_blocked_independent_work_outranks_remaining_board_doc_dirt():
         "details": {"task_counts": {"todo": 23, "blocked": 2},
                     "lanes": [{"daemon": {"pid": 1}}]},
     }
-    assert fleet.classify_stall(observation) == "independent_work_beside_blocked_peer"
+    assert fleet.classify_stall(observation) == "independent_todos_unclaimed"
 
 
 def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():

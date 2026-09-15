@@ -144,6 +144,16 @@ def board(tmp_path, monkeypatch):
     return value, identities, lane
 
 
+def test_missing_checkout_is_typed_not_probe_exception(tmp_path):
+    result = probe.observe_board({
+        "id": "pcpr", "cwd": str(tmp_path / "gone"), "state_root": str(tmp_path / "gone"),
+        "owner_status_path": str(tmp_path / "gone" / "owner.json"), "max_lanes": 1,
+    }, now=1000)
+    assert result["reason_codes"] == ["board_checkout_missing"]
+    assert result["complete"] is False
+    assert result["health"] == "unknown"
+
+
 def test_null_status_identity_uses_exclusive_owner_marker(board, monkeypatch, tmp_path):
     config, identities, _ = board
     marker = tmp_path / ".control.duckdb.state-owner.json"

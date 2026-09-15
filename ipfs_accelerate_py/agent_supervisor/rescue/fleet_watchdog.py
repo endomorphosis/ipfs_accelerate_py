@@ -31,9 +31,11 @@ HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "co
 WAIT_STALLS = {
     "in_progress_awaiting_effect",
     "independent_work_beside_blocked_peer",
+    "independent_todos_unclaimed",
     "missing_independent_clause_evidence",
     "closeout_requires_native_authority",
     "operator_hold",
+    "board_checkout_missing",
     "complete",
 }
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
@@ -68,6 +70,12 @@ def classify_stall(observation: dict[str, Any]) -> str:
         # dirt must not outrank live independent work beside blocked peers.
         if "board_has_blocked_or_quarantined_tasks" in reasons:
             if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
+                if (int(counts.get("in_progress") or 0) == 0
+                        and int(counts.get("todo") or 0) > 0
+                        and any(isinstance(lane, dict) and lane.get("daemon")
+                                for lane in (details.get("lanes") or [])
+                                if isinstance(details.get("lanes"), list))):
+                    return "independent_todos_unclaimed"
                 return "independent_work_beside_blocked_peer"
         return "configured_control_plane_dirty"
     if (
@@ -91,8 +99,15 @@ def classify_stall(observation: dict[str, Any]) -> str:
         ):
             return "owner_live_status_unreadable"
         return "owner_missing"
+    if "board_checkout_missing" in reasons:
+        return "board_checkout_missing"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
         if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
+            if (int(counts.get("in_progress") or 0) == 0
+                    and int(counts.get("todo") or 0) > 0
+                    and any(isinstance(lane, dict) and lane.get("daemon")
+                            for lane in (details.get("lanes") or []) if isinstance(details.get("lanes"), list))):
+                return "independent_todos_unclaimed"
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
     if "no_task_progress" in reasons or health == "stalled":
@@ -431,9 +446,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
         if "source_integrity_not_verified" in reasons:
             return "supervisor_heal"
-        from .fleet_heals import live_workers
-        if live_workers(state.get("observation") or {}):
-            return ""
+    if stall in WAIT_STALLS:
+        return ""
     if stall == "configured_control_plane_dirty":
         return "supervisor_heal"
     if stall == "owner_live_status_unreadable":

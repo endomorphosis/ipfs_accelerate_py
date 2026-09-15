@@ -663,6 +663,15 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     started = time.monotonic()
     now = time.time() if now is None else now
     board_id = str(board.get("board_id", board.get("id", ""))).lower()
+    for key in ("cwd", "state_root", "owner_status_path"):
+        value = board.get(key)
+        if not isinstance(value, str) or not value or not Path(value).exists():
+            return {
+                "schema": SCHEMA, "board_id": board_id, "health": "unknown",
+                "complete": False, "busy": False, "progress_token": "",
+                "reason_codes": ["board_checkout_missing"],
+                "details": {"missing": key, "path": value},
+            }
     reasons: list[str] = []
     source_integrity = _source_integrity(board)
     owner_status = read_json(Path(board["owner_status_path"]))
