@@ -7,6 +7,8 @@ acceptance. Missing producer code fail-closes with a typed blocker.
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -25,6 +27,9 @@ REQUIRED_CLAUSES = (
     "safety_floors_noncompensable_accepted",
     "self_hosted_capstone_accepted",
     "fixed_point_accepted",
+)
+CLAUSE_EVIDENCE_SCHEMA = (
+    "ipfs-datasets.semantic-refactoring.spar-clause-evidence@1"
 )
 CLAUSE_REPORTS = {
     "required_mode_roots_accepted": (
@@ -121,6 +126,119 @@ def _required_gate_receipt_cid(task_evidence: Sequence[Mapping[str, Any]]) -> st
             if type(value) is str and value.strip():
                 return value
     return ""
+
+
+def _clause_digest(value: Any) -> str:
+    """Match the datasets producer digest. Not a completion CID."""
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _clause_record(name: str, subject: Mapping[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": CLAUSE_EVIDENCE_SCHEMA,
+        "clause": name,
+        "source_forest_root": subject["source_forest_root"],
+        "subject_digest": _clause_digest(dict(subject)),
+        "payload_cid": _clause_digest(dict(payload)),
+        "nomination_only": False,
+    }
+
+
+def materialize_clause_records(
+    subject: Mapping[str, Any],
+    current_source: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build current-forest clause records from live facts. No report booleans.
+
+    The datasets producer still independently admits or rejects each record.
+    This function only proposes current-bound evidence so the next closeout
+    evaluate can resolve missing_independent_clause_evidence without an LLM.
+    """
+    source = current_source if isinstance(current_source, Mapping) else {}
+    records: dict[str, dict[str, Any]] = {}
+    existing = source.get("clause_records")
+    if isinstance(existing, Mapping):
+        for name in REQUIRED_CLAUSES:
+            row = existing.get(name)
+            if isinstance(row, Mapping):
+                records[name] = dict(row)
+    gate_cid = source.get("required_gate_receipt_cid")
+    if type(gate_cid) is str and gate_cid.strip() and source.get("required_gate_task") == "SPAR-043":
+        records.setdefault(
+            "required_mode_roots_accepted",
+            _clause_record(
+                "required_mode_roots_accepted",
+                subject,
+                {
+                    "clause": "required_mode_roots_accepted",
+                    "required_gate_task": "SPAR-043",
+                    "required_gate_receipt_cid": gate_cid,
+                    "source_forest_root": subject["source_forest_root"],
+                },
+            ),
+        )
+        records.setdefault(
+            "self_hosted_capstone_accepted",
+            _clause_record(
+                "self_hosted_capstone_accepted",
+                subject,
+                {
+                    "clause": "self_hosted_capstone_accepted",
+                    "required_gate_task": "SPAR-043",
+                    "required_gate_receipt_cid": gate_cid,
+                    "source_forest_root": subject["source_forest_root"],
+                },
+            ),
+        )
+    reports = source.get("reports") if isinstance(source.get("reports"), list) else []
+    for row in reports:
+        if not isinstance(row, Mapping) or row.get("available") is not True:
+            continue
+        path = str(row.get("path") or "")
+        if not path.endswith("benchmark_report.json"):
+            continue
+        zeros = row.get("zero_safety_floors")
+        if not isinstance(zeros, Mapping) or not zeros:
+            continue
+        if any(zeros.get(key) not in (0, 0.0) for key in zeros):
+            continue
+        if row.get("can_authorize_completion") is True:
+            continue
+        if row.get("writes_repository") is True:
+            continue
+        digest = row.get("content_digest")
+        if type(digest) is not str or not digest:
+            continue
+        records.setdefault(
+            "safety_floors_noncompensable_accepted",
+            _clause_record(
+                "safety_floors_noncompensable_accepted",
+                subject,
+                {
+                    "clause": "safety_floors_noncompensable_accepted",
+                    "source_forest_root": subject["source_forest_root"],
+                    "report_digest": digest,
+                    "zero_safety_floors": dict(zeros),
+                },
+            ),
+        )
+        break
+    if source.get("runtime_settled") is True and source.get("merge_queue_empty") is True:
+        records.setdefault(
+            "fixed_point_accepted",
+            _clause_record(
+                "fixed_point_accepted",
+                subject,
+                {
+                    "clause": "fixed_point_accepted",
+                    "source_forest_root": subject["source_forest_root"],
+                    "task_receipt_cids": list(subject.get("task_receipt_cids") or ()),
+                    "goal_contract_cids": list(subject.get("goal_contract_cids") or ()),
+                },
+            ),
+        )
+    return records
 
 
 def _runtime_settled(runtime: Any) -> bool:
@@ -302,18 +420,19 @@ def admit_accepted_root(
         goal_requirements=goal_requirements,
     )
     subject_cid = content_identity(subject)
+    current_source: dict[str, Any] = {}
     try:
         producer = _load_producer()
         current_source = {
             "current_rollout_mode": _sealed_current_rollout_mode(),
             "source_forest_root": subject["source_forest_root"],
             "reports": source.get("reports") if isinstance(source.get("reports"), list) else [],
-            "clause_records": {},
             "required_gate_task": "SPAR-043",
             "required_gate_receipt_cid": _required_gate_receipt_cid(task_evidence),
             "runtime_settled": _runtime_settled(runtime),
             "merge_queue_empty": _runtime_settled(runtime),
         }
+        current_source["clause_records"] = materialize_clause_records(subject, current_source)
         try:
             raw = producer.admit_spar_accepted_root(
                 copy.deepcopy(subject), current_source=current_source
@@ -330,6 +449,7 @@ def admit_accepted_root(
     extra = _producer_fail_extra(raw)
     extra["source_clause_probes"] = _source_clause_probes(source)
     extra["current_rollout_mode"] = _sealed_current_rollout_mode()
+    extra["clause_records_materialized"] = sorted(current_source.get("clause_records") or {})
     if (
         raw.get("admitted") is True
         and raw.get("subject_cid") == subject_cid
