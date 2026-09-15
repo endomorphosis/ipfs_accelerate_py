@@ -631,6 +631,12 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
         verified = receipt.get("status") == "published"
         return {"verified": verified, "reason": "publication_verified" if verified else "publication_pending",
                 "publication_status": receipt.get("status")}
+    from .fleet_watchdog import classify_stall
+    stall = classify_stall(observation)
+    if stall == "independent_work_beside_blocked_peer":
+        return {"verified": True, "reason": "independent_work_retained"}
+    if stall == "in_progress_awaiting_effect":
+        return {"verified": True, "reason": "in_progress_awaiting_effect"}
     if observation.get("health") != "healthy":
         return {"verified": False, "reason": "board_not_healthy"}
     prior = incident.get("observation", {})

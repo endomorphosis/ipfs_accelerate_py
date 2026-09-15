@@ -588,7 +588,7 @@ def test_missing_clause_evidence_is_not_publication_or_llm_repair():
     ) == ""
 
 
-def test_dirty_control_plane_uses_logic_then_llm_router(tmp_path):
+def test_dirty_control_plane_selects_supervisor_heal(tmp_path):
     observation = {
         "health": "degraded", "complete": False, "reason_codes": ["source_integrity_not_verified"],
         "details": {"owner_ready": True},
@@ -601,20 +601,10 @@ def test_dirty_control_plane_uses_logic_then_llm_router(tmp_path):
     }
     assert fleet.select_action(
         waiting, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == "repair"
-    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
-    runner = Runner(_observation(
-        health="degraded", reason_codes=["source_integrity_not_verified"],
-        details={"owner_ready": True},
-    ))
-    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
-    assert state["last_action"] == "repair"
-    assert state["last_action_result"]["supervisor_heal"]["recipe"] == "llm_router"
-    assert "LogicGuidedRepairPacketMaterializer" in state["last_action_result"]["supervisor_heal"]["logic_interface"]
-    assert [spec["argv"][0] for spec in runner.calls] == ["probe", "repair"]
+    ) == "supervisor_heal"
 
 
-def test_independent_work_uses_llm_router_when_logic_cannot_write(tmp_path):
+def test_independent_work_with_live_lanes_does_not_enqueue_llm(tmp_path):
     board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
     observation = _observation(
         health="blocked",
@@ -625,9 +615,8 @@ def test_independent_work_uses_llm_router_when_logic_cannot_write(tmp_path):
     runner = Runner(observation)
     state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
     assert state["stall_class"] == "independent_work_beside_blocked_peer"
-    assert state["last_action"] == "repair"
-    assert state["last_action_result"]["supervisor_heal"]["recipe"] == "llm_router"
-    assert [spec["argv"][0] for spec in runner.calls] == ["probe", "repair"]
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+    assert state.get("last_action") != "repair"
 
 
 def test_observational_candidate_is_not_publication_authority():

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
 from typing import Any, Mapping
 
 
@@ -41,6 +43,43 @@ def try_logic_guided_repair(board: Mapping[str, Any], state: Mapping[str, Any]) 
     }
 
 
+def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop uncommitted control-plane dirt back to HEAD. Never forges completion."""
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    integrity = details.get("source_integrity") if isinstance(details.get("source_integrity"), dict) else {}
+    if integrity.get("reason") != "configured_control_plane_dirty":
+        return {"status": "skip"}
+    checked = integrity.get("checked") if isinstance(integrity.get("checked"), list) else []
+    restored = []
+    for entry in checked:
+        if not isinstance(entry, dict):
+            continue
+        root = Path(str(entry.get("repository") or ""))
+        paths = [str(path) for path in entry.get("paths") or [] if isinstance(path, str) and path]
+        if not root.is_dir() or not paths:
+            continue
+        completed = subprocess.run(
+            ["git", "-C", str(root), "checkout", "--", *paths],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False,
+        )
+        if completed.returncode == 0:
+            restored.append(str(root))
+    if restored:
+        return {"status": "applied", "recipe": "restore_dirty_control_plane", "restored": restored}
+    return {"status": "skip"}
+
+
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
+    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+    stall = str(state.get("stall_class") or "")
+    dirty = restore_dirty_control_plane(board, observation)
+    if dirty.get("status") == "applied":
+        return dirty
+    if stall == "independent_work_beside_blocked_peer" and live_workers(observation):
+        return {"status": "wait", "recipe": "independent_work_has_live_workers",
+                "reason": "blocked peers stay blocked; live lanes own independent todos"}
+    if stall == "in_progress_awaiting_effect":
+        return {"status": "wait", "recipe": "in_progress_awaiting_effect",
+                "reason": "in-progress tasks are native work, not a coding stall"}
     return try_logic_guided_repair(board, state)

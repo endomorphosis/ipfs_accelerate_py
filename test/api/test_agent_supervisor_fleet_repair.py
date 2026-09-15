@@ -1,6 +1,7 @@
 """Durable repair scheduling must not duplicate jobs or starve another board."""
 import time
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -210,6 +211,44 @@ def test_completion_runs_current_publication_gate(tmp_path, monkeypatch, status,
         {"health": "healthy", "completion_candidate": True}, tmp_path)
     assert result["verified"] is verified
     assert calls == [(manifest, tmp_path)]
+
+
+def test_verify_independent_work_and_in_progress_are_not_board_not_healthy():
+    board = {"id": "doep", "hold_files": []}
+    blocked = {
+        "health": "blocked", "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+        "details": {"task_counts": {"todo": 23, "blocked": 2, "in_progress": 0},
+                    "lanes": [{"daemon": {"pid": 1}}]},
+    }
+    assert repair.verify_job_recovery(board, {}, blocked, Path("/tmp"))["reason"] == "independent_work_retained"
+    awaiting = {
+        "health": "stalled", "reason_codes": ["no_task_progress"],
+        "details": {"task_counts": {"in_progress": 2, "completed": 20, "todo": 23}},
+    }
+    assert repair.verify_job_recovery(board, {}, awaiting, Path("/tmp"))["reason"] == "in_progress_awaiting_effect"
+
+
+def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import restore_dirty_control_plane
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    tracked = repo / "ipfs_accelerate_py" / "agent_supervisor"
+    tracked.mkdir(parents=True)
+    (tracked / "runner.py").write_text("clean\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+    (tracked / "runner.py").write_text("dirty\n")
+    result = restore_dirty_control_plane({}, {
+        "details": {"source_integrity": {
+            "reason": "configured_control_plane_dirty",
+            "checked": [{"repository": str(repo), "paths": ["ipfs_accelerate_py/agent_supervisor"]}],
+        }},
+    })
+    assert result["status"] == "applied"
+    assert (tracked / "runner.py").read_text() == "clean\n"
 
 
 def test_llm_router_repair_argv_uses_provider_fallback_not_codex_only(tmp_path):

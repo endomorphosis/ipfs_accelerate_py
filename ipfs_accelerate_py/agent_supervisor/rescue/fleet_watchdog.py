@@ -414,6 +414,12 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     recovery = state["observation"].get("recovery_action")
     if stall == "in_progress_awaiting_effect":
         return ""
+    if stall == "independent_work_beside_blocked_peer":
+        from .fleet_heals import live_workers
+        if live_workers(state.get("observation") or {}):
+            return ""
+    if stall == "configured_control_plane_dirty":
+        return "supervisor_heal"
     if stall == "owner_live_status_unreadable":
         # A live exclusive owner with a torn/failed status projection is not
         # owner-missing. Ensure would start a competing owner.
