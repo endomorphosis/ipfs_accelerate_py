@@ -578,6 +578,49 @@ def test_publisher_exception_is_diagnosed_and_queued_for_repair(tmp_path, monkey
     assert [spec["argv"][0] for spec in runner.calls] == ["probe", "repair"]
 
 
+def test_classify_publication_hold_encodes_publisher_logic_stalls():
+    assert fleet.classify_publication_hold({
+        "reason": "datasets: changed gitlinks lack declared repository dependencies",
+    }) == "nested_leaf_gitlinks_travel_with_source"
+    assert fleet.classify_publication_hold({
+        "reason": "datasets: source_ref must match its clean integration checkout HEAD",
+    }) == "nested_source_head_from_parent_gitlink"
+    assert fleet.classify_publication_hold({
+        "reason": "current_rollout_mode_is_not_required:bootstrap",
+    }) == "bootstrap_mode_after_native_authority"
+    assert fleet.classify_publication_hold({
+        "reason": "publication pull request created; awaiting required GitHub checks and reviews",
+    }) == "publication_awaiting_github_review"
+    assert fleet.classify_publication_hold({
+        "reason": "another publisher holds this board's lock",
+    }) == "publication_lock_busy"
+    assert fleet.classify_publication_hold({"reason": "repo: merge conflict"}) == "publication_held"
+
+
+def test_nested_leaf_publication_hold_retries_without_llm(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
+
+    board = _board(tmp_path, publication={"approved": True})
+    calls = []
+
+    def publisher(manifest, state_dir):
+        calls.append(manifest)
+        return {
+            "status": "held",
+            "reason": "datasets: changed gitlinks lack declared repository dependencies",
+            "repositories": [{"id": "datasets", "status": "held"}],
+        }
+
+    monkeypatch.setattr(fleet_completion, "publish_completed_board", publisher)
+    runner = Runner(_observation(health="complete", complete=True))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+    assert state["publication_failure"]["stall_class"] == "nested_leaf_gitlinks_travel_with_source"
+    assert state["last_action_result"]["repair_result"]["status"] == "autoheal_retry"
+    assert state["next_action_at"] == 130
+    assert len(calls) == 1
+
+
 def test_successful_publication_clears_prior_failure_without_repair(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
 

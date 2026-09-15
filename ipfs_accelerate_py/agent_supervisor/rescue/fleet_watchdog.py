@@ -29,6 +29,15 @@ from .live_board_probe import COMPLETED, read_json_object
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
+# Publisher-logic holds. Retry publish after the supervisor tree heals;
+# an LLM cannot mint gitlinks, native authority, or GitHub review state.
+PUBLICATION_AUTOHEAL_STALLS = {
+    "nested_leaf_gitlinks_travel_with_source",
+    "nested_source_head_from_parent_gitlink",
+    "bootstrap_mode_after_native_authority",
+    "publication_awaiting_github_review",
+    "publication_lock_busy",
+}
 
 
 def classify_stall(observation: dict[str, Any]) -> str:
@@ -72,6 +81,26 @@ def classify_stall(observation: dict[str, Any]) -> str:
     if health in {"degraded", "blocked", "unknown"}:
         return str(health)
     return "none"
+
+
+def classify_publication_hold(receipt: dict[str, Any]) -> str:
+    """Map a publisher receipt to a stall class. Never infers completion."""
+    reason = str(receipt.get("reason") or "")
+    if "changed gitlinks lack declared repository dependencies" in reason:
+        return "nested_leaf_gitlinks_travel_with_source"
+    if "source_ref must match its clean integration checkout HEAD" in reason:
+        return "nested_source_head_from_parent_gitlink"
+    if "current_rollout_mode_is_not_required" in reason:
+        return "bootstrap_mode_after_native_authority"
+    if any(token in reason for token in (
+            "publication pull request created",
+            "required GitHub checks",
+            "publication PR is not ready",
+    )):
+        return "publication_awaiting_github_review"
+    if "another publisher holds this board's lock" in reason:
+        return "publication_lock_busy"
+    return "publication_held"
 
 
 def write_ducklake_fleet_health(root: Path, report: dict[str, Any]) -> None:
@@ -456,29 +485,41 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             except Exception as exc:
                 action_result = {"status": "failed", "reason": f"publisher raised {type(exc).__name__}"}
             if action_result.get("status") != "published":
-                # A merge conflict, stale completion gate, or failed validation
-                # needs an implementation repair, not endless identical pushes.
-                # Queue through the same bounded operator-owned repair command;
-                # it deduplicates existing jobs and retains this exact evidence.
+                # Merge conflicts and failed validation need implementation
+                # repair. Publisher-logic holds retry publish after the
+                # supervisor tree heals; an LLM cannot mint those receipts.
                 reason_code = "publication_held" if action_result.get("status") == "held" else "publication_failed"
+                stall = classify_publication_hold(action_result)
                 failure = {
                     "reason_code": reason_code,
+                    "stall_class": stall,
                     "status": action_result.get("status", "invalid_receipt"),
                     "reason": action_result.get("reason", "publication did not succeed"),
                     "receipt_path": str(directory / "publication/publication.json"),
                     "repositories": action_result.get("repositories", []),
                 }
-                incident.update(recovery_action="repair", publication_failure=failure)
+                autoheal = stall in PUBLICATION_AUTOHEAL_STALLS
+                incident.update(
+                    recovery_action="publish" if autoheal else "repair",
+                    publication_failure=failure,
+                )
                 incident["observation"] = dict(
                     state["observation"],
-                    reason_codes=[*state["observation"].get("reason_codes", []), reason_code],
+                    reason_codes=[*state["observation"].get("reason_codes", []), reason_code, stall],
                 )
                 write_json(incident_path, incident)
                 state["publication_failure"] = failure
+                if autoheal:
+                    state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
                 # Persist the diagnosis before enqueueing, so a watchdog crash
                 # retains both the publication failure and the existing backoff.
                 write_json(path, state)
-                if board.get("repair"):
+                if autoheal:
+                    action_result["repair_result"] = {
+                        "status": "autoheal_retry", "stall_class": stall,
+                        "incident": str(incident_path),
+                    }
+                elif board.get("repair"):
                     spec = dict(board["repair"])
                     spec["argv"] = [*spec["argv"], "--incident", str(incident_path)]
                     repair_result = runner(spec, cwd=board["cwd"], timeout=120)

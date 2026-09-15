@@ -372,7 +372,13 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                 dependencies = {d["path"]: d["repository"] for d in repo.get("dependencies", [])}
                 unknown = [p for p, oid in source_links.items()
                            if main_links.get(p) != oid and p not in dependencies]
-                if unknown:
+                # Nested leaves have no fleet children. Vendor gitlinks are
+                # already in the accepted source tree and travel with it.
+                nested_leaf = (
+                    _parent_gitlink_oid(repositories, ident) is not None
+                    and not repo.get("dependencies")
+                )
+                if unknown and not nested_leaf:
                     raise PublicationHold(f"{ident}: changed gitlinks lack declared repository dependencies")
                 # Already merged and all required children are present: idempotent retry.
                 if _ancestor(root, source, main) and all(
