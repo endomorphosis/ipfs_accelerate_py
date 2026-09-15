@@ -458,6 +458,9 @@ def _nonneg_int(value: Any) -> int | None:
     return value if type(value) is int and not isinstance(value, bool) and value >= 0 else None
 
 
+_OPEN_GOAL_STATUSES = frozenset({"active", "in_progress", "unsettled", "open", "ready"})
+
+
 def _unsettled_goal_count(authority: Mapping[str, Any]) -> int | None:
     """Count still-open native goals. Task completion is not goal closeout."""
     value = authority.get("unsettled_goal_count")
@@ -467,15 +470,32 @@ def _unsettled_goal_count(authority: Mapping[str, Any]) -> int | None:
     if not isinstance(lifecycle, dict):
         return None
     counts = lifecycle.get("status_counts")
-    if not isinstance(counts, dict):
+    if isinstance(counts, dict):
+        total = 0
+        found = False
+        for key in _OPEN_GOAL_STATUSES:
+            item = counts.get(key)
+            if type(item) is int and not isinstance(item, bool) and item >= 0:
+                total += item
+                found = True
+        if found:
+            return total
+    records = lifecycle.get("records")
+    if isinstance(records, dict):
+        items = records.values()
+    elif isinstance(records, list):
+        items = records
+    else:
         return None
     total = 0
     found = False
-    for key in ("active", "in_progress", "unsettled", "open"):
-        item = counts.get(key)
-        if type(item) is int and not isinstance(item, bool) and item >= 0:
-            total += item
-            found = True
+    for record in items:
+        status = record.get("status") if isinstance(record, dict) else None
+        if not isinstance(status, str) or not status:
+            continue
+        found = True
+        if status.lower() in _OPEN_GOAL_STATUSES:
+            total += 1
     return total if found else None
 
 
@@ -818,6 +838,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         if type(task_count) is int and task_count >= 0:
             authority["task_count"] = task_count
         unsettled = _unsettled_goal_count(authority)
+        if unsettled is None:
+            unsettled = _unsettled_goal_count({"goal_lifecycle": native.get("goal_lifecycle")})
         if unsettled is not None:
             authority["unsettled_goal_count"] = unsettled
     database_authority = _database_board_authority(native, board, owner_status, now)

@@ -613,6 +613,20 @@ def test_aseh_active_goals_are_not_a_closeout_candidate(board, monkeypatch):
     assert result["complete"] is False
 
 
+def test_aseh_goal_records_without_status_counts_are_unsettled(board, monkeypatch):
+    config, _, _ = board
+    config = {**config, "board_id": "aseh"}
+    native = _aseh_native_receipt(status="completed")
+    records = {f"ASEH-G{i:03d}": {"goal_cid": f"goal:{i}", "status": "active"} for i in range(9)}
+    native["receipt"]["samples"][-1]["authority"]["goal_lifecycle"] = {"records": records}
+    native["receipt"]["samples"][0]["authority"]["goal_lifecycle"] = {"records": records}
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["unsettled_goal_count"] == 9
+    assert "board_has_unsettled_goals" in result["reason_codes"]
+    assert result["completion_candidate"] is False
+
+
 @pytest.mark.parametrize("case", ["rejected", "unbound", "missing", "unavailable", "wrong_transport"])
 def test_aseh_rejects_unadmitted_nested_samples(board, monkeypatch, case):
     config, _, _ = board
