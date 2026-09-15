@@ -109,6 +109,20 @@ def _sealed_current_rollout_mode() -> str:
     return sealed_current_rollout_mode()
 
 
+def _required_gate_receipt_cid(task_evidence: Sequence[Mapping[str, Any]]) -> str:
+    for row in task_evidence:
+        if not isinstance(row, Mapping) or row.get("task_alias") != "SPAR-043":
+            continue
+        receipt = row.get("receipt")
+        if not isinstance(receipt, Mapping):
+            continue
+        for key in ("completion_receipt_cid", "receipt_cid"):
+            value = receipt.get(key)
+            if type(value) is str and value.strip():
+                return value
+    return ""
+
+
 def _runtime_settled(runtime: Any) -> bool:
     """True only for an independently admitted, settled runtime receipt."""
     if not isinstance(runtime, Mapping):
@@ -295,6 +309,10 @@ def admit_accepted_root(
             "source_forest_root": subject["source_forest_root"],
             "reports": source.get("reports") if isinstance(source.get("reports"), list) else [],
             "clause_records": {},
+            "required_gate_task": "SPAR-043",
+            "required_gate_receipt_cid": _required_gate_receipt_cid(task_evidence),
+            "runtime_settled": _runtime_settled(runtime),
+            "merge_queue_empty": _runtime_settled(runtime),
         }
         try:
             raw = producer.admit_spar_accepted_root(

@@ -151,6 +151,13 @@ def observe_source(
                     "nomination_only": report.get("nomination_only"),
                     "final_root_accepted": report.get("final_root_accepted"),
                     "can_authorize_completion": report.get("can_authorize_completion"),
+                    "writes_repository": report.get("writes_repository"),
+                    "required_gate_task": report.get("required_gate_task"),
+                    "zero_safety_floors": (
+                        report.get("zero_safety_floors")
+                        if isinstance(report.get("zero_safety_floors"), dict)
+                        else None
+                    ),
                     "authority_roots": (
                         report.get("authority_roots")
                         if isinstance(report.get("authority_roots"), dict)
