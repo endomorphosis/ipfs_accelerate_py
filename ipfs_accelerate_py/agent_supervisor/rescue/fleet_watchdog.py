@@ -56,7 +56,11 @@ def classify_stall(observation: dict[str, Any]) -> str:
     if health == "complete" or observation.get("complete") is True:
         return "complete"
     if "source_integrity_not_verified" in reasons:
-        # A dirty configured control plane is not an LLM coding job.
+        # Supervisor-path dirt is restored separately. Remaining board-doc
+        # dirt must not outrank live independent work beside blocked peers.
+        if "board_has_blocked_or_quarantined_tasks" in reasons:
+            if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
+                return "independent_work_beside_blocked_peer"
         return "configured_control_plane_dirty"
     if (
         observation.get("completion_candidate") is True

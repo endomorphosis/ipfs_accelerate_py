@@ -834,6 +834,16 @@ def test_owner_missing_selects_ensure_even_without_probe_recovery_action():
     assert fleet.select_action(state, {"failure_grace_seconds": 0}, 100) == "repair"
 
 
+def test_blocked_independent_work_outranks_remaining_board_doc_dirt():
+    observation = {
+        "health": "blocked",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks", "source_integrity_not_verified"],
+        "details": {"task_counts": {"todo": 23, "blocked": 2},
+                    "lanes": [{"daemon": {"pid": 1}}]},
+    }
+    assert fleet.classify_stall(observation) == "independent_work_beside_blocked_peer"
+
+
 def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
     blocked = {"health": "blocked", "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
                "details": {"owner_ready": True, "task_counts": {"todo": 23, "blocked": 1}}}
