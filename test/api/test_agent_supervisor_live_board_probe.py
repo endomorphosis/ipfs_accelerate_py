@@ -165,7 +165,11 @@ def test_null_status_identity_uses_exclusive_owner_marker(board, monkeypatch, tm
     assert "recovery_action" not in result
 
 
-@pytest.mark.parametrize("status", ["agentic_maintenance_deferred", "agentic_maintenance_completed"])
+@pytest.mark.parametrize("status", [
+    "agentic_maintenance_deferred",
+    "agentic_maintenance_started",
+    "agentic_maintenance_completed",
+])
 def test_extra_gate_deferred_lane_is_not_daemon_missing(board, monkeypatch, status):
     config, _, lane = board
     _write(lane / "pcpr_lane_0_supervisor_status.json", {

@@ -159,6 +159,17 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                         write_json(path, current)
                         results.append({"board_id": board["id"], "status": "retired_complete"})
             continue
+        wait = board_wait_stall(config, board["id"])
+        if job.get("status") == "queued" and wait:
+            with lock(path.parent / "queue.lock") as acquired:
+                if acquired:
+                    current = read_json(path)
+                    if current.get("status") == "queued":
+                        current.update(status="retired_wait", retired_at=now, wait_stall=wait)
+                        write_json(path, current)
+                        results.append({"board_id": board["id"], "status": "retired_wait",
+                                        "wait_stall": wait})
+            continue
         if (job.get("status") != "queued" or not job.get("last_started_at")
                 or now - job.get("reconcile_checked_at", 0) < 120
                 or hold_paths(board)):
@@ -231,6 +242,31 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                     results.append({"board_id": board["id"], "status": "continuation_advanced", "next_attempt_at": due})
             write_json(path, current)
     return results
+
+
+WAIT_STALLS = {
+    "in_progress_awaiting_effect",
+    "independent_work_beside_blocked_peer",
+    "missing_independent_clause_evidence",
+    "closeout_requires_native_authority",
+    "operator_hold",
+    "complete",
+}
+
+
+def board_wait_stall(config: dict[str, Any], board_id: str) -> str | None:
+    """Stalls that native workers already own. Do not launch another coding job."""
+    state = read_json(Path(config["state_dir"]) / board_id / "state.json")
+    stall = str(state.get("stall_class") or "")
+    if stall in WAIT_STALLS:
+        return stall
+    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+    if observation:
+        from .fleet_watchdog import classify_stall
+        classified = classify_stall(observation)
+        if classified in WAIT_STALLS:
+            return classified
+    return None
 
 
 def board_is_complete(config: dict[str, Any], board_id: str) -> bool:
@@ -657,7 +693,8 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
             continue
-        if hold_paths(board) or board_is_complete(config, board["id"]):
+        if (hold_paths(board) or board_is_complete(config, board["id"])
+                or board_wait_stall(config, board["id"])):
             continue
         due = float(job.get("next_attempt_at") or 0)
         if (due > now and not repair_route_is_stale(job)

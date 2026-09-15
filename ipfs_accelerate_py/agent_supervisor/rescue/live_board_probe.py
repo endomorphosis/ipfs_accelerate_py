@@ -708,6 +708,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         extra_gate_deferred = (
             status.get("status") in {
                 "agentic_maintenance_deferred",
+                "agentic_maintenance_started",
                 "agentic_maintenance_completed",
             }
             and bool(supervisor)

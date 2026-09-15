@@ -36,6 +36,23 @@ def test_duplicate_incident_preserves_running_job_and_cooldown(tmp_path):
     assert read_json(path)["latest_incident"]["signature"] == "changed"
 
 
+def test_wait_stall_does_not_launch_coding_repair(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "sawm/state.json", {
+        "stall_class": "in_progress_awaiting_effect",
+        "observation": {"health": "stalled", "reason_codes": ["no_task_progress"],
+                        "details": {"task_counts": {"in_progress": 2}}},
+    })
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "queued", "queued_at": 1, "last_started_at": 1, "next_attempt_at": 0,
+    })
+    write_json(tmp_path / "repairs/spar/job.json", {
+        "status": "queued", "queued_at": 2, "last_started_at": 2, "next_attempt_at": 0,
+    })
+    selected = next_job(cfg, 100)
+    assert selected is not None and selected[0]["id"] == "spar"
+
+
 def test_complete_board_does_not_block_stalled_repair(tmp_path):
     cfg = config(tmp_path)
     write_json(tmp_path / "spar/state.json", {
