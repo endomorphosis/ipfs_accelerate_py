@@ -28,6 +28,14 @@ from .live_board_probe import COMPLETED, read_json_object
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
+WAIT_STALLS = {
+    "in_progress_awaiting_effect",
+    "independent_work_beside_blocked_peer",
+    "missing_independent_clause_evidence",
+    "closeout_requires_native_authority",
+    "operator_hold",
+    "complete",
+}
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
 # Publisher-logic holds. Retry publish after the supervisor tree heals;
 # an LLM cannot mint gitlinks, native authority, or GitHub review state.
@@ -468,6 +476,15 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "action": "diagnostic_only", "diagnostics": diagnostics,
                 })
         state = assess(observation, previous, board, now)
+        if apply and state.get("stall_class") in WAIT_STALLS:
+            job = read_json(state_root / "repairs" / board_id / "job.json")
+            if job.get("status") == "running":
+                try:
+                    command({"argv": ["systemctl", "--user", "stop",
+                                      "ipfs-taskboard-repair-job.service"]},
+                            cwd="/", timeout=45)
+                except (OSError, subprocess.TimeoutExpired, ValueError):
+                    pass
         # Holds fence mutations, not observation. A board assigned to another
         # owner still needs fresh health and progress evidence during a hold.
         state["observed_health"] = state["health"]

@@ -300,6 +300,13 @@ def test_should_reclaim_orphan_sigterm_and_stale_workspace(tmp_path):
         "repair_workspace": str(tmp_path),
     })
     assert repair.should_reclaim_repair_unit(cfg) is False
+    write_json(tmp_path / "sawm/state.json", {
+        "stall_class": "in_progress_awaiting_effect",
+        "observation": {"health": "stalled", "reason_codes": ["no_task_progress"],
+                        "details": {"task_counts": {"in_progress": 2}}},
+    })
+    assert repair.should_reclaim_repair_unit(cfg) is True
+    write_json(tmp_path / "sawm/state.json", {})
     write_json(tmp_path / "repairs/sawm/job.json", {
         "status": "running", "repair_route": repair.LLM_ROUTER_ROUTE,
         "repair_workspace": str(tmp_path / "maintenance"),

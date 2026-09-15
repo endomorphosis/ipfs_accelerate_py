@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 from .fleet_watchdog import (
-    _accepted_progress_counts, command, load_config, lock, read_json, write_json,
-    supervisor_pythonpath,
+    WAIT_STALLS, _accepted_progress_counts, command, load_config, lock, read_json,
+    write_json, supervisor_pythonpath,
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
@@ -242,16 +242,6 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                     results.append({"board_id": board["id"], "status": "continuation_advanced", "next_attempt_at": due})
             write_json(path, current)
     return results
-
-
-WAIT_STALLS = {
-    "in_progress_awaiting_effect",
-    "independent_work_beside_blocked_peer",
-    "missing_independent_clause_evidence",
-    "closeout_requires_native_authority",
-    "operator_hold",
-    "complete",
-}
 
 
 def board_wait_stall(config: dict[str, Any], board_id: str) -> str | None:
@@ -922,7 +912,10 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     running = [(board, job) for board, job in _iter_repair_jobs(config)
                if job.get("status") == "running"]
     if running:
-        return any(repair_workspace_is_stale(job, board) for board, job in running)
+        return any(
+            repair_workspace_is_stale(job, board) or board_wait_stall(config, board["id"])
+            for board, job in running
+        )
     latest = max(
         ((board, job) for board, job in _iter_repair_jobs(config)
          if type(job.get("last_started_at")) in (int, float)),
@@ -942,6 +935,15 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     policy = dict(config["repair_worker"])
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
+    wait = board_wait_stall(config, board["id"])
+    if wait:
+        with lock(path.parent / "queue.lock") as acquired:
+            if acquired:
+                job = read_json(path)
+                if job.get("status") in {"queued", "running"}:
+                    job.update(status="retired_wait", wait_stall=wait, retired_at=time.time())
+                    write_json(path, job)
+        return {"status": "retired_wait", "board_id": board["id"], "wait_stall": wait}
     selection = _launch_selection(read_json(path))
     if selection.get("status") not in {"queued", "running"}:
         return {"status": "completion_superseded"}
@@ -1064,6 +1066,20 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             process.kill()
             process.wait(timeout=10)
             returncode = 124
+    wait = board_wait_stall(config, board["id"])
+    if wait:
+        with lock(directory / "queue.lock") as acquired:
+            if not acquired:
+                raise RuntimeError("repair completion queue lock busy")
+            job = read_json(path)
+            if job.get("status") != "running" or _attempt_identity(job) != attempt:
+                return {"board_id": board["id"], "status": "completion_superseded",
+                        "returncode": returncode}
+            job.update(status="retired_wait", wait_stall=wait, finished_at=time.time(),
+                       returncode=returncode)
+            write_json(path, job)
+        return {"board_id": board["id"], "status": "retired_wait", "returncode": returncode,
+                "wait_stall": wait}
     # The probe, not a model's final answer, determines whether recovery worked.
     # A completed repair may have installed a vetted completion gate. Reload
     # that configuration before verification rather than using a 40-minute-old
@@ -1131,6 +1147,10 @@ def main(argv: list[str] | None = None) -> int:
                 reconciled = reconcile_queued_jobs(config, time.time())
                 if reconciled:
                     print(json.dumps({"queue_reconciliation": reconciled}), flush=True)
+                if should_reclaim_repair_unit(config):
+                    command({"argv": ["systemctl", "--user", "stop",
+                                      "ipfs-taskboard-repair-job.service"]},
+                            cwd="/", timeout=45)
                 selected = next_job(config, time.time())
                 if selected:
                     write_json(root / "repair-worker.json", {"status": "running",
