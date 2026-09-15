@@ -322,8 +322,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         return ""
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
-    if (recovery == "ensure" and board.get("ensure") and not hold_paths(board)
-            and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)):
+    stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+    if (board.get("ensure") and not hold_paths(board)
+            and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)
+            and (recovery == "ensure" or stall == "owner_missing")):
         return "ensure"
     return "repair"
 
