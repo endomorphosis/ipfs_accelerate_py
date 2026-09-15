@@ -33,6 +33,23 @@ class _OverlayPath(list):
         return super().insert(index, path)
 
 
+def overlay_module(qualname: str, path: str, *, package: str) -> None:
+    """Load one overlay module into a sealed package. Relative imports stay sealed."""
+    import importlib
+    import importlib.util
+
+    importlib.import_module(package)
+    spec = importlib.util.spec_from_file_location(qualname, path)
+    if spec is None or spec.loader is None:
+        raise ImportError("overlay module spec failed: " + qualname)
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = package
+    sys.modules[qualname] = module
+    spec.loader.exec_module(module)
+    parent = importlib.import_module(package)
+    setattr(parent, qualname.rsplit(".", 1)[-1], module)
+
+
 def install_overlay(overlay: str, source_root: str) -> None:
     overlay = _abspath(overlay)
     source_root = _abspath(source_root)
@@ -65,8 +82,15 @@ def main(argv: list[str] | None = None) -> int:
             "usage: sealed_board_supervisor_launch.py "
             "--overlay DIR --source-root DIR -- script.py [args...]"
         )
-    install_overlay(overlay, source_root)
     os.chdir(source_root)
+    if source_root not in sys.path:
+        sys.path.insert(0, source_root)
+    overlay_root = Path(overlay)
+    overlay_module(
+        "ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root",
+        str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
+        package="ipfs_accelerate_py.agent_supervisor.semantic_state",
+    )
     script = args[0]
     sys.argv = args
     runpy.run_path(script, run_name="__main__")

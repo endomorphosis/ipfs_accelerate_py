@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
     install_overlay,
+    overlay_module,
 )
 
 
@@ -16,3 +19,18 @@ def test_source_root_insert_cannot_hide_overlay(tmp_path, monkeypatch):
     sys.path.insert(0, str(source.resolve()))
     assert sys.path[0] == str(overlay.resolve())
     assert sys.path[1] == str(source.resolve())
+
+
+def test_overlay_module_keeps_relative_imports_on_sealed_package():
+    import ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root as loaded
+
+    path = Path(loaded.__file__).resolve()
+    overlay_module(
+        "ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root",
+        str(path),
+        package="ipfs_accelerate_py.agent_supervisor.semantic_state",
+    )
+    import ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root as again
+
+    assert hasattr(again, "admit_current_bound_clause_records")
+    assert again.REQUIRED_CLAUSES == loaded.REQUIRED_CLAUSES

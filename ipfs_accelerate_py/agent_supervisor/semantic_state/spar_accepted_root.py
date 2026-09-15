@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from ..task_sources.control_plane_contracts import content_identity
@@ -202,6 +203,29 @@ def materialize_clause_records(
             ),
         )
     reports = source.get("reports") if isinstance(source.get("reports"), list) else []
+    cwd_report = Path.cwd() / "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json"
+    if cwd_report.is_file() and not any(
+        isinstance(row, Mapping)
+        and str(row.get("path") or "").endswith("benchmark_report.json")
+        and isinstance(row.get("zero_safety_floors"), Mapping)
+        for row in reports
+    ):
+        try:
+            payload = json.loads(cwd_report.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            digest = "sha256:" + hashlib.sha256(cwd_report.read_bytes()).hexdigest()
+            reports = list(reports) + [
+                {
+                    "path": str(cwd_report.as_posix()),
+                    "available": True,
+                    "content_digest": digest,
+                    "can_authorize_completion": payload.get("can_authorize_completion"),
+                    "writes_repository": payload.get("writes_repository"),
+                    "zero_safety_floors": payload.get("zero_safety_floors"),
+                }
+            ]
     for row in reports:
         if not isinstance(row, Mapping) or row.get("available") is not True:
             continue

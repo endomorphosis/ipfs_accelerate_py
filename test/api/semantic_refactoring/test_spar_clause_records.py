@@ -57,6 +57,21 @@ def test_materialize_four_current_bound_records():
         assert row["subject_digest"].startswith("sha256:")
 
 
+def test_cwd_benchmark_report_mints_safety_floors(tmp_path, monkeypatch):
+    report = tmp_path / "benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        '{"can_authorize_completion": false, "writes_repository": false, '
+        '"zero_safety_floors": {"false_task_completions": 0}}'
+    )
+    monkeypatch.chdir(tmp_path)
+    records = materialize_clause_records(
+        _subject(),
+        _current(reports=[], required_gate_receipt_cid="", runtime_settled=False, merge_queue_empty=False),
+    )
+    assert "safety_floors_noncompensable_accepted" in records
+
+
 def test_completion_boolean_on_the_report_cannot_mint_safety_floors():
     current = _current()
     current["reports"][0]["can_authorize_completion"] = True
