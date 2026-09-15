@@ -834,6 +834,21 @@ def test_owner_missing_selects_ensure_even_without_probe_recovery_action():
     assert fleet.select_action(state, {"failure_grace_seconds": 0}, 100) == "repair"
 
 
+def test_independent_work_with_supervisor_dirt_still_selects_restore():
+    observation = {
+        "health": "blocked",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks", "source_integrity_not_verified"],
+        "details": {"task_counts": {"todo": 23, "blocked": 2, "in_progress": 2},
+                    "lanes": [{"daemon": {"pid": 1}}]},
+    }
+    stall = fleet.classify_stall(observation)
+    state = {"health": "blocked", "observation": observation, "stall_class": stall,
+             "incident_since": 0, "next_action_at": 0, "attempts": 0}
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == "supervisor_heal"
+
+
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():
     observation = {
         "health": "blocked",

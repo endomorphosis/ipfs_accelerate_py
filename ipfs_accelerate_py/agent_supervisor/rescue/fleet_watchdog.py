@@ -419,6 +419,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "in_progress_awaiting_effect":
         return ""
     if stall == "independent_work_beside_blocked_peer":
+        reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
+        if "source_integrity_not_verified" in reasons:
+            return "supervisor_heal"
         from .fleet_heals import live_workers
         if live_workers(state.get("observation") or {}):
             return ""
