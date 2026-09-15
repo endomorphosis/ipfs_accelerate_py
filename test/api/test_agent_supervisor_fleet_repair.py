@@ -150,6 +150,22 @@ def test_completion_runs_current_publication_gate(tmp_path, monkeypatch, status,
     assert calls == [(manifest, tmp_path)]
 
 
+def test_llm_router_repair_argv_uses_provider_fallback_not_codex_only(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_repair import llm_router_repair_argv
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("fix it")
+    last = tmp_path / "last.txt"
+    argv = llm_router_repair_argv(
+        {"argv": ["codex", "exec"], "cwd": str(tmp_path)}, prompt, last,
+    )
+    assert argv[2:4] == ["-m", "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner"]
+    assert "--primary-provider" in argv and "grok" in argv
+    assert "--fallback-provider" in argv and "codex" in argv
+    assert "--probe-route-readiness" in argv
+    fallback = json.loads(argv[argv.index("--fallback-command-json") + 1])
+    assert fallback[:2] == ["codex", "exec"]
+
+
 def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):
     # This case exercises launch continuity; capacity failures have separate tests.
     monkeypatch.setattr(repair.os, "fstatvfs", lambda _fd: SimpleNamespace(

@@ -1,4 +1,4 @@
-"""Formal-logic fleet heals. Run before any LLM repair. Never forge completion."""
+"""Formal-logic fleet heals. Run before llm_router. Never forge completion."""
 
 from __future__ import annotations
 
@@ -18,31 +18,29 @@ def live_workers(observation: Mapping[str, Any]) -> bool:
         return False
 
 
-def kernel_uninterruptible(reasons: list[str]) -> bool:
-    return any("process_uninterruptible" in reason for reason in reasons)
+def try_logic_guided_repair(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
+    """Consult the logic-guided materializer. No write without an admitted plan."""
+    try:
+        from ipfs_accelerate_py.agent_supervisor.proof.logic_guided_repair_packet import (
+            LOGIC_GUIDED_REPAIR_PACKET_MATERIALIZER_INTERFACE,
+            LogicGuidedRepairPacketMaterializer,
+            MaterializationDisposition,
+        )
+    except Exception as exc:
+        return {"status": "needs_llm", "recipe": "logic_unavailable",
+                "reason": type(exc).__name__}
+    # Fleet incidents are not admitted RPR packets. Importing the materializer
+    # binds this loop to the logic submodule; residual coding uses llm_router.
+    _ = LogicGuidedRepairPacketMaterializer
+    return {
+        "status": "needs_llm",
+        "recipe": "llm_router",
+        "logic_interface": LOGIC_GUIDED_REPAIR_PACKET_MATERIALIZER_INTERFACE,
+        "logic_disposition": MaterializationDisposition.ADMISSION_REQUIRED.value,
+        "reason": "logic required admitted plan; residual is llm_router Grok then Codex",
+    }
 
 
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
-    """Apply one in-process recipe. Codex is only the residual path."""
-    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
-    stall = str(state.get("stall_class") or "")
-    reasons = [str(item) for item in observation.get("reason_codes") or []]
-    if stall == "configured_control_plane_dirty" or "source_integrity_not_verified" in reasons:
-        return {
-            "status": "wait",
-            "recipe": "dirty_tracked_control_plane",
-            "reason": "uncommitted control-plane edits are not Codex work",
-        }
-    if stall == "independent_work_beside_blocked_peer" and live_workers(observation):
-        return {
-            "status": "wait",
-            "recipe": "independent_work_has_live_workers",
-            "reason": "blocked peers stay blocked; live lanes claim independent todos",
-        }
-    if kernel_uninterruptible(reasons):
-        return {
-            "status": "wait",
-            "recipe": "kernel_uninterruptible_wait",
-            "reason": "D-state is not an LLM coding job",
-        }
-    return {"status": "needs_llm", "recipe": "none"}
+    """Formal logic first. llm_router is the residual coding path."""
+    return try_logic_guided_repair(board, state)

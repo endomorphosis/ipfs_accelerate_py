@@ -13,8 +13,9 @@ import tempfile
 from pathlib import Path
 
 
-MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "live_board_probe",
-           "canonical_writer_custody", "diagnostic_handoff", "storage_diagnostics")
+MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "fleet_heals",
+           "live_board_probe", "canonical_writer_custody", "diagnostic_handoff",
+           "storage_diagnostics")
 
 
 def unit_directory(value: str) -> str:

@@ -405,12 +405,6 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # Datasets producer still lacks current-bound clause records. An LLM
         # cannot mint those records or flip completion_authority.
         return ""
-    if stall == "configured_control_plane_dirty":
-        return "supervisor_heal"
-    if stall == "independent_work_beside_blocked_peer":
-        from .fleet_heals import live_workers
-        if live_workers(state.get("observation") or {}):
-            return "supervisor_heal"
     if health == "healthy":
         return ""
     grace = board.get("failure_grace_seconds", 60) if health in {"stopped", "unknown"} else board.get("blocked_grace_seconds", 300)

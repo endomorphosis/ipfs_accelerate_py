@@ -14,12 +14,16 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-from .fleet_watchdog import _accepted_progress_counts, command, load_config, lock, read_json, write_json
+from .fleet_watchdog import (
+    _accepted_progress_counts, command, load_config, lock, read_json, write_json,
+    supervisor_pythonpath,
+)
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
@@ -610,6 +614,37 @@ def runtime_update_pending(config: dict[str, Any]) -> bool:
     return bool(desired and Path(desired).resolve() != Path(__file__).resolve().parents[3])
 
 
+def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path) -> list[str]:
+    """Grok via llm_router, then the configured Codex argv as fallback."""
+    fallback = [*policy["argv"], "-C", str(policy["cwd"]),
+                "--output-last-message", str(last_message), "-"]
+    grok_bin = shutil.which("grok") or ""
+    try:
+        from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (
+            DEFAULT_GROK_MAX_TURNS, DEFAULT_GROK_MODEL, _resolve_grok_bin,
+            build_grok_agent_command,
+        )
+        grok_bin = _resolve_grok_bin() or grok_bin
+        primary = build_grok_agent_command(
+            workspace=Path(policy["cwd"]), prompt_file=prompt,
+            model=os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", DEFAULT_GROK_MODEL),
+            max_turns=DEFAULT_GROK_MAX_TURNS, permission_mode="bypassPermissions",
+            grok_bin=grok_bin or "grok",
+        ) if grok_bin else ["grok"]
+    except Exception:
+        primary = ["grok"]
+    return [
+        sys.executable, "-P", "-m",
+        "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner",
+        "--workspace", str(policy["cwd"]),
+        "--primary-provider", "grok",
+        "--fallback-provider", "codex",
+        "--primary-command-json", json.dumps(primary),
+        "--fallback-command-json", json.dumps(fallback),
+        "--probe-route-readiness",
+    ]
+
+
 def _launch_preflight(policy: dict[str, Any]) -> str | None:
     """Detect unavailable launch infrastructure before charging coding work."""
     if not Path(policy["cwd"]).is_dir():
@@ -807,6 +842,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     handoff = load_diagnostic_handoff(board, directory, initial, observed_at=initial_at)
     prompt.write_text(repair_prompt(board, incident, config, report, prior_report, handoff))
     os.chmod(prompt, 0o600)
+    last_message = directory / f"last-message-{stamp}.txt"
+    inner = llm_router_repair_argv(policy, prompt, last_message)
     argv = ["systemd-run", "--user", "--wait", "--collect", "--pipe",
             f"--unit={unit}", "--property=KillMode=control-group",
             f"--property=RuntimeMaxSec={int(policy.get('timeout_seconds', 2400))}",
@@ -815,8 +852,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             "--property=MemoryMax=16G", "--property=UMask=0077",
             *(f"--setenv={key}={_repair_temporary_directory(policy)}"
               for key in ("TMPDIR", "TEMP", "TMP")),
-            *policy["argv"], "-C", policy["cwd"],
-            "--output-last-message", str(directory / f"last-message-{stamp}.txt"), "-"]
+            f"--setenv=PYTHONPATH={supervisor_pythonpath()}",
+            *inner]
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:
