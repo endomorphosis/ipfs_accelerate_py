@@ -156,6 +156,13 @@ def lock(path: Path):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def supervisor_pythonpath(existing: str = "") -> str:
+    """Keep fleet probes on this supervisor tree, not a stale sealed release."""
+    root = str(Path(__file__).resolve().parents[3])
+    prior = [part for part in str(existing or "").split(":") if part and part != root]
+    return ":".join([root, *prior])
+
+
 def command(spec: dict[str, Any], *, cwd: str, timeout: float = 60) -> dict[str, Any]:
     """Bound time and memory, including descendants holding stdout open.
 
@@ -174,6 +181,7 @@ terminated; existing owners are never selected or killed.
         raise ValueError("termination grace must be finite and between 0 and 60 seconds")
     env = os.environ.copy()
     env.update({str(k): str(v) for k, v in spec.get("env", {}).items()})
+    env["PYTHONPATH"] = supervisor_pythonpath(env.get("PYTHONPATH", ""))
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=spec.get("cwd", cwd), env=env,

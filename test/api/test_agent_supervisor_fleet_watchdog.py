@@ -16,6 +16,14 @@ from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
 from ipfs_accelerate_py.agent_supervisor.rescue import live_board_probe
 
 
+def test_supervisor_pythonpath_precedes_stale_probe_release():
+    stale = "/home/barberb/.local/lib/ipfs-taskboard-watchdog/releases/2c3572c47c2749d81b2e"
+    path = fleet.supervisor_pythonpath(stale)
+    root = str(Path(fleet.__file__).resolve().parents[3])
+    assert path.split(":")[0] == root
+    assert stale in path.split(":")
+
+
 def test_fifo_state_does_not_stall_other_board_observations(tmp_path):
     directory = tmp_path / "fifo"
     directory.mkdir()
