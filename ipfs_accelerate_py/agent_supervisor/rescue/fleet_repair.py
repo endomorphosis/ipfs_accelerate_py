@@ -254,6 +254,15 @@ def repair_route_is_stale(job: dict[str, Any]) -> bool:
     return isinstance(attempts, int) and attempts >= 1
 
 
+def repair_launch_failed_immediately(job: dict[str, Any], now: float) -> bool:
+    """A 10-second provider failure is not a six-hour coding attempt."""
+    started, finished = job.get("last_started_at"), job.get("finished_at")
+    if (type(started) not in (int, float) or type(finished) not in (int, float)
+            or job.get("status") != "queued" or job.get("returncode") in {0, None}):
+        return False
+    return 0 <= finished - started <= 60 and now >= finished + 300
+
+
 def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     incident = read_json(incident_path)
     boards = {b["id"]: b for b in config["boards"]}
@@ -629,7 +638,7 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         if hold_paths(board) or board_is_complete(config, board["id"]):
             continue
         due = float(job.get("next_attempt_at") or 0)
-        if due > now and not repair_route_is_stale(job):
+        if due > now and not repair_route_is_stale(job) and not repair_launch_failed_immediately(job, now):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -881,7 +890,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if _launch_selection(job) != selection:
             return {"status": "completion_superseded"}
         now = time.time()
-        attempts = job.get("attempts", 0) + 1
+        if repair_launch_failed_immediately(job, now):
+            attempts = 1
+        else:
+            attempts = job.get("attempts", 0) + 1
         incident = job["latest_incident"]
         prior_report = _continuation_context(job, directory)
         if prior_report.get("continuation"):

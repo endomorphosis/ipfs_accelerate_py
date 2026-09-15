@@ -70,6 +70,18 @@ def test_enqueue_retires_complete_board(tmp_path):
     assert read_json(tmp_path / "repairs/spar/job.json")["status"] == "retired_complete"
 
 
+def test_short_failed_llm_router_job_retries_after_five_minutes(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "queued", "attempts": 64, "queued_at": 1, "last_started_at": 1000,
+        "finished_at": 1010, "returncode": 1, "next_attempt_at": 9_999_999,
+        "repair_route": repair.LLM_ROUTER_ROUTE,
+    })
+    assert next_job(cfg, 1200) is None
+    selected = next_job(cfg, 1311)
+    assert selected is not None and selected[0]["id"] == "sawm"
+
+
 def test_enqueue_resets_stale_route_backoff(tmp_path):
     cfg = config(tmp_path)
     path = tmp_path / "repairs/sawm/job.json"
