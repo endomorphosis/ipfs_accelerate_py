@@ -458,6 +458,27 @@ def _nonneg_int(value: Any) -> int | None:
     return value if type(value) is int and not isinstance(value, bool) and value >= 0 else None
 
 
+def _unsettled_goal_count(authority: Mapping[str, Any]) -> int | None:
+    """Count still-open native goals. Task completion is not goal closeout."""
+    value = authority.get("unsettled_goal_count")
+    if type(value) is int and not isinstance(value, bool) and value >= 0:
+        return value
+    lifecycle = authority.get("goal_lifecycle")
+    if not isinstance(lifecycle, dict):
+        return None
+    counts = lifecycle.get("status_counts")
+    if not isinstance(counts, dict):
+        return None
+    total = 0
+    found = False
+    for key in ("active", "in_progress", "unsettled", "open"):
+        item = counts.get(key)
+        if type(item) is int and not isinstance(item, bool) and item >= 0:
+            total += item
+            found = True
+    return total if found else None
+
+
 def _readiness(authority: Mapping[str, Any], projections: list[Mapping[str, Any]]) -> dict[str, Any]:
     """Native ready-count is observational. Todos waiting on blocked peers are not independent."""
     samples = [authority, *projections]
@@ -796,6 +817,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         task_count = _object(authority.get("snapshot")).get("task_count")
         if type(task_count) is int and task_count >= 0:
             authority["task_count"] = task_count
+        unsettled = _unsettled_goal_count(authority)
+        if unsettled is not None:
+            authority["unsettled_goal_count"] = unsettled
     database_authority = _database_board_authority(native, board, owner_status, now)
     if native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
         if database_authority:
@@ -822,6 +846,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         authority = max(fresh_projections, key=lambda value: _age(value.get("heartbeat_at"), now) * -1)
         source = "fresh_daemon_database_projection_non_authoritative"
         authenticated = False
+    unsettled = _unsettled_goal_count(authority)
+    if unsettled is not None:
+        authority["unsettled_goal_count"] = unsettled
     counts = _counts(authority)
     if not counts and board_id == "aseh":
         statuses = authority.get("task_statuses") or authority.get("task_status_by_alias")
@@ -906,6 +933,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         health = "healthy"
     candidate = bool(source_integrity["valid"] and not blocked and counts and sum(counts.values()) > 0
         and authority.get("task_count") == sum(counts.values())
+        and not authority.get("unsettled_goal_count")
         and (not owner_writer_custody["configured"] or (
             owner_writer_custody.get("verified") is True and owner_writer_custody.get("held") is True))
         and all(key in COMPLETED for key in counts))

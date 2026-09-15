@@ -580,6 +580,29 @@ def test_native_complete_uses_publication_gate_with_cooldown(tmp_path):
     assert fleet.select_action(state, board, 131) == "completion_review"
 
 
+def test_unsettled_goals_are_a_wait_stall_not_llm_closeout():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "completion_candidate": False,
+        "board_id": "aseh",
+        "reason_codes": ["board_has_unsettled_goals"],
+        "details": {"native_completion_authority": False, "unsettled_goal_count": 9,
+                    "task_counts": {"completed": 40}},
+    }
+    assert fleet.classify_stall(observation) == "closeout_waiting_on_unsettled_goals"
+    assert "closeout_waiting_on_unsettled_goals" in fleet.WAIT_STALLS
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"publication": {"approved": True}, "repair": {"argv": ["llm"]},
+                "failure_grace_seconds": 0, "blocked_grace_seconds": 0}, 100
+    ) == ""
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")

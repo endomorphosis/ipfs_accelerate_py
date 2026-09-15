@@ -272,6 +272,12 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert blocked["status"] == "wait"
     assert blocked["recipe"] == "todos_waiting_on_blocked_dependencies"
+    goals = apply_supervisor_heal(board, {
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "observation": {"reason_codes": ["board_has_unsettled_goals"]},
+    })
+    assert goals["status"] == "wait"
+    assert goals["recipe"] == "native_goals_still_active"
 
 
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):

@@ -35,6 +35,7 @@ WAIT_STALLS = {
     "blocked_without_independent_work",
     "missing_independent_clause_evidence",
     "closeout_requires_native_authority",
+    "closeout_waiting_on_unsettled_goals",
     "operator_hold",
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
@@ -132,6 +133,10 @@ def classify_stall(observation: dict[str, Any]) -> str:
             if int(counts.get("todo") or 0) > 0:
                 return "independent_work_beside_blocked_peer"
         return "configured_control_plane_dirty"
+    if "board_has_unsettled_goals" in reasons:
+        # All-tasks-complete is not goal closeout. Native owner/cron still
+        # owns the remaining goals; an LLM cannot mint that admission.
+        return "closeout_waiting_on_unsettled_goals"
     if (
         observation.get("completion_candidate") is True
         and observation.get("complete") is not True
@@ -486,8 +491,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
             return ""
         return "publish" if board.get("publication") else "completion_review"
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
-    if stall == "closeout_requires_native_authority":
+    if stall in {"closeout_requires_native_authority", "closeout_waiting_on_unsettled_goals"}:
         # Observational completion_candidate is not publication authority.
+        # Active native goals are not an llm_router job.
         return ""
     if stall == "missing_independent_clause_evidence":
         # Datasets producer still lacks current-bound clause records. An LLM
