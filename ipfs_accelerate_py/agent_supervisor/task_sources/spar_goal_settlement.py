@@ -179,7 +179,37 @@ def settle_spar_goals(
                 "done",
                 "verified_complete",
             }:
-                raise ValueError("SPAR goal is completed without an admitted SPAR receipt")
+                existing = None
+                raw_body = goal.get("body_json")
+                body: dict[str, Any] = {}
+                if isinstance(raw_body, str):
+                    import json
+
+                    try:
+                        parsed = json.loads(raw_body)
+                    except json.JSONDecodeError:
+                        parsed = {}
+                    if isinstance(parsed, dict):
+                        body = parsed
+                elif isinstance(raw_body, dict):
+                    body = raw_body
+                if "body" in body and isinstance(body["body"], dict):
+                    existing = body.get("completion_receipt") or body["body"].get(
+                        "completion_receipt"
+                    )
+                else:
+                    existing = body.get("completion_receipt")
+                if (
+                    isinstance(existing, Mapping)
+                    and existing.get("schema") == RECEIPT_SCHEMA
+                    and existing.get("goal_cid") == goal_cid
+                ):
+                    produced[goal_cid] = dict(existing)
+                    continue
+                return _deferred(
+                    "goal_completed_without_admitted_spar_receipt",
+                    goal_cid=goal_cid,
+                )
             expected = int(goal["revision"])
             child_cids = [
                 edge["child_goal_cid"]
