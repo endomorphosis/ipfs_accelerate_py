@@ -128,7 +128,15 @@ def main(argv: list[str] | None = None) -> int:
     sys.argv = [str(script), *args[1:]]
     compiled = compile(script.read_text(encoding="utf-8"), str(script), "exec")
     namespace = {"__name__": "__main__", "__file__": str(script), "__package__": None}
-    exec(compiled, namespace)
+    try:
+        exec(compiled, namespace)
+    except SystemExit as exc:
+        code = exc.code
+        if code is None:
+            return 0
+        if isinstance(code, int):
+            return code
+        raise
     return 0
 
 
