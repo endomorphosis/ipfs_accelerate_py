@@ -87,7 +87,11 @@ def observe_goal_settlement(
         accepted_cid = receipt.get("accepted_root_cid") if isinstance(receipt, Mapping) else ""
         bootstrap_root = (
             accepted_root.get("admitted") is True
-            and accepted_root.get("admission_mode") == "bootstrap"
+            and (
+                accepted_root.get("admission_mode") == "bootstrap"
+                or accepted_root.get("authority")
+                == "spar_supervisor_current_bound_clause_records"
+            )
         )
         if (
             goal is None

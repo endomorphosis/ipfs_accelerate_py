@@ -116,6 +116,11 @@ def main(argv: list[str] | None = None) -> int:
         str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
         package="ipfs_accelerate_py.agent_supervisor.semantic_state",
     )
+    overlay_module(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement",
+        str(overlay_root / "ipfs_accelerate_py/agent_supervisor/task_sources/spar_goal_settlement.py"),
+        package="ipfs_accelerate_py.agent_supervisor.task_sources",
+    )
     pin_sealed_sys_path(source_root)
     script = Path(args[0])
     if not script.is_absolute():

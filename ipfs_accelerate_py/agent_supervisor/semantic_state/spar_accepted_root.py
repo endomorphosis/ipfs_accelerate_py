@@ -609,6 +609,8 @@ def admit_accepted_root(
             "authority": "spar_supervisor_current_bound_clause_records",
             "completion_authority": False,
             "semantic_acceptance_authority": True,
+            "admission_mode": extra.get("current_rollout_mode") or BOOTSTRAP_MODE,
+            "current_rollout_mode": extra.get("current_rollout_mode") or BOOTSTRAP_MODE,
             "subject_cid": subject_cid,
             "accepted_root_cid": subject_cid,
             "evidence_cids": evidence_cids,
