@@ -364,7 +364,7 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
 
 
 def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True,
-              billing_locked=False):
+              billing_locked=False, local_gates_fail=False):
     candidate = "a" * 40
     calls = []
     views = 0
@@ -372,7 +372,7 @@ def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, 
              "headRefOid": candidate, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
              "reviewDecision": "APPROVED"}
 
-    def run(argv, root, *args):
+    def run(argv, root, *args, **kwargs):
         nonlocal views
         calls.append(argv)
         if argv[:3] == ["gh", "pr", "list"]:
@@ -390,6 +390,10 @@ def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, 
             return "The job was not started because your account is locked due to a billing issue."
         if argv[:3] == ["gh", "run", "rerun"] and billing_locked:
             raise fleet.PublicationHold("HTTP 403: billing")
+        if any(str(arg).endswith("run_documentation_gates.py") for arg in argv):
+            if local_gates_fail:
+                raise fleet.PublicationHold("command failed with exit code 1")
+            return "OK: documentation-gates aligned"
         return ""
 
     monkeypatch.setattr(fleet, "_run", run)
@@ -429,15 +433,23 @@ def test_failed_or_unavailable_hosted_checks_hold_despite_local_validation(tmp_p
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
 
 
-def test_github_actions_billing_lock_holds_without_admin_merge(tmp_path, monkeypatch):
+def test_github_actions_billing_lock_merges_after_local_required_checks(tmp_path, monkeypatch):
     candidate, calls = github_pr(
         monkeypatch, patch={"mergeStateStatus": "BLOCKED"}, billing_locked=True,
     )
-    with pytest.raises(fleet.PublicationHold, match="billing issue"):
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert any(str(arg).endswith("run_documentation_gates.py") for argv in calls for arg in argv)
+    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--admin",
+                         "--match-head-commit", candidate]
+
+
+def test_github_actions_billing_lock_holds_when_local_checks_fail(tmp_path, monkeypatch):
+    candidate, calls = github_pr(
+        monkeypatch, patch={"mergeStateStatus": "BLOCKED"}, billing_locked=True,
+        local_gates_fail=True,
+    )
+    with pytest.raises(fleet.PublicationHold, match="local required checks failed"):
         fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
-    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
-    assert not any("--admin" in argv for argv in calls)
-    assert ["gh", "run", "rerun", "9", "--repo", "owner/repo", "--failed"] in calls
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
 
 

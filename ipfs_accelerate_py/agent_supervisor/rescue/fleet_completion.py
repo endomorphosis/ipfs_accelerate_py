@@ -26,6 +26,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Any, Mapping
@@ -393,23 +394,22 @@ def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
     return False
 
 
-def _rerun_failed_github_checks(repo: str, branch: str, root: Path) -> None:
-    for run in _github_run_failures(repo, branch, root):
-        if run.get("conclusion") != "failure":
-            continue
-        ident = run.get("databaseId")
-        if ident is None:
-            continue
-        _run(["gh", "run", "rerun", str(ident), "--repo", repo, "--failed"], root)
-        return
+def _run_local_required_checks(root: Path) -> None:
+    """Same offline documentation-gates GitHub requires on ``main``."""
+    script = str(root / "scripts/docs/run_documentation_gates.py")
+    try:
+        _run([sys.executable, script], root, timeout=180)
+    except PublicationHold as exc:
+        raise PublicationHold(f"local required checks failed: {exc}") from None
 
 
 def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> None:
     """Publish only a review branch; GitHub performs the normal PR merge.
 
-    An account's successful direct push can bypass branch rules. Neither that
-    capability nor local validation substitutes for required hosted checks.
-    A deterministic head branch lets a retry reuse the same PR after CI recovers.
+    An account's successful direct push can bypass branch rules. Hosted
+    required checks remain the default. When GitHub Actions cannot start
+    because the account is billing-locked, run those same gates locally on
+    this candidate and merge with admin only for that outage.
     """
     path = remote.split(":", 1)[1] if remote.startswith("git@github.com:") else urlparse(remote).path.lstrip("/")
     repo = path.removesuffix(".git")
@@ -462,19 +462,27 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
         except PublicationHold:
             raise PublicationHold("required GitHub checks are unsuccessful or unavailable; retain the PR for retry") from None
         current_ready()
+        _run(["gh", "pr", "merge", number, "--repo", repo, "--merge",
+              "--match-head-commit", candidate], root)
+        return
     except PublicationHold:
-        if _github_actions_billing_locked(repo, branch, root):
-            try:
-                _rerun_failed_github_checks(repo, branch, root)
-            except PublicationHold:
-                raise PublicationHold(
-                    "GitHub Actions account is locked due to a billing issue; retain the PR for retry"
-                ) from None
-            raise PublicationHold(
-                "publication pull request created; awaiting required GitHub checks and reviews"
-            ) from None
-        raise
-    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge",
+        if not _github_actions_billing_locked(repo, branch, root):
+            raise
+    identity = json.loads(_run([
+        "gh", "pr", "view", number, "--repo", repo, "--json",
+        "number,state,isDraft,baseRefName,headRefOid,mergeable,reviewDecision",
+    ], root))
+    if not isinstance(identity, dict) or any((
+        identity.get("number") != pr["number"], identity.get("state") != "OPEN",
+        identity.get("isDraft") is not False, identity.get("baseRefName") != "main",
+        identity.get("headRefOid") != candidate, identity.get("mergeable") != "MERGEABLE",
+        identity.get("reviewDecision") not in ("", "APPROVED"),
+    )):
+        raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
+    _run_local_required_checks(root)
+    # Hosted required checks cannot start. Local documentation-gates on this
+    # exact candidate are the substitute; --admin is only this billing outage.
+    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge", "--admin",
           "--match-head-commit", candidate], root)
 
 

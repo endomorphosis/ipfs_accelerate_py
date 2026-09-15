@@ -598,6 +598,9 @@ def test_classify_publication_hold_encodes_publisher_logic_stalls():
         "reason": "GitHub Actions account is locked due to a billing issue; retain the PR for retry",
     }) == "publication_github_actions_billing_locked"
     assert fleet.classify_publication_hold({
+        "reason": "local required checks failed: command failed with exit code 1",
+    }) == "publication_local_required_checks_failed"
+    assert fleet.classify_publication_hold({
         "reason": "command timed out after 300s",
     }) == "publication_command_timeout"
     assert fleet.classify_publication_hold({
@@ -642,7 +645,7 @@ def test_integration_divergence_hold_retries_without_llm(tmp_path, monkeypatch):
 def test_github_billing_lock_retries_publish_without_llm(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
 
-    board = _board(tmp_path, publication={"approved": True}, max_backoff_seconds=3600)
+    board = _board(tmp_path, publication={"approved": True})
 
     def publisher(manifest, state_dir):
         return {
@@ -656,7 +659,7 @@ def test_github_billing_lock_retries_publish_without_llm(tmp_path, monkeypatch):
     assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
     assert state["publication_failure"]["stall_class"] == "publication_github_actions_billing_locked"
     assert state["last_action_result"]["repair_result"]["status"] == "autoheal_retry"
-    assert state["next_action_at"] == 3700
+    assert state["next_action_at"] == 130
 
 
 def test_nested_leaf_publication_hold_retries_without_llm(tmp_path, monkeypatch):
