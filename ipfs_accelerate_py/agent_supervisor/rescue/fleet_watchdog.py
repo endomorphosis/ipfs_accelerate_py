@@ -39,6 +39,11 @@ PUBLICATION_AUTOHEAL_STALLS = {
     "publication_lock_busy",
     "publication_command_timeout",
 }
+# Integration of accepted source onto a moved GitHub main failed sealed
+# tests. Retrying the same merge cannot mint the missing APIs.
+PUBLICATION_STOP_STALLS = {
+    "publication_integration_diverged_from_accepted_source",
+}
 
 
 def classify_stall(observation: dict[str, Any]) -> str:
@@ -103,6 +108,12 @@ def classify_publication_hold(receipt: dict[str, Any]) -> str:
         return "publication_lock_busy"
     if "timed out after" in reason:
         return "publication_command_timeout"
+    if "publication validation failed" in reason and any(
+            token in reason for token in ("ImportError", "AttributeError", "AssertionError")
+    ):
+        return "publication_integration_diverged_from_accepted_source"
+    if "publication validation failed" in reason:
+        return "publication_validation_failed"
     return "publication_held"
 
 
@@ -374,6 +385,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if now < state.get("next_action_at", 0):
         return ""
     if health == "complete" or state["observation"].get("complete") is True:
+        stall = (state.get("publication_failure") or {}).get("stall_class")
+        if stall in PUBLICATION_STOP_STALLS:
+            return ""
         return "publish" if board.get("publication") else "completion_review"
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
     if stall == "closeout_requires_native_authority":
@@ -502,8 +516,9 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "repositories": action_result.get("repositories", []),
                 }
                 autoheal = stall in PUBLICATION_AUTOHEAL_STALLS
+                stop = stall in PUBLICATION_STOP_STALLS
                 incident.update(
-                    recovery_action="publish" if autoheal else "repair",
+                    recovery_action="publish" if autoheal else ("none" if stop else "repair"),
                     publication_failure=failure,
                 )
                 incident["observation"] = dict(
@@ -517,9 +532,10 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 # Persist the diagnosis before enqueueing, so a watchdog crash
                 # retains both the publication failure and the existing backoff.
                 write_json(path, state)
-                if autoheal:
+                if autoheal or stop:
                     action_result["repair_result"] = {
-                        "status": "autoheal_retry", "stall_class": stall,
+                        "status": "autoheal_retry" if autoheal else "supervisor_heal_required",
+                        "stall_class": stall,
                         "incident": str(incident_path),
                     }
                 elif board.get("repair"):

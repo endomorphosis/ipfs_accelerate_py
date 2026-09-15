@@ -160,6 +160,23 @@ def test_failed_validation_never_pushes(tmp_path, monkeypatch):
     assert git(remote, "rev-parse", "main") == baseline
 
 
+def test_validation_failure_includes_safe_stderr(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    baseline = git(remote, "rev-parse", "main")
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    config["repositories"][0]["validation"] = [{"argv": [
+        sys.executable, "-c",
+        "import sys; sys.stderr.write('ImportError: cannot import name X\\n'); raise SystemExit(1)",
+    ]}]
+    local_publication(monkeypatch)
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "held"
+    assert "publication validation failed" in result["reason"]
+    assert "ImportError: cannot import name X" in result["reason"]
+    assert git(remote, "rev-parse", "main") == baseline
+
+
 def test_nested_repository_published_before_parent_gitlink(tmp_path, monkeypatch):
     child, child_remote = repository(tmp_path, "child")
     child_source = commit(child, "child feature")

@@ -597,7 +597,43 @@ def test_classify_publication_hold_encodes_publisher_logic_stalls():
     assert fleet.classify_publication_hold({
         "reason": "command timed out after 300s",
     }) == "publication_command_timeout"
+    assert fleet.classify_publication_hold({
+        "reason": "publication validation failed with exit code 1: ImportError: cannot import name 'open_quack_state_owner_connection'",
+    }) == "publication_integration_diverged_from_accepted_source"
     assert fleet.classify_publication_hold({"reason": "repo: merge conflict"}) == "publication_held"
+
+
+def test_integration_divergence_does_not_retry_publish_or_llm():
+    observation = _observation(health="complete", complete=True)
+    state = {
+        "health": "complete", "observation": observation,
+        "publication_failure": {
+            "stall_class": "publication_integration_diverged_from_accepted_source",
+        },
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"publication": {"approved": True}, "repair": {"argv": ["llm"]}}, 100
+    ) == ""
+
+
+def test_integration_divergence_hold_skips_llm(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
+
+    board = _board(tmp_path, publication={"approved": True})
+
+    def publisher(manifest, state_dir):
+        return {
+            "status": "held",
+            "reason": "publication validation failed with exit code 1: AttributeError: module has no attribute 'open_quack_state_owner_connection'",
+        }
+
+    monkeypatch.setattr(fleet_completion, "publish_completed_board", publisher)
+    runner = Runner(_observation(health="complete", complete=True))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+    assert state["publication_failure"]["stall_class"] == "publication_integration_diverged_from_accepted_source"
+    assert state["last_action_result"]["repair_result"]["status"] == "supervisor_heal_required"
 
 
 def test_nested_leaf_publication_hold_retries_without_llm(tmp_path, monkeypatch):

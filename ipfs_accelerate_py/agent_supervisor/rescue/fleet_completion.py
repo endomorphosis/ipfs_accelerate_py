@@ -40,6 +40,15 @@ class PublicationHold(RuntimeError):
     """Publication requires additional accepted evidence or a conflict repair."""
 
 
+def _safe_failure_detail(stderr: str) -> str:
+    """Last stderr line for classification. Never copy credentials."""
+    line = (stderr or "").strip().splitlines()[-1] if stderr else ""
+    lowered = line.lower()
+    if any(token in lowered for token in ("password", "token", "authorization", "credential", "secret")):
+        return ""
+    return line[:300]
+
+
 def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
     if not argv or not all(isinstance(arg, str) for arg in argv):
         raise PublicationHold("command argv must be a nonempty string list")
@@ -50,7 +59,7 @@ def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
         try:
-            stdout, _stderr = process.communicate(timeout=timeout)
+            stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             # Keep the leader unreaped until the whole group has been killed:
             # a child can ignore TERM and redirect both output streams, letting
@@ -69,13 +78,24 @@ def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
     except OSError as exc:
         raise PublicationHold(f"command could not start: {type(exc).__name__}") from None
     if process.returncode:
-        # Do not copy output or argv containing credentials into fleet receipts.
-        raise PublicationHold(f"command failed with exit code {process.returncode}")
+        detail = _safe_failure_detail(stderr)
+        suffix = f": {detail}" if detail else ""
+        raise PublicationHold(f"command failed with exit code {process.returncode}{suffix}")
     return stdout.strip()
 
 
+def _relabel_hold(exc: PublicationHold, kind: str) -> PublicationHold:
+    message = str(exc)
+    if message.startswith("command "):
+        return PublicationHold(kind + " " + message[len("command "):])
+    return exc
+
+
 def _git(root: Path, *args: str, timeout: float = 300) -> str:
-    return _run(["git", *args], root, timeout)
+    try:
+        return _run(["git", *args], root, timeout)
+    except PublicationHold as exc:
+        raise _relabel_hold(exc, "git") from None
 
 
 def _github_origin(root: Path) -> str:
@@ -119,7 +139,10 @@ def _command(spec: Mapping[str, Any], root: Path) -> str:
     cwd = (root / spec.get("cwd", ".")).resolve()
     if not cwd.is_relative_to(root.resolve()):
         raise PublicationHold("validation cwd must remain inside the isolated repository")
-    return _run(spec.get("argv", []), cwd, float(spec.get("timeout_seconds", 600)))
+    try:
+        return _run(spec.get("argv", []), cwd, float(spec.get("timeout_seconds", 600)))
+    except PublicationHold as exc:
+        raise _relabel_hold(exc, "publication validation") from None
 
 
 def _ordered_repositories(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
