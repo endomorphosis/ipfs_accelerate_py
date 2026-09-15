@@ -74,6 +74,22 @@ def test_bootstrap_native_authority_cannot_publish(tmp_path, monkeypatch):
     assert "sealed_spar_goal_and_current_source_root_acceptance_adapter_required" not in result["blockers"]
 
 
+def test_bootstrap_mode_with_native_authority_can_publish(tmp_path, monkeypatch):
+    _layout(tmp_path)
+    monkeypatch.setattr(gate, "_git_head", lambda _repo: ("a" * 40, False))
+    monkeypatch.setattr(gate, "_merge_queue_paths", lambda _runtime: [])
+    observation = _observation(native_authority=True)
+    datasets = observation["closeout_snapshot"]["closeout_facts"]["completion_profile"][
+        "datasets_accepted_root"
+    ]
+    datasets["admission_mode"] = "bootstrap"
+    datasets["current_rollout_mode"] = "bootstrap"
+    result = gate.evaluate(tmp_path, observation=observation)
+    assert result["blockers"] == []
+    assert result["authoritative"] is True
+    assert result["complete"] is True
+
+
 def test_native_authority_with_settled_population_can_publish(tmp_path, monkeypatch):
     _layout(tmp_path)
     monkeypatch.setattr(gate, "_git_head", lambda _repo: ("a" * 40, False))

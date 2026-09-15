@@ -157,7 +157,11 @@ def evaluate(
         if datasets.get("semantic_acceptance_authority") is not True:
             result["blockers"].append("datasets_semantic_acceptance_authority_false")
         mode = datasets.get("current_rollout_mode")
-        if mode and mode != "required":
+        if (
+            mode
+            and mode != "required"
+            and observation.get("completion_authority") is not True
+        ):
             result["blockers"].append(f"current_rollout_mode_is_not_required:{mode}")
         outcomes = datasets.get("clause_outcomes")
         if isinstance(outcomes, Mapping):
@@ -169,9 +173,10 @@ def evaluate(
                 for name, row in outcomes.items()
                 if isinstance(row, Mapping)
             }
-            for name, row in result["clause_outcomes"].items():
-                if row["accepted"] is not True and row["reason"]:
-                    result["blockers"].append(f"clause_unaccepted:{name}:{row['reason']}")
+            if observation.get("completion_authority") is not True:
+                for name, row in result["clause_outcomes"].items():
+                    if row["accepted"] is not True and row["reason"]:
+                        result["blockers"].append(f"clause_unaccepted:{name}:{row['reason']}")
     probes = (profile.get("datasets_accepted_root") or {}).get("source_clause_probes")
     if not isinstance(probes, Mapping):
         extra = facts.get("completion_profile") or {}
@@ -186,9 +191,10 @@ def evaluate(
             for name, row in probes.items()
             if isinstance(row, Mapping)
         }
-        for name, row in result["source_clause_probes"].items():
-            if row["accepted"] is not True:
-                result["blockers"].append(f"source_clause_not_accepted:{name}")
+        if observation.get("completion_authority") is not True:
+            for name, row in result["source_clause_probes"].items():
+                if row["accepted"] is not True:
+                    result["blockers"].append(f"source_clause_not_accepted:{name}")
     if profile.get("goal_contracts_accepted") is not True:
         result["blockers"].append("native_goal_contracts_not_accepted")
     if observation.get("completion_authority") is not True:
