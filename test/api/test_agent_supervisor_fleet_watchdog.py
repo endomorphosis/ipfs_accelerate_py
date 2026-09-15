@@ -624,6 +624,41 @@ def test_disabled_extra_gate_closeout_selects_provisional_heal():
     ) == ""
 
 
+def test_owner_cas_failed_heal_retries_on_cooldown_not_max_backoff(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0,
+                   cooldown_seconds=180, max_backoff_seconds=3600)
+    observation = {
+        "health": "degraded", "complete": False, "board_id": board["id"],
+        "busy": False, "progress_token": "g",
+        "reason_codes": ["board_has_unsettled_goals", "goal_closeout_disabled_on_launch"],
+        "details": {"unsettled_goal_count": 9, "task_counts": {"completed": 40}},
+    }
+    monkeypatch.setattr(
+        fleet_heals, "apply_supervisor_heal",
+        lambda *a, **k: {
+            "status": "wait", "recipe": "native_goals_still_active",
+            "completion_authority": False,
+            "reason": "owner_cas_failed:ImportError", "changed_goal_ids": [],
+        },
+    )
+    runner = Runner(observation)
+    root = tmp_path / "watch"
+    prior = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "incident_since": 0, "next_action_at": 0, "attempts": 12,
+    }
+    fleet.write_json(root / board["id"] / "state.json", prior)
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert state["last_action"] == "supervisor_heal"
+    assert state["last_action_result"]["reason"] == "owner_cas_failed:ImportError"
+    assert state["next_action_at"] == 280
+    cooling = fleet.tick_board(board, root, apply=True, runner=runner, now=101)
+    assert cooling["planned_action"] == ""
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")
