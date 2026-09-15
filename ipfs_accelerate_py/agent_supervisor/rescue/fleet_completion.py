@@ -180,14 +180,40 @@ def _ordered_repositories(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
     return ordered
 
 
+def _parent_gitlink_oid(repositories: list[dict[str, Any]], repo_id: str) -> str | None:
+    """Nested integration head is the parent gitlink, not a stale fleet.json pin."""
+    for parent in repositories:
+        for dep in parent.get("dependencies") or []:
+            if not isinstance(dep, dict) or dep.get("repository") != repo_id:
+                continue
+            path = str(dep.get("path") or "")
+            parent_root = Path(parent["root"]).resolve()
+            parent_head = _git(parent_root, "rev-parse", "HEAD")
+            links = _gitlinks(parent_root, parent_head)
+            if path in links:
+                return links[path]
+    return None
+
+
 def _source_heads(repositories: list[dict[str, Any]]) -> dict[str, str]:
     heads = {}
     for repo in repositories:
         root = Path(repo["root"]).resolve()
         if _git(root, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none"):
             raise PublicationHold(f"{repo['id']}: accepted source checkout is dirty")
-        head = _git(root, "rev-parse", "--verify", repo["source_ref"] + "^{commit}")
-        if not _OID.fullmatch(head) or _git(root, "rev-parse", "HEAD") != head:
+        head = _git(root, "rev-parse", "HEAD")
+        if not _OID.fullmatch(head):
+            raise PublicationHold(f"{repo['id']}: source_ref must match its clean integration checkout HEAD")
+        gitlink = _parent_gitlink_oid(repositories, repo["id"])
+        if gitlink:
+            if gitlink != head:
+                raise PublicationHold(
+                    f"{repo['id']}: nested HEAD must match the parent gitlink"
+                )
+            heads[repo["id"]] = head
+            continue
+        configured = _git(root, "rev-parse", "--verify", str(repo["source_ref"]) + "^{commit}")
+        if configured != head:
             raise PublicationHold(f"{repo['id']}: source_ref must match its clean integration checkout HEAD")
         heads[repo["id"]] = head
     return heads

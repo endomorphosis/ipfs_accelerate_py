@@ -182,6 +182,27 @@ def test_nested_repository_published_before_parent_gitlink(tmp_path, monkeypatch
     assert git(parent / "nested", "rev-parse", "HEAD") == child_source
 
 
+def test_nested_stale_source_ref_uses_parent_gitlink(tmp_path, monkeypatch):
+    child, child_remote = repository(tmp_path, "child")
+    stale = git(child, "rev-parse", "HEAD")
+    child_source = commit(child, "child feature")
+    parent, parent_remote = repository(tmp_path, "parent")
+    git(parent, "submodule", "add", str(child_remote), "nested")
+    git(parent / "nested", "fetch", str(child), "accepted")
+    git(parent / "nested", "checkout", child_source)
+    git(parent, "add", ".gitmodules", "nested")
+    git(parent, "commit", "-m", "accepted nested feature")
+    config, _ = manifest(tmp_path, {"parent": parent, "child": child})
+    config["repositories"][0]["dependencies"] = [{"repository": "child", "path": "nested"}]
+    child_repo = next(repo for repo in config["repositories"] if repo["id"] == "child")
+    child_repo["source_ref"] = stale
+    local_publication(monkeypatch)
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "published", result
+    assert git(child, "rev-parse", "HEAD") == child_source
+    assert stale != child_source
+
+
 def test_undeclared_changed_gitlink_holds(tmp_path, monkeypatch):
     child, child_remote = repository(tmp_path, "child")
     parent, parent_remote = repository(tmp_path, "parent")
