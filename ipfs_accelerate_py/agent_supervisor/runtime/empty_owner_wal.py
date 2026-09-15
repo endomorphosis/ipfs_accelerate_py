@@ -43,6 +43,19 @@ def _fail(reason: str) -> None:
     raise EmptyOwnerWalError("empty owner WAL preservation: " + reason)
 
 
+def _checkpoint_leftover_wal(database: Path) -> None:
+    """CHECKPOINT a leftover reboot WAL. Never unlinks the WAL file."""
+    import duckdb
+    try:
+        connection = duckdb.connect(str(database))
+        try:
+            connection.execute("CHECKPOINT")
+        finally:
+            connection.close()
+    except Exception as exc:  # noqa: BLE001 - leftover WAL stays a blocker
+        _fail("leftover WAL checkpoint failed: " + type(exc).__name__)
+
+
 def _stat(info: os.stat_result) -> dict[str, int]:
     return {"device": info.st_dev, "inode": info.st_ino, "mode": info.st_mode,
             "uid": info.st_uid, "nlink": info.st_nlink, "size": info.st_size,
@@ -287,6 +300,10 @@ def _preserve(*, directory_fd: int, directory_path: Path, database_name: str,
         native_guard()
 
     gate()
+    leftover = _named(directory_fd, wal_name)
+    if leftover is not None and leftover.st_size > 0:
+        _checkpoint_leftover_wal(directory_path / database_name)
+        gate()
     if _named(directory_fd, wal_name) is None and _named(directory_fd, journal_name) is None:
         return {"preserved": False, "reason": "wal_absent", "completion_authority": False}
     with ExitStack() as stack:
