@@ -9,7 +9,6 @@ amending the sealed git HEAD.
 from __future__ import annotations
 
 import os
-import runpy
 import sys
 from pathlib import Path
 
@@ -91,9 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
         package="ipfs_accelerate_py.agent_supervisor.semantic_state",
     )
-    script = args[0]
-    sys.argv = args
-    runpy.run_path(script, run_name="__main__")
+    script = Path(args[0])
+    if not script.is_absolute():
+        script = Path(source_root) / script
+    sys.argv = [str(script), *args[1:]]
+    compiled = compile(script.read_text(encoding="utf-8"), str(script), "exec")
+    namespace = {"__name__": "__main__", "__file__": str(script), "__package__": None}
+    exec(compiled, namespace)
     return 0
 
 
