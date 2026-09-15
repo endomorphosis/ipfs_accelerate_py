@@ -213,7 +213,7 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 WorkingDirectory={unit_directory(str(release))}
-Environment={unit_quote('PYTHONPATH=' + str(release))}
+Environment={unit_quote('PYTHONPATH=' + str(source.resolve()) + ':' + str(release))}
 Environment=PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ExecStart={' '.join(unit_quote(arg) for arg in argv)}
 Restart=always
