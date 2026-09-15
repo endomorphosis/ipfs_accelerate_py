@@ -39,6 +39,7 @@ WAIT_STALLS = {
     "operator_hold",
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
+    "native_status_unavailable_with_live_workers",
     "complete",
 }
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
@@ -175,6 +176,10 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "in_progress_awaiting_effect"
     if any("process_uninterruptible" in reason for reason in reasons):
         return "kernel_uninterruptible_wait"
+    if "native_status_nonzero" in reasons and _live_daemons(details):
+        # A nonzero native status with live lanes is not a coding stall.
+        # Task counts may be missing for one sample; workers still own the board.
+        return "native_status_unavailable_with_live_workers"
     if "no_task_progress" in reasons or health == "stalled":
         return "stalled_no_progress"
     if "probe_failed" in reasons:

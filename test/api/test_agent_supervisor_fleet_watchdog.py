@@ -967,6 +967,28 @@ def test_missing_checkout_under_deletion_hold_is_not_rematerialized(tmp_path):
     assert state["planned_action"] == ""
 
 
+def test_nonzero_native_status_with_live_lanes_is_not_llm_repair():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": ["native_status_nonzero"],
+        "details": {
+            "task_counts": {},
+            "lanes": [{"lane": 0, "daemon": {"pid": 1}, "status": "running"}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "native_status_unavailable_with_live_workers"
+    assert "native_status_unavailable_with_live_workers" in fleet.WAIT_STALLS
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "native_status_unavailable_with_live_workers",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
+
+
 def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
     observation = {
         "health": "degraded",

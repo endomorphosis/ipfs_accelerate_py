@@ -92,6 +92,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "closeout_waiting_on_unsettled_goals":
         return {"status": "wait", "recipe": "native_goals_still_active",
                 "reason": "all-tasks-complete is not goal closeout; native owner still has active goals"}
+    if stall == "native_status_unavailable_with_live_workers":
+        return {"status": "wait", "recipe": "native_status_retry_with_live_workers",
+                "reason": "nonzero native status is not a coding stall while lanes are live"}
     if stall == "in_progress_awaiting_effect":
         return {"status": "wait", "recipe": "in_progress_awaiting_effect",
                 "reason": "in-progress tasks are native work, not a coding stall"}
