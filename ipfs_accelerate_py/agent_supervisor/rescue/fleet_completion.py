@@ -449,7 +449,10 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                     _git(integration, "commit", "-m", f"Complete {manifest['board_id']}: integrate accepted {ident} work")
                 paths = sorted(set(dependencies) | set(repo.get("initialize_submodules", [])))
                 if paths:
-                    _git(integration, "submodule", "update", "--init", "--recursive", "--", *paths)
+                    # Initialize declared fleet gitlinks only. Nested vendor
+                    # pins travel with the accepted source tree and must not
+                    # block publication on a recursive clone.
+                    _git(integration, "submodule", "update", "--init", "--", *paths, timeout=1800)
                 candidate = _git(integration, "rev-parse", "HEAD")
                 for command in repo["validation"]:
                     _command(command, integration)

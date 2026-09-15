@@ -37,6 +37,7 @@ PUBLICATION_AUTOHEAL_STALLS = {
     "bootstrap_mode_after_native_authority",
     "publication_awaiting_github_review",
     "publication_lock_busy",
+    "publication_command_timeout",
 }
 
 
@@ -100,6 +101,8 @@ def classify_publication_hold(receipt: dict[str, Any]) -> str:
         return "publication_awaiting_github_review"
     if "another publisher holds this board's lock" in reason:
         return "publication_lock_busy"
+    if "timed out after" in reason:
+        return "publication_command_timeout"
     return "publication_held"
 
 

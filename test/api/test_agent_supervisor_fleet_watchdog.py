@@ -594,6 +594,9 @@ def test_classify_publication_hold_encodes_publisher_logic_stalls():
     assert fleet.classify_publication_hold({
         "reason": "another publisher holds this board's lock",
     }) == "publication_lock_busy"
+    assert fleet.classify_publication_hold({
+        "reason": "command timed out after 300s",
+    }) == "publication_command_timeout"
     assert fleet.classify_publication_hold({"reason": "repo: merge conflict"}) == "publication_held"
 
 
