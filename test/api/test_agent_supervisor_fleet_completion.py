@@ -177,6 +177,26 @@ def test_validation_failure_includes_safe_stderr(tmp_path, monkeypatch):
     assert git(remote, "rev-parse", "main") == baseline
 
 
+def test_source_identity_validation_publishes_diverged_integration(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    git(root, "switch", "main")
+    commit(root, "main only", "main_only.txt")
+    git(root, "push", "origin", "HEAD:main")
+    git(root, "switch", "accepted")
+    commit(root, "source only", "source_only.txt")
+    config, _ = manifest(tmp_path, {"repo": root})
+    config["repositories"][0]["validation"] = [{"argv": [
+        sys.executable, "-c",
+        "from pathlib import Path; assert Path('source_only.txt').read_text() == 'source only'; "
+        "assert not Path('main_only.txt').exists()",
+    ]}]
+    local_publication(monkeypatch)
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "published", result
+    assert result["repositories"][0].get("validation_authority") == "accepted_source"
+    assert git(remote, "show", "main:source_only.txt") == "source only"
+
+
 def test_nested_repository_published_before_parent_gitlink(tmp_path, monkeypatch):
     child, child_remote = repository(tmp_path, "child")
     child_source = commit(child, "child feature")

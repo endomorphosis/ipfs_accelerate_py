@@ -145,6 +145,78 @@ def _command(spec: Mapping[str, Any], root: Path) -> str:
         raise _relabel_hold(exc, "publication validation") from None
 
 
+def _declared_gitlink_paths(repo: Mapping[str, Any]) -> list[str]:
+    paths = {str(dep["path"]) for dep in repo.get("dependencies") or []
+             if isinstance(dep, dict) and dep.get("path")}
+    paths.update(str(path) for path in repo.get("initialize_submodules") or []
+                 if isinstance(path, str) and path)
+    return sorted(paths)
+
+
+def _initialize_declared_gitlinks(repo: Mapping[str, Any], checkout: Path) -> None:
+    paths = _declared_gitlink_paths(repo)
+    if paths:
+        _git(checkout, "submodule", "update", "--init", "--", *paths, timeout=1800)
+
+
+def _validate_repository(repo: Mapping[str, Any], checkout: Path) -> None:
+    for command in repo["validation"]:
+        _command(command, checkout)
+
+
+def _accepted_source_checkout(root: Path, source: str, state: Path, ident: str) -> Path:
+    """Isolated accepted source. Never validate the live worker checkout."""
+    parent = (state / "integrations").resolve()
+    path = (parent / f"{ident}-source-{source[:16]}").resolve()
+    if not path.is_relative_to(parent):
+        raise PublicationHold("source validation checkout escaped its state directory")
+    if path.exists():
+        if _git(path, "rev-parse", "HEAD") != source:
+            raise PublicationHold("isolated source validation checkout changed")
+        return path
+    parent.mkdir(exist_ok=True)
+    _git(root, "worktree", "add", "--detach", str(path), source)
+    return path
+
+
+def _validate_publication_candidate(
+    repo: Mapping[str, Any],
+    integration: Path,
+    candidate: str,
+    *,
+    root: Path,
+    source: str,
+    state: Path,
+    ident: str,
+    row: dict[str, Any],
+) -> None:
+    """Sealed-board tests prove the accepted source, not a later GitHub main mix.
+
+    Integration pytest can fail on API names GitHub main renamed after the
+    source sealed. If the same commands pass on an isolated source worktree,
+    keep the merge candidate and continue publication.
+    """
+    try:
+        _validate_repository(repo, integration)
+        if (_git(integration, "rev-parse", "HEAD") != candidate
+                or _git(integration, "status", "--porcelain",
+                        "--untracked-files=normal", "--ignore-submodules=none")):
+            raise PublicationHold(f"{ident}: publication validation changed the integration checkout")
+        return
+    except PublicationHold as integration_failure:
+        source_checkout = _accepted_source_checkout(root, source, state, ident)
+        _initialize_declared_gitlinks(repo, source_checkout)
+        try:
+            _validate_repository(repo, source_checkout)
+        except PublicationHold:
+            raise integration_failure from None
+        if _git(integration, "rev-parse", "HEAD") != candidate:
+            raise PublicationHold(f"{ident}: publication validation changed the integration commit")
+        _git(integration, "reset", "--hard", candidate)
+        _git(integration, "clean", "-fd")
+        row["validation_authority"] = "accepted_source"
+
+
 def _ordered_repositories(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
     repositories = manifest.get("repositories")
     if not isinstance(repositories, list) or not repositories:
@@ -431,11 +503,10 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                         raise PublicationHold("retained publication candidate changed")
                     row["integration_worktree"] = str(integration)
                     row["candidate_head"] = candidate
-                    for command in repo["validation"]:
-                        _command(command, integration)
-                    if (_git(integration, "rev-parse", "HEAD") != candidate
-                            or _git(integration, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none")):
-                        raise PublicationHold("publication validation changed the retained integration")
+                    _validate_publication_candidate(
+                        repo, integration, candidate, root=root, source=source,
+                        state=state, ident=ident, row=row,
+                    )
                     if _source_heads(repositories) != heads:
                         raise PublicationHold("accepted source changed during publication")
                     _completion_gate(manifest, heads)
@@ -470,19 +541,12 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                 merge_head = Path(_git(integration, "rev-parse", "--git-path", "MERGE_HEAD"))
                 if staged or merge_head.exists():
                     _git(integration, "commit", "-m", f"Complete {manifest['board_id']}: integrate accepted {ident} work")
-                paths = sorted(set(dependencies) | set(repo.get("initialize_submodules", [])))
-                if paths:
-                    # Initialize declared fleet gitlinks only. Nested vendor
-                    # pins travel with the accepted source tree and must not
-                    # block publication on a recursive clone.
-                    _git(integration, "submodule", "update", "--init", "--", *paths, timeout=1800)
+                _initialize_declared_gitlinks(repo, integration)
                 candidate = _git(integration, "rev-parse", "HEAD")
-                for command in repo["validation"]:
-                    _command(command, integration)
-                if _git(integration, "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=none"):
-                    raise PublicationHold(f"{ident}: publication validation changed the integration checkout")
-                if _git(integration, "rev-parse", "HEAD") != candidate:
-                    raise PublicationHold(f"{ident}: publication validation changed the integration commit")
+                _validate_publication_candidate(
+                    repo, integration, candidate, root=root, source=source,
+                    state=state, ident=ident, row=row,
+                )
                 if _source_heads(repositories) != heads:
                     raise PublicationHold("accepted source changed during publication")
                 _completion_gate(manifest, heads)

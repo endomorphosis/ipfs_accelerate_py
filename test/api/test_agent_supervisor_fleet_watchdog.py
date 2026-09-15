@@ -603,7 +603,7 @@ def test_classify_publication_hold_encodes_publisher_logic_stalls():
     assert fleet.classify_publication_hold({"reason": "repo: merge conflict"}) == "publication_held"
 
 
-def test_integration_divergence_does_not_retry_publish_or_llm():
+def test_integration_divergence_retries_publish_without_llm():
     observation = _observation(health="complete", complete=True)
     state = {
         "health": "complete", "observation": observation,
@@ -614,10 +614,10 @@ def test_integration_divergence_does_not_retry_publish_or_llm():
     }
     assert fleet.select_action(
         state, {"publication": {"approved": True}, "repair": {"argv": ["llm"]}}, 100
-    ) == ""
+    ) == "publish"
 
 
-def test_integration_divergence_hold_skips_llm(tmp_path, monkeypatch):
+def test_integration_divergence_hold_retries_without_llm(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
 
     board = _board(tmp_path, publication={"approved": True})
@@ -633,7 +633,7 @@ def test_integration_divergence_hold_skips_llm(tmp_path, monkeypatch):
     state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
     assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
     assert state["publication_failure"]["stall_class"] == "publication_integration_diverged_from_accepted_source"
-    assert state["last_action_result"]["repair_result"]["status"] == "supervisor_heal_required"
+    assert state["last_action_result"]["repair_result"]["status"] == "autoheal_retry"
 
 
 def test_nested_leaf_publication_hold_retries_without_llm(tmp_path, monkeypatch):

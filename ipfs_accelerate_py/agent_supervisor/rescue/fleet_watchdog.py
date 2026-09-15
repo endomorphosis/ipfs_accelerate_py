@@ -38,12 +38,10 @@ PUBLICATION_AUTOHEAL_STALLS = {
     "publication_awaiting_github_review",
     "publication_lock_busy",
     "publication_command_timeout",
-}
-# Integration of accepted source onto a moved GitHub main failed sealed
-# tests. Retrying the same merge cannot mint the missing APIs.
-PUBLICATION_STOP_STALLS = {
     "publication_integration_diverged_from_accepted_source",
 }
+# Reserved for holds that must not retry publish or enqueue LLM.
+PUBLICATION_STOP_STALLS = set()
 
 
 def classify_stall(observation: dict[str, Any]) -> str:
