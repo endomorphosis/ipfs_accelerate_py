@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -30,6 +31,32 @@ class _OverlayPath(list):
         if resolved == self._source_root and index == 0:
             return super().insert(1, path)
         return super().insert(index, path)
+
+
+def retain_after_supervise_drain(
+    source_root: str,
+    argv: list[str],
+    code: int,
+    *,
+    wait=None,
+) -> int:
+    """Keep a sealed SPAR owner when supervise drain-exits 0.
+
+    Native SPAR calls retain_owner_for_closeout after lane drain. Overlayed
+    supervise can still return 0; systemd then treats success as a stop unless
+    this launcher holds until OPERATOR_STOP.
+    """
+    if code != 0 or "supervise" not in argv:
+        return code
+    stop = (
+        Path(source_root)
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1"
+        / "OPERATOR_STOP"
+    )
+    sleeper = time.sleep if wait is None else wait
+    while not stop.exists() and not stop.is_symlink():
+        sleeper(10)
+    return 0
 
 
 def pin_sealed_sys_path(source_root: str) -> None:
@@ -133,11 +160,11 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         code = exc.code
         if code is None:
-            return 0
-        if isinstance(code, int):
-            return code
-        raise
-    return 0
+            code = 0
+        elif not isinstance(code, int):
+            raise
+        return retain_after_supervise_drain(source_root, args, code)
+    return retain_after_supervise_drain(source_root, args, 0)
 
 
 if __name__ == "__main__":
