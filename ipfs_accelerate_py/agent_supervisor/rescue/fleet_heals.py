@@ -565,7 +565,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         "independent_todos_unclaimed",
         "in_progress_awaiting_effect",
         "blocked_without_independent_work",
-    } and not native_unstall_already_recorded(state):
+    }:
         unstall = unstall_stale_native_work(board, observation)
         if unstall.get("status") == "applied":
             return unstall

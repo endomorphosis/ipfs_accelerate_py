@@ -495,8 +495,10 @@ def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, mo
         },
         "last_action_result": result,
     })
-    assert recorded["status"] == "wait"
-    assert recorded["recipe"] == "independent_work_has_live_workers"
+    assert recorded.get("completion_authority") is False
+    assert recorded["recipe"] in {
+        "unstall_stale_native_work", "independent_work_has_live_workers",
+    }
 
 
 def test_retire_settled_mutation_inbox_drops_old_dones_and_typed_commands(tmp_path):

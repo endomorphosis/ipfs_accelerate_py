@@ -522,28 +522,16 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
         if any("process_uninterruptible" in reason for reason in reasons):
             return ""
-        from .fleet_heals import native_unstall_already_recorded
-        if native_unstall_already_recorded(state):
-            return ""
         if "no_task_progress" in reasons:
             return "supervisor_heal"
         return ""
     if stall == "independent_work_beside_blocked_peer":
-        from .fleet_heals import native_unstall_already_recorded
-        if native_unstall_already_recorded(state):
-            return ""
         return "supervisor_heal"
     if stall == "independent_todos_unclaimed":
-        from .fleet_heals import native_unstall_already_recorded
-        if native_unstall_already_recorded(state):
-            return ""
         return "supervisor_heal"
     if stall == "blocked_without_independent_work":
         # Remaining todos wait on blocked peers. Rearm false-terminal blocks,
         # then run declared local checks once. Never rewrite those receipts.
-        from .fleet_heals import local_validation_already_recorded, native_unstall_already_recorded
-        if native_unstall_already_recorded(state) and local_validation_already_recorded(state):
-            return ""
         return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""
