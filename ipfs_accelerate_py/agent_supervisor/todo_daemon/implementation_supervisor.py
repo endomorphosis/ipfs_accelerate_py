@@ -18460,6 +18460,28 @@ class PortalImplementationSupervisor:
             )
             return disabled
 
+        if self.config.reconciliation_only:
+            from .implementation_daemon import PortalTaskState
+            portal = PortalTaskState.load(self.config.state_path)
+            if portal.active_task_id or portal.implementation_in_progress:
+                active = {
+                    "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                    "schema_version": 1,
+                    "enabled": True,
+                    "preview": bool(self.config.objective_goal_migration_preview),
+                    "changed": False,
+                    "reason": "reconciliation_only_with_active_implementation",
+                }
+                strategy = load_json_dict(self.config.strategy_path) or {}
+                persist_goal_completion_projection(
+                    strategy.get("goal_completion_by_goal_id") or {},
+                    state_dir=self.config.state_dir,
+                    state_prefix=self.config.state_prefix,
+                    strategy_path=self.config.strategy_path,
+                    migration=active,
+                )
+                return active
+
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             migrate_legacy_objective_goals,
@@ -22873,9 +22895,7 @@ def supervisor_config_from_args(
         objective_goal_completion_artifact_refresh_timeout_seconds=(
             args.objective_goal_completion_artifact_refresh_timeout_seconds
         ),
-        objective_goal_migration_enabled=(
-            args.objective_goal_migration_enabled and not reconciliation_only
-        ),
+        objective_goal_migration_enabled=args.objective_goal_migration_enabled,
         objective_goal_migration_preview=args.objective_goal_migration_preview,
         objective_goal_migration_batch_size=max(1, args.objective_goal_migration_batch_size),
         objective_seed_interoperability_goals=args.objective_seed_interoperability_goals,

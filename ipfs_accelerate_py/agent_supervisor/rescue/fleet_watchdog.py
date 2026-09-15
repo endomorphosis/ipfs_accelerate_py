@@ -518,8 +518,11 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         if "source_integrity_not_verified" in reasons:
             return "supervisor_heal"
     if stall == "blocked_without_independent_work":
-        # Remaining todos wait on blocked peers. Run declared local checks;
-        # never enqueue llm_router or rewrite those receipts.
+        # Remaining todos wait on blocked peers. Run declared local checks
+        # once; never enqueue llm_router or rewrite those receipts.
+        from .fleet_heals import local_validation_already_recorded
+        if local_validation_already_recorded(state):
+            return ""
         return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""

@@ -317,6 +317,14 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
     )
     assert healed["completion_authoritative"] is False
     assert healed["recipe"] == "local_validation_pending_native_admission"
+    recorded = apply_supervisor_heal(
+        {"cwd": str(tmp_path)},
+        {"stall_class": "blocked_without_independent_work", "observation": observation,
+         "last_action_result": healed},
+    )
+    assert recorded["status"] == "wait"
+    assert recorded["recipe"] == "local_validation_pending_native_admission"
+    assert len(calls) == 2
 
 
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):

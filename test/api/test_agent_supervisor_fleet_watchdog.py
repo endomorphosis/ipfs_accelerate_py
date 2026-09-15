@@ -908,6 +908,16 @@ def test_todos_waiting_on_blocked_peers_are_not_independent():
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
     ) == "supervisor_heal"
+    state["last_action_result"] = {
+        "recipe": "local_validation_pending_native_admission",
+        "results": [
+            {"task_id": "DOEP-044", "status": "passed"},
+            {"task_id": "DOEP-063", "status": "receipt_missing"},
+        ],
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
 
 
 def test_unclaimed_independent_todos_are_a_wait_stall():

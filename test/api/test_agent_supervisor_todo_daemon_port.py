@@ -3844,6 +3844,7 @@ def test_supervisor_reconciliation_only_disables_producers(tmp_path):
     assert config.reconciliation_guardrail_enabled is True
     assert config.codebase_refill_enabled is False
     assert config.objective_refill_enabled is False
+    assert config.objective_goal_migration_enabled is True
     assert config.llm_merge_resolver_command == ""
 
 

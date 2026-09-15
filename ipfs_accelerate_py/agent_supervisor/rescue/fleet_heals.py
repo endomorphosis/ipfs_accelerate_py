@@ -97,6 +97,26 @@ def _validation_command(payload: Mapping[str, Any]) -> tuple[list[str], str] | N
     return None
 
 
+def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
+    """Do not re-run pytest every watchdog cycle after a recorded local pass."""
+    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    if result.get("recipe") != "local_validation_pending_native_admission":
+        return False
+    current = _blocked_task_ids(observation)
+    if not current:
+        return False
+    prior = {
+        item.get("task_id"): item.get("status")
+        for item in result.get("results") or []
+        if isinstance(item, dict)
+    }
+    return all(
+        prior.get(task_id) in {"passed", "receipt_missing", "validation_unspecified"}
+        for task_id in current
+    )
+
+
 def run_local_blocked_candidate_validation(
     board: Mapping[str, Any], observation: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -218,6 +238,10 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
     if stall == "blocked_without_independent_work":
+        if local_validation_already_recorded(state):
+            return {"status": "wait", "recipe": "local_validation_pending_native_admission",
+                    "completion_authoritative": False,
+                    "reason": "local checks already recorded; native fenced admission still required"}
         local = run_local_blocked_candidate_validation(board, observation)
         if local.get("status") != "skip":
             return local
