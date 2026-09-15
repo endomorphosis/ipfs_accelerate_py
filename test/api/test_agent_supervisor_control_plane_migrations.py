@@ -536,7 +536,7 @@ def test_default_package_catalog_loads() -> None:
 def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
     duckdb = pytest.importorskip("duckdb")
     catalog = load_default_catalog()
-    assert catalog.get(2).migration_id == "0002_tasks_status_index_repair"
+    assert catalog.get(2).migration_id == "0002_tasks_index_repair"
     db = tmp_path / "control.duckdb"
     runner = ControlPlaneMigrationRunner.for_database(
         db,
