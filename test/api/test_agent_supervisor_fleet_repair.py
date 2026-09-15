@@ -75,7 +75,7 @@ def test_short_failed_llm_router_job_retries_after_five_minutes(tmp_path):
     write_json(tmp_path / "repairs/sawm/job.json", {
         "status": "queued", "attempts": 64, "queued_at": 1, "last_started_at": 1000,
         "finished_at": 1010, "returncode": 1, "next_attempt_at": 9_999_999,
-        "repair_route": repair.LLM_ROUTER_ROUTE,
+        "repair_route": repair.LLM_ROUTER_ROUTE, "repair_workspace": str(tmp_path),
     })
     assert next_job(cfg, 1200) is None
     selected = next_job(cfg, 1311)
@@ -230,6 +230,36 @@ def test_llm_router_repair_argv_uses_provider_fallback_not_codex_only(tmp_path):
     assert "ipfs-accelerate-provider-isolated" not in primary
     fallback = json.loads(argv[argv.index("--fallback-command-json") + 1])
     assert fallback[:2] == ["codex", "exec"]
+
+
+def test_stale_maintenance_workspace_is_due_for_board_checkout(tmp_path):
+    cfg = config(tmp_path)
+    board = tmp_path / "board"
+    board.mkdir()
+    cfg["boards"][0]["cwd"] = str(board)
+    write_json(tmp_path / "repairs/spar/job.json", {
+        "status": "queued", "queued_at": 1, "last_started_at": 10, "attempts": 1,
+        "next_attempt_at": 9_999_999, "repair_route": repair.LLM_ROUTER_ROUTE,
+        "repair_workspace": str(tmp_path / "maintenance"),
+    })
+    selected = next_job(cfg, 100)
+    assert selected is not None and selected[0]["id"] == "spar"
+
+
+def test_llm_router_repair_argv_binds_board_checkout(tmp_path):
+    board = tmp_path / "board"
+    board.mkdir()
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("fix it")
+    argv = repair.llm_router_repair_argv(
+        {"argv": ["codex", "exec"], "cwd": str(tmp_path)},
+        prompt, tmp_path / "last.txt", workspace=board,
+    )
+    workspace = str(board.resolve())
+    assert json.loads(argv[argv.index("--primary-command-json") + 1])[-1] == workspace
+    fallback = json.loads(argv[argv.index("--fallback-command-json") + 1])
+    assert workspace in fallback
+    assert repair.repair_workspace({"cwd": str(board)}, {"cwd": str(tmp_path)}) == board.resolve()
 
 
 def test_run_job_keeps_backoff_for_idle_healthy_probe(tmp_path, monkeypatch):

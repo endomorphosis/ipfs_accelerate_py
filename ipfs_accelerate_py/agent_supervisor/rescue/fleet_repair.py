@@ -246,6 +246,20 @@ def repair_route_is_current(job: dict[str, Any]) -> bool:
     return job.get("repair_route") == LLM_ROUTER_ROUTE
 
 
+def repair_workspace_is_stale(job: dict[str, Any], board: dict[str, Any]) -> bool:
+    """Jobs launched in the shared maintenance tree cannot heal board-local dirt."""
+    cwd = board.get("cwd")
+    if not cwd:
+        return False
+    bound = job.get("repair_workspace")
+    if not bound:
+        return job.get("repair_route") == LLM_ROUTER_ROUTE
+    try:
+        return Path(str(bound)).resolve() != Path(str(cwd)).resolve()
+    except OSError:
+        return True
+
+
 def repair_route_is_stale(job: dict[str, Any]) -> bool:
     """Prior Codex-only attempts must not park llm_router behind max backoff."""
     if repair_route_is_current(job):
@@ -402,9 +416,11 @@ local DuckLake aggregation. Use the bounded ducklake_fleet_export history worker
 with its dedicated catalog and Parquet directory; never open taskboard files for
 history export. DuckLake history is observational, not task completion authority.
 
-THIS JOB: board {board['id']}; board checkout {board['cwd']}; board config
+THIS JOB: board {board['id']}; coding workspace and board checkout {board['cwd']}; board config
 {board.get('config', '')}; watchdog configuration {config.get('_config_path', '')}.
-Shared supervisor development checkout: {config['repair_worker']['cwd']}.
+Shared supervisor development checkout (supervisor-code heals only): {config['repair_worker']['cwd']}.
+Work in the board checkout. The shared tree cannot see this board's gitlinks,
+blocked receipts, or dirty control-plane paths.
 Other boards remain under their own supervisors. One fleet repair job runs at
 a time, but implementation workers and other user sessions may be active.
 
@@ -638,7 +654,9 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         if hold_paths(board) or board_is_complete(config, board["id"]):
             continue
         due = float(job.get("next_attempt_at") or 0)
-        if due > now and not repair_route_is_stale(job) and not repair_launch_failed_immediately(job, now):
+        if (due > now and not repair_route_is_stale(job)
+                and not repair_launch_failed_immediately(job, now)
+                and not repair_workspace_is_stale(job, board)):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -684,19 +702,41 @@ def runtime_update_pending(config: dict[str, Any]) -> bool:
     return True
 
 
-def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path) -> list[str]:
+def repair_workspace(board: dict[str, Any], policy: dict[str, Any]) -> Path:
+    """Bind the coding agent to the stalled board checkout.
+
+    A shared maintenance tree cannot see board-local dirt, blocked receipts,
+    or gitlink pins. Supervisor-code heals still belong in that tree when the
+    board checkout is missing.
+    """
+    for candidate in (board.get("cwd"), policy.get("cwd")):
+        if not candidate:
+            continue
+        path = Path(str(candidate)).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved.is_dir():
+            return resolved
+    raise ValueError("repair workspace is not a directory")
+
+
+def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path,
+                           *, workspace: Path | None = None) -> list[str]:
     """Grok via the packaged adapter, then the configured Codex argv as fallback.
 
     Raw ``grok`` needs a trusted failure receipt for Codex fallback. The
     packaged runner mints that receipt and does not require a missing
     ``ipfs-accelerate-provider-isolated`` sandbox profile.
     """
-    fallback = [*policy["argv"], "-C", str(policy["cwd"]),
+    workspace = Path(workspace or policy["cwd"]).resolve()
+    fallback = [*policy["argv"], "-C", str(workspace),
                 "--output-last-message", str(last_message), "-"]
     from ipfs_accelerate_py.agent_supervisor import grok_cli_runner as grok_adapter
     primary = [
         sys.executable, "-P", str(Path(grok_adapter.__file__).resolve()),
-        "--workspace", str(policy["cwd"]),
+        "--workspace", str(workspace),
     ]
     return [
         sys.executable, "-P", "-m",
@@ -896,8 +936,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         stamp = f"{int(now)}-{attempts}"
         report = directory / f"report-{stamp}.json"
         log_path = directory / f"worker-{stamp}.log"
+        workspace = str(repair_workspace(board, policy))
         job.update(status="running", last_started_at=now, attempts=attempts,
-                   repair_route=LLM_ROUTER_ROUTE,
+                   repair_route=LLM_ROUTER_ROUTE, repair_workspace=workspace,
                    report_path=str(report), log_path=str(log_path),
                    next_attempt_at=now + min(policy.get("max_backoff_seconds", 21600),
                                              policy.get("retry_seconds", 1800) * 2 ** min(attempts - 1, 4)))
@@ -912,7 +953,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     prompt.write_text(repair_prompt(board, incident, config, report, prior_report, handoff))
     os.chmod(prompt, 0o600)
     last_message = directory / f"last-message-{stamp}.txt"
-    inner = llm_router_repair_argv(policy, prompt, last_message)
+    inner = llm_router_repair_argv(
+        policy, prompt, last_message, workspace=Path(workspace),
+    )
     argv = ["systemd-run", "--user", "--wait", "--collect", "--pipe",
             f"--unit={unit}", "--property=KillMode=control-group",
             f"--property=RuntimeMaxSec={int(policy.get('timeout_seconds', 2400))}",
