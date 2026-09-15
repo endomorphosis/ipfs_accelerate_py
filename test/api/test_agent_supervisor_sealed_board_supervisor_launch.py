@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
+    hold_retain_owner_until_operator_stop,
     install_overlay,
     overlay_module,
     overlay_supervise_exit_code,
@@ -75,6 +76,30 @@ def test_overlay_supervise_exit_keeps_zero_when_owner_ready():
         )
         == 0
     )
+
+
+def test_hold_retain_owner_does_not_return_on_native_complete():
+    import ipfs_accelerate_py.agent_supervisor.runtime.terminal_closeout as terminal
+
+    original = terminal.retain_owner_for_closeout
+    hold_retain_owner_until_operator_stop()
+    calls = {"n": 0}
+
+    def wait(_seconds: float) -> bool:
+        calls["n"] += 1
+        return calls["n"] >= 2
+
+    result = terminal.retain_owner_for_closeout(
+        observe=lambda: {"completion_authority": True, "complete": True},
+        wait=wait,
+        stopped=lambda: False,
+        check_owner=lambda: None,
+        output=lambda _m: None,
+        interval_seconds=1,
+    )
+    terminal.retain_owner_for_closeout = original
+    assert result == "stopped"
+    assert calls["n"] >= 2
 
 
 def test_overlay_supervise_exit_preserves_nonzero():

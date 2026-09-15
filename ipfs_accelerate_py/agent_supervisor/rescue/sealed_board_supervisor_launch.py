@@ -92,6 +92,47 @@ def prefer_sealed_scripts(source_root: str) -> None:
         del sys.modules[name]
 
 
+def hold_retain_owner_until_operator_stop() -> None:
+    """SPAR bootstrap closeout must not stop the owner after overlay auto-heal.
+
+    Native retain_owner_for_closeout returns ``accepted`` when complete=true,
+    then SPAR's finally block stops Quack. Overlayed clause/goal admission can
+    make that true; keep the owner until OPERATOR_STOP instead.
+    """
+    import ipfs_accelerate_py.agent_supervisor.runtime.terminal_closeout as terminal
+
+    def retain_owner_for_closeout(
+        *,
+        observe,
+        wait,
+        stopped,
+        check_owner,
+        output,
+        interval_seconds: float = 10.0,
+        produce=None,
+    ) -> str:
+        if interval_seconds <= 0:
+            raise ValueError("closeout interval must be positive")
+        output("implementation lanes drained; retaining native owner for acceptance")
+        while not stopped():
+            check_owner()
+            if produce is not None:
+                produce()
+            observation = observe()
+            if (
+                observation.get("completion_authority") is True
+                and observation.get("complete") is True
+            ):
+                output(
+                    "native closeout admitted; retaining owner until operator stop"
+                )
+            if wait(interval_seconds):
+                return "stopped"
+        return "stopped"
+
+    terminal.retain_owner_for_closeout = retain_owner_for_closeout
+
+
 def overlay_module(qualname: str, path: str, *, package: str) -> None:
     """Load one overlay module into a sealed package. Relative imports stay sealed."""
     import importlib
@@ -156,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         package="ipfs_accelerate_py.agent_supervisor.task_sources",
     )
     pin_sealed_sys_path(source_root)
+    hold_retain_owner_until_operator_stop()
+    hold_retain_owner_until_operator_stop()
     script = Path(args[0])
     if not script.is_absolute():
         script = Path(source_root) / script
