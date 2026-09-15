@@ -32,6 +32,7 @@ WAIT_STALLS = {
     "in_progress_awaiting_effect",
     "independent_work_beside_blocked_peer",
     "independent_todos_unclaimed",
+    "blocked_without_independent_work",
     "missing_independent_clause_evidence",
     "closeout_requires_native_authority",
     "operator_hold",
@@ -83,6 +84,29 @@ def checkout_missing_observation(board_id: str, missing: dict[str, Any]) -> dict
     }
 
 
+def _live_daemons(details: dict[str, Any]) -> bool:
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    return any(isinstance(lane, dict) and lane.get("daemon") for lane in lanes)
+
+
+def _todos_are_ready_beside_blocked(details: dict[str, Any], counts: dict[str, Any],
+                                    reasons: set[str]) -> bool:
+    """Remaining todos are independent only when native readiness says they are claimable."""
+    if int(counts.get("in_progress") or 0) > 0:
+        return True
+    if "no_ready_independent_tasks" in reasons:
+        return False
+    if details.get("selection_idle_reason") == "no_ready_tasks":
+        return False
+    ready = details.get("ready_count")
+    if type(ready) is int and not isinstance(ready, bool):
+        return ready > 0
+    eligible = details.get("eligible_ready_count")
+    if type(eligible) is int and not isinstance(eligible, bool):
+        return eligible > 0
+    return int(counts.get("todo") or 0) > 0
+
+
 def classify_stall(observation: dict[str, Any]) -> str:
     """Map probe evidence to a bounded stall class. Never infers completion."""
     health = observation.get("health")
@@ -99,13 +123,13 @@ def classify_stall(observation: dict[str, Any]) -> str:
         # Supervisor-path dirt is restored separately. Remaining board-doc
         # dirt must not outrank live independent work beside blocked peers.
         if "board_has_blocked_or_quarantined_tasks" in reasons:
-            if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
-                if (int(counts.get("in_progress") or 0) == 0
-                        and int(counts.get("todo") or 0) > 0
-                        and any(isinstance(lane, dict) and lane.get("daemon")
-                                for lane in (details.get("lanes") or [])
-                                if isinstance(details.get("lanes"), list))):
-                    return "independent_todos_unclaimed"
+            if int(counts.get("in_progress") or 0) > 0:
+                return "independent_work_beside_blocked_peer"
+            if not _todos_are_ready_beside_blocked(details, counts, reasons):
+                return "blocked_without_independent_work"
+            if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
+                return "independent_todos_unclaimed"
+            if int(counts.get("todo") or 0) > 0:
                 return "independent_work_beside_blocked_peer"
         return "configured_control_plane_dirty"
     if (
@@ -130,12 +154,13 @@ def classify_stall(observation: dict[str, Any]) -> str:
             return "owner_live_status_unreadable"
         return "owner_missing"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
-        if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
-            if (int(counts.get("in_progress") or 0) == 0
-                    and int(counts.get("todo") or 0) > 0
-                    and any(isinstance(lane, dict) and lane.get("daemon")
-                            for lane in (details.get("lanes") or []) if isinstance(details.get("lanes"), list))):
-                return "independent_todos_unclaimed"
+        if int(counts.get("in_progress") or 0) > 0:
+            return "independent_work_beside_blocked_peer"
+        if not _todos_are_ready_beside_blocked(details, counts, reasons):
+            return "blocked_without_independent_work"
+        if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
+            return "independent_todos_unclaimed"
+        if int(counts.get("todo") or 0) > 0:
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
     if int(counts.get("in_progress") or 0) > 0:

@@ -454,6 +454,22 @@ def _counts(authority: Mapping[str, Any]) -> dict[str, int]:
     return {}
 
 
+def _nonneg_int(value: Any) -> int | None:
+    return value if type(value) is int and not isinstance(value, bool) and value >= 0 else None
+
+
+def _readiness(authority: Mapping[str, Any], projections: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Native ready-count is observational. Todos waiting on blocked peers are not independent."""
+    samples = [authority, *projections]
+    ready = next((value for sample in samples if (value := _nonneg_int(sample.get("ready_count"))) is not None), None)
+    eligible = next((value for sample in samples
+                     if (value := _nonneg_int(sample.get("eligible_ready_count"))) is not None), None)
+    idle = next((str(sample.get("selection_idle_reason") or "") for sample in samples
+                 if isinstance(sample.get("selection_idle_reason"), str)
+                 and sample.get("selection_idle_reason")), "")
+    return {"ready_count": ready, "eligible_ready_count": eligible, "selection_idle_reason": idle}
+
+
 def _blocked_task_ids(authority: Mapping[str, Any]) -> list[str]:
     """Normalize native operator blocker lists without treating text as an ID list."""
     identities = set()
@@ -697,6 +713,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append("owner_endpoint_unreachable")
     lanes = []
     fresh_projections = []
+    readiness_projections: list[dict[str, Any]] = []
     for index in range(int(board["max_lanes"])):
         lane_dir = Path(board["state_root"]) / f"lane-{index}"
         prefix = f"{board_id}_lane_{index}"
@@ -742,6 +759,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         if status.get("last_exit_code") == 78 and not daemon:
             reasons.append(f"lane_{index}_typed_fail_closed_exit")
         projection = read_json(lane_dir / f"{prefix}_task_state.json")
+        if projection:
+            readiness_projections.append(projection)
         projection_age = _age(projection.get("heartbeat_at"), now)
         if (supervisor and daemon and projection.get("projection_complete") is True
                 and projection_age is not None and projection_age <= 120):
@@ -816,6 +835,12 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("board_has_blocked_or_quarantined_tasks")
     elif native_unhealthy:
         reasons.append("native_operator_reports_unhealthy")
+    readiness = _readiness(authority, readiness_projections or fresh_projections)
+    if blocked and (
+        readiness.get("ready_count") == 0
+        or readiness.get("selection_idle_reason") == "no_ready_tasks"
+    ):
+        reasons.append("no_ready_independent_tasks")
     if authority.get("unsettled_goal_count"):
         reasons.append("board_has_unsettled_goals")
     if authority and not authenticated:
@@ -908,6 +933,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "event_cursor": authority.get("event_cursor"),
             "native_status_attempts": native_status_attempts,
             "blocked_task_ids": blocked_task_ids,
+            "ready_count": readiness.get("ready_count"),
+            "eligible_ready_count": readiness.get("eligible_ready_count"),
+            "selection_idle_reason": readiness.get("selection_idle_reason") or "",
             "source_heads": _source_heads(board),
             "source_integrity": source_integrity,
             "native_completion_authority": native.get("completion_authority") is True,

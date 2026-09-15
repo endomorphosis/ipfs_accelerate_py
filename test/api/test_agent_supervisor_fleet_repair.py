@@ -266,6 +266,12 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert dstate["status"] == "wait"
     assert dstate["recipe"] == "kernel_uninterruptible_wait"
+    blocked = apply_supervisor_heal(board, {
+        "stall_class": "blocked_without_independent_work",
+        "observation": {"reason_codes": ["no_ready_independent_tasks"]},
+    })
+    assert blocked["status"] == "wait"
+    assert blocked["recipe"] == "todos_waiting_on_blocked_dependencies"
 
 
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):

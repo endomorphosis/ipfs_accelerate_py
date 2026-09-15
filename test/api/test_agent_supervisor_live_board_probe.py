@@ -197,6 +197,36 @@ def test_extra_gate_deferred_lane_is_not_daemon_missing(board, monkeypatch, stat
     assert result["details"]["lanes"][0]["extra_gate_deferred"] is True
 
 
+def test_blocked_todos_without_ready_count_are_not_independent(board, monkeypatch, tmp_path):
+    config, _, lane = board
+    _write(lane / "pcpr_lane_0_task_state.json", {
+        "projection_complete": True,
+        "heartbeat_at": "1970-01-01T00:16:40+00:00",
+        "ready_count": 0,
+        "eligible_ready_count": 0,
+        "selection_idle_reason": "no_ready_tasks",
+        "todo_count": 23,
+        "blocked_count": 2,
+        "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+        "task_statuses": {"DOEP-044": "blocked", "DOEP-046": "todo"},
+    })
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({
+        "task_authority": {
+            "status_counts": {"todo": 23, "blocked": 2, "completed": 60},
+            "task_count": 85,
+            "authenticated_query": True,
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+        },
+        "ready": True, "healthy": True, "operational_ready": True,
+    }, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["health"] == "blocked"
+    assert "board_has_blocked_or_quarantined_tasks" in result["reason_codes"]
+    assert "no_ready_independent_tasks" in result["reason_codes"]
+    assert result["details"]["ready_count"] == 0
+    assert result["details"]["selection_idle_reason"] == "no_ready_tasks"
+
+
 def test_no_offline_status_or_completion_when_owner_is_dead(board, monkeypatch):
     config, identities, _ = board
     identities.clear()

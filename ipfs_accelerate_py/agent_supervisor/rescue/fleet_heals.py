@@ -86,6 +86,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "independent_todos_unclaimed":
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
+    if stall == "blocked_without_independent_work":
+        return {"status": "wait", "recipe": "todos_waiting_on_blocked_dependencies",
+                "reason": "remaining todos depend on blocked peers; do not rewrite those receipts"}
     if stall == "in_progress_awaiting_effect":
         return {"status": "wait", "recipe": "in_progress_awaiting_effect",
                 "reason": "in-progress tasks are native work, not a coding stall"}

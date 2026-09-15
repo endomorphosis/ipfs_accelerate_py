@@ -862,6 +862,31 @@ def test_independent_work_with_supervisor_dirt_still_selects_restore():
     ) == "supervisor_heal"
 
 
+def test_todos_waiting_on_blocked_peers_are_not_independent():
+    observation = {
+        "health": "blocked",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks", "no_ready_independent_tasks"],
+        "details": {
+            "task_counts": {"todo": 23, "blocked": 2, "in_progress": 0},
+            "ready_count": 0,
+            "eligible_ready_count": 0,
+            "selection_idle_reason": "no_ready_tasks",
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "blocked_without_independent_work"
+    assert "blocked_without_independent_work" in fleet.WAIT_STALLS
+    state = {
+        "health": "blocked", "observation": observation,
+        "stall_class": "blocked_without_independent_work",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
+
+
 def test_unclaimed_independent_todos_are_a_wait_stall():
     observation = {
         "health": "blocked",
