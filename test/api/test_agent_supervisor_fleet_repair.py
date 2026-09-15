@@ -278,6 +278,66 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert goals["status"] == "wait"
     assert goals["recipe"] == "native_goals_still_active"
+    disabled = apply_supervisor_heal(board, {
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "observation": {
+            "reason_codes": ["board_has_unsettled_goals", "goal_closeout_disabled_on_launch"],
+            "details": {"task_counts": {"completed": 40}},
+        },
+    })
+    assert disabled["completion_authority"] is False
+    assert disabled["recipe"] in {"native_goals_still_active", "provisionally_complete_terminal_goals"}
+    assert disabled.get("reason") in {
+        "quack_endpoint_absent", "objective_path_missing", "no_active_goals",
+        "extra_gate_closeout_not_disabled",
+        "active goals moved to provisionally_complete; verification still required",
+    }
+
+
+def test_provisional_goal_heal_uses_quack_and_does_not_verify(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+    objectives = tmp_path / "docs" / "objectives.md"
+    objectives.parent.mkdir(parents=True)
+    objectives.write_text("# Objectives\n")
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"objectives_path": "docs/objectives.md"}))
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps({"boards": [{
+        "id": "aseh", "cwd": str(tmp_path),
+        "quack_endpoint": "quack:127.0.0.1:41487",
+        "config_path": str(config),
+    }]}))
+    board = {"id": "aseh", "cwd": str(tmp_path), "probe": {"argv": [
+        "probe", "--inventory", str(inventory), "--board", "aseh",
+    ]}}
+    class Goal:
+        goal_id = "ASEH-G000"
+    class Source:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def get_goal(self, key):
+            return {"status": "active", "revision": 1}
+        def compare_and_set_goal_status(self, *args, **kwargs):
+            return {"ok": True}
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph.parse_goal_heap",
+        lambda text: [Goal()],
+    )
+    monkeypatch.setattr(fleet_heals, "_open_provisional_goal_source", lambda endpoint: Source())
+    result = apply_supervisor_heal(board, {
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "observation": {
+            "reason_codes": ["board_has_unsettled_goals", "goal_closeout_disabled_on_launch"],
+            "details": {"task_counts": {"completed": 40}, "unsettled_goal_count": 9},
+        },
+    })
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["changed_goal_ids"] == ["ASEH-G000"]
+    assert result["recipe"] == "provisionally_complete_terminal_goals"
 
 
 def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_path, monkeypatch):

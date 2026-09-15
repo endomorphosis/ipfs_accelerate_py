@@ -603,6 +603,27 @@ def test_unsettled_goals_are_a_wait_stall_not_llm_closeout():
     ) == ""
 
 
+def test_disabled_extra_gate_closeout_selects_provisional_heal():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": ["board_has_unsettled_goals", "goal_closeout_disabled_on_launch"],
+        "details": {"unsettled_goal_count": 9, "task_counts": {"completed": 40}},
+    }
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
+    ) == "supervisor_heal"
+    state["last_action_result"] = {"recipe": "provisionally_complete_terminal_goals"}
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
+    ) == ""
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")

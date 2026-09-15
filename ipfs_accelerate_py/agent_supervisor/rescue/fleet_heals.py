@@ -97,6 +97,152 @@ def _validation_command(payload: Mapping[str, Any]) -> tuple[list[str], str] | N
     return None
 
 
+def _inventory_board(board: Mapping[str, Any]) -> dict[str, Any]:
+    probe = board.get("probe") if isinstance(board.get("probe"), dict) else {}
+    argv = probe.get("argv") if isinstance(probe.get("argv"), list) else []
+    inventory_path = ""
+    board_id = str(board.get("id") or "")
+    for index, arg in enumerate(argv):
+        if arg == "--inventory" and index + 1 < len(argv) and isinstance(argv[index + 1], str):
+            inventory_path = argv[index + 1]
+        if arg == "--board" and index + 1 < len(argv) and isinstance(argv[index + 1], str):
+            board_id = argv[index + 1]
+    if not inventory_path:
+        return {}
+    try:
+        payload = json.loads(Path(inventory_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    boards = payload.get("boards") if isinstance(payload, dict) else None
+    if not isinstance(boards, list):
+        return {}
+    for item in boards:
+        if not isinstance(item, dict):
+            continue
+        ident = str(item.get("id") or item.get("board_id") or "")
+        if ident.lower() == board_id.lower():
+            return item
+    return {}
+
+
+def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
+    if not isinstance(config_path, str) or not config_path:
+        return None
+    path = Path(config_path)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    relative = payload.get("objectives_path") if isinstance(payload, dict) else None
+    if not isinstance(relative, str) or not relative:
+        return None
+    objectives = cwd / relative
+    return objectives if objectives.is_file() else None
+
+
+def _open_provisional_goal_source(endpoint: str):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    return DatabaseTaskSource(
+        endpoint,
+        owner_id="fleet-watchdog-provisional-goal",
+        install_schema=False,
+    )
+
+
+def provisional_goal_closeout_already_recorded(state: Mapping[str, Any]) -> bool:
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return result.get("recipe") == "provisionally_complete_terminal_goals"
+
+
+def provisionally_complete_disabled_extra_gate_goals(
+    board: Mapping[str, Any], observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """CAS active goals to provisionally_complete via Quack. Never verifies.
+
+    Extra-gate launched with --no-objective-goal-migration cannot close goals
+    after the task frontier. Fleet uses the live owner transport, not DuckDB.
+    """
+    from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import GoalState
+    schema = "ipfs_accelerate_py/agent-supervisor/provisional-goal-completion@1"
+    empty = {
+        "status": "wait",
+        "recipe": "native_goals_still_active",
+        "completion_authority": False,
+        "changed_goal_ids": [],
+    }
+    reasons = {str(x) for x in observation.get("reason_codes") or []}
+    if "goal_closeout_disabled_on_launch" not in reasons:
+        return {**empty, "reason": "extra_gate_closeout_not_disabled"}
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+    from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import TERMINAL_TASK_STATUSES
+    leftover = [
+        key for key, value in counts.items()
+        if int(value or 0) > 0 and str(key).lower() not in TERMINAL_TASK_STATUSES
+    ] if counts else ["task_counts_unavailable"]
+    if leftover:
+        return {**empty, "reason": "tasks_not_all_terminal"}
+    inventory = _inventory_board(board)
+    endpoint = inventory.get("quack_endpoint")
+    if not isinstance(endpoint, str) or not endpoint.startswith("quack:"):
+        return {**empty, "reason": "quack_endpoint_absent"}
+    cwd = Path(str(inventory.get("cwd") or board.get("cwd") or ""))
+    objectives = _objectives_path(cwd, inventory.get("config_path"))
+    if objectives is None:
+        return {**empty, "reason": "objective_path_missing"}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        goals = parse_goal_heap(objectives.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {**empty, "reason": f"objective_parse_failed:{type(exc).__name__}"}
+    changed: list[str] = []
+    try:
+        source_cm = _open_provisional_goal_source(endpoint)
+        with source_cm as source:
+            for goal in goals:
+                rec = source.get_goal(goal.goal_id)
+                if not isinstance(rec, Mapping):
+                    continue
+                status = str(rec.get("status") or "").strip().lower()
+                if status not in {"active", "reopened", "analysis_inconclusive"}:
+                    continue
+                revision = rec.get("revision")
+                if type(revision) is not int:
+                    continue
+                try:
+                    source.compare_and_set_goal_status(
+                        goal.goal_id,
+                        revision,
+                        GoalState.PROVISIONALLY_COMPLETE.value,
+                        {
+                            "schema": schema,
+                            "completion_authority": False,
+                            "tasks_complete": True,
+                            "goal_alias": goal.goal_id,
+                            "state": GoalState.PROVISIONALLY_COMPLETE.value,
+                        },
+                    )
+                except Exception:
+                    continue
+                changed.append(goal.goal_id)
+    except Exception as exc:
+        return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
+    return {
+        "status": "applied" if changed else "wait",
+        "recipe": "provisionally_complete_terminal_goals",
+        "completion_authority": False,
+        "changed_goal_ids": changed,
+        "reason": (
+            "active goals moved to provisionally_complete; verification still required"
+            if changed else "no_active_goals"
+        ),
+    }
+
+
 def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
     """Do not re-run pytest every watchdog cycle after a recorded local pass."""
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -248,8 +394,11 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "todos_waiting_on_blocked_dependencies",
                 "reason": "remaining todos depend on blocked peers; do not rewrite those receipts"}
     if stall == "closeout_waiting_on_unsettled_goals":
-        return {"status": "wait", "recipe": "native_goals_still_active",
-                "reason": "all-tasks-complete is not goal closeout; native owner still has active goals"}
+        if provisional_goal_closeout_already_recorded(state):
+            return {"status": "wait", "recipe": "provisionally_complete_terminal_goals",
+                    "completion_authority": False,
+                    "reason": "provisional closeout already recorded; verification still required"}
+        return provisionally_complete_disabled_extra_gate_goals(board, observation)
     if stall == "native_status_unavailable_with_live_workers":
         return {"status": "wait", "recipe": "native_status_retry_with_live_workers",
                 "reason": "nonzero native status is not a coding stall while lanes are live"}

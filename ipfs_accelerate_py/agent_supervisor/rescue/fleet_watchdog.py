@@ -496,9 +496,16 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
             return ""
         return "publish" if board.get("publication") else "completion_review"
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
-    if stall in {"closeout_requires_native_authority", "closeout_waiting_on_unsettled_goals"}:
+    if stall == "closeout_requires_native_authority":
         # Observational completion_candidate is not publication authority.
-        # Active native goals are not an llm_router job.
+        return ""
+    if stall == "closeout_waiting_on_unsettled_goals":
+        reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
+        if "goal_closeout_disabled_on_launch" in reasons:
+            from .fleet_heals import provisional_goal_closeout_already_recorded
+            if provisional_goal_closeout_already_recorded(state):
+                return ""
+            return "supervisor_heal"
         return ""
     if stall == "missing_independent_clause_evidence":
         # Datasets producer still lacks current-bound clause records. An LLM
