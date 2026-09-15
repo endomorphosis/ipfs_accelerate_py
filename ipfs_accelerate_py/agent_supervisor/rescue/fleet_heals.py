@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 _RECEIPT_SEARCH_ROOTS = (
     "artifacts",
@@ -142,6 +144,75 @@ def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
     return objectives if objectives.is_file() else None
 
 
+def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
+    """Bind store, generation, mutation inbox, and token from live owner status."""
+
+    env: dict[str, str] = {}
+    status_path = inventory.get("owner_status_path")
+    runtime = str(inventory.get("runtime_root") or "")
+    store_id = ""
+    generation = ""
+    mutation_dir = ""
+    token = ""
+    if isinstance(status_path, str) and status_path:
+        path = Path(status_path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload = {}
+        if isinstance(payload, dict):
+            identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+            store_id = str(identity.get("store_id") or payload.get("store_id") or "")
+            observed = identity.get("generation")
+            if observed is not None and str(observed).strip():
+                generation = str(observed).strip()
+            candidate = path.parent / "mutations"
+            if candidate.is_dir():
+                mutation_dir = str(candidate)
+            token_path = path.parent / "typed-state-owner.token"
+            try:
+                material = token_path.read_text(encoding="ascii").strip()
+            except (OSError, UnicodeError):
+                material = ""
+            if material:
+                token = material
+    if not store_id:
+        database = str(inventory.get("database_path") or "")
+        if database and runtime and database.startswith(runtime.rstrip("/") + "/"):
+            store_id = database[len(runtime.rstrip("/")) + 1 :]
+        elif database:
+            store_id = database
+    if not mutation_dir and runtime:
+        for relative in ("q/mutations", "quack-owner/mutations"):
+            candidate = Path(runtime) / relative
+            if candidate.is_dir():
+                mutation_dir = str(candidate)
+                break
+    if store_id:
+        env["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] = store_id
+    if generation:
+        env["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] = generation
+    if mutation_dir:
+        env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] = mutation_dir
+    if token:
+        env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
+    return env
+
+
+@contextmanager
+def _temporary_environ(updates: Mapping[str, str]) -> Iterator[None]:
+    saved = {key: os.environ.get(key) for key in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for key, previous in saved.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
+
 def _open_provisional_goal_source(endpoint: str):
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
@@ -200,35 +271,39 @@ def provisionally_complete_disabled_extra_gate_goals(
     except Exception as exc:
         return {**empty, "reason": f"objective_parse_failed:{type(exc).__name__}"}
     changed: list[str] = []
+    transport = _owner_transport_env(inventory)
+    if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
+        return {**empty, "reason": "owner_store_binding_absent"}
     try:
-        source_cm = _open_provisional_goal_source(endpoint)
-        with source_cm as source:
-            for goal in goals:
-                rec = source.get_goal(goal.goal_id)
-                if not isinstance(rec, Mapping):
-                    continue
-                status = str(rec.get("status") or "").strip().lower()
-                if status not in {"active", "reopened", "analysis_inconclusive"}:
-                    continue
-                revision = rec.get("revision")
-                if type(revision) is not int:
-                    continue
-                try:
-                    source.compare_and_set_goal_status(
-                        goal.goal_id,
-                        revision,
-                        GoalState.PROVISIONALLY_COMPLETE.value,
-                        {
-                            "schema": schema,
-                            "completion_authority": False,
-                            "tasks_complete": True,
-                            "goal_alias": goal.goal_id,
-                            "state": GoalState.PROVISIONALLY_COMPLETE.value,
-                        },
-                    )
-                except Exception:
-                    continue
-                changed.append(goal.goal_id)
+        with _temporary_environ(transport):
+            source_cm = _open_provisional_goal_source(endpoint)
+            with source_cm as source:
+                for goal in goals:
+                    rec = source.get_goal(goal.goal_id)
+                    if not isinstance(rec, Mapping):
+                        continue
+                    status = str(rec.get("status") or "").strip().lower()
+                    if status not in {"active", "reopened", "analysis_inconclusive"}:
+                        continue
+                    revision = rec.get("revision")
+                    if type(revision) is not int:
+                        continue
+                    try:
+                        source.compare_and_set_goal_status(
+                            goal.goal_id,
+                            revision,
+                            GoalState.PROVISIONALLY_COMPLETE.value,
+                            {
+                                "schema": schema,
+                                "completion_authority": False,
+                                "tasks_complete": True,
+                                "goal_alias": goal.goal_id,
+                                "state": GoalState.PROVISIONALLY_COMPLETE.value,
+                            },
+                        )
+                    except Exception:
+                        continue
+                    changed.append(goal.goal_id)
     except Exception as exc:
         return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
     return {

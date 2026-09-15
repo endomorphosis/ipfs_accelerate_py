@@ -307,6 +307,9 @@ def test_provisional_goal_heal_uses_quack_and_does_not_verify(tmp_path, monkeypa
         "id": "aseh", "cwd": str(tmp_path),
         "quack_endpoint": "quack:127.0.0.1:41487",
         "config_path": str(config),
+        "database_path": str(tmp_path / "control.duckdb"),
+        "runtime_root": str(tmp_path),
+        "owner_status_path": str(tmp_path / "q" / "quack-state-server.status.json"),
     }]}))
     board = {"id": "aseh", "cwd": str(tmp_path), "probe": {"argv": [
         "probe", "--inventory", str(inventory), "--board", "aseh",
@@ -338,6 +341,62 @@ def test_provisional_goal_heal_uses_quack_and_does_not_verify(tmp_path, monkeypa
     assert result["completion_authority"] is False
     assert result["changed_goal_ids"] == ["ASEH-G000"]
     assert result["recipe"] == "provisionally_complete_terminal_goals"
+
+
+def test_database_task_source_imports_owner_command_contract():
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
+        QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+        STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        QuackOwnerCommandRemoteError,
+        submit_quack_owner_command,
+        validate_quack_owner_command,
+    )
+
+    assert DatabaseTaskSource.INTERFACE == "DatabaseTaskSource@1"
+    assert "quack_transport_unavailable" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS == "compare_and_set_goal_status"
+    assert STALE_IN_PROGRESS_UNSTALL_SECONDS == 16_200
+    assert callable(submit_quack_owner_command)
+    assert callable(validate_quack_owner_command)
+    assert issubclass(QuackOwnerCommandRemoteError, Exception)
+
+
+def test_provisional_goal_heal_binds_owner_transport(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import _owner_transport_env
+
+    owner = tmp_path / "q"
+    owner.mkdir()
+    (owner / "mutations").mkdir()
+    (owner / "typed-state-owner.token").write_text("owner-token-value")
+    (owner / "quack-state-server.status.json").write_text(json.dumps({
+        "store_id": "data/aseh/control.duckdb",
+        "identity": {"store_id": "data/aseh/control.duckdb", "generation": 165},
+    }))
+    env = _owner_transport_env({
+        "owner_status_path": str(owner / "quack-state-server.status.json"),
+        "runtime_root": str(tmp_path),
+        "database_path": str(tmp_path / "control.duckdb"),
+    })
+    assert env["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] == "data/aseh/control.duckdb"
+    assert env["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] == "165"
+    assert env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] == str(owner / "mutations")
+    assert env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] == "owner-token-value"
+
+
+def test_open_provisional_goal_source_does_not_raise_import_error():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        _open_provisional_goal_source,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    assert _open_provisional_goal_source.__defaults__ is None
+    assert DatabaseTaskSource.__name__ == "DatabaseTaskSource"
 
 
 def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_path, monkeypatch):

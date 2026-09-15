@@ -100,7 +100,11 @@ MAX_VALIDATIONS: Final[int] = 256
 MAX_OUTPUTS: Final[int] = 256
 MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
+MAX_TASK_PROJECTION_BYTES: Final[int] = 1_048_576
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
+TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
+)
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
 
@@ -182,6 +186,18 @@ class IntentRepositoryError(RuntimeError):
 
 class IntentRepositoryConflictError(IntentRepositoryError):
     """CAS head, fence, or expected-revision conflict."""
+
+
+class IntentRepositoryTransitionError(IntentRepositoryError):
+    """Owner rejected a status transition outside the closed matrix."""
+
+
+class IntentRepositoryUnknownOutcomeError(IntentRepositoryError):
+    """A remote owner effect committed without fresh projection settlement."""
+
+    def __init__(self, message: str, *, request_id: str = "") -> None:
+        self.request_id = str(request_id or "")
+        super().__init__(message)
 
 
 class IntentRepositoryIntegrityError(IntentRepositoryError):
@@ -382,6 +398,140 @@ def _positive_int(value: Any, *, noun: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise IntentRepositoryBoundsError(f"{noun} must be a positive integer")
     return value
+
+
+def _projection_sequence(
+    value: Any,
+    *,
+    noun: str,
+    maximum: int,
+) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        raise IntentRepositoryError(f"{noun} must be a sequence")
+    items = list(value)
+    if len(items) > maximum:
+        raise IntentRepositoryBoundsError(f"{noun} count exceeds bound")
+    return items
+
+
+def _task_projection_spec(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize the semantic/operational specification of one task."""
+
+    task = _mapping(record, noun="task projection record")
+    task_cid = _identifier(task.get("task_cid"), noun="task_cid")
+    task_alias = _identifier(
+        task.get("task_alias") or task.get("task_id"), noun="task_alias"
+    )
+    goal_cid = _identifier(task.get("goal_cid"), noun="goal_cid")
+    objective_id = _optional_identifier(task.get("objective_id"), noun="objective_id")
+    dependencies: list[dict[str, str]] = []
+    for raw in _projection_sequence(
+        task.get("dependencies"),
+        noun="task dependencies",
+        maximum=MAX_DEPENDENCIES,
+    ):
+        if isinstance(raw, Mapping):
+            dependency = _mapping(raw, noun="task dependency")
+            dependency_cid = _identifier(
+                dependency.get("dependency_task_cid") or dependency.get("task_cid"),
+                noun="dependency_task_cid",
+            )
+            kind = _identifier(
+                dependency.get("kind") or "depends_on", noun="dependency kind"
+            )
+        else:
+            dependency_cid = _identifier(raw, noun="dependency_task_cid")
+            kind = "depends_on"
+        dependencies.append({"dependency_task_cid": dependency_cid, "kind": kind})
+    dependencies.sort(key=lambda item: (item["dependency_task_cid"], item["kind"]))
+    outputs: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(task.get("outputs"), noun="task outputs", maximum=MAX_OUTPUTS)
+    ):
+        output = _mapping(raw, noun="task output")
+        outputs.append(
+            {
+                "ordinal": _nonneg_int(output.get("ordinal", index), noun="output ordinal"),
+                "path": _identifier(output.get("path"), noun="output path"),
+                "effect": _jsonable(output.get("effect", {})),
+            }
+        )
+    outputs.sort(key=lambda item: (item["ordinal"], item["path"]))
+    acceptance: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(
+            task.get("acceptance"),
+            noun="task acceptance",
+            maximum=MAX_ACCEPTANCE,
+        )
+    ):
+        item = _mapping(raw, noun="task acceptance entry")
+        criterion = str(item.get("criterion") or "").strip()
+        if not criterion:
+            raise IntentRepositoryError("acceptance criterion must not be empty")
+        acceptance.append(
+            {
+                "ordinal": _nonneg_int(
+                    item.get("ordinal", index), noun="acceptance ordinal"
+                ),
+                "criterion": criterion,
+                "evidence_policy": _jsonable(item.get("evidence_policy", {})),
+            }
+        )
+    acceptance.sort(key=lambda item: item["ordinal"])
+    validations: list[dict[str, Any]] = []
+    for index, raw in enumerate(
+        _projection_sequence(
+            task.get("validations"),
+            noun="task validations",
+            maximum=MAX_VALIDATIONS,
+        )
+    ):
+        item = _mapping(raw, noun="task validation entry")
+        argv = _projection_sequence(
+            item.get("argv"), noun="validation argv", maximum=MAX_BODY_BYTES
+        )
+        validations.append(
+            {
+                "ordinal": _nonneg_int(
+                    item.get("ordinal", index), noun="validation ordinal"
+                ),
+                "argv": [str(part) for part in argv],
+                "policy": _jsonable(item.get("policy", {})),
+            }
+        )
+    validations.sort(key=lambda item: item["ordinal"])
+    return {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "goal_cid": goal_cid,
+        "objective_id": objective_id,
+        "ordinal": _nonneg_int(task.get("ordinal", 0), noun="task ordinal"),
+        "priority": str(task.get("priority") or ""),
+        "identity": _jsonable(task.get("identity", {})),
+        "body": _jsonable(task.get("body", {})),
+        "extension_schema": str(task.get("extension_schema") or ""),
+        "extension": _jsonable(task.get("extension", {})),
+        "dependencies": dependencies,
+        "outputs": outputs,
+        "acceptance": acceptance,
+        "validations": validations,
+    }
+
+
+def task_projection_spec_cid(record: Mapping[str, Any]) -> str:
+    """Return the stable CID of a task's complete non-lifecycle specification."""
+
+    material = {
+        "schema": TASK_PROJECTION_SPEC_SCHEMA,
+        "task": _task_projection_spec(record),
+    }
+    encoded = canonical_json_bytes(material)
+    if len(encoded) > MAX_TASK_PROJECTION_BYTES:
+        raise IntentRepositoryBoundsError("task projection spec exceeds byte bound")
+    return content_identity(material)
 
 
 # ---------------------------------------------------------------------------
@@ -609,6 +759,18 @@ class IntentRepository:
     @property
     def is_open(self) -> bool:
         return self._open and not self._closed
+
+    @property
+    def uses_quack_transport(self) -> bool:
+        """Whether reads use Quack and mutations require typed owner commands."""
+
+        return self._quack_transport
+
+    @property
+    def uses_bound_connection(self) -> bool:
+        """Whether lifecycle belongs to an injected exclusive-owner connection."""
+
+        return getattr(self, "_bound_connection", None) is not None
 
     def close(self) -> None:
         self._closed = True
@@ -4271,6 +4433,7 @@ def open_intent_repository(
     session_id: str = DEFAULT_SESSION_ID,
     install_schema: bool = True,
     evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    clock_ms: Any | None = None,
 ) -> IntentRepository:
     """Open an intent repository against ``control.duckdb`` (or test path)."""
 
@@ -4280,6 +4443,7 @@ def open_intent_repository(
         session_id=session_id,
         install_schema=install_schema,
         evidence_freshness_seconds=evidence_freshness_seconds,
+        clock_ms=clock_ms,
     )
 
 
