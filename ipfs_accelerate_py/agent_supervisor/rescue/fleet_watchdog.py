@@ -48,6 +48,8 @@ def classify_stall(observation: dict[str, Any]) -> str:
     ):
         # All-tasks-complete is a separate closeout review, not native
         # completion_authority. SPAR bootstrap closeout is this class.
+        if details.get("native_completion_authority") is False:
+            return "missing_independent_clause_evidence"
         return "closeout_requires_native_authority"
     if health == "stopped" and not details.get("owner_ready"):
         if (
@@ -336,6 +338,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
     if stall == "closeout_requires_native_authority":
         # Observational completion_candidate is not publication authority.
+        return ""
+    if stall == "missing_independent_clause_evidence":
+        # Datasets producer still lacks current-bound clause records. An LLM
+        # cannot mint those records or flip completion_authority.
         return ""
     if health == "healthy":
         return ""

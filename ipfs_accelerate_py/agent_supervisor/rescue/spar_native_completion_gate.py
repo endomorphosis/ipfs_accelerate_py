@@ -159,6 +159,19 @@ def evaluate(
         mode = datasets.get("current_rollout_mode")
         if mode and mode != "required":
             result["blockers"].append(f"current_rollout_mode_is_not_required:{mode}")
+        outcomes = datasets.get("clause_outcomes")
+        if isinstance(outcomes, Mapping):
+            result["clause_outcomes"] = {
+                name: {
+                    "accepted": row.get("accepted") is True,
+                    "reason": str(row.get("reason") or "")[:256],
+                }
+                for name, row in outcomes.items()
+                if isinstance(row, Mapping)
+            }
+            for name, row in result["clause_outcomes"].items():
+                if row["accepted"] is not True and row["reason"]:
+                    result["blockers"].append(f"clause_unaccepted:{name}:{row['reason']}")
     probes = (profile.get("datasets_accepted_root") or {}).get("source_clause_probes")
     if not isinstance(probes, Mapping):
         extra = facts.get("completion_profile") or {}

@@ -495,6 +495,20 @@ def test_native_complete_uses_publication_gate_with_cooldown(tmp_path):
     assert fleet.select_action(state, board, 131) == "completion_review"
 
 
+def test_missing_clause_evidence_is_not_publication_or_llm_repair():
+    observation = _observation(health="healthy", complete=False, completion_candidate=True)
+    observation["details"] = {"native_completion_authority": False}
+    assert fleet.classify_stall(observation) == "missing_independent_clause_evidence"
+    state = {
+        "health": "healthy", "observation": observation,
+        "stall_class": "missing_independent_clause_evidence",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"publication": {"approved": True}, "repair": {"argv": ["llm"]}, "failure_grace_seconds": 0}, 100
+    ) == ""
+
+
 def test_observational_candidate_is_not_publication_authority():
     observation = _observation(health="healthy", complete=False, completion_candidate=True)
     assert fleet.classify_stall(observation) == "closeout_requires_native_authority"

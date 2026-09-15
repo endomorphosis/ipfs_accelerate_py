@@ -290,7 +290,18 @@ def admit_accepted_root(
     subject_cid = content_identity(subject)
     try:
         producer = _load_producer()
-        raw = producer.admit_spar_accepted_root(copy.deepcopy(subject))
+        current_source = {
+            "current_rollout_mode": _sealed_current_rollout_mode(),
+            "source_forest_root": subject["source_forest_root"],
+            "reports": source.get("reports") if isinstance(source.get("reports"), list) else [],
+            "clause_records": {},
+        }
+        try:
+            raw = producer.admit_spar_accepted_root(
+                copy.deepcopy(subject), current_source=current_source
+            )
+        except TypeError:
+            raw = producer.admit_spar_accepted_root(copy.deepcopy(subject))
     except Exception as exc:  # noqa: BLE001 - producer absence/failure is not acceptance
         return _deferred(MISSING, error_class=type(exc).__name__)
     if not isinstance(raw, Mapping):
@@ -361,6 +372,8 @@ def admit_accepted_root(
                 "producer_interface": PRODUCER_INTERFACE,
                 "kit_transition_cid": kit_cid,
                 "runtime_receipt_cid": runtime_cid,
+                "clause_outcomes": extra.get("clause_outcomes"),
+                "source_clause_probes": extra.get("source_clause_probes"),
             }
         if subject_ok:
             return _deferred(RUNTIME_MISSING, **extra)
