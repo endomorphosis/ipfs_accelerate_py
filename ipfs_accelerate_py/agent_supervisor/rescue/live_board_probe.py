@@ -705,11 +705,17 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
                 "last_recycle_reason": status.get("last_recycle_reason", ""),
                 "stalled_without_active_worker": status.get("stalled_without_active_worker", False)}
         lanes.append(lane)
+        extra_gate_deferred = (
+            status.get("status") == "agentic_maintenance_deferred"
+            and bool(supervisor)
+            and status.get("stalled_without_active_worker") is not True
+        )
+        lane["extra_gate_deferred"] = extra_gate_deferred
         if not supervisor:
             reasons.append(f"lane_{index}_supervisor_missing")
         elif age is None or age > limit:
             reasons.append(f"lane_{index}_supervisor_heartbeat_stale")
-        if not daemon:
+        if not daemon and not extra_gate_deferred:
             reasons.append(f"lane_{index}_daemon_missing")
         # A supervisor heartbeat can advance while its daemon is stopped or
         # waiting in the kernel. Keep the exact live identity and route a

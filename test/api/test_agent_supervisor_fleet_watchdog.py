@@ -517,6 +517,22 @@ def test_missing_clause_evidence_is_not_publication_or_llm_repair():
     ) == ""
 
 
+def test_dirty_control_plane_is_not_llm_repair():
+    observation = {
+        "health": "degraded", "complete": False, "reason_codes": ["source_integrity_not_verified"],
+        "details": {"owner_ready": True},
+    }
+    assert fleet.classify_stall(observation) == "configured_control_plane_dirty"
+    waiting = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "configured_control_plane_dirty",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        waiting, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
+
+
 def test_observational_candidate_is_not_publication_authority():
     observation = _observation(health="healthy", complete=False, completion_candidate=True)
     assert fleet.classify_stall(observation) == "closeout_requires_native_authority"

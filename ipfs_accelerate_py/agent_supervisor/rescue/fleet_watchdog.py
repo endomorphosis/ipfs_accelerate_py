@@ -55,6 +55,9 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "operator_hold"
     if health == "complete" or observation.get("complete") is True:
         return "complete"
+    if "source_integrity_not_verified" in reasons:
+        # A dirty configured control plane is not an LLM coding job.
+        return "configured_control_plane_dirty"
     if (
         observation.get("completion_candidate") is True
         and observation.get("complete") is not True
@@ -399,6 +402,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "missing_independent_clause_evidence":
         # Datasets producer still lacks current-bound clause records. An LLM
         # cannot mint those records or flip completion_authority.
+        return ""
+    if stall == "configured_control_plane_dirty":
+        # Git cleanliness of configured supervisor paths is not Codex work.
         return ""
     if health == "healthy":
         return ""

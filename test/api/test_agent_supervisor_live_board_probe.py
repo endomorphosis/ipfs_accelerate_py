@@ -165,6 +165,23 @@ def test_null_status_identity_uses_exclusive_owner_marker(board, monkeypatch, tm
     assert "recovery_action" not in result
 
 
+def test_extra_gate_deferred_lane_is_not_daemon_missing(board, monkeypatch):
+    config, _, lane = board
+    _write(lane / "pcpr_lane_0_supervisor_status.json", {
+        "supervisor_pid": 60, "daemon_pid": None, "updated_at": "1970-01-01T00:16:40+00:00",
+        "status": "agentic_maintenance_deferred", "stalled_without_active_worker": False,
+        "last_exit_code": 1,
+    })
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({
+        "task_authority": {"status_counts": {"in_progress": 1, "todo": 2}, "task_count": 3,
+                           "authenticated_query": True},
+        "ready": True, "healthy": True, "operational_ready": True,
+    }, ""))
+    result = probe.observe_board(config, now=1000)
+    assert "lane_0_daemon_missing" not in result["reason_codes"]
+    assert result["details"]["lanes"][0]["extra_gate_deferred"] is True
+
+
 def test_no_offline_status_or_completion_when_owner_is_dead(board, monkeypatch):
     config, identities, _ = board
     identities.clear()
