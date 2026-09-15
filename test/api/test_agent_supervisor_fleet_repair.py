@@ -35,6 +35,56 @@ def test_duplicate_incident_preserves_running_job_and_cooldown(tmp_path):
     assert read_json(path)["latest_incident"]["signature"] == "changed"
 
 
+def test_complete_board_does_not_block_stalled_repair(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "spar/state.json", {
+        "health": "healthy", "observation": {"complete": True},
+        "last_action": "publish", "last_action_result": {"status": "published"},
+    })
+    write_json(tmp_path / "repairs/spar/job.json", {
+        "status": "queued", "queued_at": 1, "last_started_at": 1, "next_attempt_at": 0,
+    })
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "queued", "queued_at": 2, "last_started_at": 2, "next_attempt_at": 50,
+    })
+    assert next_job(cfg, 100)[0]["id"] == "sawm"
+
+
+def test_stale_codex_route_is_due_for_llm_router(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "repairs/spar/job.json", {
+        "status": "queued", "queued_at": 1, "last_started_at": 10, "attempts": 3,
+        "next_attempt_at": 9_999_999, "repair_route": "codex_exec",
+    })
+    selected = next_job(cfg, 100)
+    assert selected is not None and selected[0]["id"] == "spar"
+
+
+def test_enqueue_retires_complete_board(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "spar/state.json", {"observation": {"complete": True}})
+    incident = tmp_path / "incident.json"
+    write_json(incident, {"board_id": "spar"})
+    result = enqueue(cfg, incident)
+    assert result["status"] == "retired_complete"
+    assert read_json(tmp_path / "repairs/spar/job.json")["status"] == "retired_complete"
+
+
+def test_enqueue_resets_stale_route_backoff(tmp_path):
+    cfg = config(tmp_path)
+    path = tmp_path / "repairs/sawm/job.json"
+    write_json(path, {"status": "queued", "attempts": 40, "next_attempt_at": 9_999_999,
+                      "repair_route": "codex_exec"})
+    incident = tmp_path / "incident.json"
+    write_json(incident, {"board_id": "sawm"})
+    now = time.time()
+    result = enqueue(cfg, incident)
+    job = read_json(path)
+    assert result["status"] == "queued"
+    assert job["attempts"] == 40
+    assert job["next_attempt_at"] <= now + 1
+
+
 def test_repair_fairness_and_backoff(tmp_path):
     cfg = config(tmp_path)
     for identifier in ("spar", "sawm"):

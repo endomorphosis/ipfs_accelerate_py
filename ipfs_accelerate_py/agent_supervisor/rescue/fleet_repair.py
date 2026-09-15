@@ -27,6 +27,7 @@ from .fleet_watchdog import (
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
+LLM_ROUTER_ROUTE = "llm_router_grok_then_codex"
 DEFAULT_REPAIR_DISK_AVAILABLE_INODES = 50_000
 
 
@@ -149,6 +150,15 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     for board in config["boards"]:
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
+        if job.get("status") == "queued" and board_is_complete(config, board["id"]):
+            with lock(path.parent / "queue.lock") as acquired:
+                if acquired:
+                    current = read_json(path)
+                    if current.get("status") == "queued":
+                        current.update(status="retired_complete", retired_at=now)
+                        write_json(path, current)
+                        results.append({"board_id": board["id"], "status": "retired_complete"})
+            continue
         if (job.get("status") != "queued" or not job.get("last_started_at")
                 or now - job.get("reconcile_checked_at", 0) < 120
                 or hold_paths(board)):
@@ -223,6 +233,27 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     return results
 
 
+def board_is_complete(config: dict[str, Any], board_id: str) -> bool:
+    """Native complete or a published receipt is not a coding-repair stall."""
+    state = read_json(Path(config["state_dir"]) / board_id / "state.json")
+    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return (state.get("health") == "complete" or observation.get("complete") is True
+            or (state.get("last_action") == "publish" and result.get("status") == "published"))
+
+
+def repair_route_is_current(job: dict[str, Any]) -> bool:
+    return job.get("repair_route") == LLM_ROUTER_ROUTE
+
+
+def repair_route_is_stale(job: dict[str, Any]) -> bool:
+    """Prior Codex-only attempts must not park llm_router behind max backoff."""
+    if repair_route_is_current(job):
+        return False
+    attempts = job.get("attempts")
+    return isinstance(attempts, int) and attempts >= 1
+
+
 def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     incident = read_json(incident_path)
     boards = {b["id"]: b for b in config["boards"]}
@@ -237,8 +268,16 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
         # Preserve pending/running work and cooldown across changing symptoms.
         prior.update(board_id=board_id, incident_path=str(incident_path),
                      latest_incident=incident, updated_at=time.time())
+        if board_is_complete(config, board_id):
+            prior["status"] = "retired_complete"
+            write_json(directory / "job.json", prior)
+            return {"status": "retired_complete", "board_id": board_id,
+                    "job": str(directory / "job.json")}
         if prior.get("status") not in {"queued", "running"}:
             prior["status"] = "queued"
+        if prior.get("status") == "queued" and not repair_route_is_current(prior):
+            # Codex-only backoff must not park llm_router for six hours.
+            prior["next_attempt_at"] = min(float(prior.get("next_attempt_at") or time.time()), time.time())
         prior.setdefault("queued_at", time.time())
         write_json(directory / "job.json", prior)
     return {"status": prior["status"], "board_id": board_id, "job": str(directory / "job.json")}
@@ -585,9 +624,12 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
     for board in config["boards"]:
         path = root / board["id"] / "job.json"
         job = read_json(path)
-        if job.get("status") not in {"queued", "running"} or job.get("next_attempt_at", 0) > now:
+        if job.get("status") not in {"queued", "running"}:
             continue
-        if hold_paths(board):
+        if hold_paths(board) or board_is_complete(config, board["id"]):
+            continue
+        due = float(job.get("next_attempt_at") or 0)
+        if due > now and not repair_route_is_stale(job):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -602,6 +644,8 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
     for board in config["boards"]:
         job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
         if job.get("status") not in {"queued", "running"}:
+            continue
+        if board_is_complete(config, board["id"]):
             continue
         row = {"board_id": board["id"], "next_attempt_at": job.get("next_attempt_at", now)}
         (held if hold_paths(board) else waiting).append(row)
@@ -829,6 +873,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         report = directory / f"report-{stamp}.json"
         log_path = directory / f"worker-{stamp}.log"
         job.update(status="running", last_started_at=now, attempts=attempts,
+                   repair_route=LLM_ROUTER_ROUTE,
                    report_path=str(report), log_path=str(log_path),
                    next_attempt_at=now + min(policy.get("max_backoff_seconds", 21600),
                                              policy.get("retry_seconds", 1800) * 2 ** min(attempts - 1, 4)))
