@@ -280,6 +280,45 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     assert goals["recipe"] == "native_goals_still_active"
 
 
+def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        apply_supervisor_heal, run_local_blocked_candidate_validation,
+    )
+    receipts = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts"
+    receipts.mkdir(parents=True)
+    (receipts / "DOEP-044.json").write_text(json.dumps({
+        "task_id": "DOEP-044",
+        "completion_authoritative": False,
+        "validation": {"commands": [{
+            "argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_044.py", "-q"],
+            "cwd": "external/ipfs_accelerate",
+        }]},
+    }))
+    (tmp_path / "external/ipfs_accelerate").mkdir(parents=True, exist_ok=True)
+    calls = []
+    def fake_run(argv, cwd=None, **kwargs):
+        calls.append((list(argv), cwd))
+        return subprocess.CompletedProcess(argv, 0)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    observation = {
+        "details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"],
+                    "task_counts": {"todo": 23, "blocked": 2}},
+    }
+    result = run_local_blocked_candidate_validation({"cwd": str(tmp_path)}, observation)
+    assert result["completion_authoritative"] is False
+    assert result["recipe"] == "local_validation_pending_native_admission"
+    assert result["results"][0]["status"] == "passed"
+    assert result["results"][0]["completion_authoritative"] is False
+    assert result["results"][1]["status"] == "receipt_missing"
+    assert calls and calls[0][0][0] == "python3"
+    healed = apply_supervisor_heal(
+        {"cwd": str(tmp_path)},
+        {"stall_class": "blocked_without_independent_work", "observation": observation},
+    )
+    assert healed["completion_authoritative"] is False
+    assert healed["recipe"] == "local_validation_pending_native_admission"
+
+
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import restore_dirty_control_plane
     repo = tmp_path / "repo"

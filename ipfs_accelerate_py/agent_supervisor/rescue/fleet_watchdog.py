@@ -517,6 +517,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
         if "source_integrity_not_verified" in reasons:
             return "supervisor_heal"
+    if stall == "blocked_without_independent_work":
+        # Remaining todos wait on blocked peers. Run declared local checks;
+        # never enqueue llm_router or rewrite those receipts.
+        return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""
     if stall == "configured_control_plane_dirty":

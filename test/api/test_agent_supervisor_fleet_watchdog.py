@@ -907,7 +907,7 @@ def test_todos_waiting_on_blocked_peers_are_not_independent():
     }
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_unclaimed_independent_todos_are_a_wait_stall():
