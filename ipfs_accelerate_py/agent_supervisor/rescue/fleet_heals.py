@@ -188,6 +188,18 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
         env["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] = generation
     if mutation_dir:
         env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] = mutation_dir
+    database = inventory.get("database_path")
+    if isinstance(database, str) and database:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                discover_live_quack_endpoint,
+            )
+            discovery = discover_live_quack_endpoint(database)
+        except Exception:
+            discovery = None
+        token = str(getattr(discovery, "token", "") or "").strip()
+        if token:
+            env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
     return env
 
 
@@ -205,15 +217,71 @@ def _temporary_environ(updates: Mapping[str, str]) -> Iterator[None]:
                 os.environ[key] = previous
 
 
-def _open_provisional_goal_source(endpoint: str):
+def _open_task_source(endpoint: str, owner_id: str):
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
     return DatabaseTaskSource(
         endpoint,
-        owner_id="fleet-watchdog-provisional-goal",
+        owner_id=owner_id,
         install_schema=False,
     )
+
+
+def _open_provisional_goal_source(endpoint: str):
+    return _open_task_source(endpoint, "fleet-watchdog-provisional-goal")
+
+
+def native_unstall_already_recorded(state: Mapping[str, Any]) -> bool:
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return result.get("recipe") == "unstall_stale_native_work"
+
+
+def unstall_stale_native_work(
+    board: Mapping[str, Any], observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rearm unknown-outcome blocks and stale in_progress via the live owner.
+
+    Never completes tasks. PCTDD-006/035 stay blocked unless the owner CAS
+    to retrying succeeds. SPAR/SAWM/DOEP follow the same recipe.
+    """
+    empty = {
+        "status": "skip",
+        "recipe": "unstall_stale_native_work",
+        "completion_authority": False,
+        "unstalled": [],
+    }
+    inventory = _inventory_board(board)
+    endpoint = inventory.get("quack_endpoint")
+    if not isinstance(endpoint, str) or not endpoint.startswith("quack:"):
+        return empty
+    transport = _owner_transport_env(inventory)
+    if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
+        return {**empty, "reason": "quack_attach_token_absent"}
+    if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
+        return {**empty, "reason": "owner_store_binding_absent"}
+    try:
+        with _temporary_environ(transport):
+            with _open_task_source(endpoint, "fleet-watchdog-unstall") as source:
+                result = source.unstall_stale_in_progress_tasks()
+    except Exception as exc:
+        detail = str(exc)
+        if "Authentication failed" in detail or "Quack authentication token" in detail:
+            return {**empty, "status": "wait", "reason": "quack_attach_token_absent"}
+        return {**empty, "status": "wait", "reason": f"owner_cas_failed:{type(exc).__name__}"}
+    changed = [
+        item for item in (result.get("unstalled") or [])
+        if isinstance(item, dict)
+    ]
+    if not changed:
+        return {**empty, "reason": "no_stale_or_false_terminal_work"}
+    return {
+        "status": "applied",
+        "recipe": "unstall_stale_native_work",
+        "completion_authority": False,
+        "unstalled": changed,
+        "reason": "stale in_progress or false-terminal blocked tasks rearmed; native lanes reclaim",
+    }
 
 
 def provisional_goal_closeout_already_recorded(state: Mapping[str, Any]) -> bool:
@@ -447,6 +515,15 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     dirty = restore_dirty_control_plane(board, observation)
     if dirty.get("status") == "applied":
         return dirty
+    if stall in {
+        "independent_work_beside_blocked_peer",
+        "independent_todos_unclaimed",
+        "in_progress_awaiting_effect",
+        "blocked_without_independent_work",
+    } and not native_unstall_already_recorded(state):
+        unstall = unstall_stale_native_work(board, observation)
+        if unstall.get("status") == "applied":
+            return unstall
     if stall == "independent_work_beside_blocked_peer" and live_workers(observation):
         return {"status": "wait", "recipe": "independent_work_has_live_workers",
                 "reason": "blocked peers stay blocked; live lanes own independent todos"}

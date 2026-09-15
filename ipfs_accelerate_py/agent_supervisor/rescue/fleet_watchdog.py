@@ -519,16 +519,30 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
     if stall == "in_progress_awaiting_effect":
+        reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
+        if any("process_uninterruptible" in reason for reason in reasons):
+            return ""
+        from .fleet_heals import native_unstall_already_recorded
+        if native_unstall_already_recorded(state):
+            return ""
+        if "no_task_progress" in reasons:
+            return "supervisor_heal"
         return ""
     if stall == "independent_work_beside_blocked_peer":
-        reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
-        if "source_integrity_not_verified" in reasons:
-            return "supervisor_heal"
+        from .fleet_heals import native_unstall_already_recorded
+        if native_unstall_already_recorded(state):
+            return ""
+        return "supervisor_heal"
+    if stall == "independent_todos_unclaimed":
+        from .fleet_heals import native_unstall_already_recorded
+        if native_unstall_already_recorded(state):
+            return ""
+        return "supervisor_heal"
     if stall == "blocked_without_independent_work":
-        # Remaining todos wait on blocked peers. Run declared local checks
-        # once; never enqueue llm_router or rewrite those receipts.
-        from .fleet_heals import local_validation_already_recorded
-        if local_validation_already_recorded(state):
+        # Remaining todos wait on blocked peers. Rearm false-terminal blocks,
+        # then run declared local checks once. Never rewrite those receipts.
+        from .fleet_heals import local_validation_already_recorded, native_unstall_already_recorded
+        if native_unstall_already_recorded(state) and local_validation_already_recorded(state):
             return ""
         return "supervisor_heal"
     if stall in WAIT_STALLS:
@@ -664,7 +678,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             from .fleet_heals import apply_supervisor_heal
             action_result = apply_supervisor_heal(board, state)
             reason = str((action_result or {}).get("reason") or "")
-            if reason.startswith("owner_cas_failed:") or reason == "quack_attach_token_absent":
+            recipe = str((action_result or {}).get("recipe") or "")
+            if (
+                reason.startswith("owner_cas_failed:")
+                or reason == "quack_attach_token_absent"
+                or recipe == "unstall_stale_native_work"
+            ):
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         elif action == "publish":
             from .fleet_completion import publish_completed_board

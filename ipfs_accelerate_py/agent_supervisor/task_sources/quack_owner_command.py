@@ -39,6 +39,9 @@ FALSE_TERMINAL_BLOCKED_REASON_MARKERS = (
     "Portal task projection is not complete",
     "quack_transport_unavailable",
     "grok_quota_exhausted",
+    "callback_authority_incomplete_blocked",
+    "database_unknown_outcome_blocked",
+    "database_task_state_projection_incomplete",
 )
 
 QUACK_OWNER_COMMAND_REQUEST_SCHEMA = (

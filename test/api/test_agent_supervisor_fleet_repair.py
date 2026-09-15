@@ -399,6 +399,8 @@ def test_database_task_source_imports_owner_command_contract():
 
     assert DatabaseTaskSource.INTERFACE == "DatabaseTaskSource@1"
     assert "quack_transport_unavailable" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert "callback_authority_incomplete_blocked" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert "database_unknown_outcome_blocked" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
     assert QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS == "compare_and_set_goal_status"
     assert STALE_IN_PROGRESS_UNSTALL_SECONDS == 16_200
     assert callable(submit_quack_owner_command)
@@ -438,6 +440,62 @@ def test_open_provisional_goal_source_does_not_raise_import_error():
 
     assert _open_provisional_goal_source.__defaults__ is None
     assert DatabaseTaskSource.__name__ == "DatabaseTaskSource"
+
+
+def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps({"boards": [{
+        "id": "pctdd", "cwd": str(tmp_path),
+        "quack_endpoint": "quack:127.0.0.1:27278",
+        "database_path": str(tmp_path / "control.duckdb"),
+        "runtime_root": str(tmp_path),
+        "owner_status_path": str(tmp_path / "quack-owner" / "quack-state-server.status.json"),
+    }]}))
+    board = {"id": "pctdd", "cwd": str(tmp_path), "probe": {"argv": [
+        "probe", "--inventory", str(inventory), "--board", "pctdd",
+    ]}}
+    class Source:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def unstall_stale_in_progress_tasks(self, **kwargs):
+            return {"unstalled": [{
+                "task_alias": "PCTDD-006", "task_cid": "bag:one",
+                "revision": 5, "reason": "false_terminal_blocked_supervisor_bug",
+            }]}
+    monkeypatch.setattr(fleet_heals, "_owner_transport_env", lambda inventory: {
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "test-token-value",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": "data/control.duckdb",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION": "1",
+    })
+    monkeypatch.setattr(fleet_heals, "_open_task_source", lambda endpoint, owner_id: Source())
+    result = apply_supervisor_heal(board, {
+        "stall_class": "independent_work_beside_blocked_peer",
+        "observation": {
+            "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+            "details": {
+                "task_counts": {"blocked": 2, "in_progress": 2, "todo": 28},
+                "blocked_task_ids": ["PCTDD-006", "PCTDD-035"],
+                "lanes": [{"daemon": {"pid": 9}}],
+            },
+        },
+    })
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "unstall_stale_native_work"
+    assert result["unstalled"][0]["task_alias"] == "PCTDD-006"
+    recorded = apply_supervisor_heal(board, {
+        "stall_class": "independent_work_beside_blocked_peer",
+        "observation": {
+            "details": {"lanes": [{"daemon": {"pid": 9}}]},
+        },
+        "last_action_result": result,
+    })
+    assert recorded["status"] == "wait"
+    assert recorded["recipe"] == "independent_work_has_live_workers"
 
 
 def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_path, monkeypatch):

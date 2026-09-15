@@ -1112,7 +1112,9 @@ def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
         "health": "stalled", "observation": stalled, "stall_class": "in_progress_awaiting_effect",
         "incident_since": 0, "next_action_at": 0, "attempts": 0,
     }
-    assert fleet.select_action(waiting, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100) == ""
+    assert fleet.select_action(
+        waiting, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == "supervisor_heal"
     live_status = {
         "health": "stopped",
         "reason_codes": ["owner_status_identity_missing", "owner_not_ready"],

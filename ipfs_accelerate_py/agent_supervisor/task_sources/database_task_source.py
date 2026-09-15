@@ -27,6 +27,7 @@ import tempfile
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
@@ -668,6 +669,21 @@ def _cursor_decode(cursor: str, *, revision: int) -> int:
     if offset < 0:
         raise TaskSourceConflictError("task page cursor offset is invalid")
     return offset
+
+
+def _task_age_seconds(updated_at: Any, now: datetime) -> float | None:
+    text = str(updated_at or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (now - moment).total_seconds()
 
 
 def _task_key(value: str | TaskRecord | Mapping[str, Any]) -> str:
@@ -3474,17 +3490,51 @@ class DatabaseTaskSource:
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
         orphan_previous_generation: bool = False,
     ) -> dict[str, Any]:
-        """Retry leftover in_progress gates through the intent authority."""
+        """Retry leftover in_progress gates and false-terminal blocked rows."""
 
-        result = dict(
-            self._intent.unstall_stale_in_progress_tasks(
-                now=now,
-                stale_seconds=stale_seconds,
-                orphan_previous_generation=orphan_previous_generation,
+        result: dict[str, Any] = {"unstalled": [], "skipped": []}
+        unstall = getattr(self._intent, "unstall_stale_in_progress_tasks", None)
+        if callable(unstall) and not getattr(self._intent, "uses_quack_transport", False):
+            result = dict(
+                unstall(
+                    now=now,
+                    stale_seconds=stale_seconds,
+                    orphan_previous_generation=orphan_previous_generation,
+                )
+                or {}
             )
-            or {}
-        )
+            result.setdefault("unstalled", [])
+            result.setdefault("skipped", [])
+        clock = now if isinstance(now, datetime) else datetime.now(timezone.utc)
+        if getattr(clock, "tzinfo", None) is None:
+            clock = clock.replace(tzinfo=timezone.utc)
         extra: list[dict[str, Any]] = []
+        try:
+            inflight = self.list_tasks(status="in_progress", limit=40)
+        except Exception:
+            inflight = None
+        for record in getattr(inflight, "tasks", ()) or ():
+            age = _task_age_seconds(getattr(record, "updated_at", ""), clock)
+            if age is None or age < int(stale_seconds):
+                continue
+            try:
+                cas = self.compare_and_set_status(
+                    record,
+                    int(getattr(record, "revision", 0) or 0),
+                    "retrying",
+                    {"operation": "stale_in_progress_unstall"},
+                )
+            except Exception:
+                continue
+            if getattr(cas, "changed", False):
+                extra.append(
+                    {
+                        "task_alias": str(getattr(record, "task_alias", "")),
+                        "task_cid": str(getattr(record, "task_cid", "")),
+                        "revision": int(getattr(cas, "revision", 0) or 0),
+                        "reason": "stale_in_progress_unstall",
+                    }
+                )
         try:
             page = self.list_tasks(status="blocked", limit=40)
         except Exception:
@@ -3496,10 +3546,13 @@ class DatabaseTaskSource:
                 blob = str(getattr(record, "body", "") or "")
             if not any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS):
                 continue
-            cas = self.rearm_blocked_task(
-                record,
-                receipt={"operation": "false_terminal_blocked_supervisor_bug"},
-            )
+            try:
+                cas = self.rearm_blocked_task(
+                    record,
+                    receipt={"operation": "false_terminal_blocked_supervisor_bug"},
+                )
+            except Exception:
+                continue
             if getattr(cas, "changed", False):
                 extra.append(
                     {
