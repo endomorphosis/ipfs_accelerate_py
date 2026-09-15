@@ -484,16 +484,28 @@ def test_real_progress_and_live_busy_protect_healthy_board(tmp_path):
     assert progress["last_progress_at"] == 220
 
 
-@pytest.mark.parametrize("health,candidate", [("complete", False), ("healthy", True), ("stopped", True)])
-def test_completion_and_candidates_use_publication_gate_with_cooldown(tmp_path, health, candidate):
+def test_native_complete_uses_publication_gate_with_cooldown(tmp_path):
     board = _board(tmp_path, publication={"approved": True})
-    state = fleet.assess(_observation(health=health, completion_candidate=candidate), {}, board, 100)
+    state = fleet.assess(_observation(health="complete", complete=True), {}, board, 100)
     assert fleet.select_action(state, board, 100) == "publish"
     state["next_action_at"] = 130
     assert fleet.select_action(state, board, 110) == ""
     assert fleet.select_action(state, board, 131) == "publish"
     board.pop("publication")
     assert fleet.select_action(state, board, 131) == "completion_review"
+
+
+def test_observational_candidate_is_not_publication_authority():
+    observation = _observation(health="healthy", complete=False, completion_candidate=True)
+    assert fleet.classify_stall(observation) == "closeout_requires_native_authority"
+    state = {
+        "health": "healthy", "observation": observation,
+        "stall_class": "closeout_requires_native_authority",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    board = {"publication": {"approved": True}, "failure_grace_seconds": 0}
+    assert fleet.select_action(state, board, 100) == ""
+    assert fleet.select_action(state, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100) == ""
 
 
 @pytest.mark.parametrize("status", ["held", "failed"])
@@ -516,7 +528,7 @@ def test_unsuccessful_publication_queues_repair_with_typed_evidence(tmp_path, mo
         return {"returncode": 0, "stdout": "private repair output", "stderr": ""}
 
     monkeypatch.setattr(fleet_completion, "publish_completed_board", publisher)
-    runner = Runner(_observation(completion_candidate=True), action=repair)
+    runner = Runner(_observation(health="complete", complete=True), action=repair)
     root = tmp_path / "watch"
     state = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
     assert [spec["argv"][0] for spec in runner.calls] == ["probe", "repair"]
@@ -536,7 +548,7 @@ def test_publisher_exception_is_diagnosed_and_queued_for_repair(tmp_path, monkey
         raise RuntimeError("private command output")
 
     monkeypatch.setattr(fleet_completion, "publish_completed_board", publisher)
-    runner = Runner(_observation(completion_candidate=True))
+    runner = Runner(_observation(health="complete", complete=True))
     state = fleet.tick_board(_board(tmp_path, publication={"approved": True}), tmp_path / "watch",
                              apply=True, runner=runner, now=100)
     assert state["publication_failure"]["reason_code"] == "publication_failed"
@@ -550,7 +562,7 @@ def test_successful_publication_clears_prior_failure_without_repair(tmp_path, mo
     monkeypatch.setattr(fleet_completion, "publish_completed_board", lambda *args: {"status": "published"})
     root = tmp_path / "watch"
     fleet.write_json(root / "spar/state.json", {"publication_failure": {"reason_code": "publication_held"}})
-    runner = Runner(_observation(completion_candidate=True))
+    runner = Runner(_observation(health="complete", complete=True))
     state = fleet.tick_board(_board(tmp_path, publication={"approved": True}), root,
                              apply=True, runner=runner, now=100)
     assert "publication_failure" not in state

@@ -41,6 +41,14 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "operator_hold"
     if health == "complete" or observation.get("complete") is True:
         return "complete"
+    if (
+        observation.get("completion_candidate") is True
+        and observation.get("complete") is not True
+        and health != "complete"
+    ):
+        # All-tasks-complete is a separate closeout review, not native
+        # completion_authority. SPAR bootstrap closeout is this class.
+        return "closeout_requires_native_authority"
     if health == "stopped" and not details.get("owner_ready"):
         if (
             "owner_not_ready" in reasons
@@ -323,8 +331,12 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     health = state["health"]
     if now < state.get("next_action_at", 0):
         return ""
-    if health == "complete" or state["observation"].get("completion_candidate") is True:
+    if health == "complete" or state["observation"].get("complete") is True:
         return "publish" if board.get("publication") else "completion_review"
+    stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+    if stall == "closeout_requires_native_authority":
+        # Observational completion_candidate is not publication authority.
+        return ""
     if health == "healthy":
         return ""
     grace = board.get("failure_grace_seconds", 60) if health in {"stopped", "unknown"} else board.get("blocked_grace_seconds", 300)
@@ -332,7 +344,6 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         return ""
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
-    stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
     if stall == "in_progress_awaiting_effect":
         return ""
     if stall == "owner_live_status_unreadable":
