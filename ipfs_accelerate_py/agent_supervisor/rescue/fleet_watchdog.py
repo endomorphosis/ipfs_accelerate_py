@@ -48,6 +48,8 @@ def classify_stall(observation: dict[str, Any]) -> str:
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
     if "no_task_progress" in reasons or health == "stalled":
+        if int(counts.get("in_progress") or 0) > 0:
+            return "in_progress_awaiting_effect"
         return "stalled_no_progress"
     if health in {"degraded", "blocked", "unknown"}:
         return str(health)
@@ -323,6 +325,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
     stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+    if stall == "in_progress_awaiting_effect":
+        return ""
     if (board.get("ensure") and not hold_paths(board)
             and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)
             and (recovery == "ensure" or stall == "owner_missing")):

@@ -93,6 +93,22 @@ def test_preserves_original_inode_bytes_metadata_and_restart_is_idempotent(tmp_p
         assert conn.execute("SELECT value FROM evidence").fetchall() == [("committed, unknown callback stays unknown",)]
 
 
+def test_leftover_reboot_wal_is_checkpointed_without_forging_completion(tmp_path):
+    db = tmp_path / "control.duckdb"
+    with duckdb.connect(str(db)) as connection:
+        connection.execute("CREATE TABLE evidence(value VARCHAR)")
+        connection.execute("INSERT INTO evidence VALUES ('unknown callback stays unknown')")
+    db.chmod(0o600)
+    wal = db.with_name("control.duckdb.wal")
+    assert wal.exists() and wal.stat().st_size > 0
+    with native_locks(db) as (lease, descriptors):
+        result = preserve(db, lease, descriptors)
+    assert result["completion_authority"] is False
+    assert not wal.exists() or wal.stat().st_size == 0
+    with duckdb.connect(str(db), read_only=True) as conn:
+        assert conn.execute("SELECT value FROM evidence").fetchall() == [("unknown callback stays unknown",)]
+
+
 @pytest.mark.parametrize("kind", ["nonempty", "wal-hardlink", "wal-symlink", "fifo", "wal-mode", "db-hardlink", "db-symlink", "db-mode", "checkpoint", "recovery"])
 def test_unsafe_inputs_refuse_without_any_retirement(tmp_path, kind):
     db = database(tmp_path); wal = empty_wal(db)

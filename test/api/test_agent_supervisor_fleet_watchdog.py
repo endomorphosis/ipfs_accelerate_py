@@ -599,6 +599,13 @@ def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
     assert fleet.classify_stall({"health": "stopped", "details": {"owner_ready": False}}) == "owner_missing"
     stalled = {"health": "healthy", "busy": False, "complete": False, "reason_codes": ["no_task_progress"]}
     assert fleet.classify_stall(stalled) == "stalled_no_progress"
+    stalled["details"] = {"task_counts": {"in_progress": 2, "todo": 23}}
+    assert fleet.classify_stall(stalled) == "in_progress_awaiting_effect"
+    waiting = {
+        "health": "stalled", "observation": stalled, "stall_class": "in_progress_awaiting_effect",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(waiting, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100) == ""
 
 
 def test_run_cycle_writes_ducklake_fleet_health_without_completion_authority(tmp_path):
