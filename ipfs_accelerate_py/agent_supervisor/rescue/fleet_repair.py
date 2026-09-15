@@ -685,24 +685,19 @@ def runtime_update_pending(config: dict[str, Any]) -> bool:
 
 
 def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path) -> list[str]:
-    """Grok via llm_router, then the configured Codex argv as fallback."""
+    """Grok via the packaged adapter, then the configured Codex argv as fallback.
+
+    Raw ``grok`` needs a trusted failure receipt for Codex fallback. The
+    packaged runner mints that receipt and does not require a missing
+    ``ipfs-accelerate-provider-isolated`` sandbox profile.
+    """
     fallback = [*policy["argv"], "-C", str(policy["cwd"]),
                 "--output-last-message", str(last_message), "-"]
-    grok_bin = shutil.which("grok") or ""
-    try:
-        from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (
-            DEFAULT_GROK_MAX_TURNS, DEFAULT_GROK_MODEL, _resolve_grok_bin,
-            build_grok_agent_command,
-        )
-        grok_bin = _resolve_grok_bin() or grok_bin
-        primary = build_grok_agent_command(
-            workspace=Path(policy["cwd"]), prompt_file=prompt,
-            model=os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", DEFAULT_GROK_MODEL),
-            max_turns=DEFAULT_GROK_MAX_TURNS, permission_mode="bypassPermissions",
-            grok_bin=grok_bin or "grok",
-        ) if grok_bin else ["grok"]
-    except Exception:
-        primary = ["grok"]
+    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner as grok_adapter
+    primary = [
+        sys.executable, "-P", str(Path(grok_adapter.__file__).resolve()),
+        "--workspace", str(policy["cwd"]),
+    ]
     return [
         sys.executable, "-P", "-m",
         "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner",

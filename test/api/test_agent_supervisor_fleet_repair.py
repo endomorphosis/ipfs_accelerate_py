@@ -224,6 +224,10 @@ def test_llm_router_repair_argv_uses_provider_fallback_not_codex_only(tmp_path):
     assert "--primary-provider" in argv and "grok" in argv
     assert "--fallback-provider" in argv and "codex" in argv
     assert "--probe-route-readiness" in argv
+    primary = json.loads(argv[argv.index("--primary-command-json") + 1])
+    assert primary[-2:] == ["--workspace", str(tmp_path)]
+    assert "grok_cli_runner.py" in primary[2]
+    assert "ipfs-accelerate-provider-isolated" not in primary
     fallback = json.loads(argv[argv.index("--fallback-command-json") + 1])
     assert fallback[:2] == ["codex", "exec"]
 
