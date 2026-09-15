@@ -706,7 +706,10 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
                 "stalled_without_active_worker": status.get("stalled_without_active_worker", False)}
         lanes.append(lane)
         extra_gate_deferred = (
-            status.get("status") == "agentic_maintenance_deferred"
+            status.get("status") in {
+                "agentic_maintenance_deferred",
+                "agentic_maintenance_completed",
+            }
             and bool(supervisor)
             and status.get("stalled_without_active_worker") is not True
         )
