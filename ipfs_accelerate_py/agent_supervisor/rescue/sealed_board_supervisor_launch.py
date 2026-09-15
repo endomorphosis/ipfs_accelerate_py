@@ -32,6 +32,32 @@ class _OverlayPath(list):
         return super().insert(index, path)
 
 
+def pin_sealed_sys_path(source_root: str) -> None:
+    """Keep the sealed checkout ahead of ipfs_kit_py after overlay imports."""
+    root = _abspath(source_root)
+    script_dir = str(Path(root) / "scripts")
+    for item in (script_dir, root):
+        while item in sys.path:
+            sys.path.remove(item)
+    sys.path.insert(0, script_dir)
+    sys.path.insert(0, root)
+    prefer_sealed_scripts(source_root)
+
+
+def prefer_sealed_scripts(source_root: str) -> None:
+    """ipfs_kit_py.scripts must not shadow SPAR scripts.ops."""
+    sealed = str(Path(source_root).resolve() / "scripts")
+    for name in list(sys.modules):
+        if name != "scripts" and not name.startswith("scripts."):
+            continue
+        module = sys.modules[name]
+        file_name = str(getattr(module, "__file__", "") or "")
+        paths = [str(item) for item in (getattr(module, "__path__", None) or [])]
+        if sealed in file_name or any(sealed in item for item in paths):
+            continue
+        del sys.modules[name]
+
+
 def overlay_module(qualname: str, path: str, *, package: str) -> None:
     """Load one overlay module into a sealed package. Relative imports stay sealed."""
     import importlib
@@ -90,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
         package="ipfs_accelerate_py.agent_supervisor.semantic_state",
     )
+    pin_sealed_sys_path(source_root)
     script = Path(args[0])
     if not script.is_absolute():
         script = Path(source_root) / script

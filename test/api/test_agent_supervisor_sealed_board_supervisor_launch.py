@@ -3,6 +3,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
     install_overlay,
     overlay_module,
+    prefer_sealed_scripts,
 )
 
 
@@ -34,3 +35,18 @@ def test_overlay_module_keeps_relative_imports_on_sealed_package():
 
     assert hasattr(again, "admit_current_bound_clause_records")
     assert again.REQUIRED_CLAUSES == loaded.REQUIRED_CLAUSES
+
+
+def test_prefer_sealed_scripts_drops_kit_shadow(tmp_path):
+    import sys
+    import types
+
+    sealed = tmp_path / "sealed" / "scripts"
+    sealed.mkdir(parents=True)
+    (sealed / "__init__.py").write_text("")
+    shadow = types.ModuleType("scripts")
+    shadow.__file__ = str(tmp_path / "ipfs_kit_py" / "scripts" / "__init__.py")
+    shadow.__path__ = [str(tmp_path / "ipfs_kit_py" / "scripts")]
+    sys.modules["scripts"] = shadow
+    prefer_sealed_scripts(str(tmp_path / "sealed"))
+    assert "scripts" not in sys.modules
