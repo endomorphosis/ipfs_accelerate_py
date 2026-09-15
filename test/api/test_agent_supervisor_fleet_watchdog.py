@@ -422,6 +422,28 @@ def test_another_board_lock_prevents_even_probe(tmp_path):
     assert runner.calls == []
 
 
+def test_operator_hold_keeps_probe_failure_as_hold_stall(tmp_path):
+    hold = tmp_path / "watchdog.hold"
+    hold.touch()
+    board = _board(tmp_path, hold_files=[str(hold)])
+
+    class FailedProbe(Runner):
+        def __call__(self, spec, **kwargs):
+            self.calls.append(spec)
+            if spec["argv"][0] == "probe":
+                return {"returncode": 1, "stdout": "", "stderr": "timeout", "timed_out": False}
+            return super().__call__(spec, **kwargs)
+
+    runner = FailedProbe(_observation())
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["health"] == "operator_hold"
+    assert state["stall_class"] == "operator_hold"
+    assert state["observed_health"] == "unknown"
+    assert "probe_failed" in state["observation"]["reason_codes"]
+    assert state["planned_action"] == ""
+    assert [call["argv"] for call in runner.calls] == [["probe"]]
+
+
 def test_operator_hold_keeps_observation_fresh_without_recovery(tmp_path):
     hold = tmp_path / "pause"
     hold.touch()
@@ -429,6 +451,7 @@ def test_operator_hold_keeps_observation_fresh_without_recovery(tmp_path):
     runner = Runner(_observation(health="stopped", recovery_action="ensure"))
     state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
     assert state["health"] == "operator_hold"
+    assert state["stall_class"] == "operator_hold"
     assert state["observed_health"] == "stopped"
     runner.observation = _observation(progress_token="task-2")
     fresh = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=200)

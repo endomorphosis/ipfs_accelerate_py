@@ -86,6 +86,8 @@ def classify_stall(observation: dict[str, Any]) -> str:
         if int(counts.get("in_progress") or 0) > 0:
             return "in_progress_awaiting_effect"
         return "stalled_no_progress"
+    if "probe_failed" in reasons:
+        return "probe_failed"
     if health in {"degraded", "blocked", "unknown"}:
         return str(health)
     return "none"
@@ -461,7 +463,8 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         state["observed_health"] = state["health"]
         holds = hold_paths(board)
         if repair_hold_paths(board):
-            state.update(health="operator_hold", holds=holds, planned_action="")
+            state.update(health="operator_hold", stall_class="operator_hold",
+                         holds=holds, planned_action="")
             write_json(path, state)
             return state
         state.pop("holds", None)
@@ -482,7 +485,8 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         # A slow status command must not race an operator's newly placed hold.
         holds = hold_paths(board)
         if repair_hold_paths(board):
-            state.update(health="operator_hold", holds=holds, planned_action="")
+            state.update(health="operator_hold", stall_class="operator_hold",
+                         holds=holds, planned_action="")
             write_json(path, state)
             return state
         if holds and action == "ensure":
