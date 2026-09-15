@@ -232,6 +232,25 @@ def test_llm_router_repair_argv_uses_provider_fallback_not_codex_only(tmp_path):
     assert fallback[:2] == ["codex", "exec"]
 
 
+def test_should_reclaim_orphan_sigterm_and_stale_workspace(tmp_path):
+    cfg = config(tmp_path)
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "queued", "attempts": 1, "last_started_at": 10, "finished_at": 20,
+        "returncode": -15, "repair_route": repair.LLM_ROUTER_ROUTE,
+    })
+    assert repair.should_reclaim_repair_unit(cfg) is True
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "running", "repair_route": repair.LLM_ROUTER_ROUTE,
+        "repair_workspace": str(tmp_path),
+    })
+    assert repair.should_reclaim_repair_unit(cfg) is False
+    write_json(tmp_path / "repairs/sawm/job.json", {
+        "status": "running", "repair_route": repair.LLM_ROUTER_ROUTE,
+        "repair_workspace": str(tmp_path / "maintenance"),
+    })
+    assert repair.should_reclaim_repair_unit(cfg) is True
+
+
 def test_stale_maintenance_workspace_is_due_for_board_checkout(tmp_path):
     cfg = config(tmp_path)
     board = tmp_path / "board"

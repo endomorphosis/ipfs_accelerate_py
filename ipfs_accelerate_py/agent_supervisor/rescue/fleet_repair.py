@@ -866,6 +866,35 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
                 "next_attempt_at": job["next_attempt_at"]}
 
 
+def _iter_repair_jobs(config: dict[str, Any]):
+    root = Path(config["state_dir"]) / "repairs"
+    for board in config.get("boards") or []:
+        job = read_json(root / board["id"] / "job.json")
+        if job:
+            yield board, job
+
+
+def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
+    """Stop a live cgroup that cannot heal the stall (orphan or wrong tree)."""
+    running = [(board, job) for board, job in _iter_repair_jobs(config)
+               if job.get("status") == "running"]
+    if running:
+        return any(repair_workspace_is_stale(job, board) for board, job in running)
+    latest = max(
+        ((board, job) for board, job in _iter_repair_jobs(config)
+         if type(job.get("last_started_at")) in (int, float)),
+        key=lambda item: item[1]["last_started_at"],
+        default=None,
+    )
+    if latest is None:
+        return False
+    board, job = latest
+    if repair_workspace_is_stale(job, board):
+        return True
+    return bool(job.get("status") == "queued" and job.get("finished_at")
+                and job.get("returncode") not in {0, None})
+
+
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
     policy = dict(config["repair_worker"])
     if hold_paths(board):
@@ -882,7 +911,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     except (OSError, subprocess.TimeoutExpired):
         return {"status": "repair_job_liveness_unknown"}
     if live["stdout"].strip() in {"active", "activating", "deactivating"}:
-        return {"status": "existing_repair_job_running"}
+        if not should_reclaim_repair_unit(config):
+            return {"status": "existing_repair_job_running"}
+        command({"argv": ["systemctl", "--user", "stop", f"{unit}.service"]},
+                cwd="/", timeout=45)
     if (live["stdout"].strip() not in {"inactive", "failed"}
             or live.get("returncode") not in {0, 3, 4}):
         return {"status": "repair_job_liveness_unknown"}
