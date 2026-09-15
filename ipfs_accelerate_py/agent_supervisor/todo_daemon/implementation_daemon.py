@@ -37996,6 +37996,11 @@ class PortalImplementationDaemon:
                 )
                 for entry in expansion["entries"]
             )
+        entries = [
+            entry
+            for entry in entries
+            if not self._proposal_entry_is_inline_binary(entry)
+        ]
         return (
             tuple(
                 sorted(
@@ -38009,6 +38014,30 @@ class PortalImplementationDaemon:
             ),
             tuple(expansions),
         )
+
+    @staticmethod
+    def _proposal_entry_is_inline_binary(entry: Any) -> bool:
+        """Omit inline binary blobs from proposal admission.
+
+        Hash-only authorized artifacts (no inline source) are kept so policy
+        can still admit bounded PDF/ZIP identities. Inline .bin/.pt/.npz
+        bodies are dropped so a useful text/json patch can still persist.
+        """
+
+        after = getattr(entry, "after_source", None)
+        before = getattr(entry, "before_source", None)
+        if getattr(entry, "binary", False) and after is None and before is None:
+            return False
+        if getattr(entry, "binary", False):
+            return True
+        path = str(getattr(entry, "path", "") or "").lower()
+        if path.endswith(
+            (".bin", ".npz", ".pt", ".pth", ".so", ".dylib", ".gguf", ".duckdb", ".sqlite")
+        ):
+            return True
+        if isinstance(after, str) and ("\0" in after[:2048] or after.startswith("\x7fELF")):
+            return True
+        return False
 
     def _restore_empty_scoped_submodule_gitlinks(
         self,
