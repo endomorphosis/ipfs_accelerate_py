@@ -595,6 +595,9 @@ def test_classify_publication_hold_encodes_publisher_logic_stalls():
         "reason": "another publisher holds this board's lock",
     }) == "publication_lock_busy"
     assert fleet.classify_publication_hold({
+        "reason": "GitHub Actions account is locked due to a billing issue; retain the PR for retry",
+    }) == "publication_github_actions_billing_locked"
+    assert fleet.classify_publication_hold({
         "reason": "command timed out after 300s",
     }) == "publication_command_timeout"
     assert fleet.classify_publication_hold({
@@ -634,6 +637,26 @@ def test_integration_divergence_hold_retries_without_llm(tmp_path, monkeypatch):
     assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
     assert state["publication_failure"]["stall_class"] == "publication_integration_diverged_from_accepted_source"
     assert state["last_action_result"]["repair_result"]["status"] == "autoheal_retry"
+
+
+def test_github_billing_lock_retries_publish_without_llm(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion
+
+    board = _board(tmp_path, publication={"approved": True}, max_backoff_seconds=3600)
+
+    def publisher(manifest, state_dir):
+        return {
+            "status": "held",
+            "reason": "GitHub Actions account is locked due to a billing issue; retain the PR for retry",
+        }
+
+    monkeypatch.setattr(fleet_completion, "publish_completed_board", publisher)
+    runner = Runner(_observation(health="complete", complete=True))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+    assert state["publication_failure"]["stall_class"] == "publication_github_actions_billing_locked"
+    assert state["last_action_result"]["repair_result"]["status"] == "autoheal_retry"
+    assert state["next_action_at"] == 3700
 
 
 def test_nested_leaf_publication_hold_retries_without_llm(tmp_path, monkeypatch):

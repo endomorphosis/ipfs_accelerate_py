@@ -363,7 +363,8 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
         pytest.fail("timed-out command left a live descendant")
 
 
-def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True):
+def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True,
+              billing_locked=False):
     candidate = "a" * 40
     calls = []
     views = 0
@@ -381,6 +382,14 @@ def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, 
             return json.dumps({**ready, **(patch or {}), **(second_patch or {} if views == 2 else {})})
         if argv[:3] == ["gh", "pr", "checks"] and checks_fail:
             raise fleet.PublicationHold("hosted check unavailable due to billing")
+        if argv[:3] == ["gh", "run", "list"]:
+            if billing_locked:
+                return json.dumps([{"databaseId": 9, "conclusion": "failure", "status": "completed"}])
+            return "[]"
+        if argv[:3] == ["gh", "run", "view"] and billing_locked:
+            return "The job was not started because your account is locked due to a billing issue."
+        if argv[:3] == ["gh", "run", "rerun"] and billing_locked:
+            raise fleet.PublicationHold("HTTP 403: billing")
         return ""
 
     monkeypatch.setattr(fleet, "_run", run)
@@ -417,6 +426,18 @@ def test_failed_or_unavailable_hosted_checks_hold_despite_local_validation(tmp_p
     candidate, calls = github_pr(monkeypatch, checks_fail=True)
     with pytest.raises(fleet.PublicationHold, match="checks are unsuccessful or unavailable"):
         fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_github_actions_billing_lock_holds_without_admin_merge(tmp_path, monkeypatch):
+    candidate, calls = github_pr(
+        monkeypatch, patch={"mergeStateStatus": "BLOCKED"}, billing_locked=True,
+    )
+    with pytest.raises(fleet.PublicationHold, match="billing issue"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+    assert not any("--admin" in argv for argv in calls)
+    assert ["gh", "run", "rerun", "9", "--repo", "owner/repo", "--failed"] in calls
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
 
 

@@ -39,6 +39,7 @@ PUBLICATION_AUTOHEAL_STALLS = {
     "publication_lock_busy",
     "publication_command_timeout",
     "publication_integration_diverged_from_accepted_source",
+    "publication_github_actions_billing_locked",
 }
 # Reserved for holds that must not retry publish or enqueue LLM.
 PUBLICATION_STOP_STALLS = set()
@@ -96,6 +97,8 @@ def classify_publication_hold(receipt: dict[str, Any]) -> str:
         return "nested_source_head_from_parent_gitlink"
     if "current_rollout_mode_is_not_required" in reason:
         return "bootstrap_mode_after_native_authority"
+    if "billing issue" in reason:
+        return "publication_github_actions_billing_locked"
     if any(token in reason for token in (
             "publication pull request created",
             "required GitHub checks",
@@ -526,7 +529,10 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 write_json(incident_path, incident)
                 state["publication_failure"] = failure
                 if autoheal:
-                    state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
+                    delay = float(board.get("cooldown_seconds", 180))
+                    if stall == "publication_github_actions_billing_locked":
+                        delay = float(board.get("max_backoff_seconds", 3600))
+                    state["next_action_at"] = now + delay
                 # Persist the diagnosis before enqueueing, so a watchdog crash
                 # retains both the publication failure and the existing backoff.
                 write_json(path, state)

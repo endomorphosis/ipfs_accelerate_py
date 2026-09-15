@@ -363,6 +363,47 @@ def _ancestor(root: Path, older: str, newer: str) -> bool:
     return result.returncode == 0
 
 
+def _github_run_failures(repo: str, branch: str, root: Path) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(_run([
+            "gh", "run", "list", "--repo", repo, "--branch", branch,
+            "--json", "databaseId,conclusion,status", "--limit", "8",
+        ], root) or "[]")
+    except (PublicationHold, json.JSONDecodeError, TypeError, ValueError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [row for row in payload if isinstance(row, dict)]
+
+
+def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
+    """Hosted checks cannot start while the GitHub Actions account is locked."""
+    for run in _github_run_failures(repo, branch, root):
+        if run.get("conclusion") != "failure":
+            continue
+        ident = run.get("databaseId")
+        if ident is None:
+            continue
+        try:
+            text = _run(["gh", "run", "view", str(ident), "--repo", repo], root)
+        except PublicationHold:
+            continue
+        if "billing issue" in text.lower():
+            return True
+    return False
+
+
+def _rerun_failed_github_checks(repo: str, branch: str, root: Path) -> None:
+    for run in _github_run_failures(repo, branch, root):
+        if run.get("conclusion") != "failure":
+            continue
+        ident = run.get("databaseId")
+        if ident is None:
+            continue
+        _run(["gh", "run", "rerun", str(ident), "--repo", repo, "--failed"], root)
+        return
+
+
 def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> None:
     """Publish only a review branch; GitHub performs the normal PR merge.
 
@@ -413,13 +454,26 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
         )):
             raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
 
-    current_ready()
     try:
-        # Use the exit status, supported by older installed gh versions too.
-        _run(["gh", "pr", "checks", number, "--repo", repo, "--required"], root)
+        current_ready()
+        try:
+            # Use the exit status, supported by older installed gh versions too.
+            _run(["gh", "pr", "checks", number, "--repo", repo, "--required"], root)
+        except PublicationHold:
+            raise PublicationHold("required GitHub checks are unsuccessful or unavailable; retain the PR for retry") from None
+        current_ready()
     except PublicationHold:
-        raise PublicationHold("required GitHub checks are unsuccessful or unavailable; retain the PR for retry") from None
-    current_ready()
+        if _github_actions_billing_locked(repo, branch, root):
+            try:
+                _rerun_failed_github_checks(repo, branch, root)
+            except PublicationHold:
+                raise PublicationHold(
+                    "GitHub Actions account is locked due to a billing issue; retain the PR for retry"
+                ) from None
+            raise PublicationHold(
+                "publication pull request created; awaiting required GitHub checks and reviews"
+            ) from None
+        raise
     _run(["gh", "pr", "merge", number, "--repo", repo, "--merge",
           "--match-head-commit", candidate], root)
 
