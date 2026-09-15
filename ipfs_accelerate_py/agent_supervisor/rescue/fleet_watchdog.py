@@ -77,7 +77,8 @@ def classify_stall(observation: dict[str, Any]) -> str:
     ):
         # All-tasks-complete is a separate closeout review, not native
         # completion_authority. SPAR bootstrap closeout is this class.
-        if details.get("native_completion_authority") is False:
+        board_id = str(observation.get("board_id") or "").lower()
+        if board_id in {"spar", ""} and details.get("native_completion_authority") is False:
             return "missing_independent_clause_evidence"
         return "closeout_requires_native_authority"
     if health == "stopped" and not details.get("owner_ready"):

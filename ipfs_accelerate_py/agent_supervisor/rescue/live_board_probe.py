@@ -746,7 +746,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         if command_error:
             reasons.append(command_error)
         if any(native.get(key) is False for key in ("ready", "healthy", "operational_ready")):
-            reasons.append("native_operator_reports_unhealthy")
+            if "board_has_blocked_or_quarantined_tasks" not in reasons:
+                reasons.append("native_operator_reports_unhealthy")
     authority = _object(native.get("receipt")) if board_id == "aseh" else _object(native.get("task_authority"))
     if board_id == "aseh" and "samples" in authority:
         # ASEH v2 puts task observations inside its admitted two-sample

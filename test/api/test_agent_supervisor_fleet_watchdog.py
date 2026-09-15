@@ -574,6 +574,13 @@ def test_native_complete_uses_publication_gate_with_cooldown(tmp_path):
     assert fleet.select_action(state, board, 131) == "completion_review"
 
 
+def test_aseh_closeout_is_not_spar_clause_stall():
+    observation = _observation(health="healthy", complete=False, completion_candidate=True,
+                               board_id="aseh")
+    observation["details"] = {"native_completion_authority": False}
+    assert fleet.classify_stall(observation) == "closeout_requires_native_authority"
+
+
 def test_missing_clause_evidence_is_not_publication_or_llm_repair():
     observation = _observation(health="healthy", complete=False, completion_candidate=True)
     observation["details"] = {"native_completion_authority": False}
