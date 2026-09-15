@@ -317,10 +317,13 @@ def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(
     for now in (110, 129):
         assert fleet.tick_board(board, root, apply=True, runner=runner, now=now)["planned_action"] == ""
     persistent = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
-    assert persistent["last_action"] == "repair"
-    assert persistent["last_action_result"]["supervisor_heal"]["recipe"] == "llm_router"
+    # D-state I/O is not a coding stall. Persistent uninterruptible wait stays
+    # native; an LLM cannot unstick __flush_work or rewrite live receipts.
+    assert persistent["stall_class"] == "kernel_uninterruptible_wait"
+    assert persistent.get("last_action") != "repair"
+    assert persistent["planned_action"] == ""
     assert persistent["observation"]["busy"] is True
-    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 0
     assert not any(call["argv"][0] == "ensure" for call in runner.calls)
 
 
@@ -468,6 +471,9 @@ def test_pcpr_deletion_hold_is_retained(tmp_path):
     assert state["health"] == "operator_hold"
     assert state["last_action"] == "hold_review"
     assert state["last_action_result"]["status"] == "wait"
+    assert state["last_action_result"]["retained"][0]["reason"] == (
+        "deleted_authority_requires_original_or_retirement"
+    )
 
 
 def test_operator_hold_keeps_probe_failure_as_hold_stall(tmp_path):
@@ -876,6 +882,73 @@ def test_board_checkout_missing_is_a_wait_stall():
     observation = {"health": "unknown", "reason_codes": ["board_checkout_missing"], "complete": False}
     assert fleet.classify_stall(observation) == "board_checkout_missing"
     assert "board_checkout_missing" in fleet.WAIT_STALLS
+
+
+def test_missing_checkout_is_typed_before_probe_subprocess(tmp_path):
+    gone = tmp_path / "deleted-authority"
+    board = _board(gone, failure_grace_seconds=0, blocked_grace_seconds=0)
+    runner = Runner(_observation(health="unknown", reason_codes=["probe_failed"]))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert runner.calls == []
+    assert state["stall_class"] == "board_checkout_missing"
+    assert state["observation"]["reason_codes"] == ["board_checkout_missing"]
+    assert state["observation"]["details"]["missing"] == "cwd"
+    assert state.get("last_action") != "repair"
+    assert state["planned_action"] == ""
+    assert fleet.select_action(state, board, 100) == ""
+
+
+def test_missing_checkout_under_deletion_hold_is_not_rematerialized(tmp_path):
+    gone = tmp_path / "deleted-pcpr"
+    hold = tmp_path / "watchdog.hold"
+    hold.write_text(
+        "Original PCPR authority and source were deleted. Preserve evidence; "
+        "do not rematerialize authoritative state from projections.\n"
+    )
+    board = _board(gone, hold_files=[str(hold)], failure_grace_seconds=0)
+    runner = Runner(_observation(health="unknown", reason_codes=["probe_failed"]))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert runner.calls == []
+    assert hold.exists()
+    assert state["health"] == "operator_hold"
+    assert state["stall_class"] == "board_checkout_missing"
+    assert state["last_action"] == "hold_review"
+    assert state["last_action_result"]["retained"][0]["reason"] == (
+        "deleted_authority_requires_original_or_retirement"
+    )
+    assert state["planned_action"] == ""
+
+
+def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": [
+            "lane_0_supervisor_process_uninterruptible",
+            "lane_2_daemon_process_uninterruptible",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"completed": 20, "in_progress": 2, "todo": 23},
+            "lanes": [{"daemon": {"pid": 1, "process_state": "D"}}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "in_progress_awaiting_effect"
+    waiting = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "in_progress_awaiting_effect",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        waiting, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == ""
+    dstate = {
+        "health": "degraded",
+        "reason_codes": ["lane_0_daemon_process_uninterruptible"],
+        "details": {"task_counts": {"todo": 23, "in_progress": 0}},
+    }
+    assert fleet.classify_stall(dstate) == "kernel_uninterruptible_wait"
+    assert "kernel_uninterruptible_wait" in fleet.WAIT_STALLS
 
 
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():

@@ -245,6 +245,29 @@ def test_verify_independent_work_and_in_progress_are_not_board_not_healthy():
     assert repair.verify_job_recovery(board, {}, awaiting, Path("/tmp"))["reason"] == "in_progress_awaiting_effect"
 
 
+def test_supervisor_heals_wait_on_typed_native_stalls():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+    board = {"id": "doep", "cwd": "/absent"}
+    unclaimed = apply_supervisor_heal(board, {
+        "stall_class": "independent_todos_unclaimed",
+        "observation": {"details": {"task_counts": {"todo": 23}, "lanes": [{"daemon": {"pid": 1}}]}},
+    })
+    assert unclaimed["status"] == "wait"
+    assert unclaimed["recipe"] == "native_lanes_own_independent_todos"
+    missing = apply_supervisor_heal(board, {
+        "stall_class": "board_checkout_missing",
+        "observation": {"reason_codes": ["board_checkout_missing"]},
+    })
+    assert missing["status"] == "wait"
+    assert missing["recipe"] == "deleted_checkout_not_rematerialized"
+    dstate = apply_supervisor_heal(board, {
+        "stall_class": "kernel_uninterruptible_wait",
+        "observation": {"reason_codes": ["lane_0_daemon_process_uninterruptible"]},
+    })
+    assert dstate["status"] == "wait"
+    assert dstate["recipe"] == "kernel_uninterruptible_wait"
+
+
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import restore_dirty_control_plane
     repo = tmp_path / "repo"

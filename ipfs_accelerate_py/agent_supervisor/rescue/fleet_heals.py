@@ -83,7 +83,16 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "independent_work_beside_blocked_peer" and live_workers(observation):
         return {"status": "wait", "recipe": "independent_work_has_live_workers",
                 "reason": "blocked peers stay blocked; live lanes own independent todos"}
+    if stall == "independent_todos_unclaimed":
+        return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
+                "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
     if stall == "in_progress_awaiting_effect":
         return {"status": "wait", "recipe": "in_progress_awaiting_effect",
                 "reason": "in-progress tasks are native work, not a coding stall"}
+    if stall == "kernel_uninterruptible_wait":
+        return {"status": "wait", "recipe": "kernel_uninterruptible_wait",
+                "reason": "D-state I/O is not a coding stall; do not signal or rewrite receipts"}
+    if stall == "board_checkout_missing":
+        return {"status": "wait", "recipe": "deleted_checkout_not_rematerialized",
+                "reason": "missing checkout is not reconstructed; retain original authority or explicit retirement"}
     return try_logic_guided_repair(board, state)

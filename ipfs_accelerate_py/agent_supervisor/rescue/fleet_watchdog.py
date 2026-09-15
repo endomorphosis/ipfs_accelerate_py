@@ -36,6 +36,7 @@ WAIT_STALLS = {
     "closeout_requires_native_authority",
     "operator_hold",
     "board_checkout_missing",
+    "kernel_uninterruptible_wait",
     "complete",
 }
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
@@ -55,12 +56,41 @@ PUBLICATION_AUTOHEAL_STALLS = {
 PUBLICATION_STOP_STALLS = set()
 
 
+def missing_board_checkout(board: dict[str, Any]) -> dict[str, Any] | None:
+    """Configured checkout paths that must exist before a probe subprocess can run.
+
+    A deleted worktree must not become probe_failed. The probe adapter cannot
+    start when cwd is gone, and FileNotFoundError is not a coding stall.
+    """
+    for key in ("cwd", "state_root", "owner_status_path"):
+        value = board.get(key)
+        if not isinstance(value, str) or not value:
+            continue
+        if not Path(value).exists():
+            return {"missing": key, "path": value}
+    return None
+
+
+def checkout_missing_observation(board_id: str, missing: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "board_id": board_id,
+        "health": "unknown",
+        "complete": False,
+        "busy": False,
+        "progress_token": "",
+        "reason_codes": ["board_checkout_missing"],
+        "details": dict(missing),
+    }
+
+
 def classify_stall(observation: dict[str, Any]) -> str:
     """Map probe evidence to a bounded stall class. Never infers completion."""
     health = observation.get("health")
     reasons = {str(x) for x in observation.get("reason_codes") or []}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+    if "board_checkout_missing" in reasons:
+        return "board_checkout_missing"
     if health == "operator_hold":
         return "operator_hold"
     if health == "complete" or observation.get("complete") is True:
@@ -99,8 +129,6 @@ def classify_stall(observation: dict[str, Any]) -> str:
         ):
             return "owner_live_status_unreadable"
         return "owner_missing"
-    if "board_checkout_missing" in reasons:
-        return "board_checkout_missing"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
         if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
             if (int(counts.get("in_progress") or 0) == 0
@@ -110,9 +138,14 @@ def classify_stall(observation: dict[str, Any]) -> str:
                 return "independent_todos_unclaimed"
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
+    if int(counts.get("in_progress") or 0) > 0:
+        # Native in-progress work, including D-state I/O and nonzero native
+        # status, is not a coding stall. An LLM cannot unstick __flush_work
+        # or rewrite live receipts.
+        return "in_progress_awaiting_effect"
+    if any("process_uninterruptible" in reason for reason in reasons):
+        return "kernel_uninterruptible_wait"
     if "no_task_progress" in reasons or health == "stalled":
-        if int(counts.get("in_progress") or 0) > 0:
-            return "in_progress_awaiting_effect"
         return "stalled_no_progress"
     if "probe_failed" in reasons:
         return "probe_failed"
@@ -163,7 +196,9 @@ def write_ducklake_fleet_health(root: Path, report: dict[str, Any]) -> None:
         details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
         boards[str(board_id)] = {
             "health": state.get("health"),
-            "stall_class": classify_stall(observation) if observation else "watchdog_error",
+            "stall_class": state.get("stall_class") or (
+                classify_stall(observation) if observation else "watchdog_error"
+            ),
             "reason_codes": list(observation.get("reason_codes") or []),
             "complete": bool(observation.get("complete")),
             "owner_ready": bool(details.get("owner_ready")),
@@ -471,12 +506,16 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             return {"board_id": board_id, "health": "owned_by_another_watchdog"}
         path = directory / "state.json"
         previous = read_json(path)
-        try:
-            result = runner(board["probe"], cwd=board["cwd"], timeout=60)
-        except Exception as exc:
-            result = {"returncode": None, "stdout": "", "timed_out": False,
-                      "stderr": f"{type(exc).__name__}: {exc}"}
-        observation = normalize_probe(board_id, result)
+        missing = missing_board_checkout(board)
+        if missing:
+            observation = checkout_missing_observation(board_id, missing)
+        else:
+            try:
+                result = runner(board["probe"], cwd=board["cwd"], timeout=60)
+            except Exception as exc:
+                result = {"returncode": None, "stdout": "", "timed_out": False,
+                          "stderr": f"{type(exc).__name__}: {exc}"}
+            observation = normalize_probe(board_id, result)
         if "storage_checks" in board:
             from .storage_diagnostics import observe_storage
             diagnostics = observe_storage(board["storage_checks"])
@@ -505,7 +544,15 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         state["observed_health"] = state["health"]
         holds = hold_paths(board)
         if repair_hold_paths(board):
-            state.update(health="operator_hold", stall_class="operator_hold", holds=holds)
+            # A deletion hold still fences ensure/start. Keep a typed missing
+            # checkout visible so the fleet does not hide it as probe_failed
+            # or rematerialize the original authority.
+            stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+            state.update(
+                health="operator_hold",
+                stall_class="board_checkout_missing" if stall == "board_checkout_missing" else "operator_hold",
+                holds=holds,
+            )
             if apply:
                 from .fleet_holds import review_board_holds
                 result = review_board_holds(board, state.get("observation") or {})
@@ -538,8 +585,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         # A slow status command must not race an operator's newly placed hold.
         holds = hold_paths(board)
         if repair_hold_paths(board):
-            state.update(health="operator_hold", stall_class="operator_hold",
-                         holds=holds, planned_action="")
+            stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+            state.update(
+                health="operator_hold",
+                stall_class="board_checkout_missing" if stall == "board_checkout_missing" else "operator_hold",
+                holds=holds, planned_action="",
+            )
             write_json(path, state)
             return state
         if holds and action == "ensure":

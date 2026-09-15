@@ -11,6 +11,12 @@ from typing import Any, Mapping
 from .fleet_watchdog import repair_hold_paths, write_json
 
 ASEH_SOURCE_HOLD_SCHEMA = "aseh/root-active-source-repair-hold@1"
+PCPR_DELETED_AUTHORITY_HOLD_SCHEMA = "pcpr/deleted-authority-hold@1"
+DELETED_AUTHORITY_HOLD_MARKERS = (
+    "do not rematerialize",
+    "original pcpr authority",
+    "original authority and source were deleted",
+)
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -58,6 +64,17 @@ def _archive_unverified_source_hold(path: Path, payload: dict[str, Any]) -> dict
             "source_admission_verified": False}
 
 
+def _deleted_authority_hold(path: str, payload: dict[str, Any] | None) -> bool:
+    """PCPR-style deletion holds are retained; never rematerialize authority."""
+    if payload and payload.get("schema") == PCPR_DELETED_AUTHORITY_HOLD_SCHEMA:
+        return True
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")[:4096].lower()
+    except OSError:
+        return False
+    return any(marker in text for marker in DELETED_AUTHORITY_HOLD_MARKERS)
+
+
 def review_one_hold(path: str, board: Mapping[str, Any],
                     observation: Mapping[str, Any]) -> dict[str, Any]:
     marker = Path(path)
@@ -70,6 +87,9 @@ def review_one_hold(path: str, board: Mapping[str, Any],
             return _archive_unverified_source_hold(marker, payload)
         return {"status": "retained", "path": path,
                 "reason": "source_admission_unverified"}
+    if _deleted_authority_hold(path, payload):
+        return {"status": "retained", "path": path,
+                "reason": "deleted_authority_requires_original_or_retirement"}
     return {"status": "retained", "path": path, "reason": "unstructured_or_unknown_hold"}
 
 
