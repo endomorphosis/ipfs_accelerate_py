@@ -1461,9 +1461,15 @@ def _workspace_symlinks_reach_denied_paths(
 
 
 def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
-    """Find writable workspace files that may alias authority outside it."""
+    """Find workspace files whose extra hardlinks live outside the worktree.
 
-    violations: list[Path] = []
+    Git worktrees and copy-on-write checkouts often share inodes among files
+    *inside* the workspace (nlink>1). Those do not alias provider/control
+    authority. A violation is an inode whose link count exceeds the number of
+    names found under ``workspace``.
+    """
+
+    by_inode: dict[tuple[int, int], list[Path]] = {}
     try:
         for root, _directories, files in os.walk(
             workspace,
@@ -1475,13 +1481,22 @@ def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
                 candidate = root_path / name
                 stat_result = candidate.lstat()
                 if (
-                    not candidate.is_symlink()
-                    and candidate.is_file()
-                    and stat_result.st_nlink > 1
+                    candidate.is_symlink()
+                    or not candidate.is_file()
+                    or stat_result.st_nlink <= 1
                 ):
-                    violations.append(candidate)
+                    continue
+                by_inode.setdefault(
+                    (stat_result.st_dev, stat_result.st_ino),
+                    [],
+                ).append(candidate)
     except OSError as exc:
         raise ValueError("unable to audit workspace hardlinks") from exc
+    violations: list[Path] = []
+    for paths in by_inode.values():
+        nlink = paths[0].lstat().st_nlink
+        if nlink > len(paths):
+            violations.extend(paths)
     return tuple(sorted(violations, key=lambda item: str(item)))
 
 
