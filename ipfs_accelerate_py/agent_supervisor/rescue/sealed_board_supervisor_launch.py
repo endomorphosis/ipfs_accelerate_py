@@ -8,9 +8,9 @@ amending the sealed git HEAD.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-import time
 from pathlib import Path
 
 
@@ -33,30 +33,37 @@ class _OverlayPath(list):
         return super().insert(index, path)
 
 
-def retain_after_supervise_drain(
+def overlay_supervise_exit_code(
     source_root: str,
     argv: list[str],
     code: int,
     *,
-    wait=None,
+    owner_lifecycle: str | None = None,
 ) -> int:
-    """Keep a sealed SPAR owner when supervise drain-exits 0.
+    """Do not hold a dead owner. Relaunch overlay if supervise returned 0 after stop.
 
-    Native SPAR calls retain_owner_for_closeout after lane drain. Overlayed
-    supervise can still return 0; systemd then treats success as a stop unless
-    this launcher holds until OPERATOR_STOP.
+    Native SPAR retain_owner_for_closeout loops inside supervise. If overlayed
+    supervise returns, the Quack owner is already gone. Sleeping here made
+    systemd think the unit was active while lifecycle=stopped.
     """
     if code != 0 or "supervise" not in argv:
         return code
-    stop = (
-        Path(source_root)
-        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1"
-        / "OPERATOR_STOP"
-    )
-    sleeper = time.sleep if wait is None else wait
-    while not stop.exists() and not stop.is_symlink():
-        sleeper(10)
-    return 0
+    lifecycle = owner_lifecycle
+    if lifecycle is None:
+        status_path = (
+            Path(source_root)
+            / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1"
+            / "quack-owner"
+            / "quack-state-server.status.json"
+        )
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload = {}
+        lifecycle = str(payload.get("lifecycle") or "")
+    if lifecycle == "ready":
+        return 0
+    return 1
 
 
 def pin_sealed_sys_path(source_root: str) -> None:
@@ -163,8 +170,8 @@ def main(argv: list[str] | None = None) -> int:
             code = 0
         elif not isinstance(code, int):
             raise
-        return retain_after_supervise_drain(source_root, args, code)
-    return retain_after_supervise_drain(source_root, args, 0)
+        return overlay_supervise_exit_code(source_root, args, code)
+    return overlay_supervise_exit_code(source_root, args, 0)
 
 
 if __name__ == "__main__":

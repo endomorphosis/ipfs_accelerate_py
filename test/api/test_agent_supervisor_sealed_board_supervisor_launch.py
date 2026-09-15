@@ -3,8 +3,8 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
     install_overlay,
     overlay_module,
+    overlay_supervise_exit_code,
     prefer_sealed_scripts,
-    retain_after_supervise_drain,
 )
 
 
@@ -53,31 +53,32 @@ def test_prefer_sealed_scripts_drops_kit_shadow(tmp_path):
     assert "scripts" not in sys.modules
 
 
-def test_retain_after_supervise_drain_holds_until_operator_stop(tmp_path):
-    runtime = (
-        tmp_path
-        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1"
-    )
-    runtime.mkdir(parents=True)
-    calls = {"n": 0}
-
-    def wait(_seconds: float) -> None:
-        calls["n"] += 1
-        if calls["n"] >= 2:
-            (runtime / "OPERATOR_STOP").write_text("")
-
-    code = retain_after_supervise_drain(
-        str(tmp_path),
-        ["scripts/materialize.py", "supervise", "--implement"],
-        0,
-        wait=wait,
-    )
-    assert code == 0
-    assert calls["n"] >= 2
-
-
-def test_retain_after_supervise_drain_does_not_hold_nonzero():
+def test_overlay_supervise_exit_restarts_when_owner_already_stopped():
     assert (
-        retain_after_supervise_drain("/unused", ["supervise"], 2, wait=lambda _s: None)
+        overlay_supervise_exit_code(
+            "/unused",
+            ["supervise", "--implement"],
+            0,
+            owner_lifecycle="stopped",
+        )
+        == 1
+    )
+
+
+def test_overlay_supervise_exit_keeps_zero_when_owner_ready():
+    assert (
+        overlay_supervise_exit_code(
+            "/unused",
+            ["supervise", "--implement"],
+            0,
+            owner_lifecycle="ready",
+        )
+        == 0
+    )
+
+
+def test_overlay_supervise_exit_preserves_nonzero():
+    assert (
+        overlay_supervise_exit_code("/unused", ["supervise"], 2, owner_lifecycle="stopped")
         == 2
     )
