@@ -863,9 +863,16 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         and (not owner_writer_custody["configured"] or (
             owner_writer_custody.get("verified") is True and owner_writer_custody.get("held") is True))
         and all(key in COMPLETED for key in counts))
+    native_complete = bool(
+        native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1"
+        and native.get("authoritative_task_observation") is True
+        and native.get("completion_authority") is True
+        and native.get("complete") is True
+    )
     result: dict[str, Any] = {
         "schema": SCHEMA, "board_id": board_id, "health": health, "reason_codes": sorted(set(reasons)),
-        "progress_token": _progress(authority), "busy": bool(providers), "complete": False,
+        "progress_token": _progress(authority), "busy": bool(providers),
+        "complete": native_complete,
         "completion_candidate": candidate,
         "details": {"observed_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "owner": _public_identity(owner) if owner_live else {}, "owner_ready": owner_ready,
@@ -882,7 +889,11 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "blocked_task_ids": blocked_task_ids,
             "source_heads": _source_heads(board),
             "source_integrity": source_integrity,
-            "completion_gate": "separate_authoritative_closeout_verification_required"},
+            "native_completion_authority": native.get("completion_authority") is True,
+            "completion_gate": (
+                native.get("completion_gate")
+                or "separate_authoritative_closeout_verification_required"
+            )},
     }
     if isinstance(command_error, _NativeStatusFailure):
         result["details"]["native_status_failure"] = dict(command_error.evidence)

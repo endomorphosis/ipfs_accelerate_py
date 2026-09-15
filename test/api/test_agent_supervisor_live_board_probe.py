@@ -197,6 +197,41 @@ def test_stale_checkpoint_never_authorizes_completion(board, monkeypatch):
     assert result["completion_candidate"] is False
 
 
+def test_native_spar_completion_authority_is_the_only_complete_flag(board, monkeypatch):
+    config, _, _ = board
+    config["id"] = "spar"
+    config["board_id"] = "spar"
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-board-status@1",
+        "authoritative_task_observation": True,
+        "completion_authority": False,
+        "complete": False,
+        "completion_gate": "sealed_goal_and_terminal_receipt_review_required",
+    }
+    monkeypatch.setattr(
+        probe, "_status_with_receipt_retry", lambda *_args, **_kwargs: (payload, "", 1)
+    )
+    monkeypatch.setattr(
+        probe,
+        "_database_board_authority",
+        lambda *_args, **_kwargs: {
+            "task_count": 51,
+            "status_counts": {"completed": 51},
+            "authenticated_query": True,
+        },
+    )
+    held = probe.observe_board(config, now=1000)
+    assert held["complete"] is False
+    assert held["details"]["native_completion_authority"] is False
+    payload["completion_authority"] = True
+    payload["complete"] = True
+    payload["completion_gate"] = "native_spar_closeout_profile"
+    admitted = probe.observe_board(config, now=1000)
+    assert admitted["complete"] is True
+    assert admitted["details"]["native_completion_authority"] is True
+    assert admitted["details"]["completion_gate"] == "native_spar_closeout_profile"
+
+
 def test_all_tasks_complete_only_proposes_separate_gate(board, monkeypatch):
     config, _, _ = board
     monkeypatch.setattr(probe, "_status_command", lambda _: ({
