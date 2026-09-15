@@ -758,7 +758,11 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         task_count = _object(authority.get("snapshot")).get("task_count")
         if type(task_count) is int and task_count >= 0:
             authority["task_count"] = task_count
-    database_authority = _database_board_authority(native, board, owner_status, now)
+    # Native readers timestamp their result after the query. Use the completed
+    # observation clock: a slow fresh result must not look future-dated, and a
+    # receipt that expired during the wait must not retain its earlier age.
+    authority_now = now + max(0.0, time.monotonic() - started)
+    database_authority = _database_board_authority(native, board, owner_status, authority_now)
     if native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
         if database_authority:
             authority = database_authority

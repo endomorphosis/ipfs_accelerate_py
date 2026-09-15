@@ -813,6 +813,39 @@ def _stopped_terminal_lane(board, monkeypatch, *, goal_status="active"):
     return config, lane, native, status
 
 
+@pytest.mark.parametrize("elapsed,observed_at,admitted", [
+    (15.0, 1015.0, True),   # Produced after a slow authenticated query.
+    (36.0, 1000.0, False),  # A cached sample expired during the same wait.
+    (15.0, 1021.0, False),  # Still beyond the existing five-second clock skew.
+])
+def test_native_receipt_age_uses_completed_observation_clock(
+    board, monkeypatch, elapsed, observed_at, admitted,
+):
+    config, _, native, _ = _stopped_terminal_lane(board, monkeypatch)
+    clock = [0.0]
+    calls = []
+    monkeypatch.setattr(probe.time, "monotonic", lambda: clock[0])
+
+    def slow_native_status(_):
+        calls.append(True)
+        clock[0] = elapsed
+        native["observed_at"] = observed_at
+        return native, ""
+
+    monkeypatch.setattr(probe, "_status_command", slow_native_status)
+    result = probe.observe_board(config, now=1000)
+    assert calls == [True]  # No added retry or cached-result fallback.
+    assert result["details"]["owner_ready"] is True
+    assert result["details"]["authenticated_task_observation"] is admitted
+    assert result["details"]["expected_stopped_lanes"] == ([0] if admitted else [])
+    assert ("native_database_status_not_admitted" in result["reason_codes"]) is not admitted
+    assert result["complete"] is False and "recovery_action" not in result
+    if admitted:
+        assert result["health"] == "blocked"
+        assert result["details"]["unsettled_goal_count"] == 1
+        assert result["details"]["completion_receipt_count"] == 1
+
+
 @pytest.mark.parametrize("goal_status", ["active", "completed"])
 def test_successful_task_frontier_recognizes_stopped_lanes_without_closing_goals(
     board, monkeypatch, goal_status,
