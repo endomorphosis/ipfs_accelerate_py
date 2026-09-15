@@ -38204,33 +38204,49 @@ class PortalImplementationDaemon:
                 ]
             )
         tracked_command.extend([baseline_ref or "HEAD", "--"])
-        if excluded_paths:
+        tracked_paths: list[str] = []
+        for entry in entries:
+            kind = str(getattr(getattr(entry, "change_kind", ""), "value", "") or "")
+            if kind == "add" and not getattr(entry, "old_path", ""):
+                continue
+            for path in (
+                str(getattr(entry, "old_path", "") or ""),
+                str(getattr(entry, "new_path", "") or ""),
+                str(getattr(entry, "path", "") or ""),
+            ):
+                if path and path not in tracked_paths:
+                    tracked_paths.append(path)
+        if tracked_paths:
+            tracked_command.extend(tracked_paths)
+        elif excluded_paths:
             tracked_command.append(".")
             tracked_command.extend(
                 f":(exclude,literal){path}"
                 for path in excluded_paths
             )
-        tracked = subprocess.run(
-            tracked_command,
-            cwd=repo_root,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if tracked.returncode != 0:
-            raise RuntimeError("unable to render tracked candidate patch")
-        tracked_patch = tracked.stdout
-        if prefix:
-            tracked_patch = (
-                PortalImplementationDaemon._prefix_proposal_patch_extended_paths(
-                    tracked_patch,
-                    path_prefix=prefix,
-                )
+        sections: list[str] = []
+        if tracked_paths or excluded_paths:
+            tracked = subprocess.run(
+                tracked_command,
+                cwd=repo_root,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
             )
-        sections = [tracked_patch]
+            if tracked.returncode != 0:
+                raise RuntimeError("unable to render tracked candidate patch")
+            tracked_patch = tracked.stdout
+            if prefix:
+                tracked_patch = (
+                    PortalImplementationDaemon._prefix_proposal_patch_extended_paths(
+                        tracked_patch,
+                        path_prefix=prefix,
+                    )
+                )
+            sections.append(tracked_patch)
         raw_untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard", "-z"],
             cwd=repo_root,
