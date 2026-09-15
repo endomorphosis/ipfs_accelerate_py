@@ -31,6 +31,16 @@ REQUIRED_CLAUSES = (
 CLAUSE_EVIDENCE_SCHEMA = (
     "ipfs-datasets.semantic-refactoring.spar-clause-evidence@1"
 )
+REQUIRED_CLAUSE_RECORD_KEYS = frozenset(
+    {
+        "schema",
+        "clause",
+        "source_forest_root",
+        "subject_digest",
+        "payload_cid",
+        "nomination_only",
+    }
+)
 CLAUSE_REPORTS = {
     "required_mode_roots_accepted": (
         "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json",
@@ -239,6 +249,82 @@ def materialize_clause_records(
             ),
         )
     return records
+
+
+def _missing_clause(reason: str) -> dict[str, Any]:
+    return {
+        "accepted": False,
+        "reason": reason,
+        "semantic_acceptance_authority": False,
+    }
+
+
+def _admit_clause_record(
+    name: str,
+    subject: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit one current-bound record. Never copy an accepted boolean."""
+    if set(record) != REQUIRED_CLAUSE_RECORD_KEYS:
+        return _missing_clause("clause_record_not_closed")
+    if record.get("schema") != CLAUSE_EVIDENCE_SCHEMA:
+        return _missing_clause("clause_record_schema_differs")
+    if record.get("clause") != name:
+        return _missing_clause("clause_record_name_differs")
+    if record.get("nomination_only") is not False:
+        return _missing_clause("clause_record_is_nomination_only")
+    if record.get("source_forest_root") != subject.get("source_forest_root"):
+        return _missing_clause("clause_record_source_forest_mismatch")
+    if record.get("subject_digest") != _clause_digest(dict(subject)):
+        return _missing_clause("clause_record_subject_digest_mismatch")
+    payload_cid = record.get("payload_cid")
+    if type(payload_cid) is not str or not payload_cid.strip():
+        return _missing_clause("clause_record_payload_cid_missing")
+    evidence = {
+        "schema": CLAUSE_EVIDENCE_SCHEMA,
+        "clause": name,
+        "source_forest_root": subject["source_forest_root"],
+        "subject_digest": record["subject_digest"],
+        "payload_cid": payload_cid,
+        "nomination_only": False,
+    }
+    return {
+        "accepted": True,
+        "reason": "",
+        "semantic_acceptance_authority": False,
+        "evidence_cid": _clause_digest(evidence),
+    }
+
+
+def admit_current_bound_clause_records(
+    subject: Mapping[str, Any],
+    records: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Return outcomes when every required clause record independently admits."""
+    outcomes: dict[str, dict[str, Any]] = {}
+    for name in REQUIRED_CLAUSES:
+        row = records.get(name) if isinstance(records, Mapping) else None
+        if not isinstance(row, Mapping):
+            outcomes[name] = _missing_clause("current_source_clause_evidence_unavailable")
+            continue
+        outcomes[name] = _admit_clause_record(name, subject, row)
+    if not all(row.get("accepted") is True for row in outcomes.values()):
+        return None
+    return outcomes
+
+
+def _producer_rejected_clause_record(raw: Mapping[str, Any]) -> bool:
+    """True only when the producer classified a record and rejected it."""
+    outcomes = raw.get("clause_outcomes")
+    if not isinstance(outcomes, Mapping):
+        return False
+    for row in outcomes.values():
+        if not isinstance(row, Mapping) or row.get("accepted") is True:
+            continue
+        reason = str(row.get("reason") or "")
+        if reason.startswith("clause_record_"):
+            return True
+    return False
 
 
 def _runtime_settled(runtime: Any) -> bool:
@@ -472,6 +558,39 @@ def admit_accepted_root(
             "accepted_root_cid": raw.get("accepted_root_cid") or subject_cid,
             "evidence_cids": list(evidence),
             "producer_interface": PRODUCER_INTERFACE,
+        }
+    supervisor_outcomes = admit_current_bound_clause_records(
+        subject, current_source.get("clause_records") or {}
+    )
+    extra["supervisor_clause_outcomes"] = {
+        name: {"accepted": row.get("accepted") is True, "reason": str(row.get("reason") or "")[:256]}
+        for name, row in (supervisor_outcomes or {}).items()
+    } if supervisor_outcomes else {
+        name: {"accepted": False, "reason": "current_source_clause_evidence_unavailable"}
+        for name in REQUIRED_CLAUSES
+    }
+    if (
+        supervisor_outcomes is not None
+        and not _producer_rejected_clause_record(raw)
+        and _runtime_settled(runtime)
+    ):
+        evidence_cids = [
+            row["evidence_cid"]
+            for row in supervisor_outcomes.values()
+            if isinstance(row.get("evidence_cid"), str) and row["evidence_cid"]
+        ]
+        return {
+            "schema": SCHEMA,
+            "admitted": True,
+            "authority": "spar_supervisor_current_bound_clause_records",
+            "completion_authority": False,
+            "semantic_acceptance_authority": True,
+            "subject_cid": subject_cid,
+            "accepted_root_cid": subject_cid,
+            "evidence_cids": evidence_cids,
+            "producer_interface": PRODUCER_INTERFACE,
+            "clause_outcomes": extra["supervisor_clause_outcomes"],
+            "clause_records_materialized": extra.get("clause_records_materialized"),
         }
     current_mode = extra["current_rollout_mode"]
     if current_mode == BOOTSTRAP_MODE:

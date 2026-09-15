@@ -5,6 +5,8 @@ from __future__ import annotations
 from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root import (
     CLAUSE_EVIDENCE_SCHEMA,
     REQUIRED_CLAUSES,
+    _producer_rejected_clause_record,
+    admit_current_bound_clause_records,
     materialize_clause_records,
 )
 
@@ -68,6 +70,41 @@ def test_missing_runtime_settlement_cannot_mint_fixed_point():
     )
     assert "fixed_point_accepted" not in records
     assert "required_mode_roots_accepted" in records
+
+
+def test_supervisor_admits_materialized_current_bound_records():
+    subject = _subject()
+    records = materialize_clause_records(subject, _current())
+    outcomes = admit_current_bound_clause_records(subject, records)
+    assert outcomes is not None
+    assert all(row["accepted"] is True for row in outcomes.values())
+    assert all(row["evidence_cid"].startswith("sha256:") for row in outcomes.values())
+
+
+def test_forest_mismatch_record_cannot_admit():
+    subject = _subject()
+    records = materialize_clause_records(subject, _current())
+    records["fixed_point_accepted"]["source_forest_root"] = "sha256:" + "b" * 64
+    assert admit_current_bound_clause_records(subject, records) is None
+
+
+def test_producer_record_rejection_is_honored():
+    raw = {
+        "clause_outcomes": {
+            "fixed_point_accepted": {
+                "accepted": False,
+                "reason": "clause_record_is_nomination_only",
+            }
+        }
+    }
+    assert _producer_rejected_clause_record(raw) is True
+    stub = {
+        "clause_outcomes": {
+            name: {"accepted": False, "reason": "current_source_clause_evidence_unavailable"}
+            for name in REQUIRED_CLAUSES
+        }
+    }
+    assert _producer_rejected_clause_record(stub) is False
 
 
 def test_missing_spar043_receipt_cannot_mint_required_mode_roots():
