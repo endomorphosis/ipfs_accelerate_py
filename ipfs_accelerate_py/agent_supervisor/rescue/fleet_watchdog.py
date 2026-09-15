@@ -28,6 +28,55 @@ from .live_board_probe import COMPLETED, read_json_object
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
+FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
+
+
+def classify_stall(observation: dict[str, Any]) -> str:
+    """Map probe evidence to a bounded stall class. Never infers completion."""
+    health = observation.get("health")
+    reasons = {str(x) for x in observation.get("reason_codes") or []}
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+    if health == "operator_hold":
+        return "operator_hold"
+    if health == "complete" or observation.get("complete") is True:
+        return "complete"
+    if health == "stopped" and not details.get("owner_ready"):
+        return "owner_missing"
+    if "board_has_blocked_or_quarantined_tasks" in reasons:
+        if int(counts.get("todo") or 0) + int(counts.get("in_progress") or 0) > 0:
+            return "independent_work_beside_blocked_peer"
+        return "blocked_without_independent_work"
+    if "no_task_progress" in reasons or health == "stalled":
+        return "stalled_no_progress"
+    if health in {"degraded", "blocked", "unknown"}:
+        return str(health)
+    return "none"
+
+
+def write_ducklake_fleet_health(root: Path, report: dict[str, Any]) -> None:
+    """Observational DuckLake fleet snapshot. Not completion authority."""
+    boards = {}
+    for board_id, state in (report.get("boards") or {}).items():
+        if not isinstance(state, dict):
+            continue
+        observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+        details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+        boards[str(board_id)] = {
+            "health": state.get("health"),
+            "stall_class": classify_stall(observation) if observation else "watchdog_error",
+            "reason_codes": list(observation.get("reason_codes") or []),
+            "complete": bool(observation.get("complete")),
+            "owner_ready": bool(details.get("owner_ready")),
+            "planned_action": state.get("planned_action") or "",
+        }
+    write_json(root / "ducklake_fleet_health.json", {
+        "schema": FLEET_HEALTH_SCHEMA,
+        "completion_authority": False,
+        "observed_at": report.get("observed_at"),
+        "apply": bool(report.get("apply")),
+        "boards": boards,
+    })
 
 
 def hold_paths(board: dict[str, Any]) -> list[str]:
@@ -234,6 +283,7 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
+    state["stall_class"] = classify_stall(observation)
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
@@ -447,6 +497,7 @@ def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                                             "error": f"{type(exc).__name__}: {exc}"}
     report = {"schema": SCHEMA, "observed_at": time.time(), "apply": apply, "boards": observations}
     write_json(root / "status.json", report)
+    write_ducklake_fleet_health(root, report)
     return report
 
 

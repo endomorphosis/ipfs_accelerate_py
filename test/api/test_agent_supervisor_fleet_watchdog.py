@@ -581,6 +581,32 @@ def test_hold_created_during_probe_prevents_action(tmp_path):
     assert len(delegate.calls) == 1
 
 
+def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
+    blocked = {"health": "blocked", "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+               "details": {"owner_ready": True, "task_counts": {"todo": 23, "blocked": 1}}}
+    assert fleet.classify_stall(blocked) == "independent_work_beside_blocked_peer"
+    blocked["details"]["task_counts"] = {"todo": 0, "in_progress": 0, "blocked": 2}
+    assert fleet.classify_stall(blocked) == "blocked_without_independent_work"
+    assert fleet.classify_stall({"health": "stopped", "details": {"owner_ready": False}}) == "owner_missing"
+    stalled = {"health": "healthy", "busy": False, "complete": False, "reason_codes": ["no_task_progress"]}
+    assert fleet.classify_stall(stalled) == "stalled_no_progress"
+
+
+def test_run_cycle_writes_ducklake_fleet_health_without_completion_authority(tmp_path):
+    observation = dict(board_id="sawm", health="stopped", complete=False, busy=False,
+                       progress_token="t1", reason_codes=["owner_process_missing"],
+                       details={"owner_ready": False, "task_counts": {}})
+    board = dict(id="sawm", cwd=str(tmp_path), probe=dict(
+        argv=[sys.executable, "-c", "print(" + repr(json.dumps(observation)) + ")"]))
+    report = fleet.run_cycle(dict(state_dir=str(tmp_path / "watch"), boards=[board]), apply=False)
+    payload = json.loads((tmp_path / "watch" / "ducklake_fleet_health.json").read_text())
+    assert payload["schema"] == fleet.FLEET_HEALTH_SCHEMA
+    assert payload["completion_authority"] is False
+    assert payload["boards"]["sawm"]["stall_class"] == "owner_missing"
+    assert payload["boards"]["sawm"]["owner_ready"] is False
+    assert report["boards"]["sawm"]["stall_class"] == "owner_missing"
+
+
 def test_command_timeout_kills_descendant_after_launcher_exits(tmp_path):
     pidfile = tmp_path / "child.pid"
     child = (
