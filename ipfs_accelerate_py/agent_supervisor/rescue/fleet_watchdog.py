@@ -663,7 +663,8 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if action == "supervisor_heal":
             from .fleet_heals import apply_supervisor_heal
             action_result = apply_supervisor_heal(board, state)
-            if str((action_result or {}).get("reason") or "").startswith("owner_cas_failed:"):
+            reason = str((action_result or {}).get("reason") or "")
+            if reason.startswith("owner_cas_failed:") or reason == "quack_attach_token_absent":
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         elif action == "publish":
             from .fleet_completion import publish_completed_board

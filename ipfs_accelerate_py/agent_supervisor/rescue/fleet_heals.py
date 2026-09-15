@@ -145,7 +145,7 @@ def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
 
 
 def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
-    """Bind store, generation, mutation inbox, and token from live owner status."""
+    """Bind store, generation, and mutation inbox from live owner status."""
 
     env: dict[str, str] = {}
     status_path = inventory.get("owner_status_path")
@@ -153,7 +153,6 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
     store_id = ""
     generation = ""
     mutation_dir = ""
-    token = ""
     if isinstance(status_path, str) and status_path:
         path = Path(status_path)
         try:
@@ -169,13 +168,8 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
             candidate = path.parent / "mutations"
             if candidate.is_dir():
                 mutation_dir = str(candidate)
-            token_path = path.parent / "typed-state-owner.token"
-            try:
-                material = token_path.read_text(encoding="ascii").strip()
-            except (OSError, UnicodeError):
-                material = ""
-            if material:
-                token = material
+            # typed-state-owner.token authenticates the Unix gateway, not Quack
+            # ATTACH. Using it as IPFS_ACCELERATE_AGENT_QUACK_TOKEN fails closed.
     if not store_id:
         database = str(inventory.get("database_path") or "")
         if database and runtime and database.startswith(runtime.rstrip("/") + "/"):
@@ -194,8 +188,6 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
         env["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] = generation
     if mutation_dir:
         env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] = mutation_dir
-    if token:
-        env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
     return env
 
 
@@ -305,6 +297,9 @@ def provisionally_complete_disabled_extra_gate_goals(
                         continue
                     changed.append(goal.goal_id)
     except Exception as exc:
+        detail = str(exc)
+        if "Authentication failed" in detail or "Quack authentication token" in detail:
+            return {**empty, "reason": "quack_attach_token_absent"}
         return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
     return {
         "status": "applied" if changed else "wait",

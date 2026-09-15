@@ -343,6 +343,47 @@ def test_provisional_goal_heal_uses_quack_and_does_not_verify(tmp_path, monkeypa
     assert result["recipe"] == "provisionally_complete_terminal_goals"
 
 
+def test_provisional_goal_heal_maps_missing_quack_attach_token(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+    objectives = tmp_path / "docs" / "objectives.md"
+    objectives.parent.mkdir(parents=True)
+    objectives.write_text("# Objectives\n")
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"objectives_path": "docs/objectives.md"}))
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps({"boards": [{
+        "id": "aseh", "cwd": str(tmp_path),
+        "quack_endpoint": "quack:127.0.0.1:41487",
+        "config_path": str(config),
+        "database_path": str(tmp_path / "control.duckdb"),
+        "runtime_root": str(tmp_path),
+    }]}))
+    board = {"id": "aseh", "cwd": str(tmp_path), "probe": {"argv": [
+        "probe", "--inventory", str(inventory), "--board", "aseh",
+    ]}}
+    class Boom:
+        def __enter__(self):
+            raise RuntimeError("Invalid Input Error: Could not find a Quack authentication token")
+        def __exit__(self, *_):
+            return False
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph.parse_goal_heap",
+        lambda text: [],
+    )
+    monkeypatch.setattr(fleet_heals, "_open_provisional_goal_source", lambda endpoint: Boom())
+    result = apply_supervisor_heal(board, {
+        "stall_class": "closeout_waiting_on_unsettled_goals",
+        "observation": {
+            "reason_codes": ["board_has_unsettled_goals", "goal_closeout_disabled_on_launch"],
+            "details": {"task_counts": {"completed": 40}, "unsettled_goal_count": 9},
+        },
+    })
+    assert result["completion_authority"] is False
+    assert result["reason"] == "quack_attach_token_absent"
+    assert result["status"] == "wait"
+
+
 def test_database_task_source_imports_owner_command_contract():
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
@@ -384,7 +425,7 @@ def test_provisional_goal_heal_binds_owner_transport(tmp_path):
     assert env["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] == "data/aseh/control.duckdb"
     assert env["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] == "165"
     assert env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] == str(owner / "mutations")
-    assert env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] == "owner-token-value"
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in env
 
 
 def test_open_provisional_goal_source_does_not_raise_import_error():

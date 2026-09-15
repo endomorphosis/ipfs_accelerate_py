@@ -762,6 +762,7 @@ def _candidate_quack_status_paths(database: Path) -> tuple[Path, ...]:
     name = _QUACK_STATUS_FILENAME
     return (
         parent / "quack-owner" / name,
+        parent / "q" / name,
         parent / "live" / "state" / "quack-owner" / name,
         parent / "live" / "state" / "quack-owner-v2" / name,
     )
