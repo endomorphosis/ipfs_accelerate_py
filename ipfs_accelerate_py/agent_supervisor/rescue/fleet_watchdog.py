@@ -406,8 +406,11 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # cannot mint those records or flip completion_authority.
         return ""
     if stall == "configured_control_plane_dirty":
-        # Git cleanliness of configured supervisor paths is not Codex work.
-        return ""
+        return "supervisor_heal"
+    if stall == "independent_work_beside_blocked_peer":
+        from .fleet_heals import live_workers
+        if live_workers(state.get("observation") or {}):
+            return "supervisor_heal"
     if health == "healthy":
         return ""
     grace = board.get("failure_grace_seconds", 60) if health in {"stopped", "unknown"} else board.get("blocked_grace_seconds", 300)
@@ -506,7 +509,10 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if action == "ensure":
             state["ensure_attempts"] = state.get("ensure_attempts", 0) + 1
         write_json(path, state)
-        if action == "publish":
+        if action == "supervisor_heal":
+            from .fleet_heals import apply_supervisor_heal
+            action_result = apply_supervisor_heal(board, state)
+        elif action == "publish":
             from .fleet_completion import publish_completed_board
             try:
                 action_result = publish_completed_board(board["publication"], directory / "publication")
@@ -563,12 +569,20 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             else:
                 state.pop("publication_failure", None)
         elif action in {"repair", "completion_review"}:
-            if not board.get("repair"):
-                action_result = {"status": "repair_required", "incident": str(incident_path)}
+            from .fleet_heals import apply_supervisor_heal
+            heal = apply_supervisor_heal(board, state)
+            if heal.get("status") in {"applied", "wait"}:
+                action_result = {"status": heal["status"], "supervisor_heal": heal,
+                                 "incident": str(incident_path)}
+            elif not board.get("repair"):
+                action_result = {"status": "repair_required", "incident": str(incident_path),
+                                 "supervisor_heal": heal}
             else:
                 spec = dict(board["repair"])
                 spec["argv"] = [*spec["argv"], "--incident", str(incident_path)]
                 action_result = runner(spec, cwd=board["cwd"], timeout=120)
+                if isinstance(action_result, dict):
+                    action_result = dict(action_result, supervisor_heal=heal)
         else:
             action_result = runner(board["ensure"], cwd=board["cwd"], timeout=180)
         # Keep command output in private action evidence, not the shared status.

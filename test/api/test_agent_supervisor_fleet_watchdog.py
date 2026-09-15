@@ -318,8 +318,10 @@ def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(
         assert fleet.tick_board(board, root, apply=True, runner=runner, now=now)["planned_action"] == ""
     persistent = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
     assert persistent["last_action"] == "repair"
+    assert persistent["last_action_result"]["status"] == "wait"
+    assert persistent["last_action_result"]["supervisor_heal"]["recipe"] == "kernel_uninterruptible_wait"
     assert persistent["observation"]["busy"] is True
-    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 0
     assert not any(call["argv"][0] == "ensure" for call in runner.calls)
 
 
@@ -553,7 +555,52 @@ def test_dirty_control_plane_is_not_llm_repair():
     }
     assert fleet.select_action(
         waiting, {"failure_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
+
+
+def test_supervisor_heal_runs_before_llm_for_dirty_control_plane(tmp_path):
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
+    observation = _observation(
+        health="degraded", reason_codes=["source_integrity_not_verified"],
+        details={"owner_ready": True},
+    )
+    runner = Runner(observation)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["last_action"] == "supervisor_heal"
+    assert state["last_action_result"]["status"] == "wait"
+    assert state["last_action_result"]["recipe"] == "dirty_tracked_control_plane"
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+
+
+def test_independent_work_with_live_workers_heals_without_llm(tmp_path):
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
+    observation = _observation(
+        health="blocked",
+        reason_codes=["board_has_blocked_or_quarantined_tasks"],
+        details={"owner_ready": True, "task_counts": {"todo": 23, "blocked": 2},
+                 "lanes": [{"lane": 0, "daemon": {"pid": 9}}]},
+    )
+    runner = Runner(observation)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["stall_class"] == "independent_work_beside_blocked_peer"
+    assert state["last_action"] == "supervisor_heal"
+    assert state["last_action_result"]["recipe"] == "independent_work_has_live_workers"
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
+
+
+def test_kernel_wait_repair_does_not_enqueue_llm(tmp_path):
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
+    observation = _observation(
+        health="degraded",
+        reason_codes=["lane_0_daemon_process_uninterruptible"],
+        details={"owner_ready": True},
+    )
+    runner = Runner(observation)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["last_action"] == "repair"
+    assert state["last_action_result"]["status"] == "wait"
+    assert state["last_action_result"]["supervisor_heal"]["recipe"] == "kernel_uninterruptible_wait"
+    assert [spec["argv"][0] for spec in runner.calls] == ["probe"]
 
 
 def test_observational_candidate_is_not_publication_authority():
