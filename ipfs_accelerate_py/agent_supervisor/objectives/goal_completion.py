@@ -48,6 +48,30 @@ class GoalState(str, Enum):
     REOPENED = "reopened"
 
 
+TERMINAL_TASK_STATUSES = frozenset({"completed", "complete", "done", "skipped"})
+
+
+def skip_provisional_goal_closeout(
+    *,
+    active_task_id: str = "",
+    implementation_in_progress: bool = False,
+    task_statuses: Mapping[str, Any] | None = None,
+) -> str | None:
+    """Return why extra-gate must not CAS goals, or None if provisional closeout may run.
+
+    All-tasks-complete is only provisional. This never authorizes verified
+    completion or board completion_authority.
+    """
+    if str(active_task_id or "").strip() or implementation_in_progress is True:
+        return "active_implementation"
+    statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
+    if not statuses:
+        return "task_statuses_unavailable"
+    if any(str(value or "").strip().lower() not in TERMINAL_TASK_STATUSES for value in statuses.values()):
+        return "tasks_not_all_terminal"
+    return None
+
+
 _GOAL_STATE_ALIASES = {
     "active": GoalState.ACTIVE,
     "todo": GoalState.ACTIVE,

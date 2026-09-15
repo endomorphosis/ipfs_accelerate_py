@@ -694,6 +694,24 @@ def test_pdr_scheduler_profile_is_directly_consumable() -> None:
     assert expanded[-1] == "--once"
 
 
+def test_skip_provisional_goal_closeout_requires_idle_terminal_tasks() -> None:
+    from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
+        skip_provisional_goal_closeout,
+    )
+    assert skip_provisional_goal_closeout(active_task_id="ASEH-001") == "active_implementation"
+    assert skip_provisional_goal_closeout(
+        implementation_in_progress=True,
+        task_statuses={"ASEH-001": "completed"},
+    ) == "active_implementation"
+    assert skip_provisional_goal_closeout(task_statuses={}) == "task_statuses_unavailable"
+    assert skip_provisional_goal_closeout(
+        task_statuses={"ASEH-001": "todo", "ASEH-002": "completed"},
+    ) == "tasks_not_all_terminal"
+    assert skip_provisional_goal_closeout(
+        task_statuses={"ASEH-001": "completed", "ASEH-002": "done"},
+    ) is None
+
+
 def test_goal_completion_contracts_keep_closeout_enabled(tmp_path: Path) -> None:
     path = _write_profile(
         tmp_path,

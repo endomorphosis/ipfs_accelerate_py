@@ -458,7 +458,9 @@ def _nonneg_int(value: Any) -> int | None:
     return value if type(value) is int and not isinstance(value, bool) and value >= 0 else None
 
 
-_OPEN_GOAL_STATUSES = frozenset({"active", "in_progress", "unsettled", "open", "ready"})
+_OPEN_GOAL_STATUSES = frozenset({
+    "active", "in_progress", "unsettled", "open", "ready", "provisionally_complete",
+})
 
 
 def _unsettled_goal_count(authority: Mapping[str, Any]) -> int | None:
@@ -782,6 +784,16 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             and status.get("stalled_without_active_worker") is not True
         )
         lane["extra_gate_deferred"] = extra_gate_deferred
+        migration = status.get("goal_completion_migration")
+        if not isinstance(migration, dict):
+            completion = status.get("goal_completion")
+            migration = completion.get("migration") if isinstance(completion, dict) else {}
+        if (
+            isinstance(migration, dict)
+            and migration.get("enabled") is False
+            and migration.get("reason") == "disabled"
+        ):
+            reasons.append("goal_closeout_disabled_on_launch")
         if not supervisor:
             reasons.append(f"lane_{index}_supervisor_missing")
         elif age is None or age > limit:

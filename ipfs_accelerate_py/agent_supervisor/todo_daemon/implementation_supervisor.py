@@ -10280,6 +10280,10 @@ class PortalImplementationSupervisor:
                     retained_generated_checkout_recovery
                 ),
             }
+        # Run before event_log_repair: extra-gate can stall there for hours
+        # while all tasks are already terminal and goals stay active.
+        update_maintenance_phase("provisionally_complete_terminal_goals")
+        provisionally_complete_terminal_goals = self.provisionally_complete_terminal_goals()
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
@@ -10294,6 +10298,9 @@ class PortalImplementationSupervisor:
                 "event_log_repair": event_log_repair,
                 "state_file_repair": state_file_repair,
                 "protected_path_guard": protected_path_guard,
+                "provisionally_complete_terminal_goals": (
+                    provisionally_complete_terminal_goals
+                ),
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
                 ),
@@ -10433,6 +10440,9 @@ class PortalImplementationSupervisor:
                 "event_log_repair": event_log_repair,
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
+                "provisionally_complete_terminal_goals": (
+                    provisionally_complete_terminal_goals
+                ),
                 "stale_active_state_repair": stale_active_state_repair,
                 "completed_leftover_execution": completed_leftover_execution,
                 "stale_worktree_detection": stale_worktree_detection,
@@ -10694,6 +10704,9 @@ class PortalImplementationSupervisor:
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
+            "provisionally_complete_terminal_goals": (
+                provisionally_complete_terminal_goals
+            ),
             "stale_active_state_repair": stale_active_state_repair,
             "completed_leftover_execution": completed_leftover_execution,
             "stale_worktree_detection": stale_worktree_detection,
@@ -18440,6 +18453,106 @@ class PortalImplementationSupervisor:
             started_at=started_at,
             safe_for_completion_reasoning=False,
         )
+
+    def provisionally_complete_terminal_goals(self) -> dict[str, Any]:
+        """CAS active goals to provisionally_complete when every task is terminal.
+
+        Task completion is not verification. Board completion_authority stays
+        false. Runs even when --no-objective-goal-migration was set, because
+        that flag must not park extra-gate closeout after the frontier is done.
+        """
+        from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
+            GoalState,
+            skip_provisional_goal_closeout,
+        )
+        from .implementation_daemon import PortalTaskState
+
+        schema = "ipfs_accelerate_py/agent-supervisor/provisional-goal-completion@1"
+        empty = {
+            "schema": schema,
+            "attempted": False,
+            "completion_authority": False,
+            "changed_goal_ids": [],
+        }
+        state = PortalTaskState.load(self.config.state_path)
+        skip = skip_provisional_goal_closeout(
+            active_task_id=state.active_task_id,
+            implementation_in_progress=bool(state.implementation_in_progress),
+            task_statuses=state.task_statuses,
+        )
+        if skip:
+            return {**empty, "reason": skip}
+        objective_path = self.config.objective_path
+        if objective_path is None or not Path(objective_path).is_file():
+            return {**empty, "reason": "objective_path_missing"}
+        program = self.config.database_program
+        if program is None:
+            return {**empty, "reason": "database_program_absent"}
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+                parse_goal_heap,
+            )
+            goals = parse_goal_heap(Path(objective_path).read_text(encoding="utf-8"))
+        except Exception as exc:
+            return {**empty, "reason": f"objective_parse_failed:{type(exc).__name__}"}
+        try:
+            from ..task_sources.database_task_source import DatabaseTaskSource
+            if program.authority_mode == "quack":
+                target: str | Path = str(program.quack_endpoint or "")
+                if not target:
+                    return {**empty, "reason": "quack_endpoint_absent"}
+            else:
+                store_path = Path(str(program.store_id or ""))
+                if not str(store_path):
+                    return {**empty, "reason": "database_store_absent"}
+                target = (
+                    store_path
+                    if store_path.is_absolute()
+                    else self.config.repo_root / store_path
+                )
+            changed: list[str] = []
+            with DatabaseTaskSource(
+                target,
+                owner_id=(
+                    "implementation-supervisor-provisional-goal:"
+                    f"{self.board_namespace}:{self.config.task_shard_index}"
+                ),
+                install_schema=False,
+            ) as source:
+                for goal in goals:
+                    rec = source.get_goal(goal.goal_id)
+                    if not isinstance(rec, Mapping):
+                        continue
+                    status = str(rec.get("status") or "").strip().lower()
+                    if status not in {"active", "reopened", "analysis_inconclusive"}:
+                        continue
+                    revision = rec.get("revision")
+                    if type(revision) is not int:
+                        continue
+                    try:
+                        source.compare_and_set_goal_status(
+                            goal.goal_id,
+                            revision,
+                            GoalState.PROVISIONALLY_COMPLETE.value,
+                            {
+                                "schema": schema,
+                                "completion_authority": False,
+                                "tasks_complete": True,
+                                "goal_alias": goal.goal_id,
+                                "state": GoalState.PROVISIONALLY_COMPLETE.value,
+                            },
+                        )
+                    except Exception:
+                        continue
+                    changed.append(goal.goal_id)
+        except Exception as exc:
+            return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
+        return {
+            **empty,
+            "attempted": True,
+            "changed_goal_ids": changed,
+            "reason": "applied" if changed else "no_active_goals",
+        }
 
     def migrate_legacy_objective_goal_completion(self) -> dict[str, Any]:
         """Migrate one bounded batch of ambiguous legacy completion claims.
