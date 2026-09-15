@@ -144,6 +144,38 @@ def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
     return objectives if objectives.is_file() else None
 
 
+def _mutation_binding_from_owner_status(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Exact live owner binding. Prefer the fingerprint extra-gate already admitted."""
+
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    fingerprint = str(
+        payload.get("storage_schema_fingerprint")
+        or identity.get("schema_fingerprint")
+        or ""
+    )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+            validate_mutation_binding,
+        )
+        return validate_mutation_binding(
+            {
+                "server_id": str(identity.get("server_id") or ""),
+                "store_id": str(identity.get("store_id") or payload.get("store_id") or ""),
+                "database_uuid": str(identity.get("database_uuid") or ""),
+                "schema_revision": int(identity.get("schema_revision") or 0),
+                "schema_fingerprint": fingerprint,
+                "generation": int(identity.get("generation") or 0),
+                "process_birth_id": str(identity.get("process_birth_id") or ""),
+                "listen_uri": str(identity.get("listen_uri") or ""),
+                "extension_fingerprint": str(
+                    identity.get("extension_fingerprint") or "none"
+                ),
+            }
+        )
+    except Exception:
+        return None
+
+
 def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
     """Bind store, generation, and mutation inbox from live owner status."""
 
@@ -168,6 +200,11 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
             candidate = path.parent / "mutations"
             if candidate.is_dir():
                 mutation_dir = str(candidate)
+            binding = _mutation_binding_from_owner_status(payload)
+            if binding is not None:
+                env["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING"] = json.dumps(
+                    binding, separators=(",", ":"), sort_keys=True,
+                )
             # typed-state-owner.token authenticates the Unix gateway, not Quack
             # ATTACH. Using it as IPFS_ACCELERATE_AGENT_QUACK_TOKEN fails closed.
     if not store_id:
@@ -260,6 +297,14 @@ def unstall_stale_native_work(
         return {**empty, "reason": "quack_attach_token_absent"}
     if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
         return {**empty, "reason": "owner_store_binding_absent"}
+    inbox = transport.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR")
+    if inbox:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+            retire_settled_mutation_inbox,
+        )
+        for _ in range(8):
+            if retire_settled_mutation_inbox(Path(inbox), limit=1024) < 1024:
+                break
     try:
         with _temporary_environ(transport):
             with _open_task_source(endpoint, "fleet-watchdog-unstall") as source:

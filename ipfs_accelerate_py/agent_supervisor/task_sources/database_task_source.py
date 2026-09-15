@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import re
 import tempfile
 import time
@@ -684,6 +685,16 @@ def _task_age_seconds(updated_at: Any, now: datetime) -> float | None:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return (now - moment).total_seconds()
+
+
+def _mutation_transport_ready() -> bool:
+    from .duckdb_state import QUACK_MUTATION_BINDING_ENV, QUACK_MUTATION_DIR_ENV, QUACK_TOKEN_ENV
+
+    return bool(
+        str(os.environ.get(QUACK_MUTATION_BINDING_ENV, "") or "").strip()
+        and str(os.environ.get(QUACK_MUTATION_DIR_ENV, "") or "").strip()
+        and str(os.environ.get(QUACK_TOKEN_ENV, "") or "").strip()
+    )
 
 
 def _task_key(value: str | TaskRecord | Mapping[str, Any]) -> str:
@@ -3363,6 +3374,37 @@ class DatabaseTaskSource:
 
     # -- mutations -----------------------------------------------------------
 
+    def _cas_via_intent_repository(
+        self,
+        key: str,
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None,
+        *,
+        evidence_digests: Sequence[str] | None = None,
+    ) -> CASResult:
+        """CAS through protocol-2 mutation bundles the extra-gate owner drains."""
+
+        intent_receipt = self._intent.cas_task_status(
+            task_cid=key,
+            expected_revision=int(expected_revision),
+            new_status=status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+        )
+        record = self.get_task(key)
+        if record is None:
+            raise KeyError(key)
+        details = intent_receipt.details
+        return CASResult(
+            task=record,
+            previous_status=str(details.get("previous_status") or record.status),
+            revision=int(intent_receipt.revision),
+            event_cursor=int(intent_receipt.global_sequence),
+            changed=bool(intent_receipt.changed),
+            receipt_cid=str(intent_receipt.event_id or ""),
+        )
+
     def compare_and_set_status(
         self,
         task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
@@ -3374,6 +3416,14 @@ class DatabaseTaskSource:
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
+        if self._intent.uses_quack_transport and _mutation_transport_ready():
+            return self._cas_via_intent_repository(
+                key,
+                expected_revision,
+                status,
+                receipt,
+                evidence_digests=evidence_digests,
+            )
         if self._intent.uses_quack_transport:
             try:
                 result = submit_quack_owner_command(
@@ -3626,6 +3676,16 @@ class DatabaseTaskSource:
         key = _task_key(task_cid_or_alias)
         compact = dict(receipt or {})
         compact.setdefault("operation", "database_declared_outputs_on_head_rearm")
+        if self._intent.uses_quack_transport and _mutation_transport_ready():
+            record = self.get_task(key)
+            if record is None:
+                raise KeyError(key)
+            return self._cas_via_intent_repository(
+                record.task_cid,
+                int(record.revision),
+                "retrying",
+                compact,
+            )
         if self._intent.uses_quack_transport:
             try:
                 result = submit_quack_owner_command(

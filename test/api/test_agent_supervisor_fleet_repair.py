@@ -1,6 +1,7 @@
 """Durable repair scheduling must not duplicate jobs or starve another board."""
 import time
 import json
+import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -496,6 +497,88 @@ def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, mo
     })
     assert recorded["status"] == "wait"
     assert recorded["recipe"] == "independent_work_has_live_workers"
+
+
+def test_retire_settled_mutation_inbox_drops_old_dones_and_typed_commands(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+        retire_settled_mutation_inbox,
+    )
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    old_done = inbox / "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.done.json"
+    live_req = inbox / "baguqeerabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.request.json"
+    typed = inbox / ("a" * 32 + ".request.json")
+    old_done.write_text("{}")
+    live_req.write_text("{}")
+    typed.write_text("{}")
+    os.utime(old_done, (0, 0))
+    os.utime(typed, (0, 0))
+    removed = retire_settled_mutation_inbox(inbox, now_ms=10_000_000, limit=16)
+    assert removed == 2
+    assert live_req.is_file()
+    assert not old_done.exists()
+    assert not typed.exists()
+
+
+def test_owner_transport_binding_uses_storage_schema_fingerprint(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        _mutation_binding_from_owner_status,
+    )
+    binding = _mutation_binding_from_owner_status({
+        "store_id": "data/control.duckdb",
+        "storage_schema_fingerprint": "baguqeerah2s7odhlvt7hjaaxzfkax6dqcydviq7uztbtg5xmbilz5vlw4gia",
+        "identity": {
+            "server_id": "server:e4cfbc28-4f8f-4283-b714-d9623a0cfa1d",
+            "store_id": "data/control.duckdb",
+            "database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+            "schema_revision": 1,
+            "schema_fingerprint": "sha256:3ea5f70cebacfe748017c9540bf87016075443f4ccc33376ec0a179ed576e190",
+            "generation": 117,
+            "process_birth_id": "birth:838811802d62085a88f8bee7a4862262",
+            "listen_uri": "quack:127.0.0.1:27278",
+            "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+        },
+    })
+    assert binding is not None
+    assert binding["schema_fingerprint"].startswith("baguqeera")
+    assert binding["generation"] == 117
+
+
+def test_compare_and_set_uses_intent_when_mutation_binding_ready(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import database_task_source as dts
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+        _mutation_transport_ready,
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING", '{"server_id":"s"}')
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "/tmp/mutations")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token-value")
+    assert _mutation_transport_ready() is True
+    calls = []
+    class Intent:
+        uses_quack_transport = True
+        def cas_task_status(self, **kwargs):
+            calls.append(kwargs)
+            from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentReceipt
+            return IntentReceipt(
+                event_id="bag:event", event_type="intent.task_status_changed",
+                global_sequence=9, recorded_at="t", subject_id="task:one",
+                revision=2, changed=True, details={"previous_status": "blocked"},
+            )
+        def get_task(self, key):
+            return None
+    source = DatabaseTaskSource.__new__(DatabaseTaskSource)
+    source._intent = Intent()
+    record = dts.TaskRecord(
+        task_cid="task:one", task_alias="PCTDD-006", goal_cid="goal:one",
+        ordinal=1, status="retrying", revision=2,
+    )
+    monkeypatch.setattr(source, "get_task", lambda key: record)
+    result = source._cas_via_intent_repository("PCTDD-006", 1, "retrying", {"operation": "x"})
+    assert result.changed is True
+    assert result.previous_status == "blocked"
+    assert calls[0]["new_status"] == "retrying"
+    assert getattr(result, "completion_authority", False) is False
 
 
 def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_path, monkeypatch):

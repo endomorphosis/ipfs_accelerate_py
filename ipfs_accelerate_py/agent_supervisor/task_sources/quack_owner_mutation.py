@@ -71,6 +71,17 @@ _REQUEST_NAME_RE: Final = re.compile(
 _PROCESSING_NAME_RE: Final = re.compile(
     r"^(?P<request_id>b[a-z2-7]{40,127})\.processing\.json$"
 )
+_DONE_NAME_RE: Final = re.compile(
+    r"^(?P<request_id>b[a-z2-7]{40,127})\.done\.json$"
+)
+_TYPED_COMMAND_NAME_RE: Final = re.compile(
+    r"^[0-9a-f]{32}\.(request|done|processing)\.json$"
+)
+_SETTLED_INBOX_GRACE_MS: Final[int] = (
+    QUACK_OWNER_MUTATION_REQUEST_TTL_MS
+    + QUACK_OWNER_MUTATION_SETTLEMENT_MS
+    + QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS
+)
 _DIGEST_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _REQUEST_FIELDS: Final = frozenset(
     {
@@ -1588,6 +1599,56 @@ def _write_owner_result(
     write_envelope_atomic_at(descriptor, done_name, result)
 
 
+def retire_settled_mutation_inbox(
+    inbox: Path,
+    *,
+    now_ms: int | None = None,
+    limit: int = 1024,
+) -> int:
+    """Drop settled protocol-2 receipts and foreign typed-command leftovers.
+
+    Extra-gate owners refuse a directory above MUTATION_MAX_DIRECTORY_ENTRIES.
+    Settled ``*.done.json`` older than the request TTL cannot be replayed.
+    32-hex owner-command envelopes are a different protocol and stall drain.
+    """
+
+    if type(limit) is not int or limit < 1:
+        raise ValueError("limit is outside the closed retirement bound")
+    root = Path(inbox)
+    if not root.is_dir():
+        return 0
+    observed = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    retired = 0
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return 0
+    for name in names:
+        if retired >= limit:
+            break
+        if _TYPED_COMMAND_NAME_RE.fullmatch(name):
+            target = root / name
+        elif _DONE_NAME_RE.fullmatch(name):
+            target = root / name
+        else:
+            continue
+        try:
+            metadata = os.lstat(target)
+        except OSError:
+            continue
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+            continue
+        age_ms = observed - int(metadata.st_mtime * 1000)
+        if _DONE_NAME_RE.fullmatch(name) and age_ms < _SETTLED_INBOX_GRACE_MS:
+            continue
+        try:
+            os.unlink(target)
+        except OSError:
+            continue
+        retired += 1
+    return retired
+
+
 def service_mutation_inbox(
     connection: Any,
     *,
@@ -1601,12 +1662,18 @@ def service_mutation_inbox(
 
     if type(max_requests) is not int or not 1 <= max_requests <= MUTATION_MAX_PER_PASS:
         raise ValueError("max_requests is outside the closed service bound")
+    retire_settled_mutation_inbox(inbox)
     admitted_binding = validate_mutation_binding(binding)
     descriptor = open_mutation_inbox_directory(Path(inbox).resolve())
     serviced = 0
     try:
         entries = tuple(os.listdir(descriptor))
-        if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+        pending = [
+            name
+            for name in entries
+            if _REQUEST_NAME_RE.fullmatch(name) or _PROCESSING_NAME_RE.fullmatch(name)
+        ]
+        if len(pending) > MUTATION_MAX_DIRECTORY_ENTRIES:
             raise QuackOwnerMutationError("inbox_population_exceeded")
 
         # Reconcile a claim retained across an owner interruption before new work.
@@ -1739,6 +1806,7 @@ __all__ = (
     "open_mutation_inbox_directory",
     "read_envelope_at",
     "rename_mutation_envelope_noreplace_at",
+    "retire_settled_mutation_inbox",
     "service_mutation_inbox",
     "unlink_mutation_envelope_at",
     "validate_mutation_binding",
