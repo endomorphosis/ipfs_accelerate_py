@@ -227,6 +227,29 @@ def test_blocked_todos_without_ready_count_are_not_independent(board, monkeypatc
     assert result["details"]["selection_idle_reason"] == "no_ready_tasks"
 
 
+def test_in_progress_beside_blocked_peers_is_not_no_ready_reason(board, monkeypatch, tmp_path):
+    config, _, lane = board
+    _write(lane / "pcpr_lane_0_task_state.json", {
+        "projection_complete": True,
+        "heartbeat_at": "1970-01-01T00:16:40+00:00",
+        "ready_count": 0,
+        "selection_idle_reason": "no_ready_tasks",
+    })
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({
+        "task_authority": {
+            "status_counts": {"todo": 28, "blocked": 2, "in_progress": 2, "completed": 22},
+            "task_count": 54,
+            "authenticated_query": True,
+            "blocked_task_ids": ["PCTDD-006", "PCTDD-035"],
+        },
+        "ready": True, "healthy": True, "operational_ready": True,
+    }, ""))
+    result = probe.observe_board(config, now=1000)
+    assert result["health"] == "blocked"
+    assert "no_ready_independent_tasks" not in result["reason_codes"]
+    assert result["details"]["task_counts"]["in_progress"] == 2
+
+
 def test_no_offline_status_or_completion_when_owner_is_dead(board, monkeypatch):
     config, identities, _ = board
     identities.clear()

@@ -836,7 +836,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     elif native_unhealthy:
         reasons.append("native_operator_reports_unhealthy")
     readiness = _readiness(authority, readiness_projections or fresh_projections)
-    if blocked and (
+    if blocked and int(counts.get("in_progress") or 0) == 0 and (
         readiness.get("ready_count") == 0
         or readiness.get("selection_idle_reason") == "no_ready_tasks"
     ):
