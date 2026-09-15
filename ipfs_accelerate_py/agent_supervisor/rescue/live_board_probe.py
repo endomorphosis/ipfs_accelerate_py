@@ -739,15 +739,14 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             fresh_projections.append(projection)
     native, command_error = ({}, "")
     native_status_attempts = 0
+    native_unhealthy = False
     # Several legacy status commands open the authoritative DB directly when no
     # owner is present. Never execute them during an outage.
     if source_integrity["valid"] and owner_ready and board.get("status_argv"):
         native, command_error, native_status_attempts = _status_with_receipt_retry(board, expected_birth)
         if command_error:
             reasons.append(command_error)
-        if any(native.get(key) is False for key in ("ready", "healthy", "operational_ready")):
-            if "board_has_blocked_or_quarantined_tasks" not in reasons:
-                reasons.append("native_operator_reports_unhealthy")
+        native_unhealthy = any(native.get(key) is False for key in ("ready", "healthy", "operational_ready"))
     authority = _object(native.get("receipt")) if board_id == "aseh" else _object(native.get("task_authority"))
     if board_id == "aseh" and "samples" in authority:
         # ASEH v2 puts task observations inside its admitted two-sample
@@ -806,6 +805,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
                or int(authority.get("blocked_count") or 0) > 0)
     if blocked and not database_authority.get("blocked"):
         reasons.append("board_has_blocked_or_quarantined_tasks")
+    elif native_unhealthy:
+        reasons.append("native_operator_reports_unhealthy")
     if authority.get("unsettled_goal_count"):
         reasons.append("board_has_unsettled_goals")
     if authority and not authenticated:
