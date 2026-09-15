@@ -423,6 +423,53 @@ def test_another_board_lock_prevents_even_probe(tmp_path):
     assert runner.calls == []
 
 
+def test_aseh_source_hold_releases_stop_marker_without_forging_admission(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_holds
+    hold = tmp_path / "HOLD"
+    operation = tmp_path / "operation"
+    operation.mkdir()
+    (operation / "0004-source_operation_consumed.json").write_text("{}\n")
+    hold.write_text(json.dumps({
+        "schema": fleet_holds.ASEH_SOURCE_HOLD_SCHEMA,
+        "source_admission_verified": False,
+        "callback_settlement_authority": False,
+        "source_head": "aa5e43ec",
+        "target_head": "5205bd1d",
+        "operation": str(operation),
+    }))
+    board = _board(tmp_path, hold_files=[str(hold)],
+                   launch_only_hold_files=[str(tmp_path / "watchdog.hold")])
+    (tmp_path / "watchdog.hold").write_text("cron owns launch\n")
+    observation = _observation(
+        health="healthy",
+        details={"owner_ready": True, "authenticated_task_observation": True,
+                 "native_completion_authority": False},
+    )
+    runner = Runner(observation)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert not hold.exists()
+    archive = tmp_path / "HOLD.unverified-source-admission.json"
+    record = json.loads(archive.read_text())
+    assert record["source_admission_verified"] is False
+    assert record["callback_settlement_authority"] is False
+    assert record["stop_marker_release"] == "native_owner_live_operation_consumed"
+    assert state["last_action"] == "hold_review"
+    assert state["health"] != "operator_hold"
+    assert (tmp_path / "watchdog.hold").exists()
+
+
+def test_pcpr_deletion_hold_is_retained(tmp_path):
+    hold = tmp_path / "watchdog.hold"
+    hold.write_text("Original PCPR authority was deleted. Do not rematerialize.\n")
+    board = _board(tmp_path, hold_files=[str(hold)])
+    runner = Runner(_observation(health="unknown", reason_codes=["probe_failed"]))
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert hold.exists()
+    assert state["health"] == "operator_hold"
+    assert state["last_action"] == "hold_review"
+    assert state["last_action_result"]["status"] == "wait"
+
+
 def test_operator_hold_keeps_probe_failure_as_hold_stall(tmp_path):
     hold = tmp_path / "watchdog.hold"
     hold.touch()

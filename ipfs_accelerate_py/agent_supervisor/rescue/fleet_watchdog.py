@@ -460,8 +460,19 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         state["observed_health"] = state["health"]
         holds = hold_paths(board)
         if repair_hold_paths(board):
-            state.update(health="operator_hold", stall_class="operator_hold",
-                         holds=holds, planned_action="")
+            state.update(health="operator_hold", stall_class="operator_hold", holds=holds)
+            if apply:
+                from .fleet_holds import review_board_holds
+                result = review_board_holds(board, state.get("observation") or {})
+                state.update(last_action="hold_review", last_action_at=now,
+                             last_action_result=result, planned_action="")
+                holds = hold_paths(board)
+                state["holds"] = holds
+                if not repair_hold_paths(board):
+                    state["health"] = str(state.get("observed_health") or "healthy")
+                    state["stall_class"] = classify_stall(state.get("observation") or {})
+            else:
+                state["planned_action"] = "hold_review"
             write_json(path, state)
             return state
         state.pop("holds", None)
