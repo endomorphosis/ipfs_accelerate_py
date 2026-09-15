@@ -741,7 +741,7 @@ def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: P
     return [
         sys.executable, "-P", "-m",
         "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner",
-        "--workspace", str(policy["cwd"]),
+        "--workspace", str(workspace),
         "--primary-provider", "grok",
         "--fallback-provider", "codex",
         "--primary-command-json", json.dumps(primary),

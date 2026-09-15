@@ -275,6 +275,7 @@ def test_llm_router_repair_argv_binds_board_checkout(tmp_path):
         prompt, tmp_path / "last.txt", workspace=board,
     )
     workspace = str(board.resolve())
+    assert argv[argv.index("--workspace") + 1] == workspace
     assert json.loads(argv[argv.index("--primary-command-json") + 1])[-1] == workspace
     fallback = json.loads(argv[argv.index("--fallback-command-json") + 1])
     assert workspace in fallback
