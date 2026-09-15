@@ -2834,11 +2834,22 @@ def configured_board_common_args(
         "--merge-retry-budget",
         str(payload["merge_retry_budget"]),
         "--no-objective-task-janitor",
-        "--no-objective-goal-completion-reconcile",
-        "--no-objective-goal-migration",
         "--log-level",
         "INFO",
     ]
+    completion_policy = payload.get("completion_policy")
+    # Boards that require goal-completion contracts cannot close out if the
+    # implementation supervisor is launched with goal reconcile/migration off.
+    if not (
+        isinstance(completion_policy, dict)
+        and completion_policy.get("goal_completion_contracts_required") is True
+    ):
+        args.extend(
+            (
+                "--no-objective-goal-completion-reconcile",
+                "--no-objective-goal-migration",
+            )
+        )
     # Explicit database-program selections are supervisor inputs.  The
     # fallback legacy-Markdown program, however, is a daemon-only compatibility
     # projection: implementation_supervisor does not accept the database CLI

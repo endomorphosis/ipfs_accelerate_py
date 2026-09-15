@@ -1379,9 +1379,18 @@ def supervisor_scheduler_config_cli_defaults(
         "--objective-path",
         str(root / str(profile["objectives_path"])),
         "--no-objective-task-janitor",
-        "--no-objective-goal-completion-reconcile",
-        "--no-objective-goal-migration",
     ]
+    completion_policy = profile.get("completion_policy")
+    if not (
+        isinstance(completion_policy, dict)
+        and completion_policy.get("goal_completion_contracts_required") is True
+    ):
+        options.extend(
+            (
+                "--no-objective-goal-completion-reconcile",
+                "--no-objective-goal-migration",
+            )
+        )
     for path in profile["worktree_submodule_paths"]:
         options.extend(("--worktree-submodule-path", str(path)))
     for path in profile["protected_paths"]:

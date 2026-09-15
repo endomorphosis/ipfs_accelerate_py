@@ -692,3 +692,20 @@ def test_pdr_scheduler_profile_is_directly_consumable() -> None:
     assert "--no-objective-goal-completion-reconcile" in expanded
     assert "--no-objective-goal-migration" in expanded
     assert expanded[-1] == "--once"
+
+
+def test_goal_completion_contracts_keep_closeout_enabled(tmp_path: Path) -> None:
+    path = _write_profile(
+        tmp_path,
+        overrides={
+            "plan_path": "docs/plan.md",
+            "completion_policy": {"goal_completion_contracts_required": True},
+        },
+    )
+    expanded, _ = expand_supervisor_scheduler_config_args(
+        ["--scheduler-config", str(path), "--once"],
+        repo_root=tmp_path,
+    )
+    assert "--no-objective-task-janitor" in expanded
+    assert "--no-objective-goal-completion-reconcile" not in expanded
+    assert "--no-objective-goal-migration" not in expanded

@@ -4339,6 +4339,24 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     }
 
 
+def test_goal_completion_contracts_keep_closeout_flags_on(tmp_path: Path) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["completion_policy"] = {"goal_completion_contracts_required": True}
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    board = load_configured_board(config_path, repo_root=repo)
+    common = scheduler_module.configured_board_common_args(board, implement=True)
+    assert "--no-objective-task-janitor" in common
+    assert "--no-objective-goal-completion-reconcile" not in common
+    assert "--no-objective-goal-migration" not in common
+    payload["completion_policy"] = {"goal_completion_contracts_required": False}
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    board = load_configured_board(config_path, repo_root=repo)
+    disabled = scheduler_module.configured_board_common_args(board, implement=True)
+    assert "--no-objective-goal-completion-reconcile" in disabled
+    assert "--no-objective-goal-migration" in disabled
+
+
 def test_static_objective_heap_disables_goal_refinement(
     tmp_path: Path,
 ) -> None:
