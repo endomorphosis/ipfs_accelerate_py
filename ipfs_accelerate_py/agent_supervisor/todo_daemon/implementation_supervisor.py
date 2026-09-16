@@ -18568,8 +18568,16 @@ class PortalImplementationSupervisor:
             active_task_id=state.active_task_id,
             implementation_in_progress=bool(state.implementation_in_progress),
             task_statuses=state.task_statuses,
+            task_counts={
+                "completed": state.completed_count,
+                "ready": state.ready_count,
+                "blocked": state.blocked_count,
+                "waiting": state.waiting_count,
+            } if int(state.task_count or 0) > 0 else None,
         )
-        if skip:
+        # A missing portal projection must not park extra-gate closeout after
+        # the task frontier. The exclusive owner still fail-closes leftover work.
+        if skip and skip != "task_statuses_unavailable":
             return {**empty, "reason": skip}
         objective_path = self.config.objective_path
         if objective_path is None or not Path(objective_path).is_file():
@@ -18586,6 +18594,10 @@ class PortalImplementationSupervisor:
             return {**empty, "reason": f"objective_parse_failed:{type(exc).__name__}"}
         try:
             from ..task_sources.database_task_source import DatabaseTaskSource
+            from ..task_sources.duckdb_state import (
+                QUACK_TOKEN_ENV,
+                discover_live_quack_endpoint,
+            )
             if program.authority_mode == "quack":
                 target: str | Path = str(program.quack_endpoint or "")
                 if not target:
@@ -18599,41 +18611,62 @@ class PortalImplementationSupervisor:
                     if store_path.is_absolute()
                     else self.config.repo_root / store_path
                 )
+            store = Path(str(program.store_id or ""))
+            if store and not store.is_absolute():
+                store = self.config.repo_root / store
+            attach_token = ""
+            if store:
+                try:
+                    attach_token = str(
+                        getattr(discover_live_quack_endpoint(store), "token", "") or ""
+                    ).strip()
+                except Exception:
+                    attach_token = ""
+            saved_token = os.environ.get(QUACK_TOKEN_ENV)
+            if attach_token:
+                os.environ[QUACK_TOKEN_ENV] = attach_token
             changed: list[str] = []
-            with DatabaseTaskSource(
-                target,
-                owner_id=(
-                    "implementation-supervisor-provisional-goal:"
-                    f"{self.board_namespace}:{self.config.task_shard_index}"
-                ),
-                install_schema=False,
-            ) as source:
-                for goal in goals:
-                    rec = source.get_goal(goal.goal_id)
-                    if not isinstance(rec, Mapping):
-                        continue
-                    status = str(rec.get("status") or "").strip().lower()
-                    if status not in {"active", "reopened", "analysis_inconclusive"}:
-                        continue
-                    revision = rec.get("revision")
-                    if type(revision) is not int:
-                        continue
-                    try:
-                        source.compare_and_set_goal_status(
-                            goal.goal_id,
-                            revision,
-                            GoalState.PROVISIONALLY_COMPLETE.value,
-                            {
-                                "schema": schema,
-                                "completion_authority": False,
-                                "tasks_complete": True,
-                                "goal_alias": goal.goal_id,
-                                "state": GoalState.PROVISIONALLY_COMPLETE.value,
-                            },
-                        )
-                    except Exception:
-                        continue
-                    changed.append(goal.goal_id)
+            try:
+                with DatabaseTaskSource(
+                    target,
+                    owner_id=(
+                        "implementation-supervisor-provisional-goal:"
+                        f"{self.board_namespace}:{self.config.task_shard_index}"
+                    ),
+                    install_schema=False,
+                ) as source:
+                    for goal in goals:
+                        rec = source.get_goal(goal.goal_id)
+                        if not isinstance(rec, Mapping):
+                            continue
+                        status = str(rec.get("status") or "").strip().lower()
+                        if status not in {"active", "reopened", "analysis_inconclusive"}:
+                            continue
+                        revision = rec.get("revision")
+                        if type(revision) is not int:
+                            continue
+                        try:
+                            source.compare_and_set_goal_status(
+                                goal.goal_id,
+                                revision,
+                                GoalState.PROVISIONALLY_COMPLETE.value,
+                                {
+                                    "schema": schema,
+                                    "completion_authority": False,
+                                    "tasks_complete": True,
+                                    "goal_alias": goal.goal_id,
+                                    "state": GoalState.PROVISIONALLY_COMPLETE.value,
+                                },
+                            )
+                        except Exception:
+                            continue
+                        changed.append(goal.goal_id)
+            finally:
+                if attach_token:
+                    if saved_token is None:
+                        os.environ.pop(QUACK_TOKEN_ENV, None)
+                    else:
+                        os.environ[QUACK_TOKEN_ENV] = saved_token
         except Exception as exc:
             return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
         return {

@@ -5010,10 +5010,66 @@ class QuackStateServer:
         except Exception as exc:
             self._log(f"token handoff republish warning: {type(exc).__name__}")
 
+    def _provisionally_complete_terminal_goals(self) -> None:
+        """Owner-side closeout when every task is terminal. Never verifies."""
+
+        connection = self._connection
+        identity = self._identity
+        if connection is None or identity is None:
+            return
+        try:
+            leftover = connection.execute(
+                """
+                SELECT COUNT(*) FROM tasks
+                WHERE lower(status) NOT IN ('completed', 'complete', 'done', 'skipped')
+                """
+            ).fetchone()
+        except Exception:
+            return
+        if leftover is None or int(leftover[0] or 0) > 0:
+            return
+        try:
+            from ..objectives.goal_completion import GoalState
+            from ..task_sources.intent_repository import IntentRepository
+
+            repo = IntentRepository(
+                bound_connection=connection,
+                install_schema=False,
+                owner_id=str(identity.server_id or "quack-owner"),
+                session_id=str(identity.process_birth_id or "quack-session"),
+            )
+            rows = connection.execute(
+                """
+                SELECT goal_cid, revision FROM goals
+                WHERE lower(status) IN ('active', 'reopened', 'analysis_inconclusive')
+                """
+            ).fetchall()
+        except Exception as exc:
+            self._log(f"provisional goal closeout warning: {type(exc).__name__}")
+            return
+        for row in rows or ():
+            try:
+                repo.cas_goal_status(
+                    goal_cid=str(row[0]),
+                    expected_revision=int(row[1]),
+                    new_status=GoalState.PROVISIONALLY_COMPLETE.value,
+                    receipt={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "provisional-goal-completion@1"
+                        ),
+                        "completion_authority": False,
+                        "tasks_complete": True,
+                    },
+                )
+            except Exception:
+                continue
+
     def _write_status(self) -> None:
         try:
             if self._lifecycle is ServerLifecycle.READY:
                 self._ensure_client_token_handoff()
+                self._provisionally_complete_terminal_goals()
             _atomic_write_json(self.status_path(), self.status(), mode=0o600)
         except Exception as exc:
             self._log(f"status write warning: {type(exc).__name__}")

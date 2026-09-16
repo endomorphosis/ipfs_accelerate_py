@@ -56,20 +56,38 @@ def skip_provisional_goal_closeout(
     active_task_id: str = "",
     implementation_in_progress: bool = False,
     task_statuses: Mapping[str, Any] | None = None,
+    task_counts: Mapping[str, Any] | None = None,
 ) -> str | None:
     """Return why extra-gate must not CAS goals, or None if provisional closeout may run.
 
     All-tasks-complete is only provisional. This never authorizes verified
-    completion or board completion_authority.
+    completion or board completion_authority. A missing portal projection is
+    not a skip when live task counts already show every task terminal.
     """
     if str(active_task_id or "").strip() or implementation_in_progress is True:
         return "active_implementation"
     statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
-    if not statuses:
-        return "task_statuses_unavailable"
-    if any(str(value or "").strip().lower() not in TERMINAL_TASK_STATUSES for value in statuses.values()):
+    if statuses:
+        if any(
+            str(value or "").strip().lower() not in TERMINAL_TASK_STATUSES
+            for value in statuses.values()
+        ):
+            return "tasks_not_all_terminal"
+        return None
+    counts = task_counts if isinstance(task_counts, Mapping) else {}
+    leftover = []
+    for key, value in counts.items():
+        try:
+            count = int(value or 0)
+        except (TypeError, ValueError):
+            continue
+        if count > 0 and str(key).lower() not in TERMINAL_TASK_STATUSES:
+            leftover.append(str(key))
+    if leftover:
         return "tasks_not_all_terminal"
-    return None
+    if counts:
+        return None
+    return "task_statuses_unavailable"
 
 
 _GOAL_STATE_ALIASES = {

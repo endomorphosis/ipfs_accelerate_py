@@ -710,6 +710,12 @@ def test_skip_provisional_goal_closeout_requires_idle_terminal_tasks() -> None:
     assert skip_provisional_goal_closeout(
         task_statuses={"ASEH-001": "completed", "ASEH-002": "done"},
     ) is None
+    assert skip_provisional_goal_closeout(
+        task_counts={"completed": 40, "todo": 0},
+    ) is None
+    assert skip_provisional_goal_closeout(
+        task_counts={"completed": 40, "blocked": 2},
+    ) == "tasks_not_all_terminal"
 
 
 def test_goal_completion_contracts_keep_closeout_enabled(tmp_path: Path) -> None:

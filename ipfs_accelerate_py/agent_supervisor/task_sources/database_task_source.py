@@ -3635,6 +3635,18 @@ class DatabaseTaskSource:
             key = str(goal_cid_or_alias or "").strip()
         if not key:
             raise TaskSourceIntegrityError("goal CAS requires a goal CID or alias")
+        if self._intent.uses_quack_transport and _mutation_transport_ready():
+            try:
+                return self._intent.cas_goal_status(
+                    goal_cid=key,
+                    expected_revision=int(expected_revision),
+                    new_status=status,
+                    receipt=receipt,
+                )
+            except IntentCompletionError as exc:
+                raise TaskSourceCompletionError(str(exc)) from exc
+            except IntentRepositoryConflictError as exc:
+                raise TaskSourceConflictError(str(exc)) from exc
         if self._intent.uses_quack_transport:
             try:
                 result = submit_quack_owner_command(

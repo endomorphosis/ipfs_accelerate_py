@@ -59,7 +59,9 @@ QUACK_MUTATION_EVIDENCE_INSERT: Final = "evidence_insert@1"
 QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT: Final = "lease_queue_backoff_insert@1"
 QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE: Final = "lease_queue_backoff_update@1"
 
+QUACK_MUTATION_GOAL_STATUS_CAS: Final = "goal_status_cas@1"
 QUACK_MUTATION_TASK_STATUS_TRANSITION: Final = "task_status_transition@1"
+QUACK_MUTATION_GOAL_STATUS_TRANSITION: Final = "goal_status_transition@1"
 QUACK_MUTATION_VALIDATION_RECORD: Final = "validation_record@1"
 QUACK_MUTATION_EVIDENCE_RECORD: Final = "evidence_record@1"
 QUACK_MUTATION_QUEUE_BACKOFF: Final = "queue_backoff@1"
@@ -179,6 +181,10 @@ MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
             "release_reason = ?, state = 'released', extension_schema = ?, "
             "extension_json = ?, revision = revision + 1 WHERE task_cid = ?"
         ),
+        QUACK_MUTATION_GOAL_STATUS_CAS: (
+            "UPDATE goals SET status = ?, updated_at = ?, revision = ?, "
+            "body_json = ? WHERE goal_cid = ? AND revision = ?"
+        ),
     }
 )
 MUTATION_SQL_TO_TEMPLATE: Final[Mapping[str, str]] = MappingProxyType(
@@ -195,6 +201,11 @@ _TASK_SHAPES: Final = frozenset(
         (QUACK_MUTATION_TASK_STATUS_CAS, QUACK_MUTATION_TASK_REVISION_INSERT,
          QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
          QUACK_MUTATION_DOMAIN_EVENT_INSERT),
+    }
+)
+_GOAL_SHAPES: Final = frozenset(
+    {
+        (QUACK_MUTATION_GOAL_STATUS_CAS, QUACK_MUTATION_DOMAIN_EVENT_INSERT),
     }
 )
 _VALIDATION_SHAPES: Final = frozenset(
@@ -355,6 +366,8 @@ def mutation_operation(steps: Sequence[Mapping[str, Any]]) -> str:
     shape = tuple(templates)
     if shape in _TASK_SHAPES:
         return QUACK_MUTATION_TASK_STATUS_TRANSITION
+    if shape in _GOAL_SHAPES:
+        return QUACK_MUTATION_GOAL_STATUS_TRANSITION
     if shape in _VALIDATION_SHAPES:
         return QUACK_MUTATION_VALIDATION_RECORD
     if shape in _EVIDENCE_SHAPES:

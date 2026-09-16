@@ -669,8 +669,9 @@ class IntentRepository:
 
     def __init__(
         self,
-        database_path: str | Path,
+        database_path: str | Path | None = None,
         *,
+        bound_connection: Any | None = None,
         owner_id: str = DEFAULT_OWNER_ID,
         session_id: str = DEFAULT_SESSION_ID,
         install_schema: bool = True,
@@ -679,7 +680,18 @@ class IntentRepository:
         clock_ms: Any | None = None,
     ) -> None:
         _require_duckdb()
-        if is_quack_transport_target(database_path):
+        self._bound_connection = bound_connection
+        if bound_connection is not None:
+            self._open_target = Path(".")
+            self._quack_transport = False
+            self.database_path = Path(".")
+            self._lock_path = None
+            install_schema = False
+        elif database_path is None:
+            raise IntentRepositoryError(
+                "intent repository requires a database path or bound connection"
+            )
+        elif is_quack_transport_target(database_path):
             self._open_target = quack_transport_uri(database_path)
             self._quack_transport = True
             # Path identity is unused for file locks; keep a stable placeholder.
@@ -705,13 +717,16 @@ class IntentRepository:
             )
         self.lock_timeout_seconds = float(lock_timeout_seconds)
         self._clock_ms = clock_ms or _now_ms
-        self._lock_path = (
-            None
-            if self._quack_transport
-            else self.database_path.with_name(
-                f".{self.database_path.name}.intent.lock"
+        if bound_connection is not None:
+            self._lock_path = None
+        else:
+            self._lock_path = (
+                None
+                if self._quack_transport
+                else self.database_path.with_name(
+                    f".{self.database_path.name}.intent.lock"
+                )
             )
-        )
         self._open = False
         self._closed = False
         self._read_session_state = threading.local()
@@ -816,6 +831,9 @@ class IntentRepository:
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
+        if self._bound_connection is not None:
+            yield self._bound_connection
+            return
         session_connection = getattr(self._read_session_state, "connection", None)
         if session_connection is not None:
             if write:
@@ -1379,6 +1397,97 @@ class IntentRepository:
                     "previous_status": previous_status,
                     "status": "reopened",
                     "reason": reason_text,
+                    "revision": revision,
+                    "body": body_map,
+                    "recorded_at": now,
+                },
+            )
+
+    def cas_goal_status(
+        self,
+        *,
+        goal_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> IntentReceipt:
+        """CAS a goal status. Never infers verified completion_authority."""
+
+        gcid = _identifier(goal_cid, noun="goal_cid")
+        expected = _nonneg_int(expected_revision, noun="expected_revision")
+        allowed = _GOAL_OPEN_STATUSES | _GOAL_CLOSED_STATUSES
+        status_text = _status(new_status, allowed=allowed, noun="goal")
+        receipt_map = _mapping(receipt, noun="status receipt")
+        now = _utc_iso()
+        with self._connection(write=True) as connection:
+            row = connection.execute(
+                """
+                SELECT goal_cid, goal_alias, status, revision, body_json
+                FROM goals WHERE goal_cid = ? OR goal_alias = ?
+                ORDER BY goal_cid LIMIT 2
+                """,
+                [gcid, gcid],
+            ).fetchall()
+            if not row:
+                raise KeyError(gcid)
+            if len(row) > 1:
+                raise IntentRepositoryIntegrityError(
+                    "goal CID/alias lookup is ambiguous"
+                )
+            goal_row = row[0]
+            resolved_cid = str(goal_row[0])
+            previous_status = str(goal_row[2])
+            current_revision = int(goal_row[3])
+            if current_revision != expected:
+                raise IntentRepositoryConflictError("goal revision CAS is stale")
+            if previous_status == status_text:
+                return IntentReceipt(
+                    event_id="",
+                    event_type=IntentEventType.GOAL_UPSERTED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now,
+                    subject_id=resolved_cid,
+                    revision=current_revision,
+                    changed=False,
+                    details=MappingProxyType(
+                        {
+                            "goal_cid": resolved_cid,
+                            "status": status_text,
+                            "previous_status": previous_status,
+                        }
+                    ),
+                )
+            revision = current_revision + 1
+            body_map = _decode_json(goal_row[4], noun="goal body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            body_map = dict(body_map)
+            if receipt_map:
+                body_map["completion_receipt"] = receipt_map
+            connection.execute(
+                """
+                UPDATE goals SET status = ?, updated_at = ?, revision = ?,
+                    body_json = ?
+                WHERE goal_cid = ? AND revision = ?
+                """,
+                [
+                    status_text,
+                    now,
+                    revision,
+                    _canonical(body_map, noun="goal body"),
+                    resolved_cid,
+                    current_revision,
+                ],
+            )
+            return self._append_event(
+                connection,
+                event_type=IntentEventType.GOAL_UPSERTED,
+                subject_id=resolved_cid,
+                body={
+                    "goal_cid": resolved_cid,
+                    "goal_alias": str(goal_row[1]),
+                    "previous_status": previous_status,
+                    "status": status_text,
                     "revision": revision,
                     "body": body_map,
                     "recorded_at": now,
@@ -4427,8 +4536,9 @@ def _parse_iso_ms(value: str) -> int:
 
 
 def open_intent_repository(
-    database_path: str | Path,
+    database_path: str | Path | None = None,
     *,
+    bound_connection: Any | None = None,
     owner_id: str = DEFAULT_OWNER_ID,
     session_id: str = DEFAULT_SESSION_ID,
     install_schema: bool = True,
@@ -4439,6 +4549,7 @@ def open_intent_repository(
 
     return IntentRepository(
         database_path,
+        bound_connection=bound_connection,
         owner_id=owner_id,
         session_id=session_id,
         install_schema=install_schema,

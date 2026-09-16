@@ -385,6 +385,29 @@ def test_provisional_goal_heal_maps_missing_quack_attach_token(tmp_path, monkeyp
     assert result["status"] == "wait"
 
 
+def test_goal_status_cas_sql_is_allowlisted_for_extra_gate_drain():
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+        MUTATION_SQL_TO_TEMPLATE,
+        QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        QUACK_MUTATION_GOAL_STATUS_CAS,
+        QUACK_MUTATION_GOAL_STATUS_TRANSITION,
+        mutation_operation,
+        normalize_mutation_sql,
+    )
+
+    sql = (
+        "UPDATE goals SET status = ?, updated_at = ?, revision = ?, "
+        "body_json = ? WHERE goal_cid = ? AND revision = ?"
+    )
+    assert MUTATION_SQL_TO_TEMPLATE[normalize_mutation_sql(sql)] == QUACK_MUTATION_GOAL_STATUS_CAS
+    assert mutation_operation([
+        {"template_id": QUACK_MUTATION_GOAL_STATUS_CAS,
+         "parameters": ["provisionally_complete", "t", 2, "{}", "g", 1]},
+        {"template_id": QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+         "parameters": ["e", "s", 1, 1, "t", "", "", "sess", "t", "{}"]},
+    ]) == QUACK_MUTATION_GOAL_STATUS_TRANSITION
+
+
 def test_database_task_source_imports_owner_command_contract():
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
