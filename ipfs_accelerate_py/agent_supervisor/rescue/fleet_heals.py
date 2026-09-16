@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import uuid
@@ -29,6 +30,12 @@ _RECORDED_LOCAL_VALIDATION = {
     "validation_unspecified",
     "validation_source_missing",
 }
+_OVERLAY_SOURCE_PREFIXES = (
+    "external/ipfs_accelerate/",
+    "external/ipfs_datasets/",
+    "external/ipfs_kit/",
+)
+_REPAIRABLE_SOURCE_SUFFIXES = {".py", ".json"}
 
 
 def live_workers(observation: Mapping[str, Any]) -> bool:
@@ -737,6 +744,11 @@ def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
         if status == "failed" and item.get("returncode") in {4, 5}:
             # Pytest usage/collection errors are retried as source-missing.
             return False
+        if status == "validation_source_missing":
+            missing = item.get("missing")
+            if isinstance(missing, str) and overlay_source_path(missing) is not None:
+                return False
+            continue
         if status not in _RECORDED_LOCAL_VALIDATION:
             return False
     return True
@@ -785,12 +797,16 @@ def run_local_blocked_candidate_validation(
         if not workdir.is_dir() or (root not in workdir.parents and workdir != root):
             results.append({"task_id": task_id, "status": "validation_cwd_rejected"})
             continue
+        repaired = _repair_missing_validation_artifacts(
+            cwd, board, task_id, argv, workdir,
+        )
         missing = _pytest_source_missing(argv, workdir)
         if missing is not None:
             results.append({
                 "task_id": task_id,
                 "status": "validation_source_missing",
                 "missing": missing,
+                "repaired": repaired,
                 "completion_authoritative": False,
             })
             continue
@@ -806,6 +822,7 @@ def run_local_blocked_candidate_validation(
             "task_id": task_id,
             "status": "passed" if completed.returncode == 0 else "failed",
             "returncode": completed.returncode,
+            "repaired": repaired,
             "completion_authoritative": False,
         })
     if not results:
@@ -824,7 +841,8 @@ def run_local_blocked_candidate_validation(
             "results": results,
             "reason": (
                 "candidate receipt built; validation source missing; "
-                "native extra-gate implements; do not rewrite receipts"
+                "supervisor copies overlay sources when present; "
+                "do not rewrite receipts as complete"
             ),
         }
     if not ran:
@@ -838,9 +856,9 @@ def run_local_blocked_candidate_validation(
         "completion_authoritative": False,
         "results": results,
         "reason": (
-            "local checks passed; native extra-gate admission still required"
+            "local checks passed; native admission still required"
             if mixed_ok and not source_missing else
-            "local checks passed; missing validation source is native extra-gate work"
+            "local checks passed; missing validation source is overlay copy work"
             if mixed_ok else
             "local checks did not pass; do not rewrite blocked receipts"
         ),
@@ -865,6 +883,96 @@ def _pytest_source_missing(argv: list[str], workdir: Path) -> str | None:
         if not resolved.is_file():
             return item
     return None
+
+
+def _overlay_relative_source(missing: str) -> Path | None:
+    text = str(missing or "").replace("\\", "/").lstrip("/")
+    if not text or ".." in Path(text).parts:
+        return None
+    for prefix in _OVERLAY_SOURCE_PREFIXES:
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    if not text:
+        return None
+    return Path(text)
+
+
+def overlay_source_path(missing: str, overlay: str | Path | None = None) -> Path | None:
+    """Return the overlay file that can repair a missing board source."""
+    relative = _overlay_relative_source(missing)
+    if relative is None or relative.suffix not in _REPAIRABLE_SOURCE_SUFFIXES:
+        return None
+    root = Path(overlay if overlay is not None else supervisor_overlay_root())
+    try:
+        root = root.resolve()
+        path = (root / relative).resolve()
+        path.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if not path.is_file():
+        return None
+    try:
+        if path.stat().st_size > _MAX_RECEIPT_BYTES:
+            return None
+    except OSError:
+        return None
+    return path
+
+
+def copy_overlay_source(
+    missing: str, workdir: Path, overlay: str | Path | None = None,
+) -> str | None:
+    """Copy a missing board source from overlay. Never overwrites or admits."""
+    source = overlay_source_path(missing, overlay)
+    if source is None:
+        return None
+    dest = Path(missing)
+    dest = dest if dest.is_absolute() else (workdir / missing)
+    try:
+        dest = dest.resolve()
+        dest.relative_to(workdir.resolve())
+    except (OSError, ValueError):
+        return None
+    if dest.is_file():
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest)
+    os.chmod(dest, 0o600)
+    return missing
+
+
+def _repair_missing_validation_artifacts(
+    cwd: Path,
+    board: Mapping[str, Any],
+    task_id: str,
+    argv: list[str],
+    workdir: Path,
+) -> list[str]:
+    """Copy missing pytest targets and required outputs from overlay."""
+    repaired: list[str] = []
+    missing = _pytest_source_missing(argv, workdir)
+    if missing is not None:
+        copied = copy_overlay_source(missing, workdir)
+        if copied:
+            repaired.append(copied)
+    profile = _validation_profile(board, cwd, task_id)
+    if profile is None:
+        return repaired
+    for relative in profile.get("required_outputs") or []:
+        if not isinstance(relative, str) or not relative:
+            continue
+        try:
+            dest = (cwd / relative).resolve()
+            dest.relative_to(cwd.resolve())
+        except (OSError, ValueError):
+            continue
+        if dest.is_file():
+            continue
+        copied = copy_overlay_source(relative, cwd)
+        if copied:
+            repaired.append(copied)
+    return repaired
 
 
 def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
