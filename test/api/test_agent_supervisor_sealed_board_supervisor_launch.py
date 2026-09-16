@@ -107,3 +107,36 @@ def test_overlay_supervise_exit_preserves_nonzero():
         overlay_supervise_exit_code("/unused", ["supervise"], 2, owner_lifecycle="stopped")
         == 2
     )
+
+
+def test_nested_extra_gate_insert_cannot_hide_overlay(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
+        install_overlay,
+    )
+
+    overlay = tmp_path / "overlay"
+    source = tmp_path / "sealed"
+    nested = source / "external" / "ipfs_accelerate"
+    overlay.mkdir()
+    nested.mkdir(parents=True)
+    monkeypatch.setattr("sys.path", ["/usr/lib/python3"])
+    install_overlay(str(overlay), str(source))
+    import sys
+
+    sys.path.insert(0, str(nested.resolve()))
+    assert sys.path[0] == str(overlay.resolve())
+    assert sys.path[1] == str(nested.resolve())
+
+
+def test_install_supervisor_heal_overlay_pins_quack_state_server():
+    from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
+        install_supervisor_heal_overlay,
+    )
+    import ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server as server
+
+    overlay = Path(server.__file__).resolve().parents[3]
+    install_supervisor_heal_overlay(str(overlay))
+    import ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server as again
+
+    assert callable(getattr(again.QuackStateServer, "_ensure_client_token_handoff"))
+    assert callable(getattr(again.QuackStateServer, "_unstall_false_terminal_blocked"))

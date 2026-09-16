@@ -190,8 +190,8 @@ ROUTE_SOURCE_TREE_ENV = (
 ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
 # Cron one-shot relaunch can only start a new exclusive owner after this
-# process exits. Infinite duration pinned extra-gate on a stale capsule so
-# fleet closeout never saw a live attach token.
+# process exits. Infinite duration pinned the exclusive owner on a stale
+# capsule so fleet closeout never saw a live attach token.
 CONFIGURED_BOARD_OWNER_DURATION_SECONDS = 28800.0
 
 
@@ -209,7 +209,7 @@ def bound_configured_board_owner_duration(
     *,
     closeout_disabled: bool,
 ) -> float:
-    """Cap immortal extra-gate extra-gate extra-gate owners when fleet owns closeout/unstall."""
+    """Cap immortal exclusive owners when fleet owns closeout/unstall."""
 
     if math.isfinite(duration_seconds) and duration_seconds > 0:
         return float(duration_seconds)

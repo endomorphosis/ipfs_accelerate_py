@@ -1130,3 +1130,43 @@ def test_native_json_cannot_forge_local_status_failure_evidence(board):
     assert 'native_status_failure' not in result['details']
     assert not result['details']['authenticated_task_observation']
     assert not result['completion_candidate']
+
+
+def test_extra_gate_recursion_reasons_detect_competing_unit_and_sealed_package():
+    assert probe.extra_gate_recursion_reasons(
+        live_unit="pctdd-g9-quack-owner.service",
+        inventory_unit="ipfs-accelerate-pctdd-g9-watchdog.service",
+        owner_argv=["/usr/bin/python3", "state-owner"],
+    ) == [
+        "extra_gate_recursion_competing_unit",
+        "extra_gate_recursion_sealed_package",
+    ]
+    assert probe.extra_gate_recursion_reasons(
+        live_unit="ipfs-taskboard-spar-supervisor.service",
+        inventory_unit="ipfs-taskboard-spar-supervisor.service",
+        owner_argv=["python3", "sealed_board_supervisor_launch.py", "--overlay", "x"],
+    ) == []
+    assert probe.systemd_unit_from_cgroup(
+        "0::/user.slice/user-1000.slice/user@1000.service/app.slice/pctdd-g9-quack-owner.service"
+    ) == "pctdd-g9-quack-owner.service"
+    assert probe.inventory_owner_unit({
+        "existing_service": "ipfs-accelerate-pctdd-g9-watchdog.service",
+        "ensure_argv": ["systemctl", "--user", "start", "ghost.service"],
+    }) == "ipfs-accelerate-pctdd-g9-watchdog.service"
+
+
+def test_observe_board_reports_extra_gate_without_heal_overlay(board, monkeypatch):
+    config, identities, _ = board
+    config["existing_service"] = "ipfs-taskboard-pctdd-ensure.service"
+    identities[50]["systemd_unit"] = "pctdd-g9-quack-owner.service"
+    identities[50]["argv"] = ["/usr/bin/python3", "parallel_content_sealing.py", "state-owner"]
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({
+        "task_authority": {"status_counts": {"in_progress": 1}, "task_count": 1,
+                           "authenticated_query": True},
+        "ready": True, "healthy": True, "operational_ready": True,
+    }, ""))
+    result = probe.observe_board(config, now=1000)
+    assert "extra_gate_recursion_competing_unit" in result["reason_codes"]
+    assert "extra_gate_recursion_sealed_package" in result["reason_codes"]
+    assert result["details"]["extra_gate"]["live_owner_unit"] == "pctdd-g9-quack-owner.service"
+    assert result["details"]["extra_gate"]["heal_overlay"] is False

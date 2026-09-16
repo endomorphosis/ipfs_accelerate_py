@@ -168,17 +168,24 @@ def process_identity(pid: Any, *, proc_root: Path = Path("/proc")) -> dict[str, 
         except OSError:
             # Hardened owners can hide this diagnostic without hiding birth.
             wait_channel = ""
+        try:
+            systemd_unit = systemd_unit_from_cgroup((root / "cgroup").read_text())
+        except OSError:
+            systemd_unit = ""
         after = (root / "stat").read_text()
         latest = after[after.rfind(")") + 2:].split()
         if stat[19] != latest[19] or latest[0] in {"Z", "X"}:
             return {}
-        return {
+        identity = {
             "pid": pid, "parent_pid": int(stat[1]), "start_time_ticks": int(stat[19]),
             "boot_id": (proc_root / "sys/kernel/random/boot_id").read_text().strip(),
             "cwd": cwd, "argv": argv, "cmdline_sha256": hashlib.sha256(cmdline).hexdigest(),
             "cpu_ticks": int(stat[11]) + int(stat[12]),
             "process_state": latest[0], "wait_channel": wait_channel,
         }
+        if systemd_unit:
+            identity["systemd_unit"] = systemd_unit
+        return identity
     except (OSError, ValueError, IndexError, TypeError):
         return {}
 
@@ -195,8 +202,52 @@ def _public_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     # may contain long prompts or credentials in unrelated process descendants).
     return {key: identity[key] for key in (
         "pid", "parent_pid", "start_time_ticks", "boot_id", "cwd", "cmdline_sha256", "cpu_ticks",
-        "process_state", "wait_channel",
+        "process_state", "wait_channel", "systemd_unit",
     ) if key in identity}
+
+
+HEAL_OVERLAY_LAUNCHER = "sealed_board_supervisor_launch.py"
+
+
+def systemd_unit_from_cgroup(text: str) -> str:
+    """Last systemd unit in a cgroup path. Observation only; never signals."""
+    if not isinstance(text, str) or not text:
+        return ""
+    for part in reversed(text.replace("\\", "/").split("/")):
+        name = part.strip()
+        if name.endswith(".service"):
+            return name
+    return ""
+
+
+def inventory_owner_unit(board: Mapping[str, Any]) -> str:
+    """Configured extra-gate unit. May differ from the live exclusive owner."""
+    existing = board.get("existing_service")
+    if isinstance(existing, str) and existing.endswith(".service"):
+        return existing
+    ensure = board.get("ensure_argv")
+    if isinstance(ensure, list):
+        for item in reversed(ensure):
+            if isinstance(item, str) and item.endswith(".service"):
+                return item
+    return ""
+
+
+def extra_gate_recursion_reasons(
+    *,
+    live_unit: str,
+    inventory_unit: str,
+    owner_argv: Any,
+) -> list[str]:
+    """Detect nested extra-gate: competing units or a sealed package hiding heals."""
+    reasons: list[str] = []
+    if live_unit and inventory_unit and live_unit != inventory_unit:
+        reasons.append("extra_gate_recursion_competing_unit")
+    argv = owner_argv if isinstance(owner_argv, list) else []
+    names = [str(item) for item in argv if isinstance(item, str)]
+    if names and not any(HEAL_OVERLAY_LAUNCHER in item for item in names):
+        reasons.append("extra_gate_recursion_sealed_package")
+    return reasons
 
 
 def _process_condition(identity: Mapping[str, Any]) -> str:
@@ -746,6 +797,19 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("owner_not_ready")
     if owner_live and (condition := _process_condition(owner)):
         reasons.append(f"owner_process_{condition}")
+    live_unit = str(owner.get("systemd_unit") or "") if owner_live else ""
+    inventory_unit = inventory_owner_unit(board)
+    extra_gate_reasons = extra_gate_recursion_reasons(
+        live_unit=live_unit,
+        inventory_unit=inventory_unit,
+        owner_argv=owner.get("argv") if owner_live else [],
+    )
+    reasons.extend(extra_gate_reasons)
+    extra_gate = {
+        "live_owner_unit": live_unit,
+        "inventory_owner_unit": inventory_unit,
+        "heal_overlay": "extra_gate_recursion_sealed_package" not in extra_gate_reasons,
+    }
     if owner_live:
         try:
             endpoint = str(board["quack_endpoint"]).removeprefix("quack:")
@@ -994,6 +1058,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         "details": {"observed_at": datetime.fromtimestamp(now, UTC).isoformat(),
             "owner": _public_identity(owner) if owner_live else {}, "owner_ready": owner_ready,
             "owner_writer_custody": owner_writer_custody,
+            "extra_gate": extra_gate,
             "lanes": lanes, "providers": providers, "task_counts": counts, "progress_source": source,
             "authenticated_task_observation": authenticated,
             "implementation_frontier_complete": implementation_frontier_complete,
