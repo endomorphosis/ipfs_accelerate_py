@@ -39,6 +39,7 @@ API_PROVIDERS: frozenset[str] = frozenset(
         "claude_py",
         "gemini_py",
         "copilot_sdk",
+        "typesafe",
     }
 )
 
@@ -119,7 +120,11 @@ PROVIDER_PATH_METADATA: dict[str, dict[str, Any]] = {
         "display_name": "OpenRouter API",
         "command": "",
         "side_effecting": False,
-        "auth_env": ("OPENROUTER_API_KEY",),
+        "auth_env": (
+            "OPENROUTER_API_KEY",
+            "ipfs_accelerate_py_OPENROUTER_API_KEY",
+            "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+        ),
     },
     "xai": {
         "path": RoutingPath.API.value,
@@ -133,7 +138,13 @@ PROVIDER_PATH_METADATA: dict[str, dict[str, Any]] = {
         "display_name": "Hugging Face Inference API",
         "command": "",
         "side_effecting": False,
-        "auth_env": ("HF_TOKEN", "HUGGINGFACE_API_KEY"),
+        "auth_env": (
+            "HF_TOKEN",
+            "HUGGINGFACE_API_TOKEN",
+            "HUGGINGFACEHUB_API_TOKEN",
+            "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+            "ipfs_accelerate_py_HF_API_TOKEN",
+        ),
     },
     "claude_py": {
         "path": RoutingPath.API.value,
@@ -155,6 +166,18 @@ PROVIDER_PATH_METADATA: dict[str, dict[str, Any]] = {
         "command": "",
         "side_effecting": False,
         "auth_env": (),
+    },
+    "typesafe": {
+        "path": RoutingPath.API.value,
+        "display_name": "TypeSafe System One",
+        "command": "",
+        "side_effecting": False,
+        "auth_env": (
+            "TYPESAFE_API_KEY",
+            "ipfs_accelerate_py_TYPESAFE_API_KEY",
+            "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+            "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+        ),
     },
 }
 

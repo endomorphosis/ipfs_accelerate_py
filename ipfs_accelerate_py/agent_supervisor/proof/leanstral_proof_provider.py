@@ -1889,8 +1889,28 @@ class LeanstralProofProvider:
         theorem: FixedTheoremIdentity | Mapping[str, Any],
         **kwargs: Any,
     ) -> LeanstralProofGateResult:
-        """Delegate a model artifact to the supervisor-owned kernel gate."""
+        """Delegate a model artifact to the supervisor-owned kernel gate.
 
+        Pass ``typesafe_precheck=True`` to ask TypeSafe whether the kernel
+        spend is worth it. A skip raises ``TypesafeKernelSkip`` and is
+        advisory only — it is not ``KERNEL_VERIFIED``.
+        """
+
+        if kwargs.pop("typesafe_precheck", False):
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+                maybe_verify_leanstral_draft,
+            )
+
+            return maybe_verify_leanstral_draft(
+                draft,
+                theorem,
+                typesafe_precheck=True,
+                privacy_class=str(kwargs.pop("privacy_class", "repository_private") or ""),
+                remote_disclosure_permitted=bool(
+                    kwargs.pop("remote_disclosure_permitted", True)
+                ),
+                **kwargs,
+            )
         return verify_leanstral_draft(draft, theorem, **kwargs)
 
     def check_patch_proposal(self, patch_text: str, **kwargs: Any) -> LeanstralPatchGateResult:

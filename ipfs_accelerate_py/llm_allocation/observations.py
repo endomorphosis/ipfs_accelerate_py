@@ -62,6 +62,7 @@ _PROVIDER_PROTOCOL: dict[str, CallProtocol] = {
     "openrouter": CallProtocol.HTTP,
     "xai": CallProtocol.HTTP,
     "hf_inference_api": CallProtocol.HTTP,
+    "typesafe": CallProtocol.HTTP,
     "muse_code": CallProtocol.CLI,
     "goose_cli": CallProtocol.CLI,
     "codex_cli": CallProtocol.CLI,
@@ -215,7 +216,9 @@ def classify_provider_failure(
         return CallFailure(CallErrorKind.BILLING, False, message[:512], code)
     if code == 429 or "rate limit" in lowered or "too many requests" in lowered:
         return CallFailure(CallErrorKind.RATE_LIMIT, True, message[:512], code)
-    if code in {500, 503} or "overloaded" in lowered:
+    if code == 422:
+        return CallFailure(CallErrorKind.INVALID_REQUEST, False, message[:512], code)
+    if code in {500, 503, 529} or "overloaded" in lowered:
         return CallFailure(CallErrorKind.SERVER, True, message[:512], code)
     if code == 408 or "timeout" in lowered:
         return CallFailure(CallErrorKind.TIMEOUT, True, message[:512], code)

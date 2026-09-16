@@ -11,6 +11,7 @@ from typing import Any
 __all__ = [
     "test_reuse_capabilities",
     "ipfs_datasets_test_certificate_provider",
+    "typesafe_advisor",
 ]
 
 

@@ -20,6 +20,11 @@ Additional optional providers (opt-in by selecting provider):
     - `OPENROUTER_API_KEY` or `ipfs_accelerate_py_OPENROUTER_API_KEY`
     - `ipfs_accelerate_py_OPENROUTER_MODEL` (default model)
     - `ipfs_accelerate_py_OPENROUTER_BASE_URL` (default: https://openrouter.ai/api/v1)
+- `typesafe`: TypeSafe System One structured evaluation (not chat completions)
+    - `TYPESAFE_API_KEY` or `ipfs_accelerate_py_TYPESAFE_API_KEY`
+    - `TYPESAFE_DEFAULT_MODEL` / `ipfs_accelerate_py_TYPESAFE_MODEL` (default: jev-latest)
+    - `TYPESAFE_BASE_URL` (default: https://api.typesafe.ai)
+    - Pass `questions=` (noul/choice/score) to `generate_text`, or call `system_one()`
 - `codex_cli`: OpenAI Codex CLI via `codex exec`
     - `ipfs_accelerate_py_CODEX_CLI_MODEL` / `ipfs_accelerate_py_CODEX_MODEL`
 - `copilot_cli`: GitHub Copilot CLI via command template
@@ -2354,6 +2359,14 @@ _GROK_CLI_PROVIDER_ALIASES = {
     "grok_build_cli",
     "grok-build-cli",
 }
+_TYPESAFE_PROVIDER_ALIASES = {
+    "typesafe",
+    "typesafe_ai",
+    "typesafe-ai",
+    "system_one",
+    "systemone",
+    "jev",
+}
 _XAI_API_PROVIDER_ALIASES = {
     "xai",
     "xai_api",
@@ -2517,6 +2530,11 @@ _PROVIDER_ALIASES = {
     "musecode": "muse_code",
     "muse_cli": "muse_code",
     "muse-cli": "muse_code",
+    "typesafe_ai": "typesafe",
+    "typesafe-ai": "typesafe",
+    "system_one": "typesafe",
+    "systemone": "typesafe",
+    "jev": "typesafe",
 }
 _GOOSE_CLI_PROVIDER_ALIASES = {
     "goose_cli",
@@ -2564,6 +2582,9 @@ _LLM_GENERATE_PROVIDER_FORWARD_KEYS = (
     "top_logprobs",
     "response_format",
     "timeout",
+    "questions",
+    "state",
+    "extra_body",
 )
 _LLM_GENERATE_TRACE_FORWARD_KEYS = (
     "trace",
@@ -3924,6 +3945,15 @@ def _effective_model_key(
             or _generic_llm_model_env()
             or "gpt2"
         ).strip()
+    if pk in _TYPESAFE_PROVIDER_ALIASES:
+        return (
+            _coalesce_env(
+                "TYPESAFE_DEFAULT_MODEL",
+                "ipfs_accelerate_py_TYPESAFE_MODEL",
+                "IPFS_ACCELERATE_PY_TYPESAFE_MODEL",
+            )
+            or "jev-latest"
+        ).strip()
     if pk in _GROK_CLI_PROVIDER_ALIASES or (pk == "grok" and _cli_available(_grok_cli_command())):
         return (
             _coalesce_env(
@@ -4280,6 +4310,8 @@ def _generic_llm_model_env() -> str:
         "huggingface",
         "local_hf",
         "hf_inference_api",
+        "typesafe",
+        "typesafe_ai",
         "p2p_task_queue",
         "llama_cpp",
         "llama_cpp_native",
@@ -5324,6 +5356,44 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
             raise RuntimeError("OpenRouter response missing choices")
 
     return _OpenRouterProvider()
+
+
+def _get_typesafe_provider() -> Optional[LLMProvider]:
+    from .typesafe_inference import (
+        get_last_typesafe_observation,
+        resolve_typesafe_api_key,
+        system_one,
+    )
+
+    if not resolve_typesafe_api_key():
+        return None
+
+    class _TypeSafeProvider:
+        router_provider_name = "typesafe"
+
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
+            questions = kwargs.get("questions")
+            if not isinstance(questions, Mapping) or not questions:
+                raise LLMRouterError(
+                    "typesafe requires typed questions (noul/choice/score); "
+                    "pass questions=... or call system_one()"
+                )
+            state = kwargs.get("state", prompt)
+            extra_body = kwargs.get("extra_body")
+            timeout = kwargs.get("timeout", 30)
+            result = system_one(
+                state,
+                questions,
+                model=model_name,
+                timeout=float(timeout) if timeout is not None else None,
+                extra_body=extra_body if isinstance(extra_body, Mapping) else None,
+            )
+            _ = get_last_typesafe_observation()
+            return result.to_json()
+
+    return _TypeSafeProvider()
 
 
 def _get_openai_provider() -> Optional[LLMProvider]:
@@ -9394,6 +9464,8 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_mock_provider()
     if key == "openrouter":
         return _get_openrouter_provider()
+    if key in _TYPESAFE_PROVIDER_ALIASES:
+        return _get_typesafe_provider()
     if key == "openai":
         return _get_openai_provider()
     if key == "hf_inference_api":
@@ -9627,6 +9699,22 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
         device="cpu",
         authorization="none",
         default_model="mock",
+        streaming="not-supported",
+        tools="not-supported",
+    ),
+    _LLMProviderSpec(
+        name="typesafe",
+        aliases=("typesafe_ai", "typesafe-ai", "system_one", "systemone", "jev"),
+        description="TypeSafe System One structured evaluation API (noul/choice/score).",
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "TYPESAFE_DEFAULT_MODEL",
+            "ipfs_accelerate_py_TYPESAFE_MODEL",
+            "IPFS_ACCELERATE_PY_TYPESAFE_MODEL",
+        ),
+        default_model="jev-latest",
         streaming="not-supported",
         tools="not-supported",
     ),
@@ -10008,6 +10096,13 @@ def _llm_provider_authorized(name: str) -> Optional[bool]:
             "IPFS_DATASETS_PY_OPENROUTER_API_KEY",
             "OPENROUTER_API_KEY",
         )
+    if name == "typesafe":
+        return _llm_env_has_value(
+            "TYPESAFE_API_KEY",
+            "ipfs_accelerate_py_TYPESAFE_API_KEY",
+            "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+            "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+        )
     if name == "openai":
         return _llm_env_has_value(
             "OPENAI_API_KEY",
@@ -10110,7 +10205,7 @@ def _builtin_llm_provider_state(
             ),
         )
     authorized = _llm_provider_authorized(spec.name)
-    if spec.name in {"openrouter", "openai", "hf_inference_api", "xai", "meta_ai"}:
+    if spec.name in {"openrouter", "openai", "hf_inference_api", "xai", "meta_ai", "typesafe"}:
         configured = authorized
         return (
             LifecycleState.CONFIGURED if configured is True else LifecycleState.DECLARED,
@@ -10980,6 +11075,26 @@ def _record_llm_allocation_observation(
             observation.error_kind = failure.kind.value
             observation.retryable = failure.retryable
             observation.status_code = failure.status_code
+        if provider_name in {"typesafe", "typesafe_ai"}:
+            try:
+                from .typesafe_inference import get_last_typesafe_observation
+
+                ts_obs = get_last_typesafe_observation()
+            except Exception:
+                ts_obs = {}
+            if isinstance(ts_obs, dict) and ts_obs:
+                observation.prompt_tokens = int(ts_obs.get("input_tokens") or 0)
+                observation.completion_tokens = int(ts_obs.get("output_tokens") or 0)
+                observation.total_tokens = int(
+                    ts_obs.get("total_tokens")
+                    or (observation.prompt_tokens + observation.completion_tokens)
+                )
+                if ts_obs.get("model") and not observation.model:
+                    observation.model = str(ts_obs.get("model") or "")[:128]
+                extra = dict(observation.extra_metadata or {})
+                extra["input_tokens"] = observation.prompt_tokens
+                extra["output_tokens"] = observation.completion_tokens
+                observation.extra_metadata = extra
         if provider_name == "meta_ai":
             meta_obs = get_last_meta_observation()
             usage = meta_obs.get("usage") if isinstance(meta_obs, dict) else None
@@ -12386,6 +12501,34 @@ def _generate_with_provider_fallbacks(
                 except Exception:
                     continue
         raise initial_error
+
+
+def system_one(
+    state: object,
+    questions: Mapping[str, object],
+    *,
+    model_name: Optional[str] = None,
+    **kwargs: object,
+) -> object:
+    """Run TypeSafe System One inference and return structured answers.
+
+    This is the native TypeSafe surface. ``generate_text(..., provider="typesafe")``
+    also works when ``questions`` is supplied, and returns JSON text.
+    """
+
+    from .typesafe_inference import system_one as _system_one
+
+    timeout = kwargs.get("timeout")
+    extra_body = kwargs.get("extra_body")
+    return _system_one(
+        state,
+        questions,
+        model=model_name or kwargs.get("model"),
+        api_key=kwargs.get("api_key"),
+        base_url=kwargs.get("base_url"),
+        timeout=float(timeout) if timeout is not None else None,
+        extra_body=extra_body if isinstance(extra_body, Mapping) else None,
+    )
 
 
 def generate_text(

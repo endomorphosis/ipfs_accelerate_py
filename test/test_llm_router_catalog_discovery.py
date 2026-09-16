@@ -48,6 +48,9 @@ _DISCOVERY_ENV = (
     "IPFS_DATASETS_PY_XAI_API_KEY",
     "META_AI_API_KEY",
     "ipfs_accelerate_py_META_AI_API_KEY",
+    "TYPESAFE_API_KEY",
+    "ipfs_accelerate_py_TYPESAFE_API_KEY",
+    "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
 )
 
 
@@ -91,6 +94,7 @@ def test_all_builtin_providers_publish_typed_llm_metadata() -> None:
             "openai",
             "openrouter",
             "p2p_task_queue",
+            "typesafe",
             "xai",
         }
     )
@@ -193,6 +197,7 @@ def test_discovery_never_constructs_clients_installs_probes_or_loads_models(
         "_get_accelerate_provider",
         "_get_local_hf_provider",
         "_get_openrouter_provider",
+        "_get_typesafe_provider",
         "_get_openai_provider",
         "_get_hf_inference_api_provider",
         "_get_llama_cpp_provider",

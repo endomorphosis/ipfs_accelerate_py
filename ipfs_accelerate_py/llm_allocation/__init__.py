@@ -11,11 +11,14 @@ from .api_key_slots import (
     register_api_key,
     select_api_key,
 )
+from .api_status import api_backends_status, render_api_backends_status
 from .cli_status import cli_tools_status, render_cli_tools_status
 from .intelligence_index import (
     CATALOG_REVISION,
     INDEX_VERSION,
+    board_task_kind,
     discover_available_providers,
+    ideal_model_for_task,
     intelligence_cost_matrix,
     load_intelligence_index_models,
     select_efficient_model,
@@ -23,7 +26,10 @@ from .intelligence_index import (
 )
 from .model_manager_sync import (
     populate_cli_models,
+    populate_hf_inference_models,
     populate_intelligence_index,
+    populate_openrouter_models,
+    populate_typesafe_models,
     populate_router_catalog,
 )
 from .session_route import (
@@ -85,6 +91,7 @@ __all__ = [
     "CATALOG_REVISION",
     "INDEX_VERSION",
     "choose_cli_route",
+    "api_backends_status",
     "cli_tools_status",
     "fingerprint_api_key",
     "list_api_key_slots",
@@ -113,12 +120,18 @@ __all__ = [
     "resume_kwargs_for_session",
     "sanitize_session_metadata",
     "score_provider",
+    "board_task_kind",
     "discover_available_providers",
+    "ideal_model_for_task",
     "intelligence_cost_matrix",
     "load_intelligence_index_models",
     "populate_cli_models",
+    "populate_hf_inference_models",
     "populate_intelligence_index",
+    "populate_openrouter_models",
+    "populate_typesafe_models",
     "populate_router_catalog",
+    "render_api_backends_status",
     "select_efficient_model",
     "select_efficient_route",
 ]

@@ -436,6 +436,15 @@ def discover_available_providers(
         pass
 
     try:
+        from ipfs_accelerate_py.llm_allocation.api_status import api_backends_status
+
+        api = api_backends_status()
+        for name in api.get("ready") or ():
+            _add(name)
+    except Exception:
+        pass
+
+    try:
         from ipfs_accelerate_py.llm_allocation.cli_status import cli_tools_status
 
         status = cli_tools_status()
@@ -530,19 +539,90 @@ def infer_task_kind(
 ) -> str:
     """Infer a closed task-kind token from invocation metadata."""
 
-    explicit = str(task_kind or "").strip().casefold()
-    if explicit:
-        return explicit if explicit in TASK_KIND_INTELLIGENCE else "standard"
-    blob = f"{backend_label} {env_prefix}".casefold()
-    if "implement" in blob:
-        return "implementation"
-    if "review" in blob:
-        return "review"
-    if "legal" in blob or "parser" in blob:
-        return "easy"
-    if "plan" in blob or "proposal" in blob:
-        return "planning"
+    explicit = str(task_kind or "").strip().casefold().replace("-", "_")
+    if explicit in TASK_KIND_INTELLIGENCE:
+        return explicit
+    blob = f"{task_kind} {backend_label} {env_prefix}".casefold().replace("-", "_")
+    for token in (
+        "unblock_review",
+        "implementation",
+        "extraction",
+        "inventory",
+        "retirement",
+        "validation",
+        "scientific",
+        "frontier",
+        "planning",
+        "proposal",
+        "boundary",
+        "facade",
+        "rescue",
+        "repair",
+        "review",
+        "coding",
+        "merge",
+        "legal",
+        "agent",
+        "state",
+        "rescan",
+        "hard",
+        "easy",
+    ):
+        if token in blob:
+            return token
     return "standard"
+
+
+def board_task_kind(task: Any) -> str:
+    """Resolve a supervisor task-board item onto a closed routing kind."""
+
+    if isinstance(task, str):
+        return infer_task_kind(task)
+    if not isinstance(task, Mapping):
+        return "standard"
+    nested: list[Any] = [task]
+    for key in ("metadata", "identity", "body", "extension"):
+        value = task.get(key)
+        if isinstance(value, Mapping):
+            nested.append(value)
+        elif isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+            try:
+                parsed = json.loads(value)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, Mapping):
+                nested.append(parsed)
+    for row in nested:
+        for key in ("kind", "task_kind", "task_type"):
+            kind = infer_task_kind(str(row.get(key) or ""))
+            raw = str(row.get(key) or "").strip().casefold().replace("-", "_")
+            if raw and raw in TASK_KIND_INTELLIGENCE:
+                return kind
+    blob = " ".join(
+        str(task.get(key) or "")
+        for key in ("title", "summary", "objective_id", "goal", "goal_cid")
+    )
+    return infer_task_kind(backend_label=blob)
+
+
+def ideal_model_for_task(
+    task: Any,
+    *,
+    provider: str = "",
+    available_providers: Optional[Sequence[str]] = None,
+    min_intelligence: float = 0.0,
+) -> EfficientRoute:
+    """Return the cheapest Index model that can complete a board task."""
+
+    kind = board_task_kind(task)
+    return select_efficient_route(
+        model_name="auto",
+        provider=provider,
+        task_kind=kind,
+        min_intelligence=min_intelligence,
+        available_providers=available_providers,
+        force=True,
+    )
 
 
 def is_auto_model_name(
@@ -698,7 +778,9 @@ __all__ = [
     "intelligence_cost_matrix",
     "intelligence_floor_for_task",
     "is_auto_model_name",
+    "board_task_kind",
     "discover_available_providers",
+    "ideal_model_for_task",
     "load_intelligence_index_models",
     "providers_for_lab",
     "select_efficient_model",

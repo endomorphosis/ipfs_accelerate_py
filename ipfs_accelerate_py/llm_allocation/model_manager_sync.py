@@ -24,6 +24,46 @@ from ipfs_accelerate_py.llm_allocation.intelligence_index import (
 )
 from ipfs_accelerate_py.llm_allocation.paths import CLI_PROVIDERS
 
+HF_DEFAULT_MODELS: tuple[str, ...] = (
+    "HuggingFaceH4/zephyr-7b-beta",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.2",
+    "meta-llama/Llama-3.1-8B-Instruct",
+)
+
+OPENROUTER_LAB_PREFIX: Mapping[str, str] = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "google": "google",
+    "meta": "meta-llama",
+    "spacexai": "x-ai",
+    "xai": "x-ai",
+    "zai": "z-ai",
+    "z-ai": "z-ai",
+    "alibaba": "qwen",
+    "mistral": "mistralai",
+    "deepseek": "deepseek",
+    "kimi": "moonshotai",
+    "xiaomi": "xiaomi",
+}
+
+TYPESAFE_DEFAULT_MODELS: tuple[str, ...] = (
+    "jev-latest",
+    "jev",
+)
+
+OPENROUTER_DEFAULT_MODELS: tuple[str, ...] = (
+    "openai/gpt-4o-mini",
+    "openai/gpt-6-astra",
+    "anthropic/claude-sonnet-5",
+    "google/gemini-3.8-flash",
+    "z-ai/glm-5.3-flash",
+    "x-ai/grok-4.6",
+    "meta-llama/llama-4-maverick",
+    "qwen/qwen3.8-2.4t",
+    "mistralai/mistral-large-3",
+)
+
 _MODEL_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{1,79}$")
 _CLI_LIST_ARGV: Mapping[str, tuple[tuple[str, ...], ...]] = {
     "grok_cli": (("models",),),
@@ -256,17 +296,244 @@ def populate_intelligence_index(manager: Any = None) -> dict[str, Any]:
     }
 
 
-def populate_router_catalog(manager: Any = None) -> dict[str, Any]:
-    """Populate CLI models and the Intelligence Index matrix together."""
+def _aa_metrics_for_name(model_name: str) -> dict[str, Any]:
+    needle = str(model_name or "").strip().casefold().rsplit("/", 1)[-1]
+    best: dict[str, Any] = {}
+    if not needle:
+        return best
+    for model in load_intelligence_index_models():
+        if model.model_name.casefold() == needle and model.cost_usd_per_task > 0:
+            best = {
+                "intelligence_index": model.intelligence,
+                "cost_usd_per_task": model.cost_usd_per_task,
+                "index_version": INDEX_VERSION,
+                "reasoning_effort": model.reasoning_effort,
+                "catalog_revision": CATALOG_REVISION,
+            }
+            break
+    return best
+
+
+def list_openrouter_models(
+    *,
+    timeout_seconds: float = 4.0,
+    live: bool = False,
+    environ: Optional[Mapping[str, str]] = None,
+) -> tuple[str, ...]:
+    """Return OpenRouter model ids. Live fetch is opt-in and fail-soft."""
+
+    defaults = list(OPENROUTER_DEFAULT_MODELS)
+    for model in load_intelligence_index_models():
+        if "openrouter" not in model.providers:
+            continue
+        lab = str(model.lab or "").casefold()
+        prefix = (
+            OPENROUTER_LAB_PREFIX.get(lab)
+            or OPENROUTER_LAB_PREFIX.get(lab.replace(" ", "-"))
+            or OPENROUTER_LAB_PREFIX.get(lab.replace(" ", ""))
+        )
+        if not prefix:
+            continue
+        ident = f"{prefix}/{model.model_name}"
+        if ident not in defaults:
+            defaults.append(ident)
+    if not live:
+        return tuple(defaults[:64])
+    env = os.environ if environ is None else environ
+    token = ""
+    for name in (
+        "OPENROUTER_API_KEY",
+        "ipfs_accelerate_py_OPENROUTER_API_KEY",
+        "IPFS_ACCELERATE_PY_OPENROUTER_API_KEY",
+    ):
+        token = str(env.get(name) or "").strip()
+        if token:
+            break
+    if not token:
+        return tuple(defaults[:64])
+    try:
+        import json
+        import urllib.request
+
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/models",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=max(0.5, float(timeout_seconds))) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        live_ids: list[str] = []
+        for row in rows or ():
+            ident = str((row or {}).get("id") or "").strip()
+            if ident and ident not in live_ids:
+                live_ids.append(ident)
+            if len(live_ids) >= 64:
+                break
+        if live_ids:
+            return tuple(live_ids)
+    except Exception:
+        pass
+    return tuple(defaults[:64])
+
+
+def list_hf_inference_models(*, live: bool = False) -> tuple[str, ...]:
+    """Return Hugging Face Inference API model ids. Live listing is fail-soft."""
+
+    names = list(HF_DEFAULT_MODELS)
+    if live:
+        try:
+            from ipfs_accelerate_py.llm_router import (
+                _hf_live_model_manager_candidate_models,
+            )
+
+            for item in _hf_live_model_manager_candidate_models() or ():
+                ident = str(item or "").strip()
+                if ident and ident not in names:
+                    names.append(ident)
+        except Exception:
+            pass
+    return tuple(names[:64])
+
+
+def populate_openrouter_models(
+    manager: Any = None,
+    *,
+    live: bool = False,
+) -> dict[str, Any]:
+    """Register OpenRouter models in ModelManager."""
+
+    from ipfs_accelerate_py.model_manager import ModelManager, ModelMetadata, ModelType
+
+    active = manager or ModelManager(enable_ipfs=False)
+    now = _utcnow()
+    models = list_openrouter_models(live=live)
+    records = []
+    for model_name in models:
+        metrics = {"source": "openrouter", "provider": "openrouter"}
+        metrics.update(_aa_metrics_for_name(model_name))
+        records.append(
+            ModelMetadata(
+                model_id=f"openrouter:{model_name}",
+                model_name=model_name,
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture="decoder_only",
+                inputs=_text_io_specs()[:1],
+                outputs=_text_io_specs()[1:],
+                supported_backends=["openrouter"],
+                performance_metrics=metrics,
+                tags=["api", "openrouter", "llm-router"],
+                description=f"OpenRouter model {model_name}",
+                source_url="https://openrouter.ai/api/v1/models",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    added = _bulk_add(active, records)
+    return {"added": added, "models": list(models)}
+
+
+def list_typesafe_models(*, live: bool = False) -> tuple[str, ...]:
+    """Return TypeSafe System One model ids. Live listing is fail-soft."""
+
+    try:
+        from ipfs_accelerate_py.typesafe_inference import list_typesafe_models as _list
+
+        return _list(live=live)
+    except Exception:
+        return TYPESAFE_DEFAULT_MODELS
+
+
+def populate_typesafe_models(
+    manager: Any = None,
+    *,
+    live: bool = False,
+) -> dict[str, Any]:
+    """Register TypeSafe System One models in ModelManager."""
+
+    from ipfs_accelerate_py.model_manager import ModelManager, ModelMetadata, ModelType
+
+    active = manager or ModelManager(enable_ipfs=False)
+    now = _utcnow()
+    models = list_typesafe_models(live=live)
+    records = []
+    for model_name in models:
+        records.append(
+            ModelMetadata(
+                model_id=f"typesafe:{model_name}",
+                model_name=model_name,
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture="decoder_only",
+                inputs=_text_io_specs()[:1],
+                outputs=_text_io_specs()[1:],
+                supported_backends=["typesafe"],
+                performance_metrics={"source": "typesafe", "provider": "typesafe"},
+                tags=["api", "typesafe", "system-one", "llm-router"],
+                description=f"TypeSafe System One model {model_name}",
+                source_url="https://docs.typesafe.ai/sdk/python/usage",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    added = _bulk_add(active, records)
+    return {"added": added, "models": list(models)}
+
+
+def populate_hf_inference_models(
+    manager: Any = None,
+    *,
+    live: bool = False,
+) -> dict[str, Any]:
+    """Register Hugging Face Inference API models in ModelManager."""
+
+    from ipfs_accelerate_py.model_manager import ModelManager, ModelMetadata, ModelType
+
+    active = manager or ModelManager(enable_ipfs=False)
+    now = _utcnow()
+    models = list_hf_inference_models(live=live)
+    records = []
+    for model_name in models:
+        records.append(
+            ModelMetadata(
+                model_id=f"hf:{model_name}",
+                model_name=model_name,
+                model_type=ModelType.LANGUAGE_MODEL,
+                architecture="decoder_only",
+                inputs=_text_io_specs()[:1],
+                outputs=_text_io_specs()[1:],
+                supported_backends=["hf_inference_api"],
+                performance_metrics={"source": "hf_inference_api", "provider": "hf_inference_api"},
+                tags=["api", "hf_inference_api", "llm-router"],
+                description=f"Hugging Face Inference API model {model_name}",
+                source_url="https://huggingface.co",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    added = _bulk_add(active, records)
+    return {"added": added, "models": list(models)}
+
+
+def populate_router_catalog(manager: Any = None, *, live: bool = False) -> dict[str, Any]:
+    """Populate CLI, API, and Intelligence Index catalogs together."""
 
     from ipfs_accelerate_py.model_manager import ModelManager
 
     active = manager or ModelManager(enable_ipfs=False)
     cli = populate_cli_models(active)
     index = populate_intelligence_index(active)
+    openrouter = populate_openrouter_models(active, live=live)
+    hf = populate_hf_inference_models(active, live=live)
+    typesafe = populate_typesafe_models(active, live=live)
     return {
         "cli": cli,
         "intelligence_index": index,
+        "openrouter": openrouter,
+        "hf_inference_api": hf,
+        "typesafe": typesafe,
         "available_providers": list(discover_available_providers()),
     }
 
@@ -314,9 +581,18 @@ def models_for_available_providers(
 
 
 __all__ = [
+    "HF_DEFAULT_MODELS",
+    "OPENROUTER_DEFAULT_MODELS",
+    "TYPESAFE_DEFAULT_MODELS",
     "list_cli_provider_models",
+    "list_hf_inference_models",
+    "list_openrouter_models",
+    "list_typesafe_models",
     "models_for_available_providers",
     "populate_cli_models",
+    "populate_hf_inference_models",
     "populate_intelligence_index",
+    "populate_openrouter_models",
+    "populate_typesafe_models",
     "populate_router_catalog",
 ]

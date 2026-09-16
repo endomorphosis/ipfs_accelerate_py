@@ -74,6 +74,8 @@ def score_provider(
 
     success_rate = 1.0 if recent_calls <= 0 else recent_ok / max(1.0, recent_calls)
     score = 50.0 + 40.0 * success_rate
+    if remaining_tokens is not None and remaining_tokens > 0:
+        score += 20.0 * min(1.0, remaining_tokens / 100_000.0)
     if tpm and tpm > 0:
         score -= 25.0 * min(1.0, tokens_1m / float(tpm))
     rpm = hint.rpm or _as_int(stats.get("rpm"))

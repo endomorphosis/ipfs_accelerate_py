@@ -61,6 +61,11 @@ PROVIDER_LIMIT_HINTS: dict[str, ProviderLimitHint] = {
         protocol="http",
         source="unknown",
     ),
+    "typesafe": ProviderLimitHint(
+        provider="typesafe",
+        protocol="http",
+        source="unknown",
+    ),
     "xai": ProviderLimitHint(
         provider="xai",
         protocol="http",

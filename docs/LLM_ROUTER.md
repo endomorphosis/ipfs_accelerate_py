@@ -25,6 +25,32 @@ answer = generate_text(
 print(answer)
 ```
 
+TypeSafe System One is structured evaluation, not chat completions. Send
+state plus typed noul/choice/score questions:
+
+```python
+from ipfs_accelerate_py.typesafe_inference import Choice, Noul, Score, system_one
+
+result = system_one(
+    "I was charged twice. Please help ASAP.",
+    {
+        "billing": Noul(instructions="Is this about billing?"),
+        "tone": Choice(
+            instructions="What is the tone?",
+            criteria={"calm": None, "angry": None},
+        ),
+        "urgency": Score(
+            instructions="How urgent is this?",
+            criteria=["low", "medium", "high"],
+        ),
+    },
+)
+print(result.nouls["billing"].noul, result.choices["tone"].choice)
+```
+
+`generate_text(..., provider="typesafe", questions=...)` returns the answers as
+JSON. `TYPESAFE_API_KEY` is required; keys are never stored in allocation records.
+
 When no provider is specified, the router checks its configured provider
 resolution path. To make a run reproducible, select a provider explicitly and
 record the model, relevant environment, and dependency versions.
@@ -79,6 +105,7 @@ The built-in names currently recognized by the router include:
 | Provider | Boundary | Typical prerequisite |
 | --- | --- | --- |
 | `openrouter` | OpenRouter-compatible HTTP API | API key and network access |
+| `typesafe` | TypeSafe System One structured evaluation | `TYPESAFE_API_KEY`; pass `questions=` or call `system_one()` |
 | `codex_cli` | Codex CLI process | `codex` executable and auth |
 | `copilot_cli` | GitHub Copilot CLI process | Copilot CLI and auth |
 | `copilot_sdk` | Python Copilot SDK | optional SDK and auth |
@@ -234,7 +261,7 @@ print(resolve_session("01a0a6e1-88f6-7781-b25f-fdcc17fce794"))
 
 The same allocation schema is exported from the package root (`from ipfs_accelerate_py import generate_text, choose_cli_route, register_api_key, ...`), as MCP tools (`llm_cli_tools_status`, `llm_choose_cli_route`, `llm_migrate_cli_session`, `llm_resolve_session`, `llm_get_allocation_session`, `llm_register_api_key`, `llm_list_api_key_slots`, `llm_bind_session_api_key`, `llm_ensure_cli_tool`, `llm_router_generate_text`, plus `generate_text` / `llm_generate` with `allocation_session_id` and `allocation_path`), and as MCP++ tools through `TrioMCPServer.setup()` / `register_tools()`. MCP responses never include raw API keys, prompts, or credentials.
 
-Unpinned agent-supervisor `llm_router` calls (no provider, or `model_name="auto"`) pick the cheapest Artificial Analysis Intelligence Index v4.3 model that still meets the task-difficulty floor **and** is reachable through a currently available provider. `populate_router_catalog()` writes CLI-discovered models plus the full cost/intelligence matrix into ModelManager; `intelligence_cost_matrix(available_only=True)` and `discover_available_providers()` expose that filtered table. Explicit `provider` + `model_name` pairs, including the production Grok/Codex policy, stay pinned. Snapshot: [Intelligence Index v4.3](https://artificialanalysis.ai/articles/artificial-analysis-intelligence-index-v4-3).
+Unpinned agent-supervisor `llm_router` calls (no provider, or `model_name="auto"`) pick the cheapest Artificial Analysis Intelligence Index v4.3 model that still meets the task-difficulty floor **and** is reachable through a currently available provider. `populate_router_catalog()` writes CLI-discovered models, OpenRouter/Hugging Face Inference API catalogs, and the full cost/intelligence matrix into ModelManager. `api_backends_status()` records API auth, remaining tokens, and DuckDB health the same way `cli_tools_status()` does for CLIs. `allocate_supervisor_endpoint()` then hands a healthy API or CLI provider to `llm_router` when remaining tokens are good. Explicit `provider` + `model_name` pairs, including the production Grok/Codex policy, stay pinned. Snapshot: [Intelligence Index v4.3](https://artificialanalysis.ai/articles/artificial-analysis-intelligence-index-v4-3).
 
 ## Configuration
 
