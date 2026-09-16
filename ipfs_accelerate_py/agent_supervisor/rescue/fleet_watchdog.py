@@ -540,8 +540,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     # An inconclusive probe cannot authorize relaunching an already-live owner.
     recovery = state["observation"].get("recovery_action")
     if stall == "in_progress_awaiting_effect":
-        reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
-        if any("process_uninterruptible" in reason for reason in reasons):
+        from .fleet_heals import _observation_uninterruptible
+        observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+        reasons = {str(x) for x in observation.get("reason_codes") or []}
+        if _observation_uninterruptible(observation):
             # One D-state lane is not a board-wide freeze. Rearm false-terminal
             # blocks on other lanes; do not CAS the D-state worker's claim.
             return "supervisor_heal"

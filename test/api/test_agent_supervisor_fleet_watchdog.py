@@ -1186,6 +1186,29 @@ def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
     ) == "supervisor_heal"
 
 
+def test_flush_work_dstate_in_lane_identity_selects_supervisor_heal():
+    observation = {
+        "health": "degraded",
+        "reason_codes": ["no_task_progress"],
+        "details": {
+            "task_counts": {"completed": 20, "in_progress": 2, "todo": 23},
+            "lanes": [
+                {"lane": 0, "daemon": {"pid": 1, "process_state": "D", "wait_channel": "__flush_work"}},
+                {"lane": 3, "daemon": {"pid": 4, "process_state": "R"}},
+            ],
+        },
+    }
+    assert fleet.classify_stall(observation) == "in_progress_awaiting_effect"
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "in_progress_awaiting_effect",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
+    ) == "supervisor_heal"
+
+
 def test_native_unhealthy_empty_counts_with_dstate_is_not_llm():
     observation = {
         "health": "degraded",

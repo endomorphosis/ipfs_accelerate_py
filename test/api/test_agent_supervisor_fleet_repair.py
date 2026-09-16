@@ -288,6 +288,22 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert mixed["status"] == "wait"
     assert mixed["recipe"] == "kernel_uninterruptible_wait"
+    flush = apply_supervisor_heal(board, {
+        "stall_class": "in_progress_awaiting_effect",
+        "observation": {
+            "reason_codes": ["no_task_progress"],
+            "details": {
+                "task_counts": {"completed": 20, "in_progress": 2, "todo": 23},
+                "lanes": [
+                    {"lane": 0, "daemon": {"pid": 1, "process_state": "D", "wait_channel": "__flush_work"}},
+                    {"lane": 1, "daemon": {"pid": 2, "process_state": "D", "wait_channel": "__flush_work"}},
+                    {"lane": 3, "daemon": {"pid": 3, "process_state": "R"}},
+                ],
+            },
+        },
+    })
+    assert flush["status"] == "wait"
+    assert flush["recipe"] == "kernel_uninterruptible_wait"
     blocked = apply_supervisor_heal(board, {
         "stall_class": "blocked_without_independent_work",
         "observation": {"reason_codes": ["no_ready_independent_tasks"]},

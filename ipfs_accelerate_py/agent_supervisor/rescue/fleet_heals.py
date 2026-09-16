@@ -276,7 +276,18 @@ def native_unstall_already_recorded(state: Mapping[str, Any]) -> bool:
 
 def _observation_uninterruptible(observation: Mapping[str, Any]) -> bool:
     reasons = {str(x) for x in observation.get("reason_codes") or []}
-    return any("process_uninterruptible" in reason for reason in reasons)
+    if any("process_uninterruptible" in reason for reason in reasons):
+        return True
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            continue
+        for role in ("daemon", "supervisor"):
+            identity = lane.get(role) if isinstance(lane.get(role), dict) else {}
+            if identity.get("process_state") == "D":
+                return True
+    return False
 
 
 def unstall_stale_native_work(
