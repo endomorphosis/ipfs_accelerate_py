@@ -573,6 +573,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # Keep selecting heal after a recorded local pass so unstall can still
         # rearm false-terminal blocks; pytest is skipped inside the recipe.
         return "supervisor_heal"
+    if stall == "native_status_unavailable_with_live_workers":
+        # Empty native counts with live extra-gate still need false-terminal
+        # unstall (PCTDD-035/038). Wait after skip; never llm_router.
+        return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""
     if stall == "configured_control_plane_dirty":
@@ -720,7 +724,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "in_progress_awaiting_effect",
                     "todos_waiting_on_blocked_dependencies",
                     "kernel_uninterruptible_wait",
-                    "native_lanes_own_independent_todos",
+                    "native_status_retry_with_live_workers",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

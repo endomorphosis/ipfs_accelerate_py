@@ -1143,7 +1143,7 @@ def test_nonzero_native_status_with_live_lanes_is_not_llm_repair():
     }
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
@@ -1258,7 +1258,7 @@ def test_native_unhealthy_with_live_owner_is_not_llm():
     }
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():

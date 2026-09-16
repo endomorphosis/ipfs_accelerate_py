@@ -585,6 +585,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         "blocked_without_independent_work",
         "stalled_no_progress",
         "kernel_uninterruptible_wait",
+        "native_status_unavailable_with_live_workers",
     }:
         unstall = unstall_stale_native_work(board, observation)
         if unstall.get("status") == "applied":
