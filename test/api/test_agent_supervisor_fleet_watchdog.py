@@ -319,9 +319,10 @@ def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(
     persistent = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
     # D-state I/O is not a coding stall. Persistent uninterruptible wait stays
     # native; an LLM cannot unstick __flush_work or rewrite live receipts.
+    # Supervisor_heal rearms false-terminal peers and waits; it does not signal.
     assert persistent["stall_class"] == "kernel_uninterruptible_wait"
     assert persistent.get("last_action") != "repair"
-    assert persistent["planned_action"] == ""
+    assert persistent["last_action"] == "supervisor_heal"
     assert persistent["observation"]["busy"] is True
     assert [call["argv"][0] for call in runner.calls].count("repair") == 0
     assert not any(call["argv"][0] == "ensure" for call in runner.calls)
@@ -1167,7 +1168,7 @@ def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
     }
     assert fleet.select_action(
         waiting, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
     dstate = {
         "health": "degraded",
         "reason_codes": ["lane_0_daemon_process_uninterruptible"],
@@ -1175,6 +1176,14 @@ def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
     }
     assert fleet.classify_stall(dstate) == "kernel_uninterruptible_wait"
     assert "kernel_uninterruptible_wait" in fleet.WAIT_STALLS
+    dstate_state = {
+        "health": "degraded", "observation": dstate,
+        "stall_class": "kernel_uninterruptible_wait",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        dstate_state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == "supervisor_heal"
 
 
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():

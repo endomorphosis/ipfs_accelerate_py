@@ -523,10 +523,14 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "in_progress_awaiting_effect":
         reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
         if any("process_uninterruptible" in reason for reason in reasons):
-            return ""
+            # One D-state lane is not a board-wide freeze. Rearm false-terminal
+            # blocks on other lanes; do not CAS the D-state worker's claim.
+            return "supervisor_heal"
         if "no_task_progress" in reasons:
             return "supervisor_heal"
         return ""
+    if stall == "kernel_uninterruptible_wait":
+        return "supervisor_heal"
     if stall == "stalled_no_progress":
         details = (state.get("observation") or {}).get("details")
         details = details if isinstance(details, dict) else {}

@@ -274,6 +274,11 @@ def native_unstall_already_recorded(state: Mapping[str, Any]) -> bool:
     return result.get("recipe") == "unstall_stale_native_work"
 
 
+def _observation_uninterruptible(observation: Mapping[str, Any]) -> bool:
+    reasons = {str(x) for x in observation.get("reason_codes") or []}
+    return any("process_uninterruptible" in reason for reason in reasons)
+
+
 def unstall_stale_native_work(
     board: Mapping[str, Any], observation: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -308,7 +313,9 @@ def unstall_stale_native_work(
     try:
         with _temporary_environ(transport):
             with _open_task_source(endpoint, "fleet-watchdog-unstall") as source:
-                result = source.unstall_stale_in_progress_tasks()
+                result = source.unstall_stale_in_progress_tasks(
+                    skip_stale_in_progress=_observation_uninterruptible(observation),
+                )
     except Exception as exc:
         detail = str(exc)
         if "Authentication failed" in detail or "Quack authentication token" in detail:
@@ -566,6 +573,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         "in_progress_awaiting_effect",
         "blocked_without_independent_work",
         "stalled_no_progress",
+        "kernel_uninterruptible_wait",
     }:
         unstall = unstall_stale_native_work(board, observation)
         if unstall.get("status") == "applied":
@@ -599,6 +607,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "native_status_retry_with_live_workers",
                 "reason": "nonzero native status is not a coding stall while lanes are live"}
     if stall == "in_progress_awaiting_effect":
+        if _observation_uninterruptible(observation):
+            return {"status": "wait", "recipe": "kernel_uninterruptible_wait",
+                    "reason": "D-state I/O is not a coding stall; do not signal or rewrite receipts"}
         return {"status": "wait", "recipe": "in_progress_awaiting_effect",
                 "reason": "in-progress tasks are native work, not a coding stall"}
     if stall == "kernel_uninterruptible_wait":

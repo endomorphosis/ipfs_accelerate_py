@@ -279,6 +279,15 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert dstate["status"] == "wait"
     assert dstate["recipe"] == "kernel_uninterruptible_wait"
+    mixed = apply_supervisor_heal(board, {
+        "stall_class": "in_progress_awaiting_effect",
+        "observation": {
+            "reason_codes": ["lane_0_daemon_process_uninterruptible", "no_task_progress"],
+            "details": {"task_counts": {"in_progress": 2, "todo": 23}},
+        },
+    })
+    assert mixed["status"] == "wait"
+    assert mixed["recipe"] == "kernel_uninterruptible_wait"
     blocked = apply_supervisor_heal(board, {
         "stall_class": "blocked_without_independent_work",
         "observation": {"reason_codes": ["no_ready_independent_tasks"]},

@@ -3539,8 +3539,13 @@ class DatabaseTaskSource:
         now: Any = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
         orphan_previous_generation: bool = False,
+        skip_stale_in_progress: bool = False,
     ) -> dict[str, Any]:
-        """Retry leftover in_progress gates and false-terminal blocked rows."""
+        """Retry leftover in_progress gates and false-terminal blocked rows.
+
+        D-state workers still hold their in_progress claims. Rearm only
+        false-terminal blocked rows until that I/O completes.
+        """
 
         result: dict[str, Any] = {"unstalled": [], "skipped": []}
         unstall = getattr(self._intent, "unstall_stale_in_progress_tasks", None)
@@ -3559,10 +3564,12 @@ class DatabaseTaskSource:
         if getattr(clock, "tzinfo", None) is None:
             clock = clock.replace(tzinfo=timezone.utc)
         extra: list[dict[str, Any]] = []
-        try:
-            inflight = self.list_tasks(status="in_progress", limit=40)
-        except Exception:
-            inflight = None
+        inflight = None
+        if not skip_stale_in_progress:
+            try:
+                inflight = self.list_tasks(status="in_progress", limit=40)
+            except Exception:
+                inflight = None
         for record in getattr(inflight, "tasks", ()) or ():
             age = _task_age_seconds(getattr(record, "updated_at", ""), clock)
             if age is None or age < int(stale_seconds):
