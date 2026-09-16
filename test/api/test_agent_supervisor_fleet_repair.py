@@ -1269,12 +1269,11 @@ def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkey
     assert read_json(tmp_path / "repair-worker.json")["status"] == "runtime_update_ready"
 
 
-def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, monkeypatch):
+def test_doep_local_pass_rearms_blocked_tasks_without_wrapping_owner(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
 
     user_dir = tmp_path / "systemd"
-    reloads = []
     restarts = []
     real_admit = fleet_heals.admit_native_owner_overlay
     monkeypatch.setattr(
@@ -1301,13 +1300,18 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
         ],
     }
     monkeypatch.setattr(
-        fleet_heals, "admit_native_owner_overlay",
+        fleet_heals, "rearm_locally_validated_blocked_tasks",
         lambda *a, **k: {
             "status": "applied",
-            "recipe": "overlay_first_native_admission",
+            "recipe": "rearm_locally_validated_blocked_tasks",
             "completion_authority": False,
-            "restarted": True,
-            "reason": "overlay-first extra-gate recycle",
+            "completion_authoritative": False,
+            "unstalled": [
+                {"task_alias": "DOEP-044", "reason": "local_validation_pending_native_admission"},
+                {"task_alias": "DOEP-063", "reason": "local_validation_pending_native_admission"},
+            ],
+            "results": prior["results"],
+            "reason": "locally validated blocked tasks rearmed to retrying",
         },
     )
     result = apply_supervisor_heal(
@@ -1317,19 +1321,12 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
     )
     assert result["status"] == "applied"
     assert result["completion_authority"] is False
-    assert result["recipe"] == "overlay_first_native_admission"
-    assert result["results"][0]["status"] == "passed"
-    assert result["results"][1]["status"] == "passed"
+    assert result["recipe"] == "rearm_locally_validated_blocked_tasks"
+    assert result["unstalled"][0]["task_alias"] == "DOEP-044"
 
     written = real_admit(
         {"id": "doep", "cwd": str(tmp_path / "board")},
         observation,
-        show_unit=lambda unit: [
-            "/usr/bin/python3",
-            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
-            "run",
-        ],
-        daemon_reload=lambda: reloads.append(True),
         restart_unit=lambda unit: restarts.append(unit),
         systemd_user_dir=user_dir,
     )
@@ -1343,6 +1340,80 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
         systemd_user_dir=user_dir,
     )
     assert skipped["reason"] == "retain_owner_not_rewrapped"
+
+
+def test_overlay_sys_path_stays_first_after_sealed_insert(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.overlay_sys_path import (
+        OverlayFirstPath, pin_overlay_sys_path,
+    )
+    overlay = tmp_path / "overlay"
+    sealed = tmp_path / "sealed"
+    overlay.mkdir()
+    sealed.mkdir()
+    path = OverlayFirstPath(["/usr/lib/python3", str(sealed)], overlay=str(overlay))
+    path.insert(0, str(sealed / "external" / "ipfs_accelerate"))
+    path.insert(0, str(sealed))
+    assert path[0] == str(overlay.resolve())
+    monkeypatch.setattr("sys.path", ["/usr/lib/python3"])
+    pinned = pin_overlay_sys_path(str(overlay))
+    import sys
+    assert sys.path[0] == pinned
+    sys.path.insert(0, str(sealed))
+    assert sys.path[0] == pinned
+
+
+def test_rearm_locally_validated_blocked_does_not_admit_completion(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        rearm_locally_validated_blocked_tasks,
+    )
+
+    class Result:
+        changed = True
+        completion_authority = False
+
+    class Source:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def rearm_blocked_task(self, task_id, receipt=None):
+            assert receipt["completion_authoritative"] is False
+            assert receipt["operation"] == "local_validation_pending_native_admission"
+            return Result()
+
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {"quack_endpoint": "quack:127.0.0.1:27942"},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "_owner_transport_env",
+        lambda inventory: {
+            "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "test-token-value",
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": "doep-v1-r5",
+        },
+    )
+    monkeypatch.setattr(fleet_heals, "_open_task_source", lambda endpoint, owner_id: Source())
+    result = rearm_locally_validated_blocked_tasks(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"]}},
+        [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+        ],
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert {item["task_alias"] for item in result["unstalled"]} == {"DOEP-044", "DOEP-063"}
+
+
+def test_build_server_accepts_sealed_extra_gate_kwargs():
+    import inspect
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
+    params = inspect.signature(build_server).parameters
+    assert "repository_root" in params
+    assert "allow_legacy_board_unstall" in params
 
 
 def test_extra_gate_recursion_heal_unstalls_for_native_admission(tmp_path, monkeypatch):

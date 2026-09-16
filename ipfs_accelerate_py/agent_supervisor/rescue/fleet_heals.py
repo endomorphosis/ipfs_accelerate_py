@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -36,6 +37,8 @@ _OVERLAY_SOURCE_PREFIXES = (
     "external/ipfs_kit/",
 )
 _REPAIRABLE_SOURCE_SUFFIXES = {".py", ".json"}
+_QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+_QUACK_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 
 
 def live_workers(observation: Mapping[str, Any]) -> bool:
@@ -325,6 +328,9 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
                 )
             # typed-state-owner.token authenticates the Unix gateway, not Quack
             # ATTACH. Using it as IPFS_ACCELERATE_AGENT_QUACK_TOKEN fails closed.
+            recovered = _live_owner_attach_token(payload)
+            if recovered:
+                env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = recovered
     if not store_id:
         database = str(inventory.get("database_path") or "")
         if database and runtime and database.startswith(runtime.rstrip("/") + "/"):
@@ -360,6 +366,49 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
         if token:
             env["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = token
     return env
+
+
+def _process_start_time_ticks(pid: int) -> int:
+    stat = Path(f"/proc/{pid}/stat").read_text()
+    return int(stat[stat.rfind(")") + 2:].split()[19])
+
+
+def _process_environ_bytes(pid: int) -> bytes:
+    return Path(f"/proc/{pid}/environ").read_bytes()
+
+
+def _live_owner_attach_token(payload: Mapping[str, Any]) -> str:
+    """Recover the live exclusive-owner attach token. Never persist it.
+
+    Provider launch retires the on-disk handoff. The owner process may still
+    carry IPFS_ACCELERATE_AGENT_QUACK_TOKEN. Match pid, uid, and start ticks
+    from published identity before reading environ.
+    """
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    birth = identity.get("process_birth") if isinstance(identity.get("process_birth"), dict) else {}
+    try:
+        pid = int(birth.get("pid") or payload.get("pid") or 0)
+        want_start = int(birth.get("start_time_ticks") or 0)
+    except (TypeError, ValueError):
+        return ""
+    if pid < 1 or want_start < 1:
+        return ""
+    try:
+        if os.stat(f"/proc/{pid}").st_uid != os.getuid():
+            return ""
+        if _process_start_time_ticks(pid) != want_start:
+            return ""
+        raw = _process_environ_bytes(pid)
+    except (OSError, ValueError, IndexError):
+        return ""
+    prefix = f"{_QUACK_TOKEN_ENV}=".encode("ascii")
+    for item in raw.split(b"\0"):
+        if not item.startswith(prefix):
+            continue
+        token = item[len(prefix):].decode("ascii", "replace").strip()
+        if _QUACK_TOKEN_RE.fullmatch(token):
+            return token
+    return ""
 
 
 @contextmanager
@@ -585,9 +634,9 @@ def unstall_stale_native_work(
     transport = _owner_transport_env(inventory)
     if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
         typed = _unstall_via_typed_owner(board, observation, inventory)
-        if typed is not None:
+        if typed is not None and typed.get("status") == "applied":
             return typed
-        return {**empty, "reason": "quack_attach_token_absent"}
+        return typed or {**empty, "reason": "quack_attach_token_absent"}
     if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
         return {**empty, "reason": "owner_store_binding_absent"}
     inbox = transport.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR")
@@ -623,6 +672,89 @@ def unstall_stale_native_work(
         "reason": (
             "stale in_progress or false-terminal blocked tasks rearmed; "
             "native extra-gate lanes admit"
+        ),
+    }
+
+
+def locally_validated_rearm_already_recorded(state: Mapping[str, Any]) -> bool:
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return result.get("recipe") == "rearm_locally_validated_blocked_tasks"
+
+
+def rearm_locally_validated_blocked_tasks(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """CAS locally-validated blocked tasks to retrying. Never completes."""
+    empty = {
+        "status": "skip",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": [],
+    }
+    passed = [
+        str(item.get("task_id") or "")
+        for item in (results or [])
+        if isinstance(item, dict) and item.get("status") == "passed" and item.get("task_id")
+    ]
+    if not passed:
+        return {**empty, "reason": "no_locally_validated_blocked_tasks"}
+    inventory = _inventory_board(board)
+    endpoint = inventory.get("quack_endpoint")
+    if not isinstance(endpoint, str) or not endpoint.startswith("quack:"):
+        return {**empty, "reason": "quack_endpoint_absent"}
+    transport = _owner_transport_env(inventory)
+    if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
+        return {**empty, "reason": "quack_attach_token_absent"}
+    if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
+        return {**empty, "reason": "owner_store_binding_absent"}
+    inbox = transport.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR")
+    if inbox:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
+            retire_settled_mutation_inbox,
+        )
+        for _ in range(8):
+            if retire_settled_mutation_inbox(Path(inbox), limit=1024) < 1024:
+                break
+    changed: list[dict[str, Any]] = []
+    try:
+        with _temporary_environ(transport):
+            with _open_task_source(endpoint, "fleet-watchdog-local-validation-rearm") as source:
+                for task_id in passed:
+                    try:
+                        cas = source.rearm_blocked_task(
+                            task_id,
+                            receipt={
+                                "operation": "local_validation_pending_native_admission",
+                                "completion_authoritative": False,
+                            },
+                        )
+                    except Exception:
+                        continue
+                    if getattr(cas, "changed", False):
+                        changed.append({
+                            "task_alias": task_id,
+                            "reason": "local_validation_pending_native_admission",
+                        })
+    except Exception as exc:
+        detail = str(exc)
+        if "Authentication failed" in detail or "Quack authentication token" in detail:
+            return {**empty, "reason": "quack_attach_token_absent"}
+        return {**empty, "reason": f"owner_cas_failed:{type(exc).__name__}"}
+    if not changed:
+        return {**empty, "reason": "owner_did_not_rearm_locally_validated_tasks"}
+    return {
+        "status": "applied",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": changed,
+        "results": list(results or []),
+        "reason": (
+            "locally validated blocked tasks rearmed to retrying; "
+            "native lanes admit; receipts stay incomplete"
         ),
     }
 
@@ -1094,7 +1226,11 @@ def collapse_extra_gate_recursion(
     # ExecStart wrapping loads overlay quack_state_server against a sealed
     # DuckDB opener and crash-loops the exclusive owner. Bind PYTHONPATH only.
     path = dropin_dir / "80-overlay-pythonpath.conf"
-    body = f"[Service]\nEnvironment=PYTHONPATH={overlay}\n"
+    body = (
+        "[Service]\n"
+        f"Environment=PYTHONPATH={overlay}\n"
+        "TimeoutStopSec=180\n"
+    )
     if path.is_file() and path.read_text(encoding="utf-8") == body:
         return {
             **empty,
@@ -1274,29 +1410,34 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "blocked_without_independent_work":
         if local_validation_already_recorded(state):
             prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
-            if (
-                unstall.get("reason") == "quack_attach_token_absent"
-                and prior.get("recipe") != "overlay_first_native_admission"
-            ):
-                admission = admit_native_owner_overlay(board, observation)
-                if admission.get("status") != "skip":
-                    admission["results"] = [
-                        item for item in prior.get("results") or []
-                        if isinstance(item, dict)
-                    ]
-                    return admission
+            prior_results = [
+                item for item in prior.get("results") or []
+                if isinstance(item, dict)
+            ]
+            if not locally_validated_rearm_already_recorded(state):
+                rearm = rearm_locally_validated_blocked_tasks(
+                    board, observation, prior_results,
+                )
+                if rearm.get("status") == "applied":
+                    return rearm
             return {
                 "status": "wait",
                 "recipe": "local_validation_pending_native_admission",
                 "completion_authoritative": False,
-                "results": [
-                    item for item in prior.get("results") or []
-                    if isinstance(item, dict)
-                ],
-                "reason": "local checks already recorded; native extra-gate admission still required",
+                "results": prior_results,
+                "reason": "local checks already recorded; native owner CAS still required",
             }
         local = run_local_blocked_candidate_validation(board, observation)
         if local.get("status") != "skip":
+            local_results = [
+                item for item in local.get("results") or []
+                if isinstance(item, dict)
+            ]
+            rearm = rearm_locally_validated_blocked_tasks(
+                board, observation, local_results,
+            )
+            if rearm.get("status") == "applied":
+                return rearm
             return local
         return {"status": "wait", "recipe": "todos_waiting_on_blocked_dependencies",
                 "reason": "remaining todos depend on blocked peers; do not rewrite those receipts"}

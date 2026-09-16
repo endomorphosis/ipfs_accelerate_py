@@ -5649,13 +5649,17 @@ def build_server(
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None,
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
     repository_root: Path | str | None = None,
+    allow_legacy_board_unstall: bool = False,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`.
 
-    ``repository_root`` is accepted for sealed extra-gate launchers and is
-    not a second authority. Identity still comes from ``database_path``.
+    ``repository_root`` and ``allow_legacy_board_unstall`` are accepted for
+    sealed extra-gate launchers and are not a second authority. Identity
+    still comes from ``database_path``. Owner-side false-terminal unstall
+    stays on the status loop; this flag does not wrap ExecStart.
     """
     _ = repository_root
+    _ = allow_legacy_board_unstall
 
     config = QuackStateServerConfig(
         database_path=Path(database_path),

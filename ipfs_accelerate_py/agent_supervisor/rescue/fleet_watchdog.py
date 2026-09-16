@@ -809,6 +809,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "collapse_extra_gate_recursion",
                     "unstall_stale_native_work",
                     "overlay_first_native_admission",
+                    "rearm_locally_validated_blocked_tasks",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h
