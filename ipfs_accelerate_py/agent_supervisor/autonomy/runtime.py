@@ -1278,7 +1278,11 @@ class AutonomyRuntime:
         now_ms: int | None = None,
         deadline_milliseconds: int | None = None,
     ) -> AutonomyCycleResult:
-        """Process one wake without executing an effect or calling a model."""
+        """Process one wake without executing an effect or calling a model.
+
+        Embeddings that may use TypeSafe must call
+        ``dispatch_autonomy_wake`` first. This method stays provider-free.
+        """
 
         bound = (
             event

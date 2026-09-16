@@ -219,6 +219,37 @@ class TypesafeWakeHandoff:
         }
 
 
+def dispatch_autonomy_wake(
+    runtime: Any,
+    event: Any,
+    *,
+    candidates: Sequence[ResolutionCandidate],
+    context: Any,
+    state: Mapping[str, Any] | None = None,
+    privacy_class: str = "repository_private",
+    timeout: float = 30.0,
+    **wake_kwargs: Any,
+) -> TypesafeWakeHandoff:
+    """Production wake entry: advise, then provider-free ``handle_wake``.
+
+    ``AutonomyRuntime.handle_wake`` is unchanged and still never calls a model.
+    """
+
+    adapter = TypesafeSupervisorAdapter(
+        runtime.controller,
+        privacy_class=privacy_class,
+        timeout=timeout,
+    )
+    return adapter.handle_wake(
+        runtime,
+        event,
+        candidates=candidates,
+        context=context,
+        state=state or {},
+        **wake_kwargs,
+    )
+
+
 __all__ = [
     "TYPESAFE_EVIDENCE_PREFIX",
     "TypesafeAuthorityError",
@@ -226,4 +257,5 @@ __all__ = [
     "TypesafeSupervisorAdapter",
     "TypesafeWakeHandoff",
     "assert_typesafe_not_execution_authority",
+    "dispatch_autonomy_wake",
 ]

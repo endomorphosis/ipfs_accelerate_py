@@ -40,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_runtime_adapter impor
     TypesafeAuthorityError,
     TypesafeSupervisorAdapter,
     assert_typesafe_not_execution_authority,
+    dispatch_autonomy_wake,
 )
 
 
@@ -336,3 +337,122 @@ def test_adapter_handle_wake_prefers_smt_and_runtime_stays_provider_free(
     )
     assert not handoff.result.authorizes_effect
     assert not handoff.result.authorizes_completion
+
+
+def _proof_wake_fixture():
+    static = _action(MetaAction.RUN_LOCAL_STATIC_ANALYSIS)
+    smt = _action(MetaAction.RUN_SMT_OR_PROVER)
+    question = DecisionQuestion(
+        objective_id="APMC-G000",
+        acceptance_criterion_ids=("AC-1",),
+        question_type=DecisionQuestionType.WHICH_PROOF_OBLIGATION_APPLIES,
+        current_alternatives=("obl-1", "obl-2"),
+        required_evidence_ids=(),
+        known_evidence_ids=(),
+        contradictory_evidence_ids=(),
+        residual_uncertainty_bp=5_000,
+        decision_deadline_ms=1_000,
+        risk_if_incorrect=RiskClass.R1_READ_ONLY,
+        risk_if_left_unresolved=RiskClass.R1_READ_ONLY,
+        possible_resolution_action_ids=(static.action_id, smt.action_id),
+        dependency_question_ids=(),
+        terminal_decision_rule="select only from current alternatives",
+        mandatory=True,
+        disposition=QuestionDisposition.UNRESOLVED,
+        terminal_answer="",
+    )
+    controller = DecisionGraphController.compile(
+        repository_id="repo:ipfs-accelerate",
+        tree_id="tree:one",
+        objective_id="APMC-G000",
+        objective_revision="revision:one",
+        questions=(question,),
+    )
+    compiled = controller.graph.questions[0]
+    candidates = (
+        ResolutionCandidate(
+            question_id=compiled.question_id,
+            resolution_action=static,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+        ResolutionCandidate(
+            question_id=compiled.question_id,
+            resolution_action=smt,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+    )
+    meta = AutonomousMetaController(
+        decision_graph=controller,
+        budget_controller=ObjectiveCognitiveBudgetLedger(_budget(), epoch=1),
+    )
+    runtime = AutonomyRuntime(controller=meta)
+    event = AutonomyWakeEvent(kind=AutonomyWakeKind.PROOF, cursor_id="cursor:proof:1", sequence=1)
+    return runtime, event, candidates
+
+
+def test_dispatch_autonomy_wake_without_key_keeps_original_ranking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    runtime, event, candidates = _proof_wake_fixture()
+    handoff = dispatch_autonomy_wake(
+        runtime,
+        event,
+        candidates=candidates,
+        context=_context(),
+        state={"board_item": "TASK-1"},
+    )
+    assert handoff.model_called is False
+    assert handoff.result.model_called is False
+    assert handoff.advice is None
+    assert handoff.result.step is not None
+    assert handoff.result.step.candidate is not None
+    assert (
+        handoff.result.step.candidate.resolution_action.action
+        is MetaAction.RUN_LOCAL_STATIC_ANALYSIS
+    )
+    assert not handoff.result.authorizes_effect
+
+
+def test_dispatch_autonomy_wake_with_advice_prefers_smt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"answer": SimpleNamespace(choice="obl-1", confidence=0.91)}
+        scores = {}
+        nouls = {}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_args, **_kwargs: _Result(),
+    )
+    runtime, event, candidates = _proof_wake_fixture()
+    handoff = dispatch_autonomy_wake(
+        runtime,
+        event,
+        candidates=candidates,
+        context=_context(),
+        state={"board_item": "TASK-1"},
+    )
+    assert handoff.model_called is False
+    assert handoff.result.step.candidate.resolution_action.action is MetaAction.RUN_SMT_OR_PROVER
+    assert not handoff.result.authorizes_effect
