@@ -659,6 +659,44 @@ def test_owner_cas_failed_heal_retries_on_cooldown_not_max_backoff(tmp_path, mon
     assert cooling["planned_action"] == ""
 
 
+def test_local_validation_heal_retries_unstall_on_cooldown(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0,
+                   cooldown_seconds=180, max_backoff_seconds=3600)
+    observation = {
+        "health": "blocked", "complete": False, "board_id": board["id"],
+        "busy": False, "progress_token": "d",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks", "no_ready_independent_tasks"],
+        "details": {
+            "task_counts": {"todo": 23, "blocked": 2},
+            "ready_count": 0, "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+        },
+    }
+    monkeypatch.setattr(
+        fleet_heals, "apply_supervisor_heal",
+        lambda *a, **k: {
+            "status": "wait", "recipe": "local_validation_pending_native_admission",
+            "completion_authoritative": False,
+            "reason": "local checks already recorded; native fenced admission still required",
+        },
+    )
+    runner = Runner(observation)
+    root = tmp_path / "watch"
+    prior = {
+        "health": "blocked", "observation": observation,
+        "stall_class": "blocked_without_independent_work",
+        "incident_since": 0, "next_action_at": 0, "attempts": 120,
+    }
+    fleet.write_json(root / board["id"] / "state.json", prior)
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert state["last_action"] == "supervisor_heal"
+    assert state["last_action_result"]["recipe"] == "local_validation_pending_native_admission"
+    assert state["next_action_at"] == 280
+    cooling = fleet.tick_board(board, root, apply=True, runner=runner, now=101)
+    assert cooling["planned_action"] == ""
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")
@@ -973,7 +1011,7 @@ def test_todos_waiting_on_blocked_peers_are_not_independent():
     }
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_unclaimed_independent_todos_are_a_wait_stall():

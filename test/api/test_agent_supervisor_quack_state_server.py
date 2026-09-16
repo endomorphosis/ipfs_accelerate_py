@@ -312,6 +312,32 @@ def test_token_vault_mints_handle_only_and_destroys(tmp_path: Path) -> None:
         vault.resolve()
 
 
+def test_ready_owner_republishes_retired_client_token_handoff(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    vault = TokenVault(state_dir)
+    handle = "handle:quack-token:test:g1"
+    vault.mint(secret_handle=handle, generation=1)
+    token = vault.resolve()
+    token_path = next(state_dir.glob("*.quack-token"))
+    receipt = retire_token_handoff(
+        state_dir=state_dir, secret_handle=handle, expected_token=token,
+    )
+    assert receipt["retired"] is True
+    assert not token_path.exists()
+
+    server = QuackStateServer.__new__(QuackStateServer)
+    server._vault = vault
+    server._identity = type("Identity", (), {"secret_handle": handle})()
+    server.config = type("Config", (), {"state_dir": state_dir})()
+    server._lifecycle = ServerLifecycle.READY
+    logs: list[str] = []
+    server._log = logs.append
+    server._ensure_client_token_handoff()
+    assert token_path.is_file()
+    assert token_path.read_text(encoding="ascii").strip() == token
+    assert token not in "".join(logs)
+
+
 def test_token_handoff_retirement_rollback_restores_exact_bytes(
     tmp_path: Path,
 ) -> None:

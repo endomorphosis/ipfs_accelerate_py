@@ -532,9 +532,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "blocked_without_independent_work":
         # Remaining todos wait on blocked peers. Rearm false-terminal blocks,
         # then run declared local checks once. Never rewrite those receipts.
-        from .fleet_heals import local_validation_already_recorded
-        if local_validation_already_recorded(state):
-            return ""
+        # Keep selecting heal after a recorded local pass so unstall can still
+        # rearm false-terminal blocks; pytest is skipped inside the recipe.
         return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""
@@ -673,7 +672,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             if (
                 reason.startswith("owner_cas_failed:")
                 or reason == "quack_attach_token_absent"
-                or recipe == "unstall_stale_native_work"
+                or recipe in {
+                    "unstall_stale_native_work",
+                    "local_validation_pending_native_admission",
+                    "native_goals_still_active",
+                    "provisionally_complete_terminal_goals",
+                }
             ):
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         elif action == "publish":

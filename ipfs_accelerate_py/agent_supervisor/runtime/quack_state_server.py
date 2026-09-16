@@ -4964,8 +4964,37 @@ class QuackStateServer:
         # Explicitly do not pass secret handles or tokens to providers.
         return provider_safe_environment(base)
 
+    def _ensure_client_token_handoff(self) -> None:
+        """Keep the attach token on disk while this owner is live.
+
+        Provider launch may retire a bootstrap handoff. Fleet CAS, unstall,
+        and extra-gate closeout still need the client file that
+        ``discover_live_quack_endpoint`` reads. Never write the token into
+        status, logs, argv, or provider environments.
+        """
+        vault = self._vault
+        identity = self._identity
+        if vault is None or identity is None:
+            return
+        handle = str(identity.secret_handle or "").strip()
+        if not handle:
+            return
+        try:
+            token = vault.resolve(handle)
+            path = self.config.state_dir / _token_handoff_filename(handle)
+        except Exception:
+            return
+        if path.is_file():
+            return
+        try:
+            _atomic_write_text(path, token, mode=0o600)
+        except Exception as exc:
+            self._log(f"token handoff republish warning: {type(exc).__name__}")
+
     def _write_status(self) -> None:
         try:
+            if self._lifecycle is ServerLifecycle.READY:
+                self._ensure_client_token_handoff()
             _atomic_write_json(self.status_path(), self.status(), mode=0o600)
         except Exception as exc:
             self._log(f"status write warning: {type(exc).__name__}")
