@@ -1435,6 +1435,35 @@ def test_detached_launcher_stdout_cannot_hold_command_open(tmp_path):
     assert "launched" in result["stdout"]
 
 
+def test_live_unready_owner_outranks_extra_gate_recursion():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": [
+            "extra_gate_recursion_sealed_package",
+            "owner_not_ready",
+            "owner_status_identity_missing",
+        ],
+        "details": {
+            "owner_ready": False,
+            "owner": {"pid": 1107722, "process_state": "R"},
+            "task_counts": {},
+        },
+    }
+    assert fleet.classify_stall(observation) == "owner_live_status_unreadable"
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "owner_live_status_unreadable",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+        "ensure_attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0,
+                "repair": {"argv": ["llm"]}, "ensure": {"argv": ["ensure"]},
+                "max_ensure_attempts": 2}, 100
+    ) == ""
+
+
 def test_unsettled_goals_outrank_extra_gate_recursion():
     observation = {
         "health": "degraded",
@@ -1449,7 +1478,7 @@ def test_unsettled_goals_outrank_extra_gate_recursion():
     assert fleet.classify_stall(observation) == "closeout_waiting_on_unsettled_goals"
 
 
-def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
+def test_native_in_progress_outranks_extra_gate_recursion():
     observation = {
         "health": "stalled",
         "complete": False,
@@ -1461,6 +1490,41 @@ def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
         "details": {
             "owner_ready": True,
             "task_counts": {"in_progress": 3, "todo": 28},
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "in_progress_awaiting_effect"
+    blocked = {
+        "health": "blocked",
+        "complete": False,
+        "reason_codes": [
+            "board_has_blocked_or_quarantined_tasks",
+            "extra_gate_recursion_sealed_package",
+            "no_ready_independent_tasks",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"blocked": 2, "completed": 60, "todo": 23},
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+            "selection_idle_reason": "no_ready_tasks",
+            "ready_count": 0,
+        },
+    }
+    assert fleet.classify_stall(blocked) == "blocked_without_independent_work"
+
+
+def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
+    observation = {
+        "health": "stalled",
+        "complete": False,
+        "reason_codes": [
+            "extra_gate_recursion_sealed_package",
+            "extra_gate_recursion_competing_unit",
+            "no_task_progress",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"completed": 20},
             "extra_gate": {
                 "live_owner_unit": "pctdd-g9-quack-owner.service",
                 "inventory_owner_unit": "ipfs-accelerate-pctdd-g9-watchdog.service",

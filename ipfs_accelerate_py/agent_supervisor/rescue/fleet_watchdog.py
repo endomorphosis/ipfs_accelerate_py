@@ -103,6 +103,25 @@ def _uninterruptible_lanes(details: dict[str, Any]) -> bool:
     return False
 
 
+def _native_admission_work(details: dict[str, Any], counts: dict[str, Any],
+                           reasons: set[str]) -> bool:
+    """Native extra-gate still has work to admit. Do not treat that as recursion."""
+    try:
+        if int(counts.get("in_progress") or 0) > 0:
+            return True
+        if int(counts.get("retrying") or 0) > 0:
+            return True
+        if int(counts.get("blocked") or 0) > 0:
+            return True
+        if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
+            return True
+    except (TypeError, ValueError):
+        return False
+    if _uninterruptible_lanes(details):
+        return True
+    return any("process_uninterruptible" in str(reason) for reason in reasons)
+
+
 def _todos_are_ready_beside_blocked(details: dict[str, Any], counts: dict[str, Any],
                                     reasons: set[str]) -> bool:
     """Remaining todos are independent only when native readiness says they are claimable."""
@@ -150,10 +169,6 @@ def classify_stall(observation: dict[str, Any]) -> str:
         # All-tasks-complete is not goal closeout. Native owner/cron still
         # owns the remaining goals; an LLM cannot mint that admission.
         return "closeout_waiting_on_unsettled_goals"
-    if "extra_gate_recursion_sealed_package" in reasons:
-        # Sealed extra-gate package hides overlay heals. Do not launch a
-        # second extra-gate; closeout and holds already returned above.
-        return "extra_gate_recursion"
     if (
         observation.get("completion_candidate") is True
         and observation.get("complete") is not True
@@ -175,6 +190,20 @@ def classify_stall(observation: dict[str, Any]) -> str:
         ):
             return "owner_live_status_unreadable"
         return "owner_missing"
+    owner = details.get("owner") if isinstance(details.get("owner"), dict) else {}
+    if (
+        "owner_not_ready" in reasons
+        and (
+            bool(owner.get("pid"))
+            or "owner_status_identity_missing" in reasons
+        )
+    ):
+        # Native extra-gate is live but not ready. Wait; do not ensure a second owner.
+        return "owner_live_status_unreadable"
+    if "extra_gate_recursion_sealed_package" in reasons:
+        # Sealed extra-gate is the native owner. Native admission first.
+        if not _native_admission_work(details, counts, reasons):
+            return "extra_gate_recursion"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
         if int(counts.get("in_progress") or 0) > 0:
             return "independent_work_beside_blocked_peer"
@@ -768,6 +797,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "kernel_uninterruptible_wait",
                     "native_status_retry_with_live_workers",
                     "collapse_extra_gate_recursion",
+                    "unstall_stale_native_work",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

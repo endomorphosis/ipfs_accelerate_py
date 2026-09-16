@@ -983,6 +983,42 @@ def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkey
     assert read_json(tmp_path / "repair-worker.json")["status"] == "runtime_update_ready"
 
 
+def test_extra_gate_recursion_heal_unstalls_for_native_admission(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "collapse_extra_gate_recursion",
+        lambda *a, **k: {
+            "status": "skip", "recipe": "collapse_extra_gate_recursion",
+            "completion_authority": False, "reason": "heal_overlay_pythonpath_already_bound",
+        },
+    )
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {
+            "status": "applied", "recipe": "unstall_stale_native_work",
+            "completion_authority": False,
+            "unstalled": [{"task_alias": "DOEP-044", "reason": "false_terminal_blocked_supervisor_bug"}],
+            "reason": "stale in_progress or false-terminal blocked tasks rearmed; native extra-gate lanes admit",
+        },
+    )
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {
+            "stall_class": "extra_gate_recursion",
+            "observation": {
+                "reason_codes": ["extra_gate_recursion_sealed_package"],
+                "details": {"task_counts": {"blocked": 2}, "blocked_task_ids": ["DOEP-044"]},
+            },
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "unstall_stale_native_work"
+    assert "native extra-gate lanes admit" in result["reason"]
+
+
 def test_wrap_python_execstart_injects_heal_overlay_once():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import wrap_python_execstart
 

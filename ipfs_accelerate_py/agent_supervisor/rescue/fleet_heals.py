@@ -343,7 +343,10 @@ def unstall_stale_native_work(
         "recipe": "unstall_stale_native_work",
         "completion_authority": False,
         "unstalled": changed,
-        "reason": "stale in_progress or false-terminal blocked tasks rearmed; native lanes reclaim",
+        "reason": (
+            "stale in_progress or false-terminal blocked tasks rearmed; "
+            "native extra-gate lanes admit"
+        ),
     }
 
 
@@ -534,7 +537,7 @@ def run_local_blocked_candidate_validation(
         "completion_authoritative": False,
         "results": results,
         "reason": (
-            "local checks passed; native fenced admission still required"
+            "local checks passed; native extra-gate admission still required"
             if passed and not failed else
             "local checks did not pass; do not rewrite blocked receipts"
         ),
@@ -725,14 +728,15 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return dirty
     if stall == "extra_gate_recursion":
         collapsed = collapse_extra_gate_recursion(board, observation)
-        if collapsed.get("status") != "skip":
+        if collapsed.get("status") == "applied":
             return collapsed
-        return {
-            "status": "wait",
-            "recipe": "collapse_extra_gate_recursion",
-            "completion_authority": False,
-            "reason": collapsed.get("reason") or "retain_owner_not_rewrapped",
-        }
+        if collapsed.get("reason") == "retain_owner_not_rewrapped":
+            return {
+                "status": "wait",
+                "recipe": "collapse_extra_gate_recursion",
+                "completion_authority": False,
+                "reason": "retain_owner_not_rewrapped",
+            }
     if stall in {
         "independent_work_beside_blocked_peer",
         "independent_todos_unclaimed",
@@ -741,6 +745,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         "stalled_no_progress",
         "kernel_uninterruptible_wait",
         "native_status_unavailable_with_live_workers",
+        "extra_gate_recursion",
     }:
         unstall = unstall_stale_native_work(board, observation)
         if unstall.get("status") == "applied":
@@ -765,7 +770,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                     item for item in prior.get("results") or []
                     if isinstance(item, dict)
                 ],
-                "reason": "local checks already recorded; native fenced admission still required",
+                "reason": "local checks already recorded; native extra-gate admission still required",
             }
         local = run_local_blocked_candidate_validation(board, observation)
         if local.get("status") != "skip":
@@ -790,6 +795,13 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "kernel_uninterruptible_wait":
         return {"status": "wait", "recipe": "kernel_uninterruptible_wait",
                 "reason": "D-state I/O is not a coding stall; do not signal or rewrite receipts"}
+    if stall == "extra_gate_recursion":
+        return {
+            "status": "wait",
+            "recipe": "collapse_extra_gate_recursion",
+            "completion_authority": False,
+            "reason": "one exclusive owner; native extra-gate admission uses unstall, not a second extra-gate",
+        }
     if stall == "board_checkout_missing":
         return {"status": "wait", "recipe": "deleted_checkout_not_rematerialized",
                 "reason": "missing checkout is not reconstructed; retain original authority or explicit retirement"}
