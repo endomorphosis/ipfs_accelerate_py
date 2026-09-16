@@ -661,6 +661,32 @@ def test_owner_cas_failed_heal_retries_on_cooldown_not_max_backoff(tmp_path, mon
     assert cooling["planned_action"] == ""
 
 
+def test_ready_owner_after_ensure_does_not_block_receipt_heal():
+    observation = {
+        "health": "blocked", "complete": False, "board_id": "doep",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks", "no_ready_independent_tasks"],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"todo": 23, "blocked": 2},
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+        },
+    }
+    state = {
+        "health": "blocked", "observation": observation,
+        "stall_class": "blocked_without_independent_work",
+        "incident_since": 0, "next_action_at": 10_000, "attempts": 12,
+        "last_action": "ensure",
+    }
+    board = {
+        "failure_grace_seconds": 0, "blocked_grace_seconds": 0,
+        "repair": {"argv": ["llm"]}, "ensure": {"argv": ["ensure"]},
+        "max_ensure_attempts": 2,
+    }
+    assert fleet.select_action(state, board, 100) == "supervisor_heal"
+    state["last_action"] = "supervisor_heal"
+    assert fleet.select_action(state, board, 100) == ""
+
+
 def test_local_validation_heal_retries_unstall_on_cooldown(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
 

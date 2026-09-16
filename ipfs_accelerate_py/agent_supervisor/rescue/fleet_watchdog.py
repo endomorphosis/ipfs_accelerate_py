@@ -577,7 +577,17 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
     if now < state.get("next_action_at", 0):
-        return ""
+        stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+        observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+        details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+        # A ready exclusive owner after ensure is not a 1h launch backoff.
+        # Receipt materialization and unstall retry on cooldown.
+        if not (
+            stall == "blocked_without_independent_work"
+            and details.get("owner_ready") is True
+            and state.get("last_action") == "ensure"
+        ):
+            return ""
     if health == "complete" or state["observation"].get("complete") is True:
         stall = (state.get("publication_failure") or {}).get("stall_class")
         if stall in PUBLICATION_STOP_STALLS:
