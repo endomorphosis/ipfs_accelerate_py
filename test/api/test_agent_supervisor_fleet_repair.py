@@ -962,6 +962,65 @@ def test_source_missing_retries_once_overlay_has_the_file(tmp_path, monkeypatch)
     assert local_validation_already_recorded(state) is True
 
 
+def test_recorded_local_pass_retries_if_copied_source_disappeared(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        local_validation_already_recorded,
+    )
+
+    relative = (
+        "external/ipfs_accelerate/test/api/doep/"
+        "test_doep_063_implement_accelerate_freshness_and_selection.py"
+    )
+    state = {
+        "observation": {"details": {"blocked_task_ids": ["DOEP-063"]}},
+        "last_action_result": {
+            "recipe": "local_validation_pending_native_admission",
+            "results": [{
+                "task_id": "DOEP-063",
+                "status": "passed",
+                "repaired": [relative],
+                "completion_authoritative": False,
+            }],
+        },
+    }
+    board = {"cwd": str(tmp_path)}
+    assert local_validation_already_recorded(state, board) is False
+    dest = tmp_path / relative
+    dest.parent.mkdir(parents=True)
+    dest.write_text("def test_ok():\n    assert True\n")
+    assert local_validation_already_recorded(state, board) is True
+
+
+def test_candidate_receipt_admits_owner_rearm_only_with_pytest_source(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        candidate_receipt_admits_owner_rearm,
+    )
+
+    receipts = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts"
+    receipts.mkdir(parents=True)
+    test_rel = "external/ipfs_accelerate/test/api/doep/test_doep_063.py"
+    (receipts / "DOEP-063.json").write_text(json.dumps({
+        "task_id": "DOEP-063",
+        "completion_authoritative": False,
+        "validation": {"commands": [{
+            "argv": ["python3", "-m", "pytest", test_rel, "-q"],
+        }]},
+    }))
+    assert candidate_receipt_admits_owner_rearm("DOEP-063", cwd=tmp_path) is False
+    dest = tmp_path / test_rel
+    dest.parent.mkdir(parents=True)
+    dest.write_text("def test_ok():\n    assert True\n")
+    assert candidate_receipt_admits_owner_rearm("DOEP-063", cwd=tmp_path) is True
+    (receipts / "DOEP-063.json").write_text(json.dumps({
+        "task_id": "DOEP-063",
+        "completion_authoritative": True,
+        "validation": {"commands": [{
+            "argv": ["python3", "-m", "pytest", test_rel, "-q"],
+        }]},
+    }))
+    assert candidate_receipt_admits_owner_rearm("DOEP-063", cwd=tmp_path) is False
+
+
 def test_materialized_receipt_does_not_overwrite_existing_receipt(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
         _materialize_candidate_receipt,

@@ -856,18 +856,22 @@ def provisionally_complete_disabled_extra_gate_goals(
     }
 
 
-def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
+def local_validation_already_recorded(
+    state: Mapping[str, Any], board: Mapping[str, Any] | None = None,
+) -> bool:
     """Do not re-run pytest every watchdog cycle after a recorded local pass."""
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
     if result.get("recipe") not in {
         "local_validation_pending_native_admission",
         "overlay_first_native_admission",
+        "rearm_locally_validated_blocked_tasks",
     }:
         return False
     current = _blocked_task_ids(observation)
     if not current:
         return False
+    cwd = Path(str((board or {}).get("cwd") or ""))
     items = [item for item in result.get("results") or [] if isinstance(item, dict)]
     prior = {item.get("task_id"): item for item in items}
     for task_id in current:
@@ -881,6 +885,12 @@ def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
             if isinstance(missing, str) and overlay_source_path(missing) is not None:
                 return False
             continue
+        if status == "passed" and cwd.is_dir():
+            for relative in item.get("repaired") or []:
+                if not isinstance(relative, str) or not relative.endswith(".py"):
+                    continue
+                if not (cwd / relative).is_file():
+                    return False
         if status not in _RECORDED_LOCAL_VALIDATION:
             return False
     return True
@@ -1408,7 +1418,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "rearmed or ready work belongs to live native lanes, not llm_router"}
     if stall == "blocked_without_independent_work":
-        if local_validation_already_recorded(state):
+        if local_validation_already_recorded(state, board):
             prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
             prior_results = [
                 item for item in prior.get("results") or []

@@ -1224,6 +1224,82 @@ class TokenVault:
             )
 
 
+def candidate_receipt_admits_owner_rearm(
+    alias: str, cwd: Path | None = None,
+) -> bool:
+    """True when a non-authoritative candidate receipt and pytest source exist.
+
+    Owner-side unstall uses this for DOEP-like blocks after fleet copies
+    missing sources. Never treats a worker claim as completion.
+    """
+    task_id = str(alias or "").strip()
+    if not task_id or "/" in task_id or "\\" in task_id or ".." in task_id:
+        return False
+    root = Path.cwd() if cwd is None else Path(cwd)
+    name = f"{task_id}.json"
+    candidates = (
+        root / "external/ipfs_accelerate/artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts" / name,
+        root / "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts" / name,
+        root / "external/ipfs_accelerate/artifacts/doep/receipts" / name,
+        root / "artifacts/doep/receipts" / name,
+    )
+    for path in candidates:
+        try:
+            path.relative_to(root.resolve())
+        except ValueError:
+            continue
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("completion_authoritative") is True:
+            continue
+        if payload.get("task_id") not in {task_id, None} and payload.get("task_alias") != task_id:
+            continue
+        commands = []
+        validation = payload.get("validation")
+        if isinstance(validation, dict):
+            raw_commands = validation.get("commands")
+            if isinstance(raw_commands, list):
+                commands = raw_commands
+        missing_source = False
+        saw_pytest = False
+        for command in commands:
+            if not isinstance(command, dict):
+                continue
+            argv = command.get("argv")
+            if not isinstance(argv, list):
+                continue
+            rel = command.get("cwd")
+            workdir = (root / rel).resolve() if isinstance(rel, str) and rel else root
+            for item in argv:
+                if not isinstance(item, str) or not item.endswith(".py"):
+                    continue
+                saw_pytest = True
+                target = Path(item)
+                source = target if target.is_absolute() else (workdir / item)
+                try:
+                    resolved = source.resolve()
+                    resolved.relative_to(root.resolve())
+                except ValueError:
+                    missing_source = True
+                    break
+                if not resolved.is_file():
+                    missing_source = True
+                    break
+            if missing_source:
+                break
+        if missing_source:
+            continue
+        if saw_pytest:
+            return True
+    return False
+
+
 def _token_handoff_filename(secret_handle: str) -> str:
     """Return the confined handoff filename for one opaque handle."""
 
@@ -5069,7 +5145,7 @@ class QuackStateServer:
                 continue
 
     def _unstall_false_terminal_blocked(self) -> None:
-        """Owner-side rearm of false-terminal blocks. Never completes tasks."""
+        """Owner-side rearm of false-terminal and locally-validated blocks."""
 
         connection = self._connection
         identity = self._identity
@@ -5113,7 +5189,9 @@ class QuackStateServer:
             status_text = str(status or "").lower()
             rearm = False
             if status_text == "blocked":
-                rearm = any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS)
+                rearm = any(
+                    marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+                ) or candidate_receipt_admits_owner_rearm(str(alias or ""))
             elif status_text == "in_progress":
                 try:
                     updated_at = datetime.fromisoformat(str(updated or "").replace("Z", "+00:00"))
@@ -5130,9 +5208,16 @@ class QuackStateServer:
                     new_status="retrying",
                     receipt={
                         "operation": (
-                            "false_terminal_blocked_supervisor_bug"
-                            if status_text == "blocked"
-                            else "stale_in_progress_unstall"
+                            "stale_in_progress_unstall"
+                            if status_text == "in_progress"
+                            else (
+                                "false_terminal_blocked_supervisor_bug"
+                                if any(
+                                    marker in blob
+                                    for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+                                )
+                                else "local_validation_pending_native_admission"
+                            )
                         ),
                         "completion_authority": False,
                     },
