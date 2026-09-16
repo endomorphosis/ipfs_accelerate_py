@@ -523,6 +523,10 @@ def test_unstall_uses_typed_owner_when_quack_attach_token_absent(tmp_path, monke
     )
     (tmp_path / "quack-owner").mkdir()
     (tmp_path / "quack-owner" / "typed-state-owner.token").write_text("a" * 32)
+    (tmp_path / "quack-owner" / "quack-state-server.status.json").write_text(json.dumps({
+        "lifecycle": "ready",
+        "identity": {"store_id": "doep-v1-r5"},
+    }))
     sock = tmp_path / "typed.sock"
     sock.write_text("")
     monkeypatch.setattr(fleet_heals, "_typed_owner_socket_path", lambda database: sock)
@@ -530,7 +534,8 @@ def test_unstall_uses_typed_owner_when_quack_attach_token_absent(tmp_path, monke
         {"ok": True, "schema": fleet_heals._TYPED_OWNER_SCHEMA},
         {"ok": True, "result": {"changed": True, "completion_authority": False}},
     ])
-    monkeypatch.setattr(fleet_heals, "_typed_owner_send", lambda *a, **k: None)
+    sent = []
+    monkeypatch.setattr(fleet_heals, "_typed_owner_send", lambda *a, **k: sent.append(a[1] if a else k))
     monkeypatch.setattr(fleet_heals, "_typed_owner_recv", lambda *a, **k: next(recvs))
 
     class Sock:
@@ -549,6 +554,38 @@ def test_unstall_uses_typed_owner_when_quack_attach_token_absent(tmp_path, monke
     assert result["status"] == "applied"
     assert result["completion_authority"] is False
     assert result["unstalled"][0]["task_alias"] == "DOEP-044"
+    assert sent[0]["action"] == "open_status"
+    assert sent[0]["client_id"] == "casf-bootstrap-operator:typed-status"
+    assert sent[0]["store_id"] == "doep-v1-r5"
+
+
+def test_board_local_repair_argv_runs_after_local_pass_without_token(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        rearm_locally_validated_blocked_tasks,
+    )
+
+    script = tmp_path / "repair.sh"
+    script.write_text("#!/bin/sh\nexit 0\n")
+    script.chmod(0o700)
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "cwd": str(tmp_path),
+            "quack_endpoint": "quack:127.0.0.1:27942",
+            "repair_argv": [str(script)],
+        },
+    )
+    monkeypatch.setattr(fleet_heals, "_owner_transport_env", lambda inventory: {})
+    result = rearm_locally_validated_blocked_tasks(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-044"]}},
+        [{"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False}],
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert result["unstalled"][0]["reason"] == "board_local_repair_argv"
 
 
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):

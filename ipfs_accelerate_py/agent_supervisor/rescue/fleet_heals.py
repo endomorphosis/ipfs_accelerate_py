@@ -547,6 +547,16 @@ def _unstall_via_typed_owner(
     socket_path = _typed_owner_socket_path(database)
     if not socket_path.exists():
         return None
+    store_id = str(inventory.get("task_namespace") or "")
+    try:
+        payload = json.loads(Path(status_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        payload = {}
+    if isinstance(payload, dict):
+        identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+        store_id = str(identity.get("store_id") or payload.get("store_id") or store_id)
+    if not store_id:
+        store_id = database
     empty = {
         "status": "skip",
         "recipe": "unstall_stale_native_work",
@@ -559,14 +569,15 @@ def _unstall_via_typed_owner(
     try:
         channel.connect(str(socket_path))
         open_id = f"request:{os.getpid()}:open:{uuid.uuid4().hex}"
+        # Same live-owner handshake as board authoritative-status.
         _typed_owner_send(channel, {
             "schema": _TYPED_OWNER_SCHEMA,
-            "action": "open",
+            "action": "open_status",
             "request_id": open_id,
             "token": token,
-            "client_id": "fleet-watchdog-unstall",
+            "client_id": "casf-bootstrap-operator:typed-status",
             "process_birth_id": _typed_owner_kernel_birth(),
-            "store_id": database,
+            "store_id": store_id,
         })
         opened = _typed_owner_recv(channel)
         if opened.get("ok") is not True:
@@ -681,6 +692,64 @@ def locally_validated_rearm_already_recorded(state: Mapping[str, Any]) -> bool:
     return result.get("recipe") == "rearm_locally_validated_blocked_tasks"
 
 
+def run_board_local_repair(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    passed: list[str],
+) -> dict[str, Any]:
+    """Run the board's own repair_argv after local checks. Never completes."""
+    empty = {
+        "status": "skip",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": [],
+    }
+    if not passed:
+        return {**empty, "reason": "no_locally_validated_blocked_tasks"}
+    inventory = _inventory_board(board)
+    argv = inventory.get("repair_argv")
+    if not isinstance(argv, list) or not argv or any(not isinstance(item, str) or not item for item in argv):
+        return {**empty, "reason": "board_repair_argv_absent"}
+    cwd = Path(str(inventory.get("cwd") or board.get("cwd") or ""))
+    if not cwd.is_dir():
+        return {**empty, "reason": "board_cwd_absent"}
+    command = list(argv)
+    if "--task" not in command and passed:
+        # recover-claim-verification style operators accept one task.
+        if any("recover-claim-verification" in item or "recover-repaired-dependency" in item for item in command):
+            command.extend(["--task", passed[0]])
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=_LOCAL_VALIDATION_TIMEOUT,
+            check=False,
+            text=True,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {**empty, "reason": f"board_repair_unavailable:{type(exc).__name__}"}
+    if completed.returncode != 0:
+        return {
+            **empty,
+            "reason": "board_repair_rejected",
+            "returncode": completed.returncode,
+        }
+    return {
+        "status": "applied",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": [{"task_alias": task_id, "reason": "board_local_repair_argv"} for task_id in passed],
+        "reason": (
+            "board-local repair_argv accepted; native lanes admit; "
+            "receipts stay incomplete"
+        ),
+    }
+
+
 def rearm_locally_validated_blocked_tasks(
     board: Mapping[str, Any],
     observation: Mapping[str, Any],
@@ -707,7 +776,21 @@ def rearm_locally_validated_blocked_tasks(
         return {**empty, "reason": "quack_endpoint_absent"}
     transport = _owner_transport_env(inventory)
     if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
-        return {**empty, "reason": "quack_attach_token_absent"}
+        local = run_board_local_repair(board, observation, passed)
+        if local.get("status") == "applied":
+            local["results"] = list(results or [])
+            return local
+        typed = _unstall_via_typed_owner(board, observation, inventory)
+        if typed is not None and typed.get("status") == "applied":
+            typed["results"] = list(results or [])
+            typed["recipe"] = "rearm_locally_validated_blocked_tasks"
+            return typed
+        return {
+            **empty,
+            "reason": local.get("reason") or (
+                typed.get("reason") if typed else "board_repair_unavailable"
+            ),
+        }
     if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
         return {**empty, "reason": "owner_store_binding_absent"}
     inbox = transport.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR")
