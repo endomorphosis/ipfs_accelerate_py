@@ -31,6 +31,14 @@ def no_typesafe_key(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture
+def forbid_typesafe_http(no_typesafe_key: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_args, **_kwargs):
+        raise AssertionError("system_one must not run without TYPESAFE_API_KEY")
+
+    monkeypatch.setattr("ipfs_accelerate_py.typesafe_inference.system_one", boom)
+
+
 def test_typesafe_permitted_false_without_key(no_typesafe_key: None) -> None:
     assert typesafe_permitted() is False
 
@@ -194,3 +202,81 @@ def test_prepare_step_candidates_without_key_keeps_original_set(
     assert prepared == candidates
     assert updated.question_id == compiled.question_id
     assert compiled.known_evidence_ids == ()
+
+
+def test_new_helpers_do_not_call_http_without_key(
+    forbid_typesafe_http: None, tmp_path
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+        recommend_skip_policy,
+        should_trust_skip,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        cite_claim_spans,
+        extract_claim_spans,
+        observe_source_edit_lint,
+        rerank_allowlisted_snippets,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import (
+        typesafe_ops_snapshot,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_task_router import (
+        advise_board_task_kind,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce import (
+        observe_control_audit_throttled,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
+        LLM_USAGE_MODE_OFF,
+        maybe_observe_worker_output,
+    )
+
+    maybe_observe_worker_output(prompt="p", output="KERNEL_VERIFIED", usage_mode=LLM_USAGE_MODE_OFF)
+    spans = extract_claim_spans("KERNEL_VERIFIED identity.")
+    assert cite_claim_spans(spans, receipt_ids=(), allowlisted_ids=tuple(s["id"] for s in spans)) == ()
+    assert rerank_allowlisted_snippets(
+        ({"id": "a", "text": "one"}, {"id": "b", "text": "two"}),
+        obligation_id="obl",
+        allowlisted_ids=("a", "b"),
+    ) == ("a", "b")
+    lint = observe_source_edit_lint(operator_id="op", relative_path="src/a.py")
+    assert lint is not None and lint.action == "skipped"
+    assert advise_board_task_kind({"metadata": {"kind": "legal"}, "title": "license"}) == "legal"
+    snap = typesafe_ops_snapshot()
+    assert snap["accepted_as_authority"] is False
+    policy = recommend_skip_policy()
+    assert policy["auto_apply"] is False
+    assert should_trust_skip(family="fol_identity", confidence=0.92) is True
+    audit = tmp_path / "control-audit.jsonl"
+    audit.write_text('{"operation":"capabilities","status":"succeeded"}\n', encoding="utf-8")
+    observe_control_audit_throttled(audit, min_interval_s=0)
+
+
+def test_allocate_without_key_never_selects_typesafe_provider(
+    forbid_typesafe_http: None,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.allocation_compat import (
+        allocate_supervisor_endpoint,
+    )
+
+    allocated = allocate_supervisor_endpoint(
+        task={"task_id": "TASK-1", "metadata": {"kind": "legal"}, "title": "license"},
+        available_providers=("openrouter", "grok_cli", "codex_cli"),
+    )
+    assert allocated["provider"]
+    assert "typesafe" not in str(allocated.get("provider") or "").casefold()
+
+
+def test_prepare_evidence_and_compile_flag_without_key(forbid_typesafe_http: None) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        prepare_evidence_for_compile,
+    )
+
+    prepared = prepare_evidence_for_compile(
+        (
+            {"reference_id": "opt-b", "summary": "b", "required": False},
+            {"reference_id": "req-a", "summary": "must", "required": True},
+        ),
+        obligation_id="obl-1",
+    )
+    assert prepared[0]["reference_id"] == "req-a"
