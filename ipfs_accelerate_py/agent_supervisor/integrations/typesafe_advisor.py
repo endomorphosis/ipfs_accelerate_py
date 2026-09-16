@@ -302,16 +302,16 @@ def evaluate_closed_question(
             question_id=question_id,
             reason_codes=("empty_allowlist",),
         )
-    if kind.startswith(WHETHER_PREFIX):
+    if allowed and (kind.startswith(WHICH_PREFIX) or kind.startswith(WHETHER_PREFIX)):
         questions: dict[str, Any] = {
-            "answer": Noul(instructions=f"Decide {kind.replace('_', ' ')} for this state."),
-        }
-    elif kind.startswith(WHICH_PREFIX):
-        questions = {
             "answer": Choice(
                 instructions=f"Select one allowlisted option for {kind.replace('_', ' ')}.",
                 criteria={item: None for item in allowed},
             ),
+        }
+    elif kind.startswith(WHETHER_PREFIX):
+        questions = {
+            "answer": Noul(instructions=f"Decide {kind.replace('_', ' ')} for this state."),
         }
     else:
         return AdvisoryReceipt(
@@ -335,7 +335,7 @@ def evaluate_closed_question(
             question_id=question_id,
             reason_codes=("typesafe_error",),
         )
-    if kind.startswith(WHETHER_PREFIX):
+    if kind.startswith(WHETHER_PREFIX) and not allowed:
         noul = float(result.nouls["answer"].noul) if "answer" in result.nouls else 0.0
         choice = "yes" if noul >= 0.5 else "no"
         return AdvisoryReceipt(
@@ -364,6 +364,119 @@ def evaluate_closed_question(
         confidence=_confidence_from_result(result),
         reason_codes=("allowlist_choice",),
         usage=_usage(),
+    )
+
+
+PROOF_QUESTION_TYPES = frozenset(
+    {
+        "which_proof_obligation_applies",
+        "whether_patch_is_semantically_nonempty",
+    }
+)
+HUMAN_QUESTION_TYPE = "whether_human_choice_is_irreducible"
+
+
+def residual_uncertainty_bp(confidence: float) -> int:
+    """TypeSafe can never drive residual uncertainty to 0."""
+
+    conf = max(0.0, min(1.0, float(confidence)))
+    return max(1, min(10_000, int(round((1.0 - conf) * 10_000))))
+
+
+def escalation_meta_action(
+    question_type: str,
+    *,
+    confidence: float = 0.0,
+    answered: bool = False,
+) -> str:
+    """Authoritative next action after an advisory TypeSafe nomination."""
+
+    kind = str(question_type or "").strip().casefold()
+    if kind == HUMAN_QUESTION_TYPE:
+        return "REQUEST_HUMAN_DECISION"
+    if kind in PROOF_QUESTION_TYPES:
+        return "RUN_SMT_OR_PROVER"
+    if not answered or float(confidence) < LOW_CONFIDENCE:
+        return "CALL_REMOTE_STRONG_MODEL"
+    if kind.startswith(WHICH_PREFIX):
+        return "RUN_LOCAL_STATIC_ANALYSIS"
+    return "CALL_REMOTE_STRONG_MODEL"
+
+
+def _evidence_id(receipt: AdvisoryReceipt) -> str:
+    import hashlib
+    import json
+
+    payload = json.dumps(receipt.to_dict(), sort_keys=True, separators=(",", ":"))
+    return "typesafe-advice-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+@dataclass(frozen=True)
+class DecisionQuestionAdvice:
+    receipt: AdvisoryReceipt
+    nominated_answer: str
+    next_action: str
+    residual_uncertainty_bp: int
+    evidence_id: str
+    can_resolve: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "can_resolve", False)
+        object.__setattr__(
+            self,
+            "residual_uncertainty_bp",
+            max(1, int(self.residual_uncertainty_bp or 1)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "receipt": self.receipt.to_dict(),
+            "nominated_answer": self.nominated_answer,
+            "next_action": self.next_action,
+            "residual_uncertainty_bp": self.residual_uncertainty_bp,
+            "evidence_id": self.evidence_id,
+            "can_resolve": False,
+            "accepted_as_authority": False,
+        }
+
+
+def advise_decision_question(
+    *,
+    question_id: str,
+    question_type: str,
+    alternatives: Sequence[str] = (),
+    state: Mapping[str, Any],
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 30.0,
+) -> DecisionQuestionAdvice:
+    """Nominate an allowlisted answer. Never marks the question terminal."""
+
+    receipt = evaluate_closed_question(
+        question_id=question_id,
+        question_type=question_type,
+        alternatives=alternatives,
+        state=state,
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+        timeout=timeout,
+    )
+    answered = receipt.action == "answered" and bool(receipt.choice)
+    nominated = receipt.choice if answered else ""
+    if nominated and alternatives and nominated not in {str(item) for item in alternatives}:
+        nominated = ""
+        answered = False
+    next_action = escalation_meta_action(
+        question_type,
+        confidence=receipt.confidence,
+        answered=answered,
+    )
+    return DecisionQuestionAdvice(
+        receipt=receipt,
+        nominated_answer=nominated,
+        next_action=next_action,
+        residual_uncertainty_bp=residual_uncertainty_bp(receipt.confidence),
+        evidence_id=_evidence_id(receipt),
     )
 
 
@@ -487,15 +600,21 @@ __all__ = [
     "ADVISOR_SCHEMA",
     "AUTHORITY_CLASS",
     "AdvisoryReceipt",
+    "DecisionQuestionAdvice",
     "HIGH_CONFIDENCE",
+    "HUMAN_QUESTION_TYPE",
     "KernelSpend",
     "LOW_CONFIDENCE",
+    "PROOF_QUESTION_TYPES",
     "SmtTriageAction",
     "TypesafeKernelSkip",
+    "advise_decision_question",
     "advise_proof_draft",
+    "escalation_meta_action",
     "evaluate_closed_question",
     "is_trap_family",
     "maybe_verify_leanstral_draft",
+    "residual_uncertainty_bp",
     "score_synthesis_candidate",
     "triage_smt",
     "typesafe_permitted",

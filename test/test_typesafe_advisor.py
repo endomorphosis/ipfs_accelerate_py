@@ -12,10 +12,13 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     KernelSpend,
     SmtTriageAction,
     TypesafeKernelSkip,
+    advise_decision_question,
     advise_proof_draft,
+    escalation_meta_action,
     evaluate_closed_question,
     is_trap_family,
     maybe_verify_leanstral_draft,
+    residual_uncertainty_bp,
     score_synthesis_candidate,
     triage_smt,
     typesafe_permitted,
@@ -190,6 +193,75 @@ def test_whether_question_maps_noul_to_yes_no(monkeypatch: pytest.MonkeyPatch) -
     assert receipt.action == "answered"
     assert receipt.choice == "yes"
     assert receipt.accepted_as_authority is False
+
+
+def test_whether_with_alternatives_uses_allowlist_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"answer": SimpleNamespace(choice="replan_suffix", confidence=0.4)}
+        scores = {}
+        nouls = {}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_args, **_kwargs: _Result(),
+    )
+    advice = advise_decision_question(
+        question_id="q-replan",
+        question_type="whether_replan_is_required",
+        alternatives=("preserve", "replan_suffix"),
+        state={"failed_step": "tests"},
+    )
+    assert advice.can_resolve is False
+    assert advice.nominated_answer == "replan_suffix"
+    assert advice.residual_uncertainty_bp >= 1
+    assert advice.next_action == "CALL_REMOTE_STRONG_MODEL"
+    assert advice.receipt.accepted_as_authority is False
+
+
+def test_proof_question_escalates_to_smt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"answer": SimpleNamespace(choice="obl-1", confidence=0.99)}
+        scores = {}
+        nouls = {}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_args, **_kwargs: _Result(),
+    )
+    advice = advise_decision_question(
+        question_id="q-proof",
+        question_type="which_proof_obligation_applies",
+        alternatives=("obl-1", "obl-2"),
+        state={"obligation_ids": ["obl-1", "obl-2"]},
+    )
+    assert advice.nominated_answer == "obl-1"
+    assert advice.next_action == "RUN_SMT_OR_PROVER"
+    assert advice.can_resolve is False
+
+
+def test_human_question_escalates_to_human() -> None:
+    assert (
+        escalation_meta_action("whether_human_choice_is_irreducible", confidence=0.99, answered=True)
+        == "REQUEST_HUMAN_DECISION"
+    )
+
+
+def test_residual_uncertainty_never_zero() -> None:
+    assert residual_uncertainty_bp(1.0) == 1
+    assert residual_uncertainty_bp(0.0) == 10_000
+    assert residual_uncertainty_bp(0.4) > residual_uncertainty_bp(0.9)
 
 
 def test_synthesis_score_refuses_unknown_candidate() -> None:

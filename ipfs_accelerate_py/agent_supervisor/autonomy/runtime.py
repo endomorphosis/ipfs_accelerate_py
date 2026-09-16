@@ -834,6 +834,15 @@ class AutonomousMetaController:
 
         return self._next_question() is not None
 
+    def next_unresolved_question(self) -> DecisionQuestion | None:
+        """Return the next eligible mandatory question, if any.
+
+        Callers that may use TypeSafe must advise this question *before*
+        :meth:`step`.  This shell never calls a model.
+        """
+
+        return self._next_question()
+
     def _next_question(self) -> DecisionQuestion | None:
         graph = self._decision_graph.graph
         by_id = {item.question_id: item for item in graph.questions}
