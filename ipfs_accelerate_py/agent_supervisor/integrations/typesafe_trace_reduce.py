@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -28,7 +29,9 @@ TRACE_LABELS: tuple[str, ...] = (
     "other",
 )
 MAX_EVENTS = 16
+DEFAULT_REMOTE_INTERVAL_S = 60.0
 _LAST_AUDIT = threading.local()
+_LAST_REMOTE = threading.local()
 
 
 def redact_event(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -244,12 +247,45 @@ def observe_control_audit(
     return report
 
 
+def observe_control_audit_throttled(
+    path: str | Path,
+    *,
+    min_interval_s: float = DEFAULT_REMOTE_INTERVAL_S,
+    timeout: float = 15.0,
+) -> Optional[TraceReduceReport]:
+    """Read-path TypeSafe reduce. HTTP at most once per interval. Never raises."""
+
+    if not typesafe_permitted(
+        privacy_class="repository_private",
+        remote_disclosure_permitted=True,
+    ):
+        return observe_control_audit(
+            path,
+            privacy_class="local_only",
+            remote_disclosure_permitted=False,
+            timeout=timeout,
+        )
+    now = time.monotonic()
+    last = float(getattr(_LAST_REMOTE, "monotonic", 0.0) or 0.0)
+    if last and now - last < max(0.0, float(min_interval_s)):
+        return None
+    _LAST_REMOTE.monotonic = now
+    return observe_control_audit(
+        path,
+        privacy_class="repository_private",
+        remote_disclosure_permitted=True,
+        timeout=timeout,
+    )
+
+
 __all__ = [
+    "DEFAULT_REMOTE_INTERVAL_S",
     "TRACE_LABELS",
     "TraceReduceReport",
     "classify_event_deterministic",
     "last_audit_reduce",
     "observe_control_audit",
+    "observe_control_audit_throttled",
     "reduce_events",
     "reduce_jsonl",
     "redact_event",

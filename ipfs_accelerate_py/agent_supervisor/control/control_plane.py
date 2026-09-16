@@ -4001,6 +4001,14 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                             records.append(item)
             except OSError:
                 return ()
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce import (
+                observe_control_audit_throttled,
+            )
+
+            observe_control_audit_throttled(path)
+        except Exception:
+            pass
         newest = list(reversed(records))
         return newest[offset : offset + limit]
 

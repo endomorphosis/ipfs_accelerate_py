@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce impo
     classify_event_deterministic,
     last_audit_reduce,
     observe_control_audit,
+    observe_control_audit_throttled,
     redact_event,
     reduce_events,
     reduce_jsonl,
@@ -132,3 +133,37 @@ def test_observe_control_audit_fail_open_without_key(
     snapshot = last_audit_reduce()
     assert snapshot["may_complete_task"] is False
     assert snapshot["counts"]["success"] == 1
+
+
+def test_throttled_observe_is_read_path_and_fail_open(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    path = tmp_path / "control-audit.jsonl"
+    path.write_text(
+        '{"operation":"capabilities","status":"succeeded"}\n',
+        encoding="utf-8",
+    )
+    first = observe_control_audit_throttled(path, min_interval_s=60)
+    assert first is not None
+    assert first.source == "deterministic"
+    assert first.may_complete_task is False
+
+    calls = {"n": 0}
+
+    def fake_system_one(*_a, **_k):
+        calls["n"] += 1
+        raise AssertionError("read-path throttle must not call TypeSafe without a key")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        fake_system_one,
+    )
+    observe_control_audit_throttled(path, min_interval_s=60)
+    assert calls["n"] == 0
