@@ -660,7 +660,10 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
             "cwd": "external/ipfs_accelerate",
         }]},
     }))
-    (tmp_path / "external/ipfs_accelerate").mkdir(parents=True, exist_ok=True)
+    accel = tmp_path / "external/ipfs_accelerate"
+    accel.mkdir(parents=True, exist_ok=True)
+    (accel / "test/api/doep").mkdir(parents=True)
+    (accel / "test/api/doep/test_doep_044.py").write_text("def test_ok():\n    assert True\n")
     calls = []
     def fake_run(argv, cwd=None, **kwargs):
         calls.append((list(argv), cwd))
@@ -723,6 +726,9 @@ def test_missing_receipt_is_materialized_from_validation_profile(tmp_path, monke
             }],
         },
     }))
+    test_src = tmp_path / "external/ipfs_accelerate/test/api/doep"
+    test_src.mkdir(parents=True)
+    (test_src / "test_doep_063.py").write_text("def test_ok():\n    assert True\n")
     calls = []
     def fake_run(argv, cwd=None, **kwargs):
         calls.append((list(argv), cwd))
@@ -742,6 +748,54 @@ def test_missing_receipt_is_materialized_from_validation_profile(tmp_path, monke
     assert result["results"][0]["status"] == "passed"
     assert result["results"][0]["completion_authoritative"] is False
     assert calls and "test_doep_063.py" in calls[0][0][-2]
+
+
+def test_missing_pytest_source_does_not_fail_sibling_local_pass(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_local_blocked_candidate_validation,
+    )
+
+    receipts = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts"
+    receipts.mkdir(parents=True)
+    (receipts / "DOEP-044.json").write_text(json.dumps({
+        "task_id": "DOEP-044",
+        "completion_authoritative": False,
+        "validation": {"commands": [{
+            "argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_044.py", "-q"],
+            "cwd": "external/ipfs_accelerate",
+        }]},
+    }))
+    (receipts / "DOEP-063.json").write_text(json.dumps({
+        "task_id": "DOEP-063",
+        "completion_authoritative": False,
+        "validation": {"commands": [{
+            "argv": [
+                "python3", "-m", "pytest",
+                "external/ipfs_accelerate/test/api/doep/test_doep_063.py", "-q",
+            ],
+        }]},
+    }))
+    accel = tmp_path / "external/ipfs_accelerate"
+    accel.mkdir(parents=True, exist_ok=True)
+    (accel / "test/api/doep").mkdir(parents=True)
+    (accel / "test/api/doep/test_doep_044.py").write_text("def test_ok():\n    assert True\n")
+    calls = []
+    def fake_run(argv, cwd=None, **kwargs):
+        calls.append((list(argv), cwd))
+        return subprocess.CompletedProcess(argv, 0)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_local_blocked_candidate_validation(
+        {"cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"]}},
+    )
+    assert result["completion_authoritative"] is False
+    assert result["status"] == "applied"
+    by_id = {item["task_id"]: item for item in result["results"]}
+    assert by_id["DOEP-044"]["status"] == "passed"
+    assert by_id["DOEP-063"]["status"] == "validation_source_missing"
+    assert "test_doep_063.py" in by_id["DOEP-063"]["missing"]
+    assert len(calls) == 1
+    assert "native extra-gate work" in result["reason"]
 
 
 def test_materialized_receipt_does_not_overwrite_existing_receipt(tmp_path, monkeypatch):

@@ -571,12 +571,17 @@ def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
     current = _blocked_task_ids(observation)
     if not current:
         return False
-    prior = {
-        item.get("task_id"): item.get("status")
-        for item in result.get("results") or []
-        if isinstance(item, dict)
-    }
-    return all(prior.get(task_id) in _RECORDED_LOCAL_VALIDATION for task_id in current)
+    items = [item for item in result.get("results") or [] if isinstance(item, dict)]
+    prior = {item.get("task_id"): item for item in items}
+    for task_id in current:
+        item = prior.get(task_id) or {}
+        status = item.get("status")
+        if status == "failed" and item.get("returncode") in {4, 5}:
+            # Pytest usage/collection errors are retried as source-missing.
+            return False
+        if status not in _RECORDED_LOCAL_VALIDATION:
+            return False
+    return True
 
 
 def run_local_blocked_candidate_validation(
@@ -622,6 +627,15 @@ def run_local_blocked_candidate_validation(
         if not workdir.is_dir() or (root not in workdir.parents and workdir != root):
             results.append({"task_id": task_id, "status": "validation_cwd_rejected"})
             continue
+        missing = _pytest_source_missing(argv, workdir)
+        if missing is not None:
+            results.append({
+                "task_id": task_id,
+                "status": "validation_source_missing",
+                "missing": missing,
+                "completion_authoritative": False,
+            })
+            continue
         try:
             completed = subprocess.run(
                 argv, cwd=str(workdir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -640,22 +654,59 @@ def run_local_blocked_candidate_validation(
         return {"status": "skip"}
     passed = [item for item in results if item.get("status") == "passed"]
     failed = [item for item in results if item.get("status") == "failed"]
+    source_missing = [
+        item for item in results if item.get("status") == "validation_source_missing"
+    ]
     ran = passed or failed
+    if not ran and source_missing:
+        return {
+            "status": "applied",
+            "recipe": "local_validation_pending_native_admission",
+            "completion_authoritative": False,
+            "results": results,
+            "reason": (
+                "candidate receipt built; validation source missing; "
+                "native extra-gate implements; do not rewrite receipts"
+            ),
+        }
     if not ran:
         return {"status": "wait", "recipe": "todos_waiting_on_blocked_dependencies",
                 "reason": "remaining todos depend on blocked peers; do not rewrite those receipts",
                 "results": results}
+    mixed_ok = bool(passed) and not failed
     return {
-        "status": "applied" if passed and not failed else "wait",
+        "status": "applied" if mixed_ok else "wait",
         "recipe": "local_validation_pending_native_admission",
         "completion_authoritative": False,
         "results": results,
         "reason": (
             "local checks passed; native extra-gate admission still required"
-            if passed and not failed else
+            if mixed_ok and not source_missing else
+            "local checks passed; missing validation source is native extra-gate work"
+            if mixed_ok else
             "local checks did not pass; do not rewrite blocked receipts"
         ),
     }
+
+
+def _pytest_source_missing(argv: list[str], workdir: Path) -> str | None:
+    """Return a missing pytest target path, if the command names one."""
+    skip = {"python3", "pytest", "/usr/bin/python3", "/usr/bin/pytest", "-m"}
+    for item in argv:
+        if item in skip or item.startswith("-"):
+            continue
+        if not item.endswith(".py"):
+            continue
+        target = Path(item)
+        path = target if target.is_absolute() else (workdir / item)
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(workdir.resolve())
+        except ValueError:
+            continue
+        if not resolved.is_file():
+            return item
+    return None
 
 
 def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
