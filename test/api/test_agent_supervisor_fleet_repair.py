@@ -506,6 +506,51 @@ def test_open_provisional_goal_source_does_not_raise_import_error():
     assert DatabaseTaskSource.__name__ == "DatabaseTaskSource"
 
 
+def test_unstall_uses_typed_owner_when_quack_attach_token_absent(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    monkeypatch.setattr(
+        fleet_heals, "_owner_transport_env",
+        lambda inventory: {},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "quack_endpoint": "quack:127.0.0.1:27942",
+            "owner_status_path": str(tmp_path / "quack-owner/quack-state-server.status.json"),
+            "database_path": str(tmp_path / "control.duckdb"),
+        },
+    )
+    (tmp_path / "quack-owner").mkdir()
+    (tmp_path / "quack-owner" / "typed-state-owner.token").write_text("a" * 32)
+    sock = tmp_path / "typed.sock"
+    sock.write_text("")
+    monkeypatch.setattr(fleet_heals, "_typed_owner_socket_path", lambda database: sock)
+    recvs = iter([
+        {"ok": True, "schema": fleet_heals._TYPED_OWNER_SCHEMA},
+        {"ok": True, "result": {"changed": True, "completion_authority": False}},
+    ])
+    monkeypatch.setattr(fleet_heals, "_typed_owner_send", lambda *a, **k: None)
+    monkeypatch.setattr(fleet_heals, "_typed_owner_recv", lambda *a, **k: next(recvs))
+
+    class Sock:
+        def settimeout(self, *_):
+            return None
+        def connect(self, *_):
+            return None
+        def close(self):
+            return None
+
+    monkeypatch.setattr(fleet_heals.socket, "socket", lambda *a, **k: Sock())
+    result = fleet_heals.unstall_stale_native_work(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-044"]}},
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["unstalled"][0]["task_alias"] == "DOEP-044"
+
+
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal

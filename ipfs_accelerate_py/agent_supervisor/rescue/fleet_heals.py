@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import socket
 import subprocess
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -402,6 +405,158 @@ def _observation_uninterruptible(observation: Mapping[str, Any]) -> bool:
     return False
 
 
+_TYPED_OWNER_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/typed-state-owner-command@1"
+)
+_TYPED_OWNER_MAX_FRAME = 1_048_576
+_TYPED_OWNER_SOCKET_LIMIT = 100
+
+
+def _typed_owner_socket_path(database: str) -> Path:
+    candidate = Path(database).expanduser().resolve(strict=False).parent / "quack-owner" / "typed-state-owner.sock"
+    if len(os.fsencode(candidate)) <= _TYPED_OWNER_SOCKET_LIMIT:
+        return candidate
+    digest = hashlib.sha256(os.fsencode(Path(database).resolve(strict=False))).hexdigest()[:32]
+    return Path("/tmp") / f"ipfs-accelerate-typed-owner-{os.geteuid()}" / f"{digest}.sock"
+
+
+def _typed_owner_kernel_birth() -> str:
+    pid = os.getpid()
+    stat = Path(f"/proc/{pid}/stat").read_text()
+    start = int(stat[stat.rfind(")") + 2:].split()[19])
+    material = f"{pid}:{start}".encode("ascii")
+    return f"birth:kernel:{hashlib.sha256(material).hexdigest()[:32]}"
+
+
+def _typed_owner_send(channel: socket.socket, payload: Mapping[str, Any]) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        canonical_json_bytes,
+    )
+    body = canonical_json_bytes(dict(payload))
+    if len(body) > _TYPED_OWNER_MAX_FRAME:
+        raise OSError("typed owner frame exceeds bound")
+    channel.sendall(len(body).to_bytes(4, "big") + body)
+
+
+def _typed_owner_recv(channel: socket.socket) -> dict[str, Any]:
+    header = b""
+    while len(header) < 4:
+        part = channel.recv(4 - len(header))
+        if not part:
+            raise OSError("typed owner channel closed")
+        header += part
+    size = int.from_bytes(header, "big")
+    if size < 2 or size > _TYPED_OWNER_MAX_FRAME:
+        raise OSError("typed owner frame size is invalid")
+    raw = b""
+    while len(raw) < size:
+        part = channel.recv(size - len(raw))
+        if not part:
+            raise OSError("typed owner channel closed")
+        raw += part
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise OSError("typed owner frame must be an object")
+    return payload
+
+
+def _unstall_via_typed_owner(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    inventory: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Rearm blocked tasks through the exclusive owner's Unix gateway.
+
+    The Quack ATTACH file may be retired so providers never inherit it. The
+    exclusive owner still exposes typed-state-owner.token and a Unix socket.
+    No second extra-gate: no ExecStart wrap, no competing owner.
+    Never completes tasks.
+    """
+    blocked = _blocked_task_ids(observation)
+    if not blocked:
+        return None
+    status_path = inventory.get("owner_status_path")
+    database = inventory.get("database_path")
+    if not isinstance(status_path, str) or not status_path:
+        return None
+    if not isinstance(database, str) or not database:
+        return None
+    token_path = Path(status_path).parent / "typed-state-owner.token"
+    try:
+        token = token_path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+    if len(token) < 16:
+        return None
+    socket_path = _typed_owner_socket_path(database)
+    if not socket_path.exists():
+        return None
+    empty = {
+        "status": "skip",
+        "recipe": "unstall_stale_native_work",
+        "completion_authority": False,
+        "unstalled": [],
+        "reason": "typed_owner_grant_absent",
+    }
+    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    channel.settimeout(8.0)
+    try:
+        channel.connect(str(socket_path))
+        open_id = f"request:{os.getpid()}:open:{uuid.uuid4().hex}"
+        _typed_owner_send(channel, {
+            "schema": _TYPED_OWNER_SCHEMA,
+            "action": "open",
+            "request_id": open_id,
+            "token": token,
+            "client_id": "fleet-watchdog-unstall",
+            "process_birth_id": _typed_owner_kernel_birth(),
+            "store_id": database,
+        })
+        opened = _typed_owner_recv(channel)
+        if opened.get("ok") is not True:
+            return empty
+        unstalled = []
+        for index, task_id in enumerate(blocked):
+            command_id = f"request:{os.getpid()}:rearm:{index}:{uuid.uuid4().hex}"
+            _typed_owner_send(channel, {
+                "schema": _TYPED_OWNER_SCHEMA,
+                "action": "database_task_command",
+                "request_id": command_id,
+                "command_request_id": f"fleet-unstall-{index:02d}",
+                "command": "rearm_blocked_task",
+                "payload": {
+                    "task_cid_or_alias": task_id,
+                    "receipt": {"operation": "false_terminal_blocked_supervisor_bug"},
+                },
+            })
+            response = _typed_owner_recv(channel)
+            result = response.get("result") if response.get("ok") is True else None
+            if isinstance(result, Mapping) and result.get("changed") is True:
+                unstalled.append({
+                    "task_alias": task_id,
+                    "reason": "false_terminal_blocked_supervisor_bug",
+                })
+    except Exception:
+        return empty
+    finally:
+        try:
+            channel.close()
+        except Exception:
+            pass
+    if not unstalled:
+        return empty
+    return {
+        "status": "applied",
+        "recipe": "unstall_stale_native_work",
+        "completion_authority": False,
+        "unstalled": unstalled,
+        "reason": (
+            "stale in_progress or false-terminal blocked tasks rearmed; "
+            "native extra-gate lanes admit"
+        ),
+    }
+
+
 def unstall_stale_native_work(
     board: Mapping[str, Any], observation: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -422,6 +577,9 @@ def unstall_stale_native_work(
         return empty
     transport = _owner_transport_env(inventory)
     if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
+        typed = _unstall_via_typed_owner(board, observation, inventory)
+        if typed is not None:
+            return typed
         return {**empty, "reason": "quack_attach_token_absent"}
     if not transport.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID"):
         return {**empty, "reason": "owner_store_binding_absent"}

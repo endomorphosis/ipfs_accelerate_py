@@ -184,6 +184,21 @@ class IntentRepositoryError(RuntimeError):
     """Base fail-closed error for intent repository operations."""
 
 
+def _database_virgin_transfer_binding(**kwargs: Any) -> Mapping[str, Any]:
+    """Fail closed until virgin-transfer binding is restored on this overlay."""
+    raise IntentRepositoryError("virgin transfer binding is unavailable")
+
+
+def _database_virgin_transfer_claim_cursor(**kwargs: Any) -> Mapping[str, Any]:
+    """Fail closed until virgin-transfer cursor is restored on this overlay."""
+    raise IntentRepositoryError("virgin transfer cursor is unavailable")
+
+
+def _prepare_database_virgin_transfer_receipt_on(*args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    """Fail closed until virgin-transfer receipt prep is restored on this overlay."""
+    raise IntentRepositoryError("virgin transfer receipt is unavailable")
+
+
 class IntentRepositoryConflictError(IntentRepositoryError):
     """CAS head, fence, or expected-revision conflict."""
 
