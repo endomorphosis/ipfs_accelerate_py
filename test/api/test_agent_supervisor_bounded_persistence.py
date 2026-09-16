@@ -283,6 +283,26 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     assert sum(item["event_count"] for item in recovered["files"]) == 8
 
 
+def test_event_log_repair_skips_healthy_manifest(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
+        append_jsonl_event,
+        event_log_manifest,
+        event_log_storage_healthy,
+        repair_jsonl_event_log,
+    )
+
+    path = tmp_path / "supervisor_events.jsonl"
+    append_jsonl_event(path, "first", {"n": 1})
+    append_jsonl_event(path, "second", {"n": 2})
+    event_log_manifest(path)
+    before = path.read_text(encoding="utf-8")
+    assert event_log_storage_healthy(path) is True
+    result = repair_jsonl_event_log(path)
+    assert result["repaired"] is False
+    assert result["reason"] == "valid"
+    assert path.read_text(encoding="utf-8") == before
+
+
 def test_event_log_repair_quarantines_sequence_gap(tmp_path: Path) -> None:
     path = tmp_path / "supervisor_events.jsonl"
     append_jsonl_event(path, "first", {"n": 1})

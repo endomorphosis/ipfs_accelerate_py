@@ -1149,6 +1149,7 @@ def test_grant_broker_recovers_only_same_uid_stale_socket(
     assert DATABASE_TASK_COMMANDS == frozenset(
         {
             "compare_and_set_status",
+            "compare_and_set_goal_status",
             "rearm_blocked_task",
             "record_queue_backoff",
             "record_queue_retry",

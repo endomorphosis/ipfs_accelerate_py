@@ -746,6 +746,18 @@ def event_log_manifest(path: Path | str) -> dict[str, Any]:
     return value
 
 
+def event_log_storage_healthy(path: Path | str) -> bool:
+    """True when the v2 manifest matches on-disk segment metadata.
+
+    Extra-gate closeout must not wait on a full JSONL rewrite of hundreds of
+    megabytes of already-valid supervisor events.
+    """
+
+    event_path = Path(path)
+    value = _load_event_manifest(event_path)
+    return value is not None and _manifest_matches_metadata(event_path, value)
+
+
 def _write_event_manifest(
     path: Path,
     *,
@@ -789,6 +801,8 @@ def repair_jsonl_event_log(path: Path) -> dict[str, Any]:
     }
     if not path.exists():
         result["reason"] = "missing"
+        return result
+    if event_log_storage_healthy(path):
         return result
     if path.is_dir():
         backup_path = unique_backup_path(path, "directory-backup")
