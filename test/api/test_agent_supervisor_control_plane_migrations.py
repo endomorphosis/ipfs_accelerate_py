@@ -533,6 +533,48 @@ def test_default_package_catalog_loads() -> None:
     assert catalog.latest_version >= 0
 
 
+def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    catalog = load_default_catalog()
+    assert catalog.get(2).migration_id == "0002_tasks_index_repair"
+    db = tmp_path / "control.duckdb"
+    runner = ControlPlaneMigrationRunner.for_database(
+        db,
+        catalog=catalog,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="status-index-repair",
+    )
+    runner.apply()
+    connection = duckdb.connect(str(db))
+    try:
+        names = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name='tasks'"
+            ).fetchall()
+        }
+        assert "tasks_status_idx" not in names
+        assert "tasks_goal_idx" in names
+        assert "tasks_ordinal_idx" in names
+        connection.execute(
+            "INSERT INTO tasks ("
+            "task_cid, task_alias, goal_cid, plan_cid, objective_id, ordinal, "
+            "status, revision, priority, created_at, updated_at, identity_json, "
+            "body_json, extension_schema, extension_json"
+            ") VALUES ('cid-1', 'LA-032', 'goal-1', '', '', 1, 'blocked', 1, '', "
+            "'', '', '{}', '{}', '', '{}')"
+        )
+        connection.execute(
+            "UPDATE tasks SET status='ready', revision=2 WHERE task_alias='LA-032'"
+        )
+        assert connection.execute(
+            "SELECT status, revision FROM tasks WHERE task_alias='LA-032'"
+        ).fetchone() == ("ready", 2)
+    finally:
+        connection.close()
+
+
 def test_sql_readme_documents_checksum_runner_contract() -> None:
     readme = (
         Path(__file__).resolve().parents[2]

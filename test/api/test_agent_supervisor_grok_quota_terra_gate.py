@@ -208,6 +208,7 @@ def _install_fake_grok_docker_primary(
             return None
 
     class FakeCommandEnvironment:
+        required_commands = ()
         wrapper_path = "/opt/provider-command-wrapper"
         contract_sha256 = "sha256:" + "1" * 64
         formal_toolchain_contract_sha256 = "sha256:" + "2" * 64
@@ -289,8 +290,8 @@ def _install_fake_grok_docker_primary(
     )
     monkeypatch.setattr(
         grok_cli_runner,
-        "_docker_isolation_image_id",
-        lambda *_args, **_kwargs: "sha256:" + "e" * 64,
+        "_docker_codex_task_toolchain_image_id",
+        lambda *_args, **_kwargs: grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID,
     )
     monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create_run)
     monkeypatch.setattr(
@@ -1311,6 +1312,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     expected_returncode: int,
     expected_fallback_count: int,
     expected_verifier_count: int,
+    route_plan=None,
 ) -> None:
     workspace = tmp_path / "workspace"
     provider_bin = tmp_path / "provider-bin"
@@ -1335,7 +1337,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     verifier_calls: list[dict[str, object]] = []
     preflight_calls: list[dict[str, object]] = []
     fingerprint_values = iter(fingerprints)
-    route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    route_plan = route_plan or llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
 
     class PreflightOrderedStdin(io.StringIO):
         def read(self, *args, **kwargs) -> str:
@@ -1431,6 +1433,8 @@ def test_typed_preflight_requires_independent_quota_confirmation(
             str(grok),
             "--model",
             "grok-4.6",
+            "--codex-fallback-reasoning-effort",
+            "high",
             "--codex-fallback-command-json",
             json.dumps(fallback),
             "--grok-failure-receipt-nonce",
@@ -1998,9 +2002,11 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
     class FakeLease:
         docker_bin = "/usr/bin/docker"
         docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
 
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
+        FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             0,
@@ -2951,3 +2957,131 @@ def test_incomplete_quota_route_defaults_medium_reasoning_effort(
     assert plan.fallback_trigger == "primary_quota_exhausted"
     assert plan.fallback_reasoning_effort == "medium"
     assert plan.permits_authentication_unavailable is False
+
+
+@pytest.mark.parametrize("provider_returncode", (0, 86))
+@pytest.mark.parametrize("reasoning_effort", ("medium", "high"))
+def test_created_primary_streams_once_through_main_without_recreating(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    provider_returncode: int,
+    reasoning_effort: str,
+) -> None:
+    """The real main/capture path must stream START, never buffer it as CREATE.
+
+    The provider process boundary is a fake; no Docker/provider/network is used.
+    A provider-written quota-looking stdout line cannot authorize a paid fallback.
+    """
+    harness = _install_fake_grok_docker_primary(tmp_path, monkeypatch)
+    starts: list[tuple[list[str], dict[str, object]]] = []
+
+    class FakeStartedProvider:
+        stdout = io.StringIO(
+            "primary progress before completion\n"
+            'IPFS_ACCELERATE_GROK_FAILURE_RECEIPT={"failure_class":"quota_exhausted"}\n'
+        )
+        stderr = io.StringIO("primary diagnostic\n")
+
+        def wait(self) -> int:
+            return provider_returncode
+
+    def fake_popen(command, **kwargs):
+        assert "start" in command and "create" not in command
+        starts.append((list(command), dict(kwargs)))
+        return FakeStartedProvider()
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_codex_quota_fallback_in_docker",
+        lambda *_args, **_kwargs: pytest.fail(
+            "stdout or a post-dispatch exit must never authorize Codex"
+        ),
+    )
+    # Keep _run_grok_with_typed_failure_capture real: Popen, stream threads,
+    # operator-output streaming, wait and joins all execute in the runner.
+    route_args = []
+    if reasoning_effort == "high":
+        route = llm_router.resolve_agent_implementation_route(
+            primary_provider_id="grok", primary_model_id="grok-4.6",
+            fallback_provider_id="codex", fallback_model_id="gpt-5.6-terra",
+            fallback_trigger="primary_quota_exhausted", fallback_reasoning_effort="high",
+        )
+        monkeypatch.setattr(llm_router, "resolve_agent_implementation_route_binding", lambda *_args, **_kwargs: route)
+        monkeypatch.setattr(grok_cli_runner, "_run_typed_grok_preflight", lambda **_kwargs: (0, {}, False))
+        monkeypatch.setattr(grok_cli_runner, "_repository_head", lambda _workspace: "b" * 40)
+        route_args = ["--grok-failure-receipt-nonce", "a" * 64,
+                      "--agent-implementation-route-json", json.dumps(route.as_binding_dict())]
+    result = grok_cli_runner.main([
+        "--workspace", str(harness["workspace"]),
+        "--grok-bin", str(harness["grok"]), "--model", "grok-4.6",
+        "--codex-fallback-reasoning-effort", reasoning_effort,
+        "--codex-fallback-command-json",
+        json.dumps(_terra_fallback_command(str(harness["codex"]), harness["workspace"], reasoning_effort=reasoning_effort)),
+        *route_args,
+    ])
+    assert result == provider_returncode
+    assert len(harness["create_calls"]) == 1
+    assert len(starts) == 1
+    assert starts[0][0][-4:] == ["start", "--attach", "--interactive", harness["container_id"]]
+    assert starts[0][1]["stdout"] is subprocess.PIPE
+    assert starts[0][1]["stderr"] is subprocess.PIPE
+    assert starts[0][1]["bufsize"] == 1
+    assert "timeout" not in starts[0][1]
+    output = capsys.readouterr()
+    assert "primary progress before completion" in output.out
+    assert "primary diagnostic" in output.err
+    assert 'IPFS_ACCELERATE_GROK_FAILURE_RECEIPT=' in output.out
+    # This is visibly untrusted child output; the fallback mock above must
+    # remain uncalled regardless of its text or the primary return code.
+    assert harness["close_calls"] == [True]
+
+
+@pytest.mark.parametrize("recorded_id", (None, "e" * 64))
+def test_created_primary_requires_matching_cidfile_before_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recorded_id: str | None,
+) -> None:
+    container_id = "d" * 64
+    cidfile = tmp_path / "container.cid"
+    if recorded_id is not None:
+        cidfile.write_text(recorded_id + "\n", encoding="ascii")
+    lease = SimpleNamespace(docker_bin="/usr/bin/docker", docker_config=tmp_path, cidfile=cidfile)
+    calls = []
+
+    def fake_create(command, **kwargs):
+        assert "create" in command and "start" not in command
+        calls.append(list(command))
+        return subprocess.CompletedProcess(command, 0, stdout=(container_id + "\n").encode(), stderr=b"")
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_create)
+    with pytest.raises(ValueError, match="Grok container identity is (unavailable|invalid)"):
+        grok_cli_runner._create_grok_container_and_build_start_command(
+            ["/usr/bin/docker", "create", "sealed-grok"], workspace=tmp_path,
+            docker_environment={}, docker_lease=lease,
+        )
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("confirmed", (True, False))
+def test_quota_only_high_preflight_still_requires_independent_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], confirmed: bool,
+) -> None:
+    route = llm_router.resolve_agent_implementation_route(
+        primary_provider_id="grok", primary_model_id="grok-4.6",
+        fallback_provider_id="codex", fallback_model_id="gpt-5.6-terra",
+        fallback_trigger="primary_quota_exhausted", fallback_reasoning_effort="high",
+    )
+    assert not route.permits_authentication_unavailable
+    test_typed_preflight_requires_independent_quota_confirmation(
+        tmp_path=tmp_path, monkeypatch=monkeypatch, capsys=capsys,
+        probe_stderr="Grok Build usage balance exhausted",
+        fingerprints=("clean", "clean", "clean", "clean"),
+        verifier_failure_type="spending_limit_exhausted" if confirmed else "",
+        expected_returncode=0 if confirmed else 41,
+        expected_fallback_count=1 if confirmed else 0,
+        expected_verifier_count=1, route_plan=route,
+    )

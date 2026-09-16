@@ -2,7 +2,8 @@
 
 Importing this package is side-effect free: it does not download archives,
 install tools, start processes, or probe authentication. Call
-:func:`ensure_goose` only from explicit provider resolution paths.
+:func:`ensure_goose` / :func:`ensure_muse` only from explicit provider
+resolution paths.
 """
 
 from __future__ import annotations
@@ -32,6 +33,27 @@ from .goose import (
     select_release_asset,
     validate_platform,
 )
+from .catalog import (
+    CLI_INSTALLERS,
+    CliInstallerSpec,
+    CliToolInstallResult,
+    discover_cli_tool,
+    ensure_cli_tool,
+    installer_robustness_report,
+)
+from .muse import (
+    MUSE_EXECUTABLE,
+    OFFICIAL_INSTALL_URL,
+    MuseInstallResult,
+    MuseReadiness,
+    assess_muse_readiness,
+    default_install_dir,
+    default_launcher_path,
+    discover_muse,
+    ensure_muse,
+    muse_auth_available,
+    muse_auto_install_enabled,
+)
 
 __all__ = [
     "DEFAULT_MANIFEST_NAME",
@@ -57,4 +79,21 @@ __all__ = [
     "normalize_os",
     "select_release_asset",
     "validate_platform",
+    "MUSE_EXECUTABLE",
+    "OFFICIAL_INSTALL_URL",
+    "MuseInstallResult",
+    "MuseReadiness",
+    "assess_muse_readiness",
+    "default_install_dir",
+    "default_launcher_path",
+    "discover_muse",
+    "ensure_muse",
+    "muse_auth_available",
+    "muse_auto_install_enabled",
+    "CLI_INSTALLERS",
+    "CliInstallerSpec",
+    "CliToolInstallResult",
+    "discover_cli_tool",
+    "ensure_cli_tool",
+    "installer_robustness_report",
 ]

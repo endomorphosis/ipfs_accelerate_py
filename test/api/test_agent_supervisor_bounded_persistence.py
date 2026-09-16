@@ -240,12 +240,27 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     path = tmp_path / "events.jsonl"
     for ordinal in range(8):
         append_jsonl_event(path, "scheduler_tick", {"ordinal": ordinal})
-    with pytest.raises(EventPayloadTooLarge):
-        append_jsonl_event(
-            path,
-            "validation_receipt",
-            {"decoded_model_text": "x" * MAX_RECEIPT_BYTES},
-        )
+    spilled = append_jsonl_event(
+        path,
+        "validation_receipt",
+        {"decoded_model_text": "x" * MAX_RECEIPT_BYTES},
+    )
+    assert spilled["decoded_model_text"]["schema"].endswith("event-sidecar-blob@1")
+    sidecar = path.with_name(path.name + ".artifacts") / spilled["decoded_model_text"][
+        "digest"
+    ].split(":", 1)[1]
+    assert sidecar.is_file()
+    assert sidecar.stat().st_size == MAX_RECEIPT_BYTES
+
+    routine = append_jsonl_event(
+        path,
+        "implementation_finished",
+        {
+            "completion_receipt_id": "not-a-receipt-event-type",
+            "body": "y" * (MAX_RECEIPT_BYTES + 1024),
+        },
+    )
+    assert "event_id" in routine
 
     result = rotate_event_log_if_needed(
         path,
@@ -254,13 +269,13 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
         max_archives=2,
     )
     assert result["rotated"] is True
-    assert result["archived_count"] == 5
+    assert result["archived_count"] == 7
     assert result["retained_count"] == 3
-    assert [event["ordinal"] for event in read_jsonl_event_sources([path])] == (list(range(8)))
+    assert [event["ordinal"] for event in read_jsonl_event_sources([path]) if "ordinal" in event] == (list(range(8)))
 
     manifest = event_log_manifest(path)
     assert manifest["generation"] == 1
-    assert sum(item["event_count"] for item in manifest["files"]) == 8
+    assert sum(item["event_count"] for item in manifest["files"]) == 10
     manifest_path = path.with_name(f"{path.name}.manifest.json")
     manifest_path.write_text("{torn", encoding="utf-8")
     recovered = event_log_manifest(path)

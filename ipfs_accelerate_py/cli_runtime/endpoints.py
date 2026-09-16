@@ -542,6 +542,32 @@ def _default_tool_specs() -> tuple[EndpointToolSpec, ...]:
                 "agent_requires_policy": "true",
             },
         ),
+        EndpointToolSpec(
+            name="muse",
+            aliases=(
+                "muse_code",
+                "muse-code",
+                "musecode",
+                "muse_cli",
+                "muse-cli",
+            ),
+            description=(
+                "Meta Muse Code CLI via muse exec — always side-effecting; "
+                "default automation keeps the OS sandbox"
+            ),
+            adapter_class_name="MuseCodeAdapter",
+            supported_tasks=(
+                "text_generation",
+                "code_generation",
+                "analysis",
+            ),
+            metadata={
+                "provider": "muse_code",
+                "command_contract": "muse exec",
+                "default_execution_mode": "agent",
+                "side_effecting": "true",
+            },
+        ),
     )
 
 

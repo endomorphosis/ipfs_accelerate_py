@@ -44,21 +44,25 @@ def test_compatibility_imports_remain_valid() -> None:
         BaseCLIWrapper,
         CopilotCLIIntegration,
         GooseCLIIntegration,
+        MuseCodeCLIIntegration,
         OpenAICodexCLIIntegration,
         get_all_cli_integrations,
         get_copilot_cli_integration,
         get_goose_cli_integration,
+        get_muse_code_cli_integration,
         get_openai_codex_cli_integration,
         list_cli_integrations,
     )
 
     assert BaseCLIWrapper is not None
     assert callable(get_goose_cli_integration)
+    assert callable(get_muse_code_cli_integration)
     assert callable(get_openai_codex_cli_integration)
     assert callable(get_copilot_cli_integration)
     assert callable(get_all_cli_integrations)
     assert callable(list_cli_integrations)
     assert issubclass(GooseCLIIntegration, object)
+    assert issubclass(MuseCodeCLIIntegration, object)
     assert issubclass(OpenAICodexCLIIntegration, BaseCLIWrapper)
     assert issubclass(CopilotCLIIntegration, BaseCLIWrapper)
 
@@ -103,6 +107,7 @@ def test_list_cli_integrations_is_metadata_only_no_instantiation() -> None:
 
     names = {entry["name"] for entry in listed}
     assert "goose" in names
+    assert "muse_code" in names
     assert "openai_codex" in names
     assert "copilot" in names
     assert "github" in names
@@ -123,6 +128,7 @@ def test_get_all_cli_integrations_default_is_lazy_factories() -> None:
         mapping = get_all_cli_integrations()
 
     assert "goose" in mapping
+    assert "muse_code" in mapping
     assert "openai_codex" in mapping
     assert "copilot" in mapping
     # Default is factories, not instances
@@ -600,7 +606,7 @@ def test_llm_router_builtin_provider_discovery_unchanged() -> None:
     assert get_default_router_deps() is not None
     # Function must remain callable and not raise for common CLI providers
     # even when the tool is missing (returns None or a provider).
-    for name in ("codex_cli", "copilot_cli", "goose_cli", "claude_code"):
+    for name in ("codex_cli", "copilot_cli", "goose_cli", "muse_code", "claude_code"):
         provider = _builtin_provider_by_name(name)
         assert provider is None or hasattr(provider, "generate")
 
@@ -645,10 +651,15 @@ def test_getters_return_stable_singletons() -> None:
         get_copilot_cli_integration,
         reset_copilot_cli_integration,
     )
+    from ipfs_accelerate_py.cli_integrations.muse_code_cli_integration import (
+        get_muse_code_cli_integration,
+        reset_muse_code_cli_integration,
+    )
 
     reset_goose_cli_integration()
     reset_openai_codex_cli_integration()
     reset_copilot_cli_integration()
+    reset_muse_code_cli_integration()
 
     with patch("subprocess.run", side_effect=AssertionError("probe")):
         g1 = get_goose_cli_integration()
@@ -657,7 +668,10 @@ def test_getters_return_stable_singletons() -> None:
         c2 = get_openai_codex_cli_integration()
         p1 = get_copilot_cli_integration()
         p2 = get_copilot_cli_integration()
+        m1 = get_muse_code_cli_integration()
+        m2 = get_muse_code_cli_integration()
 
     assert g1 is g2
     assert c1 is c2
     assert p1 is p2
+    assert m1 is m2

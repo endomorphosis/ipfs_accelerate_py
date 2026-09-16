@@ -95,6 +95,7 @@ from .tools.ipfs_network_tools import register_native_ipfs_network_tools
 from .tools.enhanced_inference_tools import register_native_enhanced_inference_tools
 from .tools.workflow_management_tools import register_native_workflow_management_tools
 from .tools.shared_tools import register_native_shared_tools
+from .tools.llm_allocation_tools import register_native_llm_allocation_tools
 from .mcplusplus.artifacts import (
     ArtifactStore,
     build_decision,
@@ -651,6 +652,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "shared_tools",
         lambda mgr: register_native_shared_tools(mgr),
+    )
+    manager.register_category_loader(
+        "llm_allocation_tools",
+        lambda mgr: register_native_llm_allocation_tools(mgr),
     )
     manager.register_category_loader(
         "idl",
@@ -2557,6 +2562,9 @@ def register_tools(
                     "model": {"type": "string", "default": "auto"},
                     "max_tokens": {"type": "integer", "default": 512, "minimum": 1},
                     "temperature": {"type": "number", "default": 0.7, "minimum": 0},
+                    "provider": {"type": "string"},
+                    "allocation_session_id": {"type": "string"},
+                    "allocation_path": {"type": "string", "enum": ["cli", "api", ""]},
                 },
                 "required": ["prompt"],
             },
@@ -2564,6 +2572,11 @@ def register_tools(
         )
     except Exception:
         pass
+
+    try:
+        register_native_llm_allocation_tools(mcp)
+    except Exception as exc:
+        logger.debug("LLM allocation tools not registered: %s", exc)
 
 
 def _create_base_server(*args: Any, **kwargs: Any) -> Any:

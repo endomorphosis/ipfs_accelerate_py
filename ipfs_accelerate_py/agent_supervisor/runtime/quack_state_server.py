@@ -3932,6 +3932,13 @@ class InProcessQuackTransport:
         # text that might be logged by wrappers — use parameterized forms when
         # supported; fall back carefully.
         serve_attempts = (
+            # Current Quack exports a table function with named options. Keep
+            # credentials parameter-bound, and disable TLS only on loopback.
+            (
+                "SELECT * FROM quack_serve(?, token := ?, "
+                "allow_other_hostname := false, disable_ssl := ?)",
+                [uri, token, _is_loopback_host(host)],
+            ),
             ("SELECT quack_serve(?, ?, ?)", [host, int(port), token]),
             ("SELECT quack_serve(?, ?)", [f"{host}:{int(port)}", token]),
             ("CALL quack_serve(?, ?, ?)", [host, int(port), token]),
@@ -3939,7 +3946,9 @@ class InProcessQuackTransport:
         last_error: Exception | None = None
         for sql, params in serve_attempts:
             try:
-                connection.execute(sql, params)
+                result = connection.execute(sql, params)
+                if hasattr(result, "fetchall"):
+                    result.fetchall()
                 last_error = None
                 break
             except Exception as exc:  # pragma: no cover - depends on extension
@@ -4002,9 +4011,19 @@ class InProcessQuackTransport:
         return MappingProxyType(observed)
 
     def stop(self, connection: Any | None = None) -> None:
-        del connection
-        self._started = False
-        self._server_identity = {}
+        try:
+            if self._started and connection is not None and self._listen_uri:
+                # Stop only this listener. A no-argument global stop could
+                # interrupt another listener hosted by the same process.
+                result = connection.execute(
+                    "SELECT * FROM quack_stop(?)", [self._listen_uri]
+                )
+                if hasattr(result, "fetchall"):
+                    result.fetchall()
+        finally:
+            self._started = False
+            self._listen_uri = ""
+            self._server_identity = {}
 
 
 class FakeQuackTransport:

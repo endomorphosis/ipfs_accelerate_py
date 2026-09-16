@@ -521,6 +521,20 @@ class TrioMCPServer:
                     ) from e
                 logger.warning(f"Core MCP tools not registered: {e}")
 
+            try:
+                from ipfs_accelerate_py.mcplusplus_module.tools import (
+                    register_llm_allocation_tools,
+                )
+
+                register_llm_allocation_tools(self.mcp)
+                logger.info("Registered llm_allocation MCP++ tools")
+            except Exception as e:
+                if self._using_fastmcp_registry:
+                    raise RuntimeError(
+                        "required llm_allocation MCP++ tool registration failed"
+                    ) from e
+                logger.warning("LLM allocation MCP++ tools not registered: %s", e)
+
             # Register core resources for parity with the primary MCP server.
             try:
                 from ipfs_accelerate_py.mcp_server.resources import register_all_resources

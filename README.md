@@ -433,6 +433,25 @@ paths, readiness versus liveness, P2P no-replay policy, offline tests, and the
 `IPFS_ACCELERATE_GOOSE_LIVE` smoke gate are documented under
 [Goose CLI in the LLM router guide](docs/LLM_ROUTER.md#goose-cli).
 
+### Muse Code CLI (LLM router)
+
+**Muse Code** (`muse_code` / `muse`) is Meta's terminal coding agent, a peer of
+Goose, Codex, Claude Code, and Grok Build. Headless runs use `muse exec` with
+`--disable-approval` (sandbox on). The official install is
+`curl -fsSL https://dev.meta.ai/install.sh | bash`. Discovery is opt-in because
+`muse exec` is side-effecting. See
+[Muse Code CLI in the LLM router guide](docs/LLM_ROUTER.md#muse-code-cli).
+
+Unpinned `generate_text()` calls record CLI/API health, tokens, spend, and
+rate-limit headroom in DuckDB and reorder the same candidate set from that
+data. CLI tools and API providers are separate paths; pass
+`allocation_session_id` (and optionally `allocation_path="cli"` or `"api"`)
+to persist per-session cost, tokens, tokens/sec, and latency and sticky-route
+later calls. CLI tools also resume their native session id (Muse, Goose,
+Copilot, Grok, Codex) for the same allocation session. Empty stats keep the
+historical order. See
+[Dynamic allocation](docs/LLM_ROUTER.md#dynamic-allocation-duckdb).
+
 🤖 **API and serving**: [API overview](docs/api/overview.md) · [HF model server](docs/features/hf-model-server/README.md)
 
 ---
@@ -558,6 +577,16 @@ python -m pytest \
   test/test_goose_p2p_policy.py -q
 ```
 
+Muse Code CLI contracts stay offline by default (fakes only):
+
+```bash
+python -m pytest \
+  test/test_llm_router_muse.py \
+  test/test_muse_code_cli_integration.py \
+  test/test_muse_cli_endpoint.py \
+  test/test_muse_installer.py -q
+```
+
 Opt-in live Goose smoke requires `IPFS_ACCELERATE_GOOSE_LIVE=1` and a configured
 binary/provider; see [Goose CLI](docs/LLM_ROUTER.md#goose-cli).
 
@@ -589,7 +618,7 @@ prover is healthy.
 
 | Topic | Resources |
 | --- | --- |
-| **LLM / embeddings** | [LLM Router](docs/LLM_ROUTER.md) (Codex, Copilot, Grok, **Goose CLI**) · [Embeddings Router](docs/EMBEDDINGS_ROUTER.md) |
+| **LLM / embeddings** | [LLM Router](docs/LLM_ROUTER.md) (Codex, Copilot, Grok, Goose CLI, **Muse Code**) · [Embeddings Router](docs/EMBEDDINGS_ROUTER.md) |
 | **MCP** | [MCP setup](docs/guides/MCP_SETUP_GUIDE.md) · [Dashboard](docs/MCP_DASHBOARD_GUIDE.md) · [Server README](ipfs_accelerate_py/mcp_server/README.md) · [mcpplusplus](mcpplusplus/README.md) |
 | **Serving** | [HF model server](docs/features/hf-model-server/README.md) |
 | **IPFS & P2P** | [IPFS](docs/features/ipfs/IPFS.md) · [Backend router](docs/IPFS_BACKEND_ROUTER.md) · [P2P](docs/guides/p2p/README.md) |

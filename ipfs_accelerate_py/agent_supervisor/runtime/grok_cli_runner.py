@@ -52,6 +52,9 @@ sys.path[:] = [
     ],
 ]
 
+from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (
+    hashing_lock,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_binding import (
     ensure_provider_command_bindings,
     recover_provider_command_name_error,
@@ -63,6 +66,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_command_environment im
     PROVIDER_COMMAND_ENV_WRAPPER_ENV,
     PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV,
     ProviderCommandEnvironmentError,
+    _sealed_launcher_source,
+    project_provider_command_environment,
+    provider_command_environment_sha256,
     sealed_provider_command_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
@@ -81,6 +87,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
 )
 from ipfs_accelerate_py.llm_router import (
+    build_grok_cli_env,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
     AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
@@ -370,6 +377,22 @@ _SEALED_GROK_DISALLOWED_TOOLS = (
     "use_tool,call_mcp_tool,list_mcp_resources,list_mcp_resource_templates,"
     "read_mcp_resource,fetch_mcp_resource,task,Agent,memory,lsp,spawn_subagent"
 )
+# Terminal execution belongs only to the pinned Docker implementation boundary.
+# Host routes and the independent quota verifier retain the file-only profile.
+_DOCKER_TASK_GROK_TOOLS = _SEALED_GROK_TOOLS + ",run_terminal_cmd"
+_DOCKER_TASK_GROK_DISALLOWED_TOOLS = ",".join(
+    name for name in _SEALED_GROK_DISALLOWED_TOOLS.split(",")
+    if name not in {"run_terminal_cmd", "run_terminal_command"}
+)
+_GROK_CONTAINER_COMMAND_WRAPPER = Path("/opt/ipfs-accelerate/provider-command-env")
+_GROK_CONTAINER_BOOTSTRAP = Path("/opt/ipfs-accelerate/task-bootstrap.py")
+_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_PARENT_FORMAL_TOOLCHAIN_SHA256"
+_GROK_TEX_TOOLCHAIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_JSON"
+_GROK_TEX_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_GROK_TEX_TOOLCHAIN_SHA256"
+_RESEARCH_TOOLCHAIN_ENV = "IPFS_ACCELERATE_AGENT_RESEARCH_TOOLCHAIN_JSON"
+_RESEARCH_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_RESEARCH_TOOLCHAIN_SHA256"
+_RESEARCH_REQUIRED_COMMANDS = ("lean", "lake", "z3", "cvc5")
+_RESEARCH_REQUIRED_MODULES = ("torch", "numpy", "multiformats", "z3", "cvc5", "pytest")
 _ALTERNATE_PROVIDER_EXECUTABLES = (
     "codex",
     "copilot",
@@ -1438,9 +1461,15 @@ def _workspace_symlinks_reach_denied_paths(
 
 
 def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
-    """Find writable workspace files that may alias authority outside it."""
+    """Find workspace files whose extra hardlinks live outside the worktree.
 
-    violations: list[Path] = []
+    Git worktrees and copy-on-write checkouts often share inodes among files
+    *inside* the workspace (nlink>1). Those do not alias provider/control
+    authority. A violation is an inode whose link count exceeds the number of
+    names found under ``workspace``.
+    """
+
+    by_inode: dict[tuple[int, int], list[Path]] = {}
     try:
         for root, _directories, files in os.walk(
             workspace,
@@ -1452,13 +1481,22 @@ def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
                 candidate = root_path / name
                 stat_result = candidate.lstat()
                 if (
-                    not candidate.is_symlink()
-                    and candidate.is_file()
-                    and stat_result.st_nlink > 1
+                    candidate.is_symlink()
+                    or not candidate.is_file()
+                    or stat_result.st_nlink <= 1
                 ):
-                    violations.append(candidate)
+                    continue
+                by_inode.setdefault(
+                    (stat_result.st_dev, stat_result.st_ino),
+                    [],
+                ).append(candidate)
     except OSError as exc:
         raise ValueError("unable to audit workspace hardlinks") from exc
+    violations: list[Path] = []
+    for paths in by_inode.values():
+        nlink = paths[0].lstat().st_nlink
+        if nlink > len(paths):
+            violations.extend(paths)
     return tuple(sorted(violations, key=lambda item: str(item)))
 
 
@@ -1545,8 +1583,19 @@ def _repository_head(workspace: Path) -> str:
 
 
 def _workspace_content_fingerprint(workspace: Path) -> str:
-    """Hash every workspace path, file byte, mode, and symlink target."""
+    """Hash every workspace path, file byte, mode, and symlink target.
 
+    The digest is order-stable and single-threaded.  Concurrent lanes must
+    not each walk a multi-gigabyte worktree at once: under CPU or memory
+    pressure the hasher takes a host-wide exclusive lock so hashing cannot
+    hang the machine with overlapping SHA-256 streams.
+    """
+
+    with hashing_lock(kind="workspace-fingerprint", exclusive=True):
+        return _workspace_content_fingerprint_unlocked(workspace)
+
+
+def _workspace_content_fingerprint_unlocked(workspace: Path) -> str:
     digest = hashlib.sha256()
     try:
         for root, directories, files in os.walk(
@@ -1770,10 +1819,13 @@ def _host_codex_task_toolchain_python() -> Path:
     return resolved
 
 
-def _codex_task_container_environment() -> dict[str, str]:
+def _codex_task_container_environment(
+    *, tex_toolchain: Mapping[str, str] | None = None,
+    research_toolchain: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return the complete non-secret environment admitted past ``env -i``."""
 
-    return {
+    environment = {
         "BASH_ENV": "",
         "CODEX_HOME": str(_CODEX_CONTAINER_HOME),
         "ENV": "",
@@ -1786,6 +1838,16 @@ def _codex_task_container_environment() -> dict[str, str]:
         "PYTHONPATH": str(_CODEX_TASK_TOOLCHAIN_SITE_PACKAGES),
         "TERM": "dumb",
     }
+
+    if tex_toolchain:
+        environment.update({
+            "PATH": f"{tex_toolchain['root']}/bin/aarch64-linux:{Path(tex_toolchain['wrapper']).parent}:{environment['PATH']}",
+            "TEXMFHOME": "/tmp/ipfs-texmf-home",
+            "TEXMFVAR": "/tmp/ipfs-texmf-var",
+            "TEXMFCONFIG": "/tmp/ipfs-texmf-config",
+            _GROK_TEX_TOOLCHAIN_SHA256_ENV: tex_toolchain["sha256"],
+        })
+    return _with_research_environment(environment, research_toolchain or {})
 
 
 def _docker_control_env(
@@ -1893,38 +1955,126 @@ def _select_grok_isolation_backend(*, require_container_boundary: bool = False) 
 
 
 def _git_metadata_roots(workspace: Path) -> tuple[Path, ...]:
-    """Resolve linked-worktree Git metadata needed for read-only Git commands."""
+    """Resolve only initialized, committed submodules' Git metadata.
 
-    marker = workspace / ".git"
-    if not marker.is_file():
-        return ()
-    try:
-        prefix, separator, raw_git_dir = marker.read_text(
-            encoding="utf-8"
-        ).strip().partition(":")
-    except (OSError, UnicodeError):
-        return ()
-    if prefix.casefold() != "gitdir" or not separator or not raw_git_dir.strip():
-        return ()
-    git_dir = Path(raw_git_dir.strip())
-    if not git_dir.is_absolute():
-        git_dir = marker.parent / git_dir
-    try:
-        git_dir = git_dir.resolve(strict=True)
-    except OSError:
-        return ()
-    common_dir = git_dir
-    common_marker = git_dir / "commondir"
-    if common_marker.is_file():
+    Linked submodule worktrees can refer to metadata outside the outer Git
+    common directory. Discover them from each repository's committed
+    .gitmodules, never by scanning directories or trusting uncommitted paths.
+    Callers mount these exact metadata directories read-only.
+    """
+    roots: list[Path] = []
+    pending = [(workspace, 0)]
+    seen: set[Path] = set()
+
+    def exact_path(value: Path) -> Path:
+        lexical = Path(os.path.abspath(value))
+        resolved = lexical.resolve(strict=True)
+        if lexical != resolved:
+            raise ValueError("Git metadata path contains a symlink")
+        return resolved
+
+    def read_marker(path: Path) -> str:
         try:
-            raw_common = common_marker.read_text(encoding="utf-8").strip()
-            candidate = Path(raw_common)
-            if not candidate.is_absolute():
-                candidate = git_dir / candidate
-            common_dir = candidate.resolve(strict=True)
-        except (OSError, UnicodeError):
-            common_dir = git_dir
-    return tuple(dict.fromkeys((common_dir, git_dir)))
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as handle:
+                before = os.fstat(handle.fileno())
+                if (not stat.S_ISREG(before.st_mode) or before.st_size > 4096
+                        or before.st_uid != os.geteuid()):
+                    raise ValueError("Git metadata marker is unsafe")
+                content = handle.read(4097)
+                after = os.fstat(handle.fileno())
+            current = path.lstat()
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                      value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            if (len(content) > 4096 or identity(before) != identity(after)
+                    or identity(after) != identity(current)):
+                raise ValueError("Git metadata marker changed while reading")
+            return content.decode("utf-8").strip()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("Git metadata marker is unreadable") from exc
+
+    while pending:
+        repository, depth = pending.pop(0)
+        if depth > 8 or len(seen) >= 128:
+            raise ValueError("Initialized submodule metadata exceeds bound")
+        marker = repository / ".git"
+        if not os.path.lexists(marker):
+            continue  # A declared but uninitialized submodule has no metadata.
+        repository = exact_path(repository)
+        if repository in seen:
+            continue
+        seen.add(repository)
+        if marker.is_symlink():
+            raise ValueError("Git metadata marker is a symlink")
+        if marker.is_dir():
+            git_dir = exact_path(marker)
+        elif marker.is_file():
+            prefix, separator, value = read_marker(marker).partition(":")
+            if prefix.casefold() != "gitdir" or not separator or not value.strip():
+                raise ValueError("Git metadata marker is invalid")
+            target = Path(value.strip())
+            git_dir = exact_path(target if target.is_absolute() else repository / target)
+        else:
+            raise ValueError("Git metadata marker is not a regular file or directory")
+        common_dir = git_dir
+        common_marker = git_dir / "commondir"
+        if os.path.lexists(common_marker):
+            value = Path(read_marker(common_marker))
+            common_dir = exact_path(value if value.is_absolute() else git_dir / value)
+            backlink = Path(read_marker(git_dir / "gitdir"))
+            if not backlink.is_absolute():
+                backlink = git_dir / backlink
+            if exact_path(backlink) != marker:
+                raise ValueError("Linked Git metadata belongs to another worktree")
+        # Reject arbitrary home/config directories presented as metadata.
+        if (not any(part == ".git" or part.endswith(".git") for part in common_dir.parts)
+                or not (common_dir / "objects").is_dir()
+                or not (common_dir / "config").is_file()
+                or not (git_dir / "HEAD").is_file()
+                or any(path.is_symlink() for path in
+                       (common_dir / "objects", common_dir / "config", git_dir / "HEAD"))
+                or any(path.stat().st_uid != os.geteuid() for path in (common_dir, git_dir))):
+            raise ValueError("Git metadata directory is not a repository")
+        roots.extend((common_dir, git_dir))
+        command = ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+                   "-C", str(repository), "config", "--no-includes", "--null",
+                   "--blob", "HEAD:.gitmodules", "--get-regexp", r"^submodule\..*\.path$"]
+        result = subprocess.run(command, env=_docker_control_env(), stdin=subprocess.DEVNULL,
+                                capture_output=True, timeout=10, check=False)
+        if result.returncode not in {0, 1}:
+            raise ValueError("Committed submodule declarations are unreadable")
+        if len(result.stdout) > 128 * 1024:
+            raise ValueError("Committed submodule declarations exceed bound")
+        for record in result.stdout.split(b"\0"):
+            if not record:
+                continue
+            _key, separator, raw_path = record.partition(b"\n")
+            if not separator:
+                raise ValueError("Committed submodule path record is invalid")
+            relative = Path(raw_path.decode("utf-8"))
+            if (not raw_path or relative.is_absolute() or ".." in relative.parts
+                    or relative == Path(".") or ".git" in relative.parts):
+                raise ValueError("Committed submodule path is unsafe")
+            # A .gitmodules entry alone does not grant an arbitrary nested
+            # repository a mount: the committed tree must contain its gitlink.
+            tree = subprocess.run(
+                ["git", "--no-optional-locks", "--literal-pathspecs", "-c",
+                 "core.fsmonitor=false", "-C", str(repository), "ls-tree", "-z",
+                 "HEAD", "--", str(relative)],
+                env=_docker_control_env(), stdin=subprocess.DEVNULL,
+                capture_output=True, timeout=10, check=False)
+            entries = [entry for entry in tree.stdout.split(b"\0") if entry]
+            if tree.returncode != 0:
+                raise ValueError("Committed submodule gitlink is unreadable")
+            if (len(entries) != 1 or not entries[0].startswith(b"160000 commit ")
+                    or entries[0].partition(b"\t")[2] != raw_path):
+                continue
+            child = repository / relative
+            if child.is_symlink():
+                raise ValueError("Initialized submodule path is a symlink")
+            if os.path.lexists(child / ".git"):
+                pending.append((child, depth + 1))
+    return tuple(dict.fromkeys(roots))
 
 
 def _docker_mount(
@@ -2496,6 +2646,10 @@ class _DockerContainerLease:
         except FileNotFoundError:
             pass
         try:
+            shutil.rmtree(self.lease_root / "task-launchers")
+        except FileNotFoundError:
+            pass
+        try:
             (self.lease_root / "cas-owned").unlink()
         except FileNotFoundError:
             pass
@@ -2533,6 +2687,247 @@ def _restore_mask_permissions(mask_root: Path) -> None:
             continue
 
 
+def _grok_task_tex_toolchain(base_env: Mapping[str, str]) -> dict[str, str]:
+    """Admit an optional exact, hash-inventoried formatting toolchain only."""
+    raw = base_env.get(_GROK_TEX_TOOLCHAIN_ENV, "")
+    if not raw:
+        return {}
+    if len(raw.encode()) > 8192:
+        raise ValueError("Grok TeX profile exceeds bound")
+    profile = json.loads(raw)
+    keys = {"schema", "root", "wrapper", "manifest", "manifest_sha256", "wrapper_sha256"}
+    if not isinstance(profile, dict) or set(profile) != keys or any(not isinstance(value, str) or any(c in value for c in "\x00\r\n") for value in profile.values()) or profile["schema"] != "grok-docker-tex-toolchain/v1":
+        raise ValueError("Grok TeX profile is invalid")
+    for name in ("root", "wrapper", "manifest"):
+        item = Path(profile[name])
+        if not item.is_absolute() or item.resolve(strict=True) != item or item.stat().st_uid not in {0, os.getuid()}:
+            raise ValueError("Grok TeX profile paths are not canonical owned paths")
+    root, wrapper, manifest = (Path(profile[name]) for name in ("root", "wrapper", "manifest"))
+    if not root.is_dir() or not (root / "texmf-dist").is_dir() or not (root / "bin/aarch64-linux/pdflatex").is_file():
+        raise ValueError("Grok TeX root is not the declared formatting toolchain")
+    if not wrapper.is_file() or not os.access(wrapper, os.X_OK) or manifest.stat().st_size > 8 * 1024 * 1024:
+        raise ValueError("Grok TeX profile files are unavailable")
+    for name, target in (("manifest_sha256", manifest), ("wrapper_sha256", wrapper)):
+        with target.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if not re.fullmatch(r"[0-9a-f]{64}", profile[name]) or digest != profile[name]:
+            raise ValueError("Grok TeX profile digest mismatch")
+    expected = json.loads(manifest.read_text(encoding="utf-8"))
+    if not isinstance(expected, dict) or expected.get("schema") != "grok-tex-tree/v1" or expected.get("root") != str(root) or not isinstance(expected.get("members"), dict):
+        raise ValueError("Grok TeX tree manifest is invalid")
+    observed: dict[str, object] = {}
+    size = 0
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            item = Path(directory) / name
+            info = item.lstat()
+            relative = str(item.relative_to(root))
+            if len(observed) >= 25000 or info.st_uid not in {0, os.getuid()}:
+                raise ValueError("Grok TeX tree exceeds ownership or member bound")
+            if stat.S_ISLNK(info.st_mode):
+                if not item.resolve(strict=True).is_relative_to(root):
+                    raise ValueError("Grok TeX tree symlink escapes its root")
+                member = {"kind": "symlink", "target": os.readlink(item)}
+            elif stat.S_ISDIR(info.st_mode):
+                member = {"kind": "directory"}
+            elif stat.S_ISREG(info.st_mode):
+                size += info.st_size
+                if size > 2 * 1024**3:
+                    raise ValueError("Grok TeX tree exceeds byte bound")
+                with item.open("rb") as handle:
+                    digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                member = {"kind": "file", "bytes": info.st_size, "sha256": digest}
+            else:
+                raise ValueError("Grok TeX tree has a non-file member")
+            if not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o002:
+                raise ValueError("Grok TeX tree is world writable")
+            observed[relative] = member
+    if observed != expected["members"]:
+        raise ValueError("Grok TeX tree differs from its exact manifest")
+    return {"root": str(root), "wrapper": str(wrapper),
+            "sha256": hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+
+
+def _research_task_toolchain(base_env: Mapping[str, str]) -> dict[str, str]:
+    """Admit an optional exact, hash-inventoried CPU/checker toolchain only."""
+    raw = base_env.get(_RESEARCH_TOOLCHAIN_ENV, "")
+    if not raw:
+        return {}
+    if len(raw.encode()) > 8192:
+        raise ValueError("Research toolchain profile exceeds bound")
+    profile = json.loads(raw)
+    keys = {"schema", "root", "manifest", "manifest_sha256"}
+    if not isinstance(profile, dict) or set(profile) != keys or any(not isinstance(value, str) or any(c in value for c in "\x00\r\n") for value in profile.values()) or profile["schema"] != "docker-research-toolchain/v1":
+        raise ValueError("Research toolchain profile is invalid")
+    for name in ("root", "manifest"):
+        item = Path(profile[name])
+        if not item.is_absolute() or item.resolve(strict=True) != item or item.stat().st_uid not in {0, os.getuid()}:
+            raise ValueError("Research toolchain profile paths are not canonical owned paths")
+    root, manifest = (Path(profile[name]) for name in ("root", "manifest"))
+    if not root.is_dir() or not (root / "python").is_dir() or not (root / "bin").is_dir():
+        raise ValueError("Research toolchain root is not the declared CPU/checker toolchain")
+    if not manifest.is_file() or manifest.is_relative_to(root) or manifest.stat().st_size > 32 * 1024 * 1024:
+        raise ValueError("Research toolchain profile files are unavailable")
+    for name, target in (("manifest_sha256", manifest),):
+        with target.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if not re.fullmatch(r"[0-9a-f]{64}", profile[name]) or digest != profile[name]:
+            raise ValueError("Research toolchain profile digest mismatch")
+    expected = json.loads(manifest.read_text(encoding="utf-8"))
+    if not isinstance(expected, dict) or expected.get("schema") != "research-runtime-tree/v1" or expected.get("root") != str(root) or not isinstance(expected.get("members"), dict):
+        raise ValueError("Research toolchain tree manifest is invalid")
+    observed: dict[str, object] = {}
+    size = 0
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            item = Path(directory) / name
+            info = item.lstat()
+            relative = str(item.relative_to(root))
+            if len(observed) >= 100000 or info.st_uid not in {0, os.getuid()}:
+                raise ValueError("Research toolchain tree exceeds ownership or member bound")
+            if stat.S_ISLNK(info.st_mode):
+                if not item.resolve(strict=True).is_relative_to(root):
+                    raise ValueError("Research toolchain tree symlink escapes its root")
+                member = {"kind": "symlink", "target": os.readlink(item)}
+            elif stat.S_ISDIR(info.st_mode):
+                member = {"kind": "directory"}
+            elif stat.S_ISREG(info.st_mode):
+                size += info.st_size
+                if size > 8 * 1024**3:
+                    raise ValueError("Research toolchain tree exceeds byte bound")
+                with item.open("rb") as handle:
+                    digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                member = {"kind": "file", "bytes": info.st_size, "sha256": digest}
+            else:
+                raise ValueError("Research toolchain tree has a non-file member")
+            if not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o002:
+                raise ValueError("Research toolchain tree is world writable")
+            observed[relative] = member
+    if observed != expected["members"]:
+        raise ValueError("Research toolchain tree differs from its exact manifest")
+    if root.stat().st_mode & 0o002:
+        raise ValueError("Research toolchain root is world writable")
+    return {"root": str(root),
+            "sha256": hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+
+
+def _with_research_environment(environment: Mapping[str, str], research: Mapping[str, str]) -> dict[str, str]:
+    """Expose only the admitted tree, preserving the sealed environment."""
+    result = dict(environment)
+    if research:
+        result["PATH"] = f"{research['root']}/bin:{result['PATH']}"
+        result["PYTHONPATH"] = f"{research['root']}/python:{result.get('PYTHONPATH', '')}".rstrip(":")
+        result[_RESEARCH_TOOLCHAIN_SHA256_ENV] = research["sha256"]
+        if "IPFS_ACCELERATE_AGENT_VALIDATION_PATH" in result:
+            result["IPFS_ACCELERATE_AGENT_VALIDATION_PATH"] = result["PATH"]
+    return result
+
+
+def _grok_task_container_environment(
+    *, base_env: Mapping[str, str], child_env: Mapping[str, str],
+    workspace: Path, grok_home: Path, tex_toolchain: Mapping[str, str] | None = None,
+    research_toolchain: Mapping[str, str] | None = None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Translate the non-secret command declaration to the pinned toolchain.
+
+    This is provider-side discovery and evidence generation, not authoritative
+    validation. Unmounted managed roots fail closed rather than being invented.
+    """
+    approved = project_provider_command_environment(base_env)
+    parent_formal = approved.pop(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV, "") or child_env.get(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV, "")
+    for name in ("IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+                 "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT"):
+        if name in approved:
+            root = Path(approved[name]).resolve(strict=True)
+            if not any(root.is_relative_to(parent) for parent in (workspace, Path("/usr"))):
+                raise ValueError("Grok task managed command root is not mounted")
+    fixed = _codex_task_container_environment()
+    fixed.pop("CODEX_HOME")
+    fixed.update(HOME=str(grok_home), GROK_HOME=str(grok_home),
+                 XDG_CONFIG_HOME=str(grok_home / "xdg-config"),
+                 XDG_DATA_HOME=str(grok_home / "xdg-data"),
+                 XDG_STATE_HOME=str(grok_home / "xdg-state"))
+    fixed.update({name: value for name, value in build_grok_cli_env(
+        base_env={"PATH": "/usr/bin:/bin"}, isolate_alternate_providers=True,
+    ).items() if name != "PATH"})
+    approved.update({name: fixed[name] for name in (
+        "PATH", "LANG", "LC_ALL", "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PYTHONPATH"
+    )})
+    approved.update(TMPDIR="/tmp", IPFS_ACCELERATE_AGENT_VALIDATION_PATH=fixed["PATH"],
+                    IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON=str(_CODEX_TASK_TOOLCHAIN_PYTHON))
+    if tex_toolchain:
+        tex_path = f"{tex_toolchain['root']}/bin/aarch64-linux:{Path(tex_toolchain['wrapper']).parent}:{fixed['PATH']}"
+        tex_env = {"PATH": tex_path, "IPFS_ACCELERATE_AGENT_VALIDATION_PATH": tex_path,
+                   "TEXMFHOME": "/tmp/ipfs-texmf-home", "TEXMFVAR": "/tmp/ipfs-texmf-var",
+                   "TEXMFCONFIG": "/tmp/ipfs-texmf-config", _GROK_TEX_TOOLCHAIN_SHA256_ENV: tex_toolchain["sha256"]}
+        approved.update(tex_env)
+        fixed.update(tex_env)
+    fixed = _with_research_environment(fixed, research_toolchain or {})
+    approved = _with_research_environment(approved, research_toolchain or {})
+    # Credentials remain environment/file based and never enter either source
+    # file or argv. Only the primary provider's admitted names may survive.
+    for name in ("XAI_API_KEY", "GROK_API_KEY", "ipfs_accelerate_py_XAI_API_KEY"):
+        if name in child_env:
+            fixed[name] = child_env[name]
+    if parent_formal:
+        # The host declaration is provenance, not the identity of this remapped
+        # container environment. Its effective contract is hashed separately.
+        fixed[_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV] = parent_formal
+        approved[_GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV] = parent_formal
+    fixed[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = str(_GROK_CONTAINER_COMMAND_WRAPPER)
+    fixed[PROVIDER_COMMAND_ENV_DIGEST_ENV] = provider_command_environment_sha256(approved)
+    return fixed, approved
+
+
+def _research_module_preflight_source(environment: Mapping[str, str], modules: Sequence[str]) -> str:
+    """Import fixed required modules from the sealed paths under isolated Python."""
+    paths = tuple(path for path in environment.get("PYTHONPATH", "").split(":") if path)
+    return ("import importlib,sys\n"
+            + f"sys.path[:0] = {paths!r}\n"
+            + f"[importlib.import_module(name) for name in {tuple(modules)!r}]\n")
+
+
+def _write_grok_task_container_launchers(
+    *, directory: Path, environment: Mapping[str, str], approved: Mapping[str, str],
+    required_commands: Sequence[str], required_modules: Sequence[str] = (),
+) -> tuple[Path, Path]:
+    """Materialize non-secret, owner-only sources for exact read-only mounts."""
+    directory.mkdir(mode=0o700)
+    wrapper = directory / "provider-command-env"
+    content = _sealed_launcher_source(approved)
+    content = (f"#!{_CODEX_TASK_TOOLCHAIN_PYTHON} -I\n".encode()
+               + content.split(b"\n", 1)[1])
+    wrapper.write_bytes(content)
+    wrapper.chmod(0o500)
+    bootstrap = directory / "task-bootstrap.py"
+    # -I starts this interpreter without image/ambient Python configuration.
+    # Copy only explicitly admitted names, then completely replace the image
+    # environment. Secret VALUES never appear in this generated source.
+    bootstrap.write_text(
+        "import hashlib, os, subprocess, sys\n"
+        f"names = {tuple(sorted(environment))!r}\n"
+        "clean = {name: os.environ[name] for name in names if name in os.environ}\n"
+        "os.environ.clear(); os.environ.update(clean)\n"
+        f"wrapper = {str(_GROK_CONTAINER_COMMAND_WRAPPER)!r}\n"
+        f"expected = {hashlib.sha256(content).hexdigest()!r}\n"
+        "with open(wrapper, 'rb') as source:\n"
+        "    assert hashlib.sha256(source.read()).hexdigest() == expected, 'task launcher changed'\n"
+        f"required = {tuple(dict.fromkeys(('python', 'git', *required_commands)))!r}\n"
+        "result = subprocess.run([wrapper, '--preflight', *required], env=clean, stdout=sys.stderr, check=False)\n"
+        "if result.returncode: raise SystemExit(result.returncode)\n"
+        f"modules = {tuple(required_modules)!r}\n"
+        "if modules:\n"
+        f"    code = {_research_module_preflight_source(approved, required_modules)!r}\n"
+        "    result = subprocess.run([wrapper, '--', 'python', '-I', '-c', code], env=clean, stdout=sys.stderr, check=False, timeout=60)\n"
+        "    if result.returncode: raise SystemExit(result.returncode)\n"
+        "if len(sys.argv) < 2: raise SystemExit(64)\n"
+        "os.execve(sys.argv[1], sys.argv[1:], clean)\n",
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o500)
+    return wrapper, bootstrap
+
+
 def _docker_grok_command(
     *,
     grok_command: Sequence[str],
@@ -2549,8 +2944,10 @@ def _docker_grok_command(
     cidfile: Path,
     docker_bin: str = "",
     isolation_image: str = "",
+    task_execution: bool = False,
+    required_commands: Sequence[str] = (),
 ) -> list[str]:
-    """Wrap Grok in a peer-provider capability boundary without shell tools.
+    """Wrap Grok in the peer-provider capability boundary.
 
     Grok necessarily retains its own read-only auth and writable ephemeral
     session state.  This boundary withholds peer providers; it is not a
@@ -2563,6 +2960,38 @@ def _docker_grok_command(
     image = str(isolation_image).strip()
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
         raise ValueError("Docker Grok isolation image is not an immutable image ID")
+    if task_execution and image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
+        raise ValueError("Grok task execution requires the pinned task-toolchain image")
+    task_environment: dict[str, str] = {}
+    launchers: tuple[Path, Path] | None = None
+    tex_toolchain: dict[str, str] = {}
+    research_toolchain: dict[str, str] = {}
+    if task_execution:
+        tex_toolchain = _grok_task_tex_toolchain(base_env)
+        research_toolchain = _research_task_toolchain(base_env)
+        if research_toolchain and (Path(research_toolchain["root"]).is_relative_to(workspace)
+                or workspace.is_relative_to(Path(research_toolchain["root"]))):
+            raise ValueError("Grok research toolchain overlaps writable workspace")
+        if tex_toolchain and any(
+            Path(tex_toolchain[name]).is_relative_to(workspace)
+            or workspace.is_relative_to(Path(tex_toolchain[name]))
+            for name in ("root", "wrapper")
+        ):
+            raise ValueError("Grok TeX toolchain overlaps the writable workspace")
+        task_environment, approved = _grok_task_container_environment(
+            base_env=base_env, child_env=child_env, workspace=workspace, grok_home=grok_home,
+            tex_toolchain=tex_toolchain, research_toolchain=research_toolchain,
+        )
+        launchers = _write_grok_task_container_launchers(
+            directory=mask_root.parent / "task-launchers", environment=task_environment,
+            approved=approved, required_commands=(
+                *required_commands,
+                *(_RESEARCH_REQUIRED_COMMANDS if research_toolchain else ()),
+                *(("latexmk", "pdflatex", "bibtex", Path(tex_toolchain["wrapper"]).name) if tex_toolchain else ()),
+            ), required_modules=(_RESEARCH_REQUIRED_MODULES if research_toolchain else ()),
+        )
+        child_env.clear()
+        child_env.update(task_environment)
     container_grok = Path("/opt/ipfs-accelerate/grok")
     command = [
         docker,
@@ -2597,6 +3026,11 @@ def _docker_grok_command(
         "--workdir",
         str(workspace),
     ]
+    if task_execution:
+        command.extend(["--network=bridge", "--runtime=runc",
+                        f"--entrypoint={_CODEX_TASK_TOOLCHAIN_PYTHON}"])
+        for override in _CODEX_DOCKER_IMAGE_ENV_OVERRIDES:
+            command.extend(["--env", override])
     # Docker receives values through its already-sanitized process environment;
     # secrets are never serialized into argv or process listings.
     for name in sorted(child_env):
@@ -2607,6 +3041,23 @@ def _docker_grok_command(
     host_usr = _existing_path(Path("/usr"))
     if host_usr is not None:
         command.extend(_docker_mount(host_usr, read_only=True))
+    if task_execution:
+        if host_usr is None:
+            raise ValueError("Grok task execution requires the host /usr toolchain")
+        host_ca = _existing_path(Path("/etc/ssl/certs"))
+        if host_ca is None:
+            raise ValueError("Grok task execution requires host CA certificates")
+        command.extend(_docker_mount(host_ca, read_only=True))
+        command.extend(_docker_mount(_host_codex_task_toolchain_python(),
+                                     destination=_CODEX_TASK_TOOLCHAIN_PYTHON, read_only=True))
+        assert launchers is not None
+        for source, destination in zip(launchers, (_GROK_CONTAINER_COMMAND_WRAPPER, _GROK_CONTAINER_BOOTSTRAP)):
+            command.extend(_docker_mount(source, destination=destination, read_only=True))
+        if tex_toolchain:
+            for name in ("root", "wrapper"):
+                command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
+    if research_toolchain:
+        command.extend(_docker_mount(Path(research_toolchain["root"]), read_only=True))
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -2660,7 +3111,21 @@ def _docker_grok_command(
 
     inner = list(grok_command)
     inner[0] = str(container_grok)
-    command.extend([image, *inner])
+    if task_execution:
+        if "--sandbox" in inner:
+            raise ValueError("Grok Docker task profile already has a nested sandbox")
+        inner.extend(["--sandbox", "off"])
+        # Tool widening happens here, after exact Docker/toolchain admission.
+        for flag, expected, replacement in (
+            ("--tools", _SEALED_GROK_TOOLS, _DOCKER_TASK_GROK_TOOLS),
+            ("--disallowed-tools", _SEALED_GROK_DISALLOWED_TOOLS, _DOCKER_TASK_GROK_DISALLOWED_TOOLS),
+        ):
+            if inner.count(flag) != 1 or inner[inner.index(flag) + 1] != expected:
+                raise ValueError("Grok task tool profile is not the sealed source profile")
+            inner[inner.index(flag) + 1] = replacement
+        command.extend([image, "-I", str(_GROK_CONTAINER_BOOTSTRAP), *inner])
+    else:
+        command.extend([image, *inner])
     return command
 
 
@@ -2843,6 +3308,7 @@ def _docker_codex_fallback_command(
     cidfile: Path,
     docker_bin: str,
     isolation_image: str,
+    base_env: Mapping[str, str] | None = None,
 ) -> list[str]:
     """Wrap the pinned Codex fallback in a host-write-confined container."""
 
@@ -2865,6 +3331,25 @@ def _docker_codex_fallback_command(
     expected_environment = _codex_task_container_environment()
     if child_env != expected_environment:
         raise ValueError("Codex fallback container environment is not sealed")
+
+    # Reuse the exact optional task formatting profile already qualified for
+    # Grok. No ambient home/cache or provider authority is inherited.
+    tex_toolchain = _grok_task_tex_toolchain(base_env or {})
+    research_toolchain = _research_task_toolchain(base_env or {})
+    if tex_toolchain:
+        if any(Path(tex_toolchain[name]).is_relative_to(workspace)
+               or workspace.is_relative_to(Path(tex_toolchain[name]))
+               for name in ("root", "wrapper")):
+            raise ValueError("Codex TeX toolchain overlaps the writable workspace")
+        expected_environment = _codex_task_container_environment(tex_toolchain=tex_toolchain)
+        child_env.clear()
+        child_env.update(expected_environment)
+    if research_toolchain:
+        if Path(research_toolchain["root"]).is_relative_to(workspace) or workspace.is_relative_to(Path(research_toolchain["root"])):
+            raise ValueError("Codex research toolchain overlaps writable workspace")
+        expected_environment = _with_research_environment(expected_environment, research_toolchain)
+        child_env.clear()
+        child_env.update(expected_environment)
 
     _validate_codex_quota_fallback_command(
         codex_command,
@@ -2935,6 +3420,9 @@ def _docker_codex_fallback_command(
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
     command.extend(_docker_mount(host_ca_certificates, read_only=True))
+    if tex_toolchain:
+        for name in ("root", "wrapper"):
+            command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
     command.extend(
         _docker_mount(
             host_python,
@@ -2942,6 +3430,8 @@ def _docker_codex_fallback_command(
             read_only=True,
         )
     )
+    if research_toolchain:
+        command.extend(_docker_mount(Path(research_toolchain["root"]), read_only=True))
     for git_root in _git_metadata_roots(workspace):
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
@@ -2962,6 +3452,22 @@ def _docker_codex_fallback_command(
     environment_assignments = [
         f"{name}={value}" for name, value in sorted(expected_environment.items())
     ]
+    if tex_toolchain or research_toolchain:
+        required = (("latexmk", "pdflatex", "bibtex", Path(tex_toolchain["wrapper"]).name) if tex_toolchain else ()) + (_RESEARCH_REQUIRED_COMMANDS if research_toolchain else ())
+        modules = _RESEARCH_REQUIRED_MODULES if research_toolchain else ()
+        preflight = (
+            "import os,shutil,subprocess,sys\n"
+            f"missing=[name for name in {required!r} if shutil.which(name) is None]\n"
+            "if missing:\n"
+            " sys.stderr.write('Codex task formatting tools unavailable: '+','.join(missing)+'\\n');sys.exit(127)\n"
+            f"modules={modules!r}\n"
+            "if modules:\n"
+            f" code={_research_module_preflight_source(expected_environment, modules)!r}\n"
+            " result=subprocess.run([sys.executable,'-I','-c',code],env=dict(os.environ),check=False,timeout=60)\n"
+            " if result.returncode:sys.exit(result.returncode)\n"
+            "os.execvpe(sys.argv[1],sys.argv[1:],dict(os.environ))\n"
+        )
+        inner = [str(_CODEX_TASK_TOOLCHAIN_PYTHON), "-I", "-c", preflight, *inner]
     command.extend([image, "-i", *environment_assignments, *inner])
     return command
 
@@ -3024,6 +3530,7 @@ def _run_codex_quota_fallback_in_docker(
             cidfile=docker_lease.cidfile,
             docker_bin=docker_bin,
             isolation_image=isolation_image,
+            base_env=base_env,
         )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
@@ -3096,7 +3603,7 @@ def _run_codex_quota_fallback_in_docker(
             environment_receipt = {
                 "docker_cli": dict(sorted(docker_environment.items())),
                 "container": dict(
-                    sorted(_codex_task_container_environment().items())
+                    sorted(child_env.items())
                 ),
             }
             image_receipt = {
@@ -6339,10 +6846,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     provider_home=_policy_path.parent,
                     prompt_path=Path(prompt_path).resolve(strict=True),
                 )
-                isolation_image = _docker_isolation_image_id(
+                isolation_image = _docker_codex_task_toolchain_image_id(
                     docker_lease.docker_bin,
                     docker_config=docker_lease.docker_config,
-                    base_env=base_env,
                 )
                 if not isolation_image:
                     raise ValueError(
@@ -6363,6 +6869,8 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     cidfile=docker_lease.cidfile,
                     docker_bin=docker_lease.docker_bin,
                     isolation_image=isolation_image,
+                    task_execution=True,
+                    required_commands=command_environment.required_commands,
                 )
                 # Docker is pinned to the validated local socket and empty
                 # runner-owned config. Only explicitly named sanitized
@@ -6447,22 +6955,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
 
         try:
-            if docker_lease is not None:
-                primary_returncode = (
-                    _run_created_grok_container_with_typed_failure_capture(
-                        cmd,
-                        docker_bin=docker_lease.docker_bin,
-                        docker_config=docker_lease.docker_config,
-                        cidfile=docker_lease.cidfile,
-                        workspace=workspace,
-                        env=grok_launch_env,
-                    )
-                )
-            else:
-                primary_returncode = _run_grok_with_typed_failure_capture(
-                    cmd,
-                    env=grok_launch_env,
-                )
+            # Docker creation above already bound cmd to the exact attached
+            # start. Run it through the live typed-output path once; passing a
+            # start command to the create helper would buffer provider output
+            # and misclassify its 120-second wait as container creation.
+            primary_returncode = _run_grok_with_typed_failure_capture(
+                cmd,
+                env=grok_launch_env,
+            )
             docker_run_finished = True
         except (OSError, ValueError) as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)

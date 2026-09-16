@@ -87,6 +87,7 @@ def test_all_builtin_providers_publish_typed_llm_metadata() -> None:
             "meta_ai",
             "mistral_vibe",
             "mock",
+            "muse_code",
             "openai",
             "openrouter",
             "p2p_task_queue",

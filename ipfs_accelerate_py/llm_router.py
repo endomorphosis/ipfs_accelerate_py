@@ -51,8 +51,14 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
 - `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
     - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
-      `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY`
-    - `ipfs_accelerate_py_META_AI_MODEL` (default: muse-spark-1.1)
+      `META_AI_API_KEY`, `META_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY`
+    - `ipfs_accelerate_py_META_AI_MODEL` (default: muse-spark-1.1;
+      recommended new work: muse-spark-1.3)
+    - Standard vs Contributor model ids (`*-contributor`) select pricing and
+      per-team RPM/TPM limits; 429/5xx retry with exponential backoff and
+      `Retry-After`; 402 billing and 401 auth fail closed
+    - Token usage, cached/reasoning tokens, rate-limit headers, and estimated
+      USD cost are recorded on `get_last_meta_observation()`
     - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.meta.ai/v1)
 - `goose_cli`: Block/AAIF Goose CLI via `goose run` (canonical adapter in
   `cli_runtime.providers.goose`)
@@ -70,6 +76,20 @@ Additional optional providers (opt-in by selecting provider):
     - pass `agent=True` / `side_effecting=True` only for explicitly authorized
       tool-using agent runs; agent requests bypass response caches, default-model
       retry, automatic provider fallback, and concurrent batch workers
+- `muse_code`: Meta Muse Code CLI via `muse exec` (canonical adapter in
+  `cli_runtime.providers.muse`)
+    - always side-effecting (the agent may edit files and run commands)
+    - default automation: `--disable-approval` keeps the OS sandbox on
+    - `--yolo` requires an explicit flag (disables sandbox and trusts workspace)
+    - default model is `muse-spark-1.2`; override with
+      `ipfs_accelerate_py_MUSE_CODE_MODEL` / `MUSE_MODEL` / `--model`
+    - `IPFS_ACCELERATE_MUSE_PATH` / `MUSE_BIN` or `muse` on PATH (`~/.local/bin/muse`)
+    - headless auth: `META_API_KEY` (or Meta Model API key aliases)
+    - install: `curl -fsSL https://dev.meta.ai/install.sh | bash`
+    - Explicit provider selection may invoke `ensure_muse` unless
+      `IPFS_ACCELERATE_MUSE_AUTO_INSTALL=0`
+    - Implicit discovery is detect-only and requires opt-in
+      `IPFS_ACCELERATE_MUSE_DISCOVERY=1` (or aliases)
 - `llama_cpp`: local llama.cpp OpenAI-compatible server
     - `IPFS_ACCELERATE_LLAMA_CPP_BASE_URL` (default from host/port: http://127.0.0.1:8080/v1)
     - `IPFS_ACCELERATE_LLAMA_CPP_MODEL` (chat-completions model id; defaults to Leanstral NVFP4 ref)
@@ -137,9 +157,20 @@ logger = logging.getLogger(__name__)
 from .common.meta_model_api import (
     META_MODEL_API_BASE_URL,
     META_MODEL_API_DEFAULT_MODEL,
+    META_RETRY_MAX_ATTEMPTS,
+    classify_meta_http_error,
+    estimate_meta_cost_usd,
+    format_meta_http_error,
+    meta_http_should_retry,
     meta_model_api_key_fingerprint,
+    meta_model_context_window,
     normalize_meta_model_name,
+    get_last_meta_observation,
+    parse_meta_rate_limit_headers,
+    parse_meta_usage,
+    record_meta_observation,
     resolve_meta_model_api_key,
+    sleep_for_meta_retry,
 )
 from .model_catalog import (
     CapabilityDescriptor,
@@ -2333,6 +2364,8 @@ _XAI_API_PROVIDER_ALIASES = {
 }
 _LAST_GENERATION_TRACE = threading.local()
 _LAST_USAGE_ADMISSION = threading.local()
+_ALLOCATION_CONTEXT = threading.local()
+_API_KEY_CONTEXT = threading.local()
 _PINNED_SYMAI_LEANSTRAL_ALIAS = "Leanstral-119B"
 _PINNED_SYMAI_LEANSTRAL_INNER_PROVIDER = "leanstral_local"
 _PINNED_SYMAI_LEANSTRAL_MODEL = "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
@@ -2479,6 +2512,11 @@ _PROVIDER_ALIASES = {
     "block_goose": "goose_cli",
     "block-goose": "goose_cli",
     "aaif_goose": "goose_cli",
+    "muse": "muse_code",
+    "muse-code": "muse_code",
+    "musecode": "muse_code",
+    "muse_cli": "muse_code",
+    "muse-cli": "muse_code",
 }
 _GOOSE_CLI_PROVIDER_ALIASES = {
     "goose_cli",
@@ -2488,10 +2526,19 @@ _GOOSE_CLI_PROVIDER_ALIASES = {
     "block-goose",
     "aaif_goose",
 }
+_MUSE_CODE_PROVIDER_ALIASES = {
+    "muse_code",
+    "muse",
+    "muse-code",
+    "musecode",
+    "muse_cli",
+    "muse-cli",
+}
 _UNPINNED_OPTIONAL_PROVIDER_ORDER = [
     "codex_cli",
     "copilot_cli",
     "goose_cli",
+    "muse_code",
     "openai",
     "hf_inference_api",
     "openrouter",
@@ -2501,6 +2548,8 @@ _UNPINNED_OPTIONAL_PROVIDER_ORDER = [
     "claude_py",
     "gemini_py",
     "copilot_sdk",
+    "xai",
+    "meta_ai",
 ]
 
 _LLM_GENERATE_PROVIDER_FORWARD_KEYS = (
@@ -3838,6 +3887,16 @@ def _effective_model_key(
             or _generic_llm_model_env()
             or "openai/gpt-4o-mini"
         ).strip()
+    if pk in _MUSE_CODE_PROVIDER_ALIASES:
+        return (
+            _coalesce_env(
+                "ipfs_accelerate_py_MUSE_CODE_MODEL",
+                "IPFS_ACCELERATE_PY_MUSE_CODE_MODEL",
+                "IPFS_ACCELERATE_MUSE_CODE_MODEL",
+                "MUSE_MODEL",
+            )
+            or "muse-spark-1.2"
+        ).strip()
     if pk in {"codex", "codex_cli"}:
         return (
             _coalesce_env(
@@ -4215,6 +4274,8 @@ def _generic_llm_model_env() -> str:
         "vibe",
         "xai",
         "meta_ai",
+        "muse_code",
+        "muse",
         "hf",
         "huggingface",
         "local_hf",
@@ -6033,12 +6094,15 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             trace_dir = kwargs.pop("trace_dir", None)
             trace_enabled = bool(kwargs.pop("trace", False) or trace_jsonl_path or trace_dir)
 
-            json_mode = bool(trace_enabled or kwargs.pop("json", False))
+            json_mode = bool(trace_enabled or kwargs.pop("json", True))
+            resume_session_id = str(kwargs.pop("resume_session_id", "") or "").strip()
 
             with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
                 last_msg_path = last_msg.name
 
             cmd: list[str] = ["codex", "exec"]
+            if resume_session_id:
+                cmd.extend(["resume", resume_session_id])
             if skip_git_repo_check:
                 cmd.append("--skip-git-repo-check")
             # Some Codex CLI builds do not accept '--sandbox auto'.
@@ -6075,6 +6139,22 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     os.unlink(last_msg_path)
                 except Exception:
                     pass
+
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                remember_cli_run(
+                    "codex_cli",
+                    proc.stdout or "",
+                    proc.stderr or "",
+                    extra={
+                        "model_id": model,
+                        "exit_code": proc.returncode,
+                        "session_id": resume_session_id,
+                    },
+                )
+            except Exception:
+                pass
 
             if proc.returncode == 0 or text_out:
                 if json_mode and proc.stdout:
@@ -6180,6 +6260,11 @@ def _goose_discovery_enabled() -> bool:
 def _is_goose_provider_name(name: Optional[str]) -> bool:
     key = _canonicalize_provider(name or "")
     return bool(key) and key in _GOOSE_CLI_PROVIDER_ALIASES
+
+
+def _is_muse_code_provider_name(name: Optional[str]) -> bool:
+    key = _canonicalize_provider(name or "")
+    return bool(key) and key in _MUSE_CODE_PROVIDER_ALIASES
 
 
 def _kwargs_are_side_effecting(kwargs: Mapping[str, object]) -> bool:
@@ -6723,6 +6808,178 @@ def _get_goose_cli_provider(*, auto_install: bool = False) -> Optional[LLMProvid
     return _GooseCLIRouterProvider()
 
 
+def find_muse_cli() -> Optional[str]:
+    """Locate the Muse Code CLI binary without starting a process.
+
+    Search order matches the installer (explicit path env, PATH, default
+    launcher) but never probes ``--version`` and never installs.
+    """
+
+    configured = _coalesce_env(
+        "IPFS_ACCELERATE_MUSE_PATH",
+        "IPFS_ACCELERATE_PY_MUSE_PATH",
+        "ipfs_accelerate_py_MUSE_BIN",
+        "IPFS_ACCELERATE_PY_MUSE_BIN",
+        "IPFS_ACCELERATE_AGENT_MUSE_BIN",
+        "MUSE_BIN",
+        "MUSE_CLI_PATH",
+    )
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        which = shutil.which(configured)
+        if which:
+            return which
+    found = shutil.which("muse")
+    if found:
+        return found
+    default = Path.home() / ".local" / "bin" / "muse"
+    if default.is_file() and os.access(default, os.X_OK):
+        return str(default)
+    return None
+
+
+def _muse_default_model() -> str:
+    return (
+        _coalesce_env(
+            "ipfs_accelerate_py_MUSE_CODE_MODEL",
+            "IPFS_ACCELERATE_PY_MUSE_CODE_MODEL",
+            "IPFS_ACCELERATE_MUSE_CODE_MODEL",
+            "MUSE_MODEL",
+            "ipfs_accelerate_py_META_AI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        )
+        or "muse-spark-1.2"
+    )
+
+
+def _muse_discovery_enabled() -> bool:
+    """Whether Muse Code may appear during automatic/implicit provider discovery.
+
+    Default is off: ``muse exec`` is side-effecting. Explicit preferred/forced
+    Muse selection is unaffected.
+    """
+
+    for name in (
+        "IPFS_ACCELERATE_MUSE_DISCOVERY",
+        "IPFS_ACCELERATE_PY_MUSE_DISCOVERY",
+        "ipfs_accelerate_py_MUSE_DISCOVERY",
+    ):
+        raw = os.environ.get(name)
+        if raw is not None:
+            return _truthy(raw)
+    return False
+
+
+def _get_muse_code_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
+    """Return the Muse Code CLI provider via the canonical adapter.
+
+    * ``auto_install=True`` (explicit preferred/forced selection) may invoke
+      :func:`ensure_muse` subject to installer policy.
+    * ``auto_install=False`` (implicit discovery) is detect-only and never
+      installs. Callers must also gate discovery with
+      :func:`_muse_discovery_enabled` for automatic provider order.
+
+    ``muse exec`` is always side-effecting. Ordinary ``generate_text`` uses
+    ``--disable-approval`` (sandbox on) and a bounded ``--max-model-steps``.
+    """
+
+    try:
+        from .cli_runtime.installers.muse import (
+            discover_muse,
+            ensure_muse,
+        )
+        from .cli_runtime.providers.muse import (
+            MuseProviderError,
+            create_muse_provider,
+        )
+    except Exception:
+        if not find_muse_cli():
+            return None
+        return None
+
+    executable: Optional[str] = None
+    version = ""
+
+    if auto_install:
+        try:
+            install_result = ensure_muse(auto_install=True)
+        except Exception as exc:
+            raise LLMRouterError(f"Muse Code provider unavailable: {exc}") from exc
+        if not install_result.available or not install_result.executable:
+            detail = install_result.reason or "installation did not produce a muse executable"
+            raise LLMRouterError(f"Muse Code provider unavailable: {detail}")
+        executable = str(install_result.executable)
+        version = str(install_result.version or "")
+    else:
+        try:
+            found = discover_muse(probe_version=False)
+        except Exception:
+            found = None
+        if found is not None and found.available and found.executable:
+            executable = str(found.executable)
+            version = str(found.version or "")
+        else:
+            executable = find_muse_cli()
+        if not executable:
+            return None
+
+    default_model = _muse_default_model()
+    adapter = create_muse_provider(
+        executable=executable,
+        allow_install=False,
+        default_model=default_model,
+    )
+    if version:
+        adapter.version = version
+
+    class _MuseCodeRouterProvider:
+        """Thin LLMProvider façade over :class:`MuseCLIProvider`."""
+
+        _adapter = adapter
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            effective_model = str(model_name or "").strip() or default_model
+            if "spark" in effective_model.lower() or effective_model.startswith("muse-"):
+                effective_model = normalize_meta_model_name(effective_model)
+            call_kwargs = dict(kwargs)
+            call_kwargs.setdefault("side_effecting", True)
+            try:
+                text = self._adapter.generate(
+                    str(prompt),
+                    model_name=effective_model,
+                    **call_kwargs,
+                )
+            except MuseProviderError as exc:
+                message = str(exc) or "muse_code failed"
+                error = LLMRouterError(message)
+                setattr(
+                    error,
+                    "side_effects_started",
+                    bool(getattr(exc, "side_effects_started", True)),
+                )
+                setattr(error, "muse_error_kind", getattr(exc, "kind", None))
+                setattr(error, "retryable", bool(getattr(exc, "retryable", False)))
+                raise error from exc
+            except LLMRouterError:
+                raise
+            except Exception as exc:
+                message = str(exc) or "muse_code failed"
+                error = LLMRouterError(message)
+                setattr(error, "side_effects_started", True)
+                raise error from exc
+            return str(text)
+
+    return _MuseCodeRouterProvider()
+
+
 def _get_copilot_cli_provider() -> Optional[LLMProvider]:
     # Default to the official Copilot CLI via npx. We run it in "interactive"
     # mode with an auto-executed prompt (`-i`) so this works in non-interactive
@@ -6897,6 +7154,21 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                 )
 
             proc = _run_copilot(cmd)
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                remember_cli_run(
+                    "copilot_cli",
+                    proc.stdout or "",
+                    proc.stderr or "",
+                    extra={
+                        "model_id": model,
+                        "exit_code": proc.returncode,
+                        "session_id": str(resume_session_id or "").strip(),
+                    },
+                )
+            except Exception:
+                pass
             if proc.returncode != 0 and appended_continue:
                 msg = ((proc.stderr or "") or "").lower()
                 retryable_continue = any(
@@ -7156,6 +7428,18 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
             except FileNotFoundError as exc:
                 raise LLMRouterError("Gemini CLI not found on PATH") from exc
 
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                remember_cli_run(
+                    "gemini_cli",
+                    proc.stdout or "",
+                    proc.stderr or "",
+                    extra={"model_id": model_name, "exit_code": proc.returncode},
+                )
+            except Exception:
+                pass
+
             if proc.returncode == 0:
                 return _clean_gemini_output(proc.stdout or "")
 
@@ -7211,9 +7495,21 @@ def _get_claude_code_provider() -> Optional[LLMProvider]:
         ) -> str:
             _ = model_name
             timeout = float(kwargs.get("timeout", 180))
-            return _clean_claude_output(
-                _run_cli_command(command, prompt, timeout_seconds=timeout, label="Claude Code CLI")
+            resume_session_id = str(kwargs.get("resume_session_id") or "").strip()
+            raw = _run_cli_command(
+                command, prompt, timeout_seconds=timeout, label="Claude Code CLI"
             )
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                remember_cli_run(
+                    "claude_code",
+                    raw,
+                    extra={"model_id": model_name, "session_id": resume_session_id},
+                )
+            except Exception:
+                pass
+            return _clean_claude_output(raw)
 
     return _ClaudeCodeProvider()
 
@@ -7332,6 +7628,16 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                     ) from exc
                 _raise_mistral_vibe_access_error(exc)
 
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                remember_cli_run(
+                    "mistral_vibe",
+                    raw,
+                    extra={"model_id": model, "session_id": kwargs.get("session_id")},
+                )
+            except Exception:
+                pass
             return _clean_mistral_vibe_output(raw)
 
     return _MistralVibeProvider()
@@ -7519,6 +7825,39 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         pass
 
             payload = _grok_cli_json_payload(proc.stdout or "")
+            try:
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                extra = {
+                    "model_id": model,
+                    "exit_code": proc.returncode,
+                    "session_id": resume_session_id or chat_session_id,
+                }
+                if isinstance(payload, dict):
+                    extra.update(
+                        {
+                            k: payload.get(k)
+                            for k in (
+                                "sessionId",
+                                "requestId",
+                                "stopReason",
+                                "num_turns",
+                                "total_cost_usd",
+                            )
+                            if k in payload
+                        }
+                    )
+                    usage = payload.get("usage")
+                    if isinstance(usage, dict):
+                        extra.update(usage)
+                remember_cli_run(
+                    "grok_cli",
+                    proc.stdout or "",
+                    proc.stderr or "",
+                    extra=extra,
+                )
+            except Exception:
+                pass
             if proc.returncode != 0:
                 raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
             if payload is not None and str(payload.get("type") or "").lower() == "error":
@@ -7682,37 +8021,104 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
         META_MODEL_API_BASE_URL,
     ).rstrip("/")
 
+    def _raise_classified(
+        status_code: Optional[int],
+        body: str,
+        *,
+        headers: Optional[Mapping[str, Any]] = None,
+        reason: str = "",
+        model_name: Optional[str] = None,
+        cause: Optional[BaseException] = None,
+    ) -> None:
+        failure = classify_meta_http_error(
+            status_code, body, headers=headers, reason=reason
+        )
+        record_meta_observation(model_name=model_name, failure=failure)
+        error = LLMRouterError(format_meta_http_error(failure))
+        setattr(error, "meta_error_kind", failure.kind)
+        setattr(error, "retryable", failure.retryable)
+        setattr(error, "status_code", failure.status_code)
+        setattr(error, "error_type", failure.error_type)
+        setattr(error, "error_code", failure.error_code)
+        setattr(error, "retry_after_seconds", failure.retry_after_seconds)
+        if cause is not None:
+            raise error from cause
+        raise error
+
     def _request(payload: dict, *, timeout: float) -> dict:
         import urllib.request
         import urllib.error
 
         url = f"{base_url}/chat/completions"
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            method="POST",
-            headers={
-                "Authorization": "Bearer " + api_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-            raise RuntimeError(f"Meta AI HTTP {exc.code}: {detail or exc.reason}") from exc
-        except Exception as exc:
-            raise RuntimeError(f"Meta AI request failed: {exc}") from exc
+        model_name = str(payload.get("model") or "")
+        last_error: Optional[BaseException] = None
+        for attempt in range(META_RETRY_MAX_ATTEMPTS):
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Authorization": "Bearer " + api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                    header_map = {}
+                    headers = getattr(resp, "headers", None)
+                    if headers is not None:
+                        try:
+                            header_map = {str(k): v for k, v in headers.items()}
+                        except Exception:
+                            header_map = {}
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                header_map = {}
+                try:
+                    header_map = {str(k): v for k, v in exc.headers.items()}
+                except Exception:
+                    header_map = {}
+                try:
+                    _raise_classified(
+                        exc.code,
+                        detail,
+                        headers=header_map,
+                        reason=str(exc.reason or ""),
+                        model_name=model_name,
+                        cause=exc,
+                    )
+                except LLMRouterError as classified:
+                    last_error = classified
+                    if meta_http_should_retry(
+                        classified, attempt=attempt, max_attempts=META_RETRY_MAX_ATTEMPTS
+                    ):
+                        sleep_for_meta_retry(classified, attempt)
+                        continue
+                    raise
+            except Exception as exc:
+                raise LLMRouterError(f"Meta AI request failed: {exc}") from exc
 
-        try:
-            data = json.loads(raw)
-        except Exception as exc:
-            raise RuntimeError("Meta AI returned invalid JSON") from exc
-        if not isinstance(data, dict):
-            raise RuntimeError("Meta AI returned invalid JSON")
-        return data
+            try:
+                data = json.loads(raw)
+            except Exception as exc:
+                raise LLMRouterError("Meta AI returned invalid JSON") from exc
+            if not isinstance(data, dict):
+                raise LLMRouterError("Meta AI returned invalid JSON")
+            usage = parse_meta_usage(data)
+            rate_limit = parse_meta_rate_limit_headers(header_map)
+            cost = estimate_meta_cost_usd(usage, model_name=model_name)
+            record_meta_observation(
+                model_name=model_name,
+                usage=usage,
+                rate_limit=rate_limit,
+                estimated_cost_usd=cost,
+            )
+            return data
+        if last_error is not None:
+            raise last_error
+        raise LLMRouterError("Meta AI request failed")
 
     class _MetaAIProvider:
         def chat_completions(
@@ -8719,6 +9125,24 @@ def _provider_cache_key() -> tuple:
         # Presence-only credential markers (never values).
         bool(str(os.getenv("OPENAI_API_KEY") or "").strip()),
         bool(find_goose_cli()),
+        # Muse Code: behavior-changing settings, never secret material.
+        os.getenv("IPFS_ACCELERATE_MUSE_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_MUSE_PATH", "").strip(),
+        os.getenv("ipfs_accelerate_py_MUSE_BIN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_MUSE_BIN", "").strip(),
+        os.getenv("MUSE_BIN", "").strip(),
+        os.getenv("MUSE_CLI_PATH", "").strip(),
+        os.getenv("ipfs_accelerate_py_MUSE_CODE_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_MUSE_CODE_MODEL", "").strip(),
+        os.getenv("MUSE_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_MUSE_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_MUSE_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_MUSE_DISCOVERY", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_MUSE_DISCOVERY", "").strip(),
+        os.getenv("ipfs_accelerate_py_MUSE_DISCOVERY", "").strip(),
+        os.getenv("MUSE_INSTALL_DIR", "").strip(),
+        bool(str(os.getenv("META_API_KEY") or "").strip()),
+        bool(find_muse_cli()),
     )
 
 
@@ -8984,6 +9408,8 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
         return _get_codex_cli_provider()
     if key in _GOOSE_CLI_PROVIDER_ALIASES:
         return _get_goose_cli_provider(auto_install=auto_install)
+    if key in _MUSE_CODE_PROVIDER_ALIASES:
+        return _get_muse_code_provider(auto_install=auto_install)
     if key in {"copilot_cli"}:
         return _get_copilot_cli_provider()
     if key in {"copilot_sdk"}:
@@ -9343,6 +9769,27 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
         tools="supported",
     ),
     _LLMProviderSpec(
+        name="muse_code",
+        aliases=("muse", "muse-code", "musecode", "muse_cli", "muse-cli"),
+        description=(
+            "Meta Muse Code CLI via muse exec. Always side-effecting; "
+            "default automation keeps the OS sandbox (--disable-approval)."
+        ),
+        locality="remote",
+        device="provider-managed",
+        authorization="required",
+        model_env=(
+            "ipfs_accelerate_py_MUSE_CODE_MODEL",
+            "IPFS_ACCELERATE_PY_MUSE_CODE_MODEL",
+            "IPFS_ACCELERATE_MUSE_CODE_MODEL",
+            "MUSE_MODEL",
+            "ipfs_accelerate_py_META_AI_MODEL",
+            "ipfs_accelerate_py_LLM_MODEL",
+        ),
+        default_model="muse-spark-1.2",
+        tools="supported",
+    ),
+    _LLMProviderSpec(
         name="copilot_cli",
         aliases=("copilot",),
         description="GitHub Copilot CLI text generation provider.",
@@ -9535,6 +9982,8 @@ def _llm_model_facts(model_name: str) -> Tuple[Optional[int], Optional[str]]:
         return 131_072, "transformer"
     if normalized == "meta-llama/llama-3.3-70b-instruct":
         return 131_072, "transformer"
+    if "muse-spark" in normalized:
+        return meta_model_context_window(normalized), "transformer"
     if "llama" in normalized or "leanstral" in normalized:
         return None, "transformer"
     return None, None
@@ -10134,6 +10583,7 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         optional_provider_names.insert(insert_at, "goose_cli")
     if _grok_cli_auth_available():
         optional_provider_names.insert(1, "grok_cli")
+    optional_provider_names = _rank_unpinned_provider_names(optional_provider_names)
     for name in optional_provider_names:
         candidate = _builtin_provider_by_name(name)
         if candidate is not None:
@@ -10164,6 +10614,9 @@ def get_llm_provider(
 
     resolved_deps = deps or get_default_router_deps()
     cache_ok = _cache_enabled() if use_cache is None else bool(use_cache)
+    # Unpinned resolution must re-rank from DuckDB session/path stats.
+    if cache_ok and not str(provider or "").strip():
+        cache_ok = False
 
     if not cache_ok:
         return _resolve_provider_uncached(provider, deps=resolved_deps)
@@ -10268,6 +10721,362 @@ def get_last_usage_admission() -> Dict[str, object]:
 
     payload = getattr(_LAST_USAGE_ADMISSION, "payload", None)
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _set_allocation_context(
+    *,
+    session_id: str = "",
+    path: Optional[str] = None,
+) -> None:
+    _ALLOCATION_CONTEXT.session_id = str(session_id or "").strip()[:128]
+    _ALLOCATION_CONTEXT.path = path
+
+
+def _allocation_context() -> tuple[str, Optional[str]]:
+    return (
+        str(getattr(_ALLOCATION_CONTEXT, "session_id", "") or ""),
+        getattr(_ALLOCATION_CONTEXT, "path", None),
+    )
+
+
+def _resolve_allocation_session_id(
+    explicit: Optional[str],
+    kwargs: Mapping[str, object],
+) -> str:
+    for key in (
+        explicit,
+        kwargs.get("allocation_session_id"),
+        kwargs.get("chat_session_id"),
+        kwargs.get("session_id"),
+    ):
+        if isinstance(key, str) and key.strip():
+            raw = key.strip()[:256]
+            try:
+                from .llm_allocation import get_allocation_store
+
+                resolved = get_allocation_store().resolve_session(raw)
+                alloc = str((resolved or {}).get("allocation_session_id") or "")
+                if alloc:
+                    return alloc[:128]
+            except Exception:
+                pass
+            return raw[:128]
+    return ""
+
+
+def _resolve_allocation_path(
+    explicit: Optional[str],
+    kwargs: Mapping[str, object],
+    provider: Optional[str],
+) -> Optional[str]:
+    try:
+        from .llm_allocation.paths import normalize_routing_path, path_for_provider
+    except Exception:
+        return None
+    for key in (explicit, kwargs.get("allocation_path"), kwargs.get("llm_path")):
+        normalized = normalize_routing_path(str(key) if key is not None else "")
+        if normalized:
+            return normalized
+    if provider:
+        return path_for_provider(_canonicalize_provider(provider))
+    return None
+
+
+def cli_tools_status() -> Dict[str, object]:
+    """Install, auth, health, and usage stats for every CLI coding tool."""
+    from .llm_allocation.cli_status import cli_tools_status as _status
+
+    return dict(_status())
+
+
+def render_cli_tools_status() -> str:
+    """Pretty table of :func:`cli_tools_status`."""
+    from .llm_allocation.cli_status import render_cli_tools_status as _render
+
+    return str(_render())
+
+
+def choose_cli_session_route(
+    session_id: Optional[str] = None,
+    *,
+    candidates: Optional[Sequence[str]] = None,
+) -> Dict[str, object]:
+    """Pick a CLI coding tool for a new session, or resume an existing one."""
+    from .llm_allocation.session_route import choose_cli_route
+
+    return dict(choose_cli_route(session_id, candidates=candidates))
+
+
+def migrate_cli_session_route(
+    session_id: str,
+    to_provider: str,
+    *,
+    handoff: str = "",
+    history: str = "full",
+) -> Dict[str, object]:
+    """Rebind an allocation session to another CLI.
+
+    ``history`` is ``full`` (port native transcript), ``compact`` (goal +
+    files + recent turns), or ``none`` (ids only).
+    """
+    from .llm_allocation.session_route import migrate_cli_session
+
+    return dict(
+        migrate_cli_session(
+            session_id, to_provider, handoff=handoff, history=history
+        )
+    )
+
+
+def get_allocation_session(session_id: Optional[str] = None) -> Dict[str, object]:
+    """Return persisted session cost/token/latency stats (no prompts or secrets)."""
+    sid = str(session_id or "").strip()
+    if not sid:
+        sid = _allocation_context()[0]
+    if not sid:
+        return {}
+    try:
+        from .llm_allocation import get_allocation_store
+
+        return dict(get_allocation_store().get_session(sid) or {})
+    except Exception:
+        return {}
+
+
+_STICKY_SKIP_KINDS = frozenset({"billing", "authentication"})
+
+
+def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[str, object]:
+    """Resume the native CLI session bound to this allocation session id."""
+    session_id, _path = _allocation_context()
+    if not session_id or not provider:
+        return kwargs
+    try:
+        from .llm_allocation.paths import CLI_PROVIDERS, inject_cli_session_kwargs
+    except Exception:
+        return kwargs
+    if provider not in CLI_PROVIDERS:
+        return kwargs
+    native = ""
+    try:
+        from .llm_allocation import get_allocation_store
+
+        stored = get_allocation_store().get_cli_session(session_id, provider)
+        native = str((stored or {}).get("native_session_id") or "")
+    except Exception:
+        native = ""
+    inject_cli_session_kwargs(
+        provider,
+        kwargs,
+        native_session_id=native,
+        allocation_session_id=session_id,
+    )
+    return kwargs
+
+
+def _capture_cli_session(provider: str, kwargs: Mapping[str, object]) -> None:
+    """Persist the native CLI session id used for this allocation session."""
+    session_id, _path = _allocation_context()
+    if not session_id or not provider:
+        return
+    try:
+        from .llm_allocation.paths import (
+            CLI_PROVIDERS,
+            cli_session_contract,
+            native_session_from_kwargs,
+        )
+        from .llm_allocation import get_allocation_store
+    except Exception:
+        return
+    if provider not in CLI_PROVIDERS:
+        return
+    native = native_session_from_kwargs(kwargs)
+    if not native and provider in {"muse_code", "muse"}:
+        try:
+            from .cli_runtime.providers.muse import get_last_muse_session_id
+
+            native = get_last_muse_session_id()
+        except Exception:
+            native = ""
+    if not native:
+        return
+    contract = cli_session_contract(provider)
+    try:
+        get_allocation_store().upsert_cli_session(
+            session_id=session_id,
+            provider=provider,
+            native_session_id=native,
+            resume_style=str(contract.get("style") or ""),
+            workspace=str(kwargs.get("workspace") or kwargs.get("cwd") or ""),
+        )
+    except Exception:
+        logger.debug("cli session capture failed", exc_info=True)
+
+
+def _allocation_sticky_provider(
+    session: Mapping[str, object],
+    *,
+    path: Optional[str],
+) -> str:
+    """Return the last healthy provider for a session, or empty if ranking should run."""
+    preferred = str(session.get("preferred_provider") or "").strip()
+    if not preferred:
+        return ""
+    try:
+        from .llm_allocation.paths import path_for_provider
+    except Exception:
+        return preferred
+    if path and path_for_provider(preferred) != path:
+        return ""
+    last_error = str(session.get("last_error_kind") or "")
+    last_provider = str(session.get("last_provider") or "")
+    if last_provider == preferred and last_error in _STICKY_SKIP_KINDS:
+        return ""
+    return preferred
+
+
+def _record_llm_allocation_observation(
+    *,
+    provider: str,
+    model_name: Optional[str],
+    success: bool,
+    latency_ms: float,
+    error: Optional[BaseException] = None,
+    session_id: Optional[str] = None,
+    path: Optional[str] = None,
+) -> None:
+    """Persist one call outcome for DuckDB allocation. Never raises."""
+    try:
+        from .llm_allocation import (
+            CallErrorKind,
+            CallObservation,
+            classify_provider_failure,
+            get_allocation_store,
+            path_for_provider,
+            protocol_for_provider,
+        )
+    except Exception:
+        return
+    try:
+        provider_name = str(provider or "").strip().lower()
+        if not provider_name:
+            return
+        ctx_session, ctx_path = _allocation_context()
+        resolved_session = str(session_id or ctx_session or "").strip()[:128]
+        resolved_path = str(path or ctx_path or path_for_provider(provider_name))
+        seconds = float(latency_ms) / 1000.0
+        observation = CallObservation(
+            provider=provider_name,
+            protocol=protocol_for_provider(provider_name).value,
+            model=str(model_name or "")[:128],
+            success=bool(success),
+            latency_ms=float(latency_ms),
+            error_kind=CallErrorKind.SUCCESS.value if success else CallErrorKind.UNKNOWN.value,
+            session_id=resolved_session,
+            path=resolved_path,
+        )
+        if not success and error is not None:
+            failure = classify_provider_failure(provider_name, str(error), exc=error)
+            observation.error_kind = failure.kind.value
+            observation.retryable = failure.retryable
+            observation.status_code = failure.status_code
+        if provider_name == "meta_ai":
+            meta_obs = get_last_meta_observation()
+            usage = meta_obs.get("usage") if isinstance(meta_obs, dict) else None
+            if isinstance(usage, dict):
+                observation.prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                observation.completion_tokens = int(usage.get("completion_tokens") or 0)
+                observation.total_tokens = int(usage.get("total_tokens") or 0)
+                observation.cached_tokens = int(usage.get("cached_tokens") or 0)
+            cost = meta_obs.get("estimated_cost_usd") if isinstance(meta_obs, dict) else None
+            if isinstance(cost, (int, float)):
+                observation.estimated_cost_usd = float(cost)
+            if seconds > 0 and observation.completion_tokens:
+                observation.tokens_per_second = observation.completion_tokens / seconds
+            elif seconds > 0 and observation.total_tokens:
+                observation.tokens_per_second = observation.total_tokens / seconds
+            rate = meta_obs.get("rate_limit") if isinstance(meta_obs, dict) else None
+            if isinstance(rate, dict):
+                observation.remaining_requests = rate.get("remaining_requests")
+                observation.remaining_tokens = rate.get("remaining_tokens")
+                observation.limit_requests = rate.get("limit_requests")
+                observation.limit_tokens = rate.get("limit_tokens")
+        if provider_name in {"muse_code", "muse"}:
+            try:
+                from .cli_runtime.providers.muse import get_last_muse_observation
+
+                muse_obs = get_last_muse_observation()
+            except Exception:
+                muse_obs = {}
+            if isinstance(muse_obs, dict) and muse_obs:
+                observation.extra_metadata = {
+                    **dict(observation.extra_metadata or {}),
+                    **dict(muse_obs),
+                }
+                if muse_obs.get("model_id") and not observation.model:
+                    observation.model = str(muse_obs.get("model_id") or "")[:128]
+        try:
+            from .cli_runtime.cli_metadata import get_last_cli_observation
+            from .llm_allocation.paths import CLI_PROVIDERS
+
+            if provider_name in CLI_PROVIDERS:
+                cli_obs = get_last_cli_observation(provider_name)
+                if isinstance(cli_obs, dict) and cli_obs:
+                    observation.extra_metadata = {
+                        **dict(cli_obs),
+                        **dict(observation.extra_metadata or {}),
+                    }
+                    if cli_obs.get("model_id") and not observation.model:
+                        observation.model = str(cli_obs.get("model_id") or "")[:128]
+        except Exception:
+            pass
+        extra = dict(observation.extra_metadata or {})
+        slot = str(getattr(_API_KEY_CONTEXT, "slot", "") or extra.get("api_key_slot") or "")
+        fingerprint = str(
+            getattr(_API_KEY_CONTEXT, "fingerprint", "") or extra.get("api_key_fingerprint") or ""
+        )
+        if slot:
+            extra["api_key_slot"] = slot
+        if fingerprint:
+            extra["api_key_fingerprint"] = fingerprint
+        observation.extra_metadata = extra
+        for src, dest in (
+            ("prompt_tokens", "prompt_tokens"),
+            ("input_tokens", "prompt_tokens"),
+            ("completion_tokens", "completion_tokens"),
+            ("output_tokens", "completion_tokens"),
+            ("total_tokens", "total_tokens"),
+            ("cached_tokens", "cached_tokens"),
+        ):
+            try:
+                value = int(extra.get(src) or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value:
+                setattr(observation, dest, value)
+        cost = extra.get("total_cost_usd")
+        if isinstance(cost, (int, float)):
+            observation.estimated_cost_usd = float(cost)
+        if seconds > 0 and observation.completion_tokens:
+            observation.tokens_per_second = observation.completion_tokens / seconds
+        elif seconds > 0 and observation.total_tokens:
+            observation.tokens_per_second = observation.total_tokens / seconds
+        get_allocation_store().record(observation)
+    except Exception:
+        logger.debug("llm allocation observation failed", exc_info=True)
+
+
+def _rank_unpinned_provider_names(names: Sequence[str]) -> list[str]:
+    ordered = [str(name) for name in names]
+    if len(ordered) <= 1:
+        return ordered
+    try:
+        from .llm_allocation import rank_provider_names
+
+        session_id, path = _allocation_context()
+        return rank_provider_names(ordered, path=path, session_id=session_id or None)
+    except Exception:
+        return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -11030,7 +11839,9 @@ def _generate_text_with_usage_admission(
         policy = _normalize_usage_policy(policy)
 
     effective_provider_name = _effective_llm_provider_name(provider)
-    side_effecting_request = _kwargs_are_side_effecting(kwargs)
+    side_effecting_request = _kwargs_are_side_effecting(kwargs) or _is_muse_code_provider_name(
+        effective_provider_name
+    )
     response_cache_ok = (
         _response_cache_enabled()
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
@@ -11492,10 +12303,13 @@ def _iter_unpinned_optional_providers() -> list[tuple[str, LLMProvider]]:
     names = list(_UNPINNED_OPTIONAL_PROVIDER_ORDER)
     if _grok_cli_auth_available():
         names.insert(1, "grok_cli")
+    names = _rank_unpinned_provider_names(names)
     for name in names:
         # Goose is only part of automatic cross-provider fallback when the
         # operator has opted into discovery (detect-only, never installs).
         if name == "goose_cli" and not _goose_discovery_enabled():
+            continue
+        if name == "muse_code" and not _muse_discovery_enabled():
             continue
         candidate = _builtin_provider_by_name(name)
         if candidate is not None:
@@ -11513,13 +12327,32 @@ def _generate_with_provider_fallbacks(
 ) -> str:
     effective_provider_name = _canonicalize_provider(provider_name)
     disable_model_retry = bool(kwargs.pop("disable_model_retry", False))
-    side_effecting = _kwargs_are_side_effecting(kwargs)
+    call_kwargs = _bind_cli_session_kwargs(effective_provider_name, dict(kwargs))
+    side_effecting = _kwargs_are_side_effecting(call_kwargs) or _is_muse_code_provider_name(
+        effective_provider_name
+    )
     # Side-effecting / agent requests never retry against a different model.
     if side_effecting:
         disable_model_retry = True
+    started = time.perf_counter()
     try:
-        return backend.generate(prompt, model_name=model_name, **kwargs)
+        result = backend.generate(prompt, model_name=model_name, **call_kwargs)
+        _record_llm_allocation_observation(
+            provider=effective_provider_name or "",
+            model_name=model_name,
+            success=True,
+            latency_ms=(time.perf_counter() - started) * 1000.0,
+        )
+        _capture_cli_session(effective_provider_name or "", call_kwargs)
+        return result
     except Exception as initial_error:
+        _record_llm_allocation_observation(
+            provider=effective_provider_name or "",
+            model_name=model_name,
+            success=False,
+            latency_ms=(time.perf_counter() - started) * 1000.0,
+            error=initial_error,
+        )
         # Never retry after output or side-effect activity has begun.
         if bool(getattr(initial_error, "side_effects_started", False)):
             raise initial_error
@@ -11527,7 +12360,7 @@ def _generate_with_provider_fallbacks(
             raise initial_error
         if model_name is not None and not disable_model_retry:
             try:
-                return backend.generate(prompt, model_name=None, **kwargs)
+                return backend.generate(prompt, model_name=None, **call_kwargs)
             except Exception:
                 pass
         if _is_hf_inference_provider_name(
@@ -11582,6 +12415,8 @@ def generate_text(
     usage_streaming: bool = False,
     usage_messages: Optional[Sequence[Mapping[str, object]]] = None,
     usage_batch_items: int = 1,
+    allocation_session_id: Optional[str] = None,
+    allocation_path: Optional[str] = None,
     **kwargs: object,
 ) -> str:
     """Generate text from an LLM.
@@ -11596,10 +12431,55 @@ def generate_text(
     independently from local Hugging Face fallback. When omitted, the legacy
     remote-provider behavior remains enabled. Exact provider boundaries must
     pass ``False`` explicitly.
+
+    ``allocation_session_id`` / ``allocation_path`` select the DuckDB CLI vs
+    API routing path and accumulate per-session cost, tokens, tokens/sec, and
+    latency. They are not forwarded to the provider.
     """
 
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
+    call_kwargs = dict(kwargs)
+    session_id = _resolve_allocation_session_id(allocation_session_id, call_kwargs)
+    path = _resolve_allocation_path(allocation_path, call_kwargs, provider)
+    call_kwargs.pop("allocation_session_id", None)
+    call_kwargs.pop("allocation_path", None)
+    call_kwargs.pop("llm_path", None)
+    kwargs = call_kwargs
+    session_state: Dict[str, object] = {}
+    if session_id:
+        session_state = get_allocation_session(session_id)
+        if path is None:
+            try:
+                from .llm_allocation.paths import normalize_routing_path
+
+                path = normalize_routing_path(session_state.get("path"))  # type: ignore[arg-type]
+            except Exception:
+                path = path
+        if not str(provider or "").strip():
+            sticky = _allocation_sticky_provider(session_state, path=path)
+            if sticky:
+                provider = sticky
+        pending_handoff = str(session_state.get("handoff_context") or "").strip()
+        if pending_handoff:
+            try:
+                from .cli_runtime.cli_handoff import apply_cli_handoff
+                from .llm_allocation import get_allocation_store
+
+                from_provider = str(
+                    (session_state.get("provider_metadata") or {}).get("migrated_from")
+                    or session_state.get("last_provider")
+                    or ""
+                )
+                prompt = apply_cli_handoff(
+                    str(prompt),
+                    pending_handoff,
+                    from_provider=from_provider,
+                )
+                get_allocation_store().pop_session_handoff(session_id)
+            except Exception:
+                logger.debug("cli handoff inject failed", exc_info=True)
+    _set_allocation_context(session_id=session_id, path=path)
     effective_provider_name = _effective_llm_provider_name(provider)
     cross_provider_fallback_allowed = (
         True
@@ -11611,6 +12491,19 @@ def generate_text(
         # A default-model retry could otherwise be cached under the requested
         # model even though that exact model was never used successfully.
         kwargs["disable_model_retry"] = True
+    try:
+        from .llm_allocation.api_key_slots import apply_api_key_to_kwargs
+
+        kwargs = apply_api_key_to_kwargs(
+            str(effective_provider_name or provider or ""),
+            dict(kwargs),
+            session_id=session_id,
+        )
+        _API_KEY_CONTEXT.slot = str(kwargs.pop("_api_key_slot", "") or "")
+        _API_KEY_CONTEXT.fingerprint = str(kwargs.pop("_api_key_fingerprint", "") or "")
+    except Exception:
+        _API_KEY_CONTEXT.slot = ""
+        _API_KEY_CONTEXT.fingerprint = ""
     _clear_last_generation_trace()
     _set_last_usage_admission(None)
 
@@ -11653,7 +12546,9 @@ def generate_text(
             started=started,
         )
 
-    side_effecting_request = _kwargs_are_side_effecting(kwargs)
+    side_effecting_request = _kwargs_are_side_effecting(kwargs) or _is_muse_code_provider_name(
+        _effective_llm_provider_name(provider)
+    )
     # The pinned SyMAI engine owns its cache together with the four inner-route
     # receipt fields. A text-only router cache cannot reproduce those fields.
     # Side-effecting / agent requests are never response-cached.

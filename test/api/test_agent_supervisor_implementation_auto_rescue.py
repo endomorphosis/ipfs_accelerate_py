@@ -752,6 +752,44 @@ def _run_inline_rescue(
     )
 
 
+def test_inline_provider_real_child_does_not_inherit_owner_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "dummy-owner-token")
+    monkeypatch.setenv("CUSTOM_OWNER_CREDENTIAL", "dummy-indirect-owner-token")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "env://CUSTOM_OWNER_CREDENTIAL")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"test":"owner-binding"}')
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "quack:127.0.0.1:45123")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "7")
+    monkeypatch.setenv("UNRELATED_PROVIDER_AUTH", "dummy-provider-auth")
+    monkeypatch.setattr(daemon, "_canonical_ref", lambda task: "task:dummy-provider-test")
+    monkeypatch.setattr(
+        daemon, "_implementation_process_environment",
+        PortalImplementationDaemon._implementation_process_environment.__get__(daemon),
+    )
+    probe = """
+import os
+for key in ('IPFS_ACCELERATE_AGENT_QUACK_TOKEN', 'CUSTOM_OWNER_CREDENTIAL',
+            'IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE',
+            'IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON',
+            'IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT',
+            'IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION'):
+    assert key not in os.environ, key
+assert os.environ.get('UNRELATED_PROVIDER_AUTH') == 'dummy-provider-auth'
+print('provider-state-bindings-absent')
+"""
+    result = _run_inline_rescue(daemon, tmp_path, [sys.executable, "-c", probe])
+    assert result["passed"] is True
+    log = (tmp_path / "implementation.log").read_text()
+    assert "provider-state-bindings-absent" in log
+    assert "dummy-owner-token" not in log
+    assert "dummy-indirect-owner-token" not in log
+
+
 def test_inline_provider_rescue_refuses_prompt_bound_control_plane_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

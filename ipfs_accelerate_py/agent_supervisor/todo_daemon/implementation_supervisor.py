@@ -6987,6 +6987,16 @@ class PortalImplementationSupervisor:
             todo_path=todo_path,
             state_prefix=config.state_prefix,
         )
+        if self._uses_database_authority():
+            # The exclusive Quack owner already materialized this board.  In
+            # particular, never register its binary control file as Markdown.
+            self.board_control_plane_status = {
+                "authority_mode": config.database_program.authority_mode,
+                "board_namespace": self.board_namespace,
+                "source_kind": "duckdb",
+                "projection_authoritative": False,
+            }
+            return
         ingest_todo = todo_path.suffix.lower() in {".md", ".markdown"}
         isolated = isolate_board_runtime(
             repo_root=config.repo_root,
@@ -9566,6 +9576,8 @@ class PortalImplementationSupervisor:
         return update, finish
 
     def run_once(self, *, include_refill: bool = True) -> dict[str, Any]:
+        if self._uses_database_authority():
+            return self._run_database_observation()
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "run_once"
         )
@@ -9582,6 +9594,71 @@ class PortalImplementationSupervisor:
         finally:
             if not failed:
                 finish_maintenance("completed")
+
+    def _uses_database_authority(self) -> bool:
+        program = self.config.database_program
+        return bool(program is not None and (
+            program.task_source_kind == "duckdb"
+            or program.authority_mode in {"quack", "embedded", "embedded_exclusive"}
+        ))
+
+    def _database_observation_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_database_observation.json"
+
+    def _run_database_observation(self) -> dict[str, Any]:
+        """Observe owner state without applying legacy file maintenance.
+
+        Task attempts, retries, validation, and completion remain the database
+        daemon's responsibility. This heartbeat proves owner connectivity; it
+        does not claim provider progress or grant completion authority.
+        """
+        program = self.config.database_program
+        if program is None or program.authority_mode != "quack":
+            raise DatabaseProgramConfigError(
+                "database supervisor observation requires Quack authority; "
+                "embedded stores must use an exclusive in-process daemon"
+            )
+        from ..task_sources.duckdb_state import open_quack_transport_connection
+
+        connection = open_quack_transport_connection(program.quack_endpoint)
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            identity = connection.execute(
+                "SELECT database_uuid, schema_revision, generation "
+                "FROM state_servers WHERE store_id = ? AND generation = ?",
+                [program.store_id, program.store_generation],
+            ).fetchall()
+            if len(identity) != 1 or str(identity[0][1]) != program.schema_revision:
+                raise DatabaseProgramConfigError("Quack owner identity/generation mismatch")
+            metadata = {row[0]: row[1] for row in connection.execute(
+                "SELECT key, value FROM control_plane_metadata"
+            ).fetchall()}
+            if metadata.get("database_uuid") != str(identity[0][0]):
+                raise DatabaseProgramConfigError("Quack owner database identity mismatch")
+            counts = {str(row[0]): int(row[1]) for row in connection.execute(
+                "SELECT status, count(*) FROM tasks GROUP BY status ORDER BY status"
+            ).fetchall()}
+            goal_count = int(connection.execute("SELECT count(*) FROM goals").fetchone()[0])
+            watermark = int(connection.execute(
+                "SELECT coalesce(max(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0])
+            connection.commit()
+        finally:
+            connection.close()
+        result = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/database-observation@1",
+            "authority_mode": "quack", "transport": "quack",
+            "status": "observing_database", "updated_at": utc_now(),
+            "stuck": False, "completion_authority": False,
+            "provider_progress_observed": False, "legacy_maintenance_skipped": True,
+            "projections_required": False, "store_id": program.store_id,
+            "store_generation": program.store_generation,
+            "database_uuid": str(identity[0][0]), "task_status_counts": counts,
+            "task_count": sum(counts.values()), "goal_count": goal_count,
+            "event_watermark": watermark,
+        }
+        write_json_atomic(self._database_observation_path(), result)
+        return result
 
     def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
         """Block supervisor mutations while an agent fence is active/latched."""
@@ -10233,6 +10310,8 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        if self._uses_database_authority():
+            return self._run_database_observation()
         if not self.config.implementation_protected_paths:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
@@ -10941,8 +11020,8 @@ class PortalImplementationSupervisor:
             repo_root=self.config.repo_root,
             daemon_dir=self.config.state_dir,
             runner=command,
-            status_path=self.config.state_path,
-            progress_path=self.config.state_path,
+            status_path=(self._database_observation_path() if self._uses_database_authority() else self.config.state_path),
+            progress_path=(self._database_observation_path() if self._uses_database_authority() else self.config.state_path),
             result_log_path=self.config.events_path,
             task_board_path=self.config.todo_path,
             supervisor_status_path=self.config.state_dir / f"{prefix}_supervisor_status.json",
@@ -10976,6 +11055,9 @@ class PortalImplementationSupervisor:
             command=command,
             child_env=child_env,
             log_prefix=f"{prefix}_implementation_daemon",
+            # The reusable loop launches from child_env; ManagedDaemonSpec's
+            # launch_env alone is only consumed by wrapper-based entry points.
+            child_env=dict(spec.launch_env),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -16041,6 +16123,13 @@ class PortalImplementationSupervisor:
         self,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
+
+        if self._uses_database_authority():
+            return {
+                "reconciled": False,
+                "reason": "database_daemon_resumes_durable_attempts_on_restart",
+                "completion_authority": False,
+            }
 
         try:
             daemon = self._build_worktree_reconciliation_daemon()

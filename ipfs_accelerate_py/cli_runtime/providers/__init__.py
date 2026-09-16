@@ -2,8 +2,9 @@
 
 Importing this package is side-effect free: it does not discover tools, install
 binaries, start processes, or register providers. Call
-:func:`create_goose_provider` (or construct :class:`GooseCLIProvider`) only from
-explicit resolution paths.
+:func:`create_goose_provider` / :func:`create_muse_provider` (or construct
+:class:`GooseCLIProvider` / :class:`MuseCLIProvider`) only from explicit
+resolution paths.
 """
 
 from __future__ import annotations
@@ -45,6 +46,30 @@ from .goose import (
     parse_goose_stream_json,
     parse_version_tuple,
 )
+from .muse import (
+    APPROVAL_MODES as MUSE_APPROVAL_MODES,
+    DEFAULT_AGENT_MAX_MODEL_STEPS,
+    DEFAULT_AGENT_TIMEOUT_SECONDS as MUSE_DEFAULT_AGENT_TIMEOUT_SECONDS,
+    DEFAULT_CHAT_MAX_MODEL_STEPS,
+    DEFAULT_CHAT_TIMEOUT_SECONDS as MUSE_DEFAULT_CHAT_TIMEOUT_SECONDS,
+    DEFAULT_MODEL as MUSE_DEFAULT_MODEL,
+    PROVIDER_ALIASES as MUSE_PROVIDER_ALIASES,
+    PROVIDER_NAME as MUSE_PROVIDER_NAME,
+    REASONING_EFFORTS,
+    MuseCLIProvider,
+    MuseCommandPlan,
+    MuseErrorKind,
+    MuseParsedOutput,
+    MuseProviderError,
+    build_muse_exec_argv,
+    build_muse_process_env,
+    classify_muse_failure,
+    create_muse_provider,
+    make_muse_error,
+    muse_error_code,
+    muse_provider_spec,
+    parse_muse_jsonl,
+)
 
 __all__ = [
     "ALLOWED_OUTPUT_FORMATS",
@@ -82,4 +107,26 @@ __all__ = [
     "parse_goose_output",
     "parse_goose_stream_json",
     "parse_version_tuple",
+    "DEFAULT_AGENT_MAX_MODEL_STEPS",
+    "DEFAULT_CHAT_MAX_MODEL_STEPS",
+    "MUSE_APPROVAL_MODES",
+    "MUSE_DEFAULT_AGENT_TIMEOUT_SECONDS",
+    "MUSE_DEFAULT_CHAT_TIMEOUT_SECONDS",
+    "MUSE_DEFAULT_MODEL",
+    "MUSE_PROVIDER_ALIASES",
+    "MUSE_PROVIDER_NAME",
+    "REASONING_EFFORTS",
+    "MuseCLIProvider",
+    "MuseCommandPlan",
+    "MuseErrorKind",
+    "MuseParsedOutput",
+    "MuseProviderError",
+    "build_muse_exec_argv",
+    "build_muse_process_env",
+    "classify_muse_failure",
+    "create_muse_provider",
+    "make_muse_error",
+    "muse_error_code",
+    "muse_provider_spec",
+    "parse_muse_jsonl",
 ]

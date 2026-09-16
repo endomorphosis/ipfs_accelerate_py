@@ -26,6 +26,7 @@ Available CLI Wrappers:
 - XAIGrokCLIIntegration: xAI Grok Build with Plan Mode, Subagents, and live Web/X Search
 - MetaAICLIIntegration: Meta AI / Spark with Creative Mode and Vision Chat support
 - GooseCLIIntegration: Block/AAIF Goose CLI facade over the canonical adapter
+- MuseCodeCLIIntegration: Meta Muse Code CLI via ``muse exec``
 
 Usage Example:
     from ipfs_accelerate_py.cli_integrations import GitHubCLIIntegration
@@ -96,6 +97,10 @@ from .groq_cli_integration import GroqCLIIntegration, get_groq_cli_integration
 from .xai_grok_cli_integration import XAIGrokCLIIntegration, get_xai_grok_cli_integration
 from .meta_ai_cli_integration import MetaAICLIIntegration, get_meta_ai_cli_integration
 from .goose_cli_integration import GooseCLIIntegration, get_goose_cli_integration
+from .muse_code_cli_integration import (
+    MuseCodeCLIIntegration,
+    get_muse_code_cli_integration,
+)
 
 __all__ = [
     # Base classes
@@ -121,6 +126,7 @@ __all__ = [
     "XAIGrokCLIIntegration",
     "MetaAICLIIntegration",
     "GooseCLIIntegration",
+    "MuseCodeCLIIntegration",
     # Global instance getters
     "get_github_cli_integration",
     "get_copilot_cli_integration",
@@ -134,6 +140,7 @@ __all__ = [
     "get_xai_grok_cli_integration",
     "get_meta_ai_cli_integration",
     "get_goose_cli_integration",
+    "get_muse_code_cli_integration",
     "get_all_cli_integrations",
 ]
 
@@ -260,6 +267,15 @@ _CLI_INTEGRATION_REGISTRY: tuple[CLIIntegrationMeta, ...] = (
         "description": "Block/AAIF Goose CLI (canonical adapter facade)",
         "side_effecting_default": False,
         "command_contract": "goose_canonical",
+    },
+    {
+        "name": "muse_code",
+        "class_name": "MuseCodeCLIIntegration",
+        "getter": "get_muse_code_cli_integration",
+        "module": "ipfs_accelerate_py.cli_integrations.muse_code_cli_integration",
+        "description": "Meta Muse Code CLI via muse exec",
+        "side_effecting_default": True,
+        "command_contract": "muse exec",
     },
 )
 

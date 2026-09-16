@@ -6,7 +6,7 @@ This module provides enhanced MCP tools for running inference with:
 - API multiplexing (OpenAI, Anthropic, local models)
 - libp2p distributed inference
 - Endpoint handlers for load balancing
-- CLI tool integration (Claude Code, OpenAI Codex, Google Gemini)
+- CLI tool integration (Claude Code, OpenAI Codex, Google Gemini, Goose, Muse Code)
 
 
 .. deprecated::
@@ -88,6 +88,11 @@ CLI_PROVIDERS = {
         "adapter_class": "VSCodeCLIAdapter",
         "models": ["copilot-chat", "copilot-code"],
         "description": "Visual Studio Code CLI with GitHub Copilot integration",
+    },
+    "muse_cli": {
+        "adapter_class": "MuseCodeAdapter",
+        "models": ["muse-spark-1.2"],
+        "description": "Meta Muse Code CLI via muse exec",
     },
 }
 

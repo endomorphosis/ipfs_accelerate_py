@@ -16,14 +16,25 @@ Environment variables:
 import json
 import logging
 import os
-import time
 from typing import Any, Dict, List, Optional
 
 from ..common.meta_model_api import (
     META_MODEL_API_BASE_URL,
     META_MODEL_API_DEFAULT_MODEL,
+    META_RETRY_MAX_ATTEMPTS,
+    MUSE_SPARK_CONTEXT_WINDOW,
+    MUSE_SPARK_MAX_OUTPUT_TOKENS,
+    MUSE_SPARK_MODELS,
+    classify_meta_http_error,
+    estimate_meta_cost_usd,
+    format_meta_http_error,
+    meta_http_should_retry,
     normalize_meta_model_name,
+    parse_meta_rate_limit_headers,
+    parse_meta_usage,
+    record_meta_observation,
     resolve_meta_model_api_key,
+    sleep_for_meta_retry,
 )
 
 try:
@@ -85,11 +96,40 @@ _DEFAULT_MODEL = META_MODEL_API_DEFAULT_MODEL
 # Meta AI models available through the Llama API and Spark/Muse platform.
 # https://llama.meta.com/docs/model-cards-and-prompt-formats/
 CHAT_MODELS = {
+    "muse-spark-1.3": {
+        "context_window": MUSE_SPARK_CONTEXT_WINDOW,
+        "max_output_tokens": MUSE_SPARK_MAX_OUTPUT_TOKENS,
+        "description": "Meta Muse Spark 1.3 — recommended for new agentic/coding work",
+        "modalities": list(MUSE_SPARK_MODELS["muse-spark-1.3"]["modalities"]),
+        "tier": "standard",
+    },
+    "muse-spark-1.3-contributor": {
+        "context_window": MUSE_SPARK_CONTEXT_WINDOW,
+        "max_output_tokens": MUSE_SPARK_MAX_OUTPUT_TOKENS,
+        "description": "Muse Spark 1.3 contributor tier (training-eligible, discounted)",
+        "modalities": list(MUSE_SPARK_MODELS["muse-spark-1.3-contributor"]["modalities"]),
+        "tier": "contributor",
+    },
+    "muse-spark-1.2": {
+        "context_window": MUSE_SPARK_CONTEXT_WINDOW,
+        "max_output_tokens": MUSE_SPARK_MAX_OUTPUT_TOKENS,
+        "description": "Meta Muse Spark 1.2 multimodal reasoning and agentic model",
+        "modalities": list(MUSE_SPARK_MODELS["muse-spark-1.2"]["modalities"]),
+        "tier": "standard",
+    },
+    "muse-spark-1.2-contributor": {
+        "context_window": MUSE_SPARK_CONTEXT_WINDOW,
+        "max_output_tokens": MUSE_SPARK_MAX_OUTPUT_TOKENS,
+        "description": "Muse Spark 1.2 contributor tier (training-eligible, discounted)",
+        "modalities": list(MUSE_SPARK_MODELS["muse-spark-1.2-contributor"]["modalities"]),
+        "tier": "contributor",
+    },
     "muse-spark-1.1": {
-        "context_window": 1_048_576,
-        "max_output_tokens": 131_072,
+        "context_window": MUSE_SPARK_CONTEXT_WINDOW,
+        "max_output_tokens": MUSE_SPARK_MAX_OUTPUT_TOKENS,
         "description": "Meta Muse Spark 1.1 multimodal reasoning and agentic model",
         "modalities": ["text", "image", "video", "audio", "pdf"],
+        "tier": "standard",
     },
     "meta-llama/Llama-3.3-70B-Instruct": {
         "context_window": 128000,
@@ -222,8 +262,11 @@ class meta_ai(BaseAPIBackend):
         _timeout = timeout if timeout is not None else self.timeout
 
         last_exc: Optional[Exception] = None
-        for attempt in range(self.max_retries):
+        attempts = max(1, min(int(self.max_retries), META_RETRY_MAX_ATTEMPTS))
+        model_name = str(payload.get("model") or self.default_model)
+        for attempt in range(attempts):
             try:
+                header_map: Dict[str, Any] = {}
                 if REQUESTS_AVAILABLE:
                     resp = _requests_lib.post(
                         url,
@@ -231,7 +274,20 @@ class meta_ai(BaseAPIBackend):
                         json=payload,
                         timeout=_timeout,
                     )
-                    resp.raise_for_status()
+                    header_map = {str(k): v for k, v in resp.headers.items()}
+                    if resp.status_code >= 400:
+                        failure = classify_meta_http_error(
+                            resp.status_code,
+                            resp.text,
+                            headers=header_map,
+                            reason=resp.reason or "",
+                        )
+                        error = RuntimeError(format_meta_http_error(failure))
+                        setattr(error, "retryable", failure.retryable)
+                        setattr(error, "meta_error_kind", failure.kind)
+                        setattr(error, "retry_after_seconds", failure.retry_after_seconds)
+                        record_meta_observation(model_name=model_name, failure=failure)
+                        raise error
                     data = resp.json()
                 else:
                     import urllib.request
@@ -243,19 +299,52 @@ class meta_ai(BaseAPIBackend):
                         method="POST",
                         headers=headers,
                     )
-                    with urllib.request.urlopen(req, timeout=_timeout) as r:
-                        data = json.loads(r.read().decode("utf-8", errors="replace"))
+                    try:
+                        with urllib.request.urlopen(req, timeout=_timeout) as r:
+                            header_map = {str(k): v for k, v in r.headers.items()}
+                            data = json.loads(r.read().decode("utf-8", errors="replace"))
+                    except urllib.error.HTTPError as exc:
+                        detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+                        try:
+                            header_map = {str(k): v for k, v in exc.headers.items()}
+                        except Exception:
+                            header_map = {}
+                        failure = classify_meta_http_error(
+                            exc.code,
+                            detail,
+                            headers=header_map,
+                            reason=str(exc.reason or ""),
+                        )
+                        error = RuntimeError(format_meta_http_error(failure))
+                        setattr(error, "retryable", failure.retryable)
+                        setattr(error, "meta_error_kind", failure.kind)
+                        setattr(error, "retry_after_seconds", failure.retry_after_seconds)
+                        record_meta_observation(model_name=model_name, failure=failure)
+                        raise error from exc
 
+                usage = parse_meta_usage(data if isinstance(data, dict) else {})
+                rate_limit = parse_meta_rate_limit_headers(header_map)
+                record_meta_observation(
+                    model_name=model_name,
+                    usage=usage,
+                    rate_limit=rate_limit,
+                    estimated_cost_usd=estimate_meta_cost_usd(
+                        usage, model_name=model_name
+                    ),
+                )
                 self.track_request_result(True)
                 return data
             except Exception as exc:
                 last_exc = exc
-                retry_after = 2**attempt
-                time.sleep(min(retry_after, 16))
+                if meta_http_should_retry(exc, attempt=attempt, max_attempts=attempts):
+                    sleep_for_meta_retry(exc, attempt)
+                    continue
+                self.track_request_result(False)
+                raise
 
         self.track_request_result(False)
         raise RuntimeError(
-            f"Meta AI API request failed after {self.max_retries} retries: {last_exc}"
+            f"Meta AI API request failed after {attempts} retries: {last_exc}"
         )
 
     # ------------------------------------------------------------------

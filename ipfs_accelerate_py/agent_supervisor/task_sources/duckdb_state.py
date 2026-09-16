@@ -539,7 +539,9 @@ class DuckDBConnection:
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
-        if parameters is None:
+        if session_queries:
+            pass
+        elif parameters is None:
             self._connection.execute(statement)
         else:
             self._connection.execute(statement, parameters)
@@ -581,7 +583,10 @@ class DuckDBConnection:
     def rollback(self) -> None:
         self._quack_pending_mutations = []
         if self._transaction_active:
-            self._connection.rollback()
+            if getattr(self, "_quack_session_queries", False):
+                self.execute("ROLLBACK")
+            else:
+                self._connection.rollback()
             self._transaction_active = False
 
     def _reattach_quack_transport(self) -> None:
@@ -1038,6 +1043,71 @@ def _consume_duckdb_result(connection: Any) -> None:
         connection.fetchall()
     except Exception:
         pass
+
+
+def _quack_parameter_literal(value: Any) -> str:
+    """Render only supported data values for EXECUTE, never SQL identifiers.
+
+    Quack's attached query macro takes one SQL string. PREPARE delegates all
+    placeholder parsing to DuckDB, including comments and quoted question marks.
+    String/blob values are encoded so their contents cannot escape a literal.
+    """
+    import base64
+    import datetime
+    import decimal
+    import math
+
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value) if math.isfinite(value) else f"'{value}'::DOUBLE"
+    if isinstance(value, decimal.Decimal):
+        if not value.is_finite():
+            raise TypeError("non-finite Decimal Quack parameters are unsupported")
+        return str(value)
+    if isinstance(value, str):
+        encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+        return f"decode(from_base64('{encoded}'))"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        encoded = base64.b64encode(bytes(value)).decode("ascii")
+        return f"from_base64('{encoded}')"
+    if isinstance(value, datetime.datetime):
+        kind = "TIMESTAMPTZ" if value.tzinfo is not None else "TIMESTAMP"
+        return f"{kind} '{value.isoformat()}'"
+    if isinstance(value, datetime.date):
+        return f"DATE '{value.isoformat()}'"
+    if isinstance(value, datetime.time):
+        return f"TIME '{value.isoformat()}'"
+    raise TypeError(f"unsupported Quack bound value type: {type(value).__name__}")
+
+
+def _quack_prepared_sql(
+    statement: str,
+    parameters: Iterable[Any] | Mapping[str, Any] | None,
+) -> str:
+    if parameters is None:
+        return statement
+    if isinstance(parameters, Mapping):
+        values = []
+        for name, value in parameters.items():
+            key = str(name)
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key, re.ASCII):
+                raise ValueError("unsafe Quack named parameter identifier")
+            values.append(f'"{key}" := {_quack_parameter_literal(value)}')
+    else:
+        values = [_quack_parameter_literal(value) for value in parameters]
+    if not values:
+        return statement
+    # PREPARE replaces an existing statement with this private session-local
+    # name, so repeated requests do not accumulate prepared statement objects.
+    return (
+        f"PREPARE __agent_quack_bound_statement AS {statement.rstrip().rstrip(';')}\n; "
+        f"EXECUTE __agent_quack_bound_statement({', '.join(values)})"
+    )
 
 
 def open_quack_transport_connection(

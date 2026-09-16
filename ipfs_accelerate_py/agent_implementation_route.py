@@ -140,6 +140,7 @@ _AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED = False
 # fall outside the pin.  Candidate worktrees are never roots.
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
+    "ipfs_accelerate_py/_hash_resources.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
     "ipfs_accelerate_py/router_deps.py",
@@ -3662,7 +3663,6 @@ def validate_agent_implementation_quota_evidence(
         elif update_type == "user_message_chunk":
             user_message_count += 1
 
-    summary_path = record.parent / "summary.json"
     try:
         summary_read = _read_stable_agent_implementation_evidence_file(
             summary_path,
@@ -7140,6 +7140,7 @@ def _agent_control_plane_source_files(
     observed_modules = tuple(sys.modules.items())
     exact_modules = {
         "ipfs_accelerate_py",
+        "ipfs_accelerate_py._hash_resources",
         "ipfs_accelerate_py.llm_router",
         "ipfs_accelerate_py.agent_implementation_route",
         "ipfs_accelerate_py.router_deps",

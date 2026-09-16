@@ -1709,6 +1709,9 @@ class GooseCLIProvider:
         timeout = kwargs.pop("timeout", None)
         workspace = kwargs.pop("workspace", None) or kwargs.pop("cwd", None)
         session_id = kwargs.pop("session_id", None)
+        resume_session = bool(
+            kwargs.pop("resume_session", False) or kwargs.pop("continue_session", False)
+        )
         streaming = bool(kwargs.pop("stream", False) or kwargs.pop("streaming", False))
         max_turns = kwargs.pop("max_turns", None)
         max_tool_repetitions = kwargs.pop("max_tool_repetitions", None)
@@ -1743,6 +1746,7 @@ class GooseCLIProvider:
                     path_root=str(path_root),
                     approval_mode=str(approval_mode or "approve"),
                     session_id=session_id,
+                    resume_session=bool(resume_session and session_id),
                     builtins=_coerce_seq(builtins),
                     extensions=_coerce_seq(extensions),
                     max_turns=int(max_turns or DEFAULT_AGENT_MAX_TURNS),
@@ -1967,6 +1971,18 @@ class GooseCLIProvider:
         if parsed is not None:
             side_effects_started = side_effects_started or parsed.side_effects_started
             meta.update(parsed.to_metadata())
+            try:
+                from ..cli_metadata import set_last_cli_observation
+
+                goose_meta = dict(parsed.metadata or {})
+                if request.session_id:
+                    goose_meta["session_id"] = request.session_id
+                if request.model_name:
+                    goose_meta.setdefault("model_id", request.model_name)
+                goose_meta["exit_code"] = "" if proc.exit_code is None else str(proc.exit_code)
+                set_last_cli_observation("goose_cli", goose_meta)
+            except Exception:
+                pass
             # Classify embedded provider failures from assistant text / stderr.
             kind, message, retryable = classify_goose_failure(
                 stdout=parsed.text,

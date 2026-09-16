@@ -9,6 +9,8 @@ Supported CLI Tools:
 - OpenAI Codex CLI
 - Google Gemini CLI
 - VSCode CLI (GitHub Copilot)
+- Goose CLI
+- Muse Code CLI (Meta)
 
 
 .. deprecated::
@@ -357,10 +359,26 @@ class CLIEndpointAdapter(ABC):
             response = self._parse_response(result.stdout, result.stderr)
             if isinstance(response.get("result"), str):
                 response["result"] = _clip_text(response["result"], _MAX_TEXT_CHARS)
-            if isinstance(response.get("raw_response"), str):
-                response["raw_response"] = _clip_text(response["raw_response"], _MAX_TEXT_CHARS)
+            response.pop("raw_response", None)
+            response.pop("prompt", None)
 
             self._record_success(elapsed_time)
+
+            metadata: Dict[str, Any] = {}
+            try:
+                from ipfs_accelerate_py.cli_runtime.cli_metadata import remember_cli_run
+
+                provider_name = str(
+                    getattr(self, "tool_name", "") or self.endpoint_id or "cli"
+                )
+                metadata = remember_cli_run(
+                    provider_name,
+                    result.stdout or "",
+                    result.stderr or "",
+                    extra={"exit_code": returncode},
+                )
+            except Exception:
+                metadata = {}
 
             # Add metadata (never include prompt)
             response.update(
@@ -371,9 +389,11 @@ class CLIEndpointAdapter(ABC):
                     "status": "success",
                     "success": True,
                     "returncode": returncode,
+                    "metadata": metadata,
+                    "session_id": metadata.get("session_id"),
+                    "model": response.get("model") or metadata.get("model_id"),
                 }
             )
-            response.pop("prompt", None)
 
             return response
 
@@ -543,6 +563,12 @@ class ClaudeCodeAdapter(CLIEndpointAdapter):
     def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
         """Format prompt for claude CLI"""
         cmd = [self.cli_path]
+        resume_session_id = str(
+            kwargs.get("resume_session_id") or kwargs.get("session_id") or ""
+        ).strip()
+        if resume_session_id:
+            cmd.extend(["--resume", resume_session_id])
+        cmd.extend(["--output-format", "json"])
 
         # Add model parameter if specified
         model = kwargs.get("model", self.config.get("model", "claude-3-sonnet"))
@@ -2015,6 +2041,294 @@ class GooseCLIAdapter(CLIEndpointAdapter):
         caps["default_execution_mode"] = "chat"
         caps["agent_requires_policy"] = True
         caps["authority_keys"] = sorted(_GOOSE_AUTHORITY_EXECUTE_KEYS)
+        return caps
+
+
+# ---------------------------------------------------------------------------
+# Muse Code adapter (delegates to canonical MuseCLIProvider)
+# ---------------------------------------------------------------------------
+
+
+class MuseCodeAdapter(CLIEndpointAdapter):
+    """Concrete Muse Code CLI endpoint adapter.
+
+    Delegates command construction and parsing to
+    :class:`~ipfs_accelerate_py.cli_runtime.providers.muse.MuseCLIProvider`.
+
+    ``muse exec`` is always side-effecting. Default automation uses
+    ``--disable-approval`` (sandbox on). ``--yolo`` requires an explicit
+    config/kwarg flag.
+    """
+
+    config_fields = {
+        "model": {
+            "type": "string",
+            "description": "Muse Code model name (maps to --model)",
+            "default": "muse-spark-1.2",
+        },
+        "allow_install": {
+            "type": "boolean",
+            "description": "Permit explicit lazy install on ensure_ready only",
+            "default": False,
+        },
+        "yolo": {
+            "type": "boolean",
+            "description": "Disable approval and sandbox (trusted workspaces only)",
+            "default": False,
+        },
+        "max_model_steps": {
+            "type": "integer",
+            "description": "Cap for muse exec --max-model-steps",
+            "default": 8,
+        },
+    }
+
+    supported_tasks = ["text_generation", "code_generation", "analysis"]
+    tool_name = "muse"
+
+    def __init__(
+        self,
+        endpoint_id: str,
+        cli_path: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ):
+        self._provider = None  # type: ignore[assignment]
+        super().__init__(endpoint_id, cli_path, config)
+        self.tool_name = "muse"
+        if isinstance(self.config, dict):
+            self.config.setdefault("tool", "muse")
+
+    def _detect_cli_path(self) -> Optional[str]:
+        possible_paths = [
+            "muse",
+            "/usr/local/bin/muse",
+            "/usr/bin/muse",
+            os.path.expanduser("~/.local/bin/muse"),
+            os.path.expanduser("~/bin/muse"),
+        ]
+        for path in possible_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+            found = shutil.which(path)
+            if found:
+                return found
+        for env_name in (
+            "IPFS_ACCELERATE_MUSE_PATH",
+            "IPFS_ACCELERATE_PY_MUSE_PATH",
+            "MUSE_BIN",
+            "MUSE_CLI_PATH",
+        ):
+            raw = os.environ.get(env_name)
+            if raw and str(raw).strip():
+                candidate = os.path.expanduser(str(raw).strip())
+                if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                    return candidate
+        return "muse"
+
+    def _format_prompt(self, prompt: str, task_type: str, **kwargs) -> List[str]:
+        return [self.cli_path or "muse", "exec", "--prompt-file", "-"]
+
+    def _parse_response(self, stdout: str, stderr: str) -> Dict[str, Any]:
+        return {"result": (stdout or "").strip(), "raw_response": stdout or ""}
+
+    def _config(self) -> Dict[str, Any]:
+        return {
+            "tool_name": "Muse Code CLI",
+            "description": (
+                "Meta Muse Code CLI via muse exec — always side-effecting; "
+                "default automation keeps the OS sandbox"
+            ),
+            "config_fields": self.config_fields,
+            "setup_steps": [
+                "1. Install Muse Code: curl -fsSL https://dev.meta.ai/install.sh | bash",
+                "2. Authenticate (muse login) or set META_API_KEY for headless/CI",
+                "3. Register endpoint with tool='muse' or tool='muse_code'",
+            ],
+        }
+
+    def _install(self) -> Dict[str, Any]:
+        system = platform.system().lower()
+        return {
+            "tool_name": "Muse Code CLI",
+            "platform": system,
+            "install_methods": [
+                {
+                    "method": "Official installer",
+                    "commands": [
+                        "curl -fsSL https://dev.meta.ai/install.sh | bash",
+                    ],
+                },
+                {
+                    "method": "ipfs_accelerate lazy installer (explicit only)",
+                    "commands": [
+                        "from ipfs_accelerate_py.cli_runtime.installers.muse import ensure_muse",
+                        "ensure_muse(auto_install=True)",
+                    ],
+                },
+            ],
+            "verify_command": "muse --version",
+            "documentation": "https://dev.meta.ai/docs/muse-code",
+        }
+
+    def _get_provider(self):
+        if self._provider is not None:
+            return self._provider
+        from ipfs_accelerate_py.cli_runtime.providers.muse import MuseCLIProvider
+
+        cfg = self.config if isinstance(self.config, dict) else {}
+        self._provider = MuseCLIProvider(
+            executable=self.cli_path if self.cli_path else None,
+            default_model=cfg.get("model") or cfg.get("model_name"),
+            allow_install=bool(cfg.get("allow_install", False)),
+        )
+        return self._provider
+
+    def is_available(self) -> bool:
+        if self.cli_path and os.path.isfile(self.cli_path) and os.access(self.cli_path, os.X_OK):
+            return True
+        if self.cli_path and shutil.which(self.cli_path):
+            return True
+        return shutil.which("muse") is not None
+
+    def execute(
+        self,
+        prompt: str,
+        task_type: str = "text_generation",
+        timeout: int = 180,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        start_time = time.time()
+        try:
+            prompt = sanitize_input(prompt, max_length=_MAX_PROMPT_CHARS)
+        except ValueError:
+            self._record_failure(0.0)
+            return {
+                "status": "error",
+                "success": False,
+                "error": "Input validation error: ValueError",
+                "error_code": "invalid_contract",
+                "provider": "muse_code",
+                "endpoint_id": self.endpoint_id,
+                "text": "",
+                "result": "",
+                "side_effects_started": False,
+                "elapsed_time": 0.0,
+            }
+
+        cfg = self.config if isinstance(self.config, dict) else {}
+        model = kwargs.get("model") or kwargs.get("model_name") or cfg.get("model")
+        allow_yolo = bool(cfg.get("allow_yolo", False))
+        yolo = bool(kwargs.get("yolo", cfg.get("yolo", False))) and allow_yolo
+        max_steps = kwargs.get("max_model_steps", cfg.get("max_model_steps", 8))
+        workspace = kwargs.get("workspace") or kwargs.get("cwd") or cfg.get("working_dir")
+        try:
+            from ipfs_accelerate_py.cli_runtime.contracts import CLIRequest, ExecutionMode
+            from ipfs_accelerate_py.cli_runtime.providers.muse import get_last_muse_observation
+
+            provider = self._get_provider()
+            result = provider.generate_result(
+                CLIRequest(
+                    prompt=str(prompt),
+                    mode=ExecutionMode.AGENT,
+                    model_name=model,
+                    provider_name="muse_code",
+                    side_effecting=True,
+                    cacheable=False,
+                    retryable=False,
+                    session_id=kwargs.get("session_id"),
+                    timeout_seconds=float(timeout),
+                    workspace=workspace,
+                ),
+                yolo=yolo,
+                disable_approval=True,
+                max_model_steps=max_steps,
+                json_events=True,
+            )
+            elapsed = time.time() - start_time
+            meta = {
+                str(k): v
+                for k, v in dict(result.metadata or {}).items()
+                if str(k).lower()
+                not in {"prompt", "input", "user_prompt", "raw_response", "stdout"}
+            }
+            meta.update(
+                {
+                    k: v
+                    for k, v in get_last_muse_observation().items()
+                    if k not in meta
+                }
+            )
+            if result.error is not None:
+                self._record_failure(elapsed)
+                kind = meta.get("muse_error_kind") or ""
+                return {
+                    "status": "error",
+                    "success": False,
+                    "error": result.error.message if result.error else "muse exec failed",
+                    "error_code": getattr(getattr(result.error, "code", None), "value", None)
+                    or "nonzero_exit",
+                    "provider": "muse_code",
+                    "command_contract": "muse exec",
+                    "endpoint_id": self.endpoint_id,
+                    "text": result.text or "",
+                    "result": result.text or "",
+                    "model": meta.get("model_id") or model,
+                    "session_id": meta.get("session_id"),
+                    "side_effects_started": True,
+                    "elapsed_time": elapsed,
+                    "muse_error_kind": kind,
+                    "metadata": meta,
+                }
+            self._record_success(elapsed)
+            return {
+                "status": "success",
+                "success": True,
+                "provider": "muse_code",
+                "command_contract": "muse exec",
+                "endpoint_id": self.endpoint_id,
+                "endpoint_type": "cli",
+                "text": result.text,
+                "result": result.text,
+                "model": meta.get("model_id") or model,
+                "session_id": meta.get("session_id"),
+                "run_id": meta.get("run_id"),
+                "request_id": meta.get("request_id"),
+                "response_id": meta.get("response_id"),
+                "side_effects_started": True,
+                "elapsed_time": elapsed,
+                "metadata": meta,
+            }
+        except Exception as exc:
+            elapsed = time.time() - start_time
+            self._record_failure(elapsed)
+            kind = getattr(exc, "kind", None)
+            return {
+                "status": "error",
+                "success": False,
+                "error": str(exc) or type(exc).__name__,
+                "error_code": getattr(getattr(exc, "code", None), "value", None)
+                or "nonzero_exit",
+                "provider": "muse_code",
+                "endpoint_id": self.endpoint_id,
+                "text": "",
+                "result": "",
+                "side_effects_started": bool(getattr(exc, "side_effects_started", True)),
+                "elapsed_time": elapsed,
+                "muse_error_kind": getattr(kind, "value", kind),
+            }
+
+    def get_stats(self) -> Dict[str, Any]:
+        stats = super().get_stats()
+        stats["tool"] = "muse"
+        stats["provider"] = "muse_code"
+        return stats
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        caps = super().get_capabilities()
+        caps["provider"] = "muse_code"
+        caps["command_contract"] = "muse exec"
+        caps["default_execution_mode"] = "agent"
+        caps["side_effecting"] = True
         return caps
 
 

@@ -83,6 +83,7 @@ The built-in names currently recognized by the router include:
 | `copilot_cli` | GitHub Copilot CLI process | Copilot CLI and auth |
 | `copilot_sdk` | Python Copilot SDK | optional SDK and auth |
 | `goose_cli` | Block/AAIF Goose CLI process | `goose` executable; default backend is Meta Muse Spark via OpenAI-compatible env |
+| `muse_code` | Meta Muse Code CLI via `muse exec` | `muse` executable; `META_API_KEY` or browser login; default model `muse-spark-1.2` |
 | `gemini_cli` / `gemini_py` | Gemini CLI or Python wrapper | Gemini tool/SDK and credentials |
 | `grok_cli` | Official xAI Grok CLI | `grok` executable and CLI OAuth or `XAI_API_KEY` |
 | `claude_code` / `claude_py` | Claude Code CLI or Python wrapper | Claude tool/SDK and credentials |
@@ -95,7 +96,8 @@ The built-in names currently recognized by the router include:
 | `mock` | deterministic test provider | no external dependency |
 
 Aliases such as `codex`, `claude`, `grok`, `xai_cli`, `hf`, `huggingface`,
-`vibe`, `goose`, `goose-cli`, `block_goose`, `aaif_goose`, and `accelerate` are
+`vibe`, `goose`, `goose-cli`, `block_goose`, `aaif_goose`, `muse`, `muse-code`,
+`muse_cli`, and `accelerate` are
 accepted where implemented. For text generation, `grok` prefers the installed
 CLI and falls back to the xAI REST provider when the CLI is unavailable; use
 `grok_cli` or `grok_api` when the transport must be unambiguous.
@@ -105,7 +107,12 @@ CLI and falls back to the xAI REST provider when the CLI is unavailable; use
 session, no default extensions). The default model backend is Meta Muse Spark
 through Goose's OpenAI-compatible transport (`OPENAI_HOST=https://api.meta.ai`
 plus the package Meta credential). Direct HTTP Muse Spark without Goose remains
-`meta_ai`. Authorized tool-using agent runs require an explicit agent policy
+`meta_ai`. The HTTP provider classifies Meta Model API errors (401/402/429/5xx),
+honors `Retry-After` and `x-ratelimit-*` headers, and records token usage
+(including cached and reasoning tokens) plus an estimated USD cost on
+`get_last_meta_observation()`. Standard-tier Muse Spark is 3,000 RPM /
+4,000,000 TPM; contributor ids are 100 RPM / 3,000,000 TPM. Authorized
+tool-using agent runs require an explicit agent policy
 and path roots (see [Goose CLI](#goose-cli)). Use `get_llm_provider(name)` or
 the source module for the exact current alias set.
 
@@ -134,6 +141,99 @@ The environment variable `ipfs_accelerate_py_LLM_PROVIDER` forces a provider
 name. If it names a provider that is not registered or available, the router
 fails rather than silently selecting an unrelated provider.
 
+## Dynamic allocation (DuckDB)
+
+Unpinned `generate_text()` calls (no explicit provider) keep the historical
+candidate set, then reorder it from local DuckDB observations of CLI/API
+health, remaining rate-limit headroom, recent errors, spend, and tokens.
+
+CLI tools and API providers are **separate routing paths**. Pass
+`allocation_path="cli"` or `"api"` to stay on one path. A session id
+(`allocation_session_id`, or `chat_session_id` / `session_id`) accumulates
+cost, tokens, tokens/sec, and latency. Later calls with that session id restore
+the stored path and sticky-route to the last healthy provider without mixing
+CLI and API candidates.
+
+Each CLI tool also has a **native session id** that persists its own work
+(Muse `--session-id`, Goose `--resume --session-id`, Copilot/Grok/Claude
+`--resume`, Codex `exec resume`). The allocator stores that native id next to
+the allocation session and injects it on the next call so the same CLI session
+continues. Explicit `session_id` / `resume_session_id` kwargs still win.
+
+- Observations are written after every routed call (success or failure).
+- Records never include prompts, credentials, or generated text.
+- Empty stats preserve the original static order (stable tie-break).
+- Billing and authentication failures in the recent window are ranked last.
+- Side-effecting providers such as `muse_code` stay out of implicit discovery.
+
+Default database: `~/.ipfs_accelerate/llm_allocation.duckdb`
+(`IPFS_ACCELERATE_LLM_ALLOCATION_DB` overrides). Set
+`IPFS_ACCELERATE_LLM_ALLOCATE=0` to disable ranking, or
+`IPFS_ACCELERATE_LLM_OBSERVE=0` to disable recording.
+
+```python
+from ipfs_accelerate_py.llm_router import generate_text, get_allocation_session
+from ipfs_accelerate_py.llm_allocation import get_allocation_store
+
+generate_text(
+    "Summarize this module.",
+    allocation_session_id="sess-123",
+    allocation_path="api",
+)
+print(get_allocation_session("sess-123"))
+# total_cost_usd, total_tokens, tokens_per_second, avg_latency_ms,
+# preferred_provider, native_cli_session_id, cli_sessions,
+# provider_metadata (and muse when last provider is muse_code):
+# session_id, run_id, model_id, request_id, usage/tokens, TTFT, cost
+
+cli_stats = get_allocation_store().provider_stats(
+    ["codex_cli", "grok_cli"], path="cli"
+)
+
+from ipfs_accelerate_py.llm_router import (
+    choose_cli_session_route,
+    cli_tools_status,
+    migrate_cli_session_route,
+    render_cli_tools_status,
+)
+
+print(render_cli_tools_status())
+print(cli_tools_status()["ready"])
+
+from ipfs_accelerate_py.llm_allocation import (
+    bind_session_api_key,
+    list_api_key_slots,
+    register_api_key,
+    select_api_key,
+)
+
+# Secrets manager stores the raw keys; DuckDB keeps fingerprints + stats.
+register_api_key("openai", os.environ["OPENAI_API_KEY"], slot_id="primary")
+register_api_key("openai", os.environ["OPENAI_API_KEY_2"], slot_id="burst")
+bind_session_api_key("job-1", "openai", "burst")
+print(list_api_key_slots("openai"))  # cost, tokens, latency, remaining; no secrets
+```
+
+# New work: rank CLI tools from DuckDB health/spend.
+print(choose_cli_session_route())
+# Existing work: sticky resume with native session flags.
+print(choose_cli_session_route("sess-123"))
+# Switch tools: allocation session stays; native ids do not copy.
+# A bounded, redacted transcript is pulled from the source CLI's local
+# session store (Muse export, Claude/Codex/Goose/Grok/Copilot/Gemini/Vibe
+# JSONL) and injected on the next generate_text (then consumed).
+print(migrate_cli_session_route("sess-123", "grok_cli", history="full"))
+print(migrate_cli_session_route("sess-123", "codex_cli", history="compact"))
+print(migrate_cli_session_route("sess-123", "claude_code", history="none"))
+generate_text("keep going", allocation_session_id="sess-123", allocation_path="cli")
+
+from ipfs_accelerate_py.llm_allocation import resolve_session
+# Old Muse UUID still resolves to the current Grok/Codex native id.
+print(resolve_session("01a0a6e1-88f6-7781-b25f-fdcc17fce794"))
+```
+
+The same allocation schema is exported from the package root (`from ipfs_accelerate_py import generate_text, choose_cli_route, register_api_key, ...`), as MCP tools (`llm_cli_tools_status`, `llm_choose_cli_route`, `llm_migrate_cli_session`, `llm_resolve_session`, `llm_get_allocation_session`, `llm_register_api_key`, `llm_list_api_key_slots`, `llm_bind_session_api_key`, `llm_ensure_cli_tool`, `llm_router_generate_text`, plus `generate_text` / `llm_generate` with `allocation_session_id` and `allocation_path`), and as MCP++ tools through `TrioMCPServer.setup()` / `register_tools()`. MCP responses never include raw API keys, prompts, or credentials.
+
 ## Configuration
 
 The router reads the following current namespaces. Values are examples, not
@@ -155,9 +255,14 @@ secrets to commit:
 | `IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD` / `ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD` | Mistral Vibe command template. |
 | `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` | Mistral authentication. |
 | `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY` | xAI authentication. |
-| `MODEL_API_KEY`, `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY` | Meta Model API authentication; the encrypted `meta_ai_api_key` credential is used when these are unset. |
-| `ipfs_accelerate_py_META_AI_MODEL` | Meta Model API model; defaults to `muse-spark-1.1`. |
+| `MODEL_API_KEY`, `META_AI_API_KEY`, `META_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY` | Meta Model API authentication; the encrypted `meta_ai_api_key` credential is used when these are unset. |
+| `ipfs_accelerate_py_META_AI_MODEL` | Meta Model API model; defaults to `muse-spark-1.1` (recommended new work: `muse-spark-1.3`; contributor ids end in `-contributor`). |
 | `ipfs_accelerate_py_META_AI_BASE_URL` | Meta Model API endpoint; defaults to `https://api.meta.ai/v1`. |
+| `IPFS_ACCELERATE_MUSE_PATH` (aliases: `IPFS_ACCELERATE_PY_MUSE_PATH`, `ipfs_accelerate_py_MUSE_BIN`, `MUSE_BIN`, `MUSE_CLI_PATH`) | Explicit Muse Code binary path (detect-only; never installs). |
+| `IPFS_ACCELERATE_MUSE_DISCOVERY` (aliases: `IPFS_ACCELERATE_PY_MUSE_DISCOVERY`, `ipfs_accelerate_py_MUSE_DISCOVERY`) | Opt-in for Muse Code in *implicit* provider discovery (default off; `muse exec` is side-effecting). |
+| `IPFS_ACCELERATE_MUSE_AUTO_INSTALL` (aliases: `IPFS_ACCELERATE_PY_MUSE_AUTO_INSTALL`, `ipfs_accelerate_py_MUSE_AUTO_INSTALL`) | Allow explicit `ensure_muse` install path when not set to a falsey value; set `0` to disable. |
+| `ipfs_accelerate_py_MUSE_CODE_MODEL` / `MUSE_MODEL` | Muse Code model; defaults to `muse-spark-1.2`. |
+| `META_API_KEY` | Headless/CI credential for Muse Code (also accepted: `MODEL_API_KEY`, `META_AI_API_KEY`). |
 | `IPFS_ACCELERATE_GOOSE_PATH` (aliases: `IPFS_ACCELERATE_PY_GOOSE_PATH`, `ipfs_accelerate_py_GOOSE_BIN`, `GOOSE_BIN`, `GOOSE_CLI_PATH`) | Explicit Goose binary path (detect-only; never installs). |
 | `IPFS_ACCELERATE_GOOSE_DISCOVERY` (aliases: `IPFS_ACCELERATE_PY_GOOSE_DISCOVERY`, `ipfs_accelerate_py_GOOSE_DISCOVERY`) | Opt-in for Goose in *implicit* provider discovery (default off). |
 | `IPFS_ACCELERATE_GOOSE_AUTO_INSTALL` (aliases: `IPFS_ACCELERATE_PY_GOOSE_AUTO_INSTALL`, `ipfs_accelerate_py_GOOSE_AUTO_INSTALL`) | Allow explicit `ensure_goose` install path when not set to a falsey value; set `0` to disable. |
@@ -233,6 +338,52 @@ cache. The latter stores only descriptors and health samples, uses independent
 capability and health TTLs, and never stores prompts, media, or inference
 output. Clearing one cache does not promise to invalidate the other.
 
+## Muse Code CLI
+
+Meta Muse Code is a first-class router provider (`muse_code`, aliases `muse`,
+`muse-code`, `musecode`, `muse_cli`) through the shared CLI runtime. The same
+canonical adapter backs `llm_router`, CLI endpoint registration, MCP tools, and
+the `cli_integrations` compatibility wrapper.
+
+Install the official binary, then sign in (browser) or set `META_API_KEY` for
+headless/CI:
+
+```bash
+curl -fsSL https://dev.meta.ai/install.sh | bash
+muse --version
+```
+
+Headless automation uses `muse exec`, never the interactive TUI. Default
+posture is `--disable-approval` (skip prompts, keep the OS sandbox). `--yolo`
+disables approval *and* the sandbox and trusts the workspace; pass it only on
+trusted checkouts.
+
+`muse exec` is **always side-effecting**: the agent may edit files and run
+commands. Router response cache, default-model retry, and automatic provider
+fallback are disabled. Implicit discovery is off unless
+`IPFS_ACCELERATE_MUSE_DISCOVERY=1`. Direct HTTP Muse Spark without the CLI
+remains `meta_ai`. Muse Code failures that look like Meta 429 rate limits are
+retryable; 402 billing / insufficient quota is not. Token usage and per-team
+limits for the underlying Muse Spark model follow
+[Pricing and rate limits](https://dev.meta.ai/docs/pricing-rate-limits/).
+
+```python
+from ipfs_accelerate_py.llm_router import generate_text
+
+text = generate_text(
+    "Add a --dry-run flag to the CLI parser and run the unit tests.",
+    provider="muse_code",
+    model_name="muse-spark-1.2",
+)
+```
+
+Ordinary `generate_text(..., provider="muse_code")` uses a bounded
+`--max-model-steps` (default 8). Pass `agent=True` plus a workspace for a
+longer authorized run. Set `yolo=True` only when the checkout is trusted.
+
+See [Muse Code overview](https://dev.meta.ai/docs/muse-code) for install, auth,
+permissions, and `muse exec` flags.
+
 ## Goose CLI
 
 Block/AAIF Goose is integrated as a first-class router provider (`goose_cli`,
@@ -271,6 +422,7 @@ Values below are names and purposes only. Never commit real keys.
 | `IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT` | — | P2P worker: admit agent mode (also needs allowlist) |
 | `IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_ALLOWED_ROOTS` | — | Extra absolute roots allowed for remote path fields |
 | `IPFS_ACCELERATE_GOOSE_LIVE` | — | Gate for the opt-in live smoke test (default suite is offline) |
+| `IPFS_ACCELERATE_MUSE_LIVE` | — | Gate for the supervisor Muse Code hello-world smoke (`muse exec --provider echo`) |
 
 Backend credentials (for example `OPENAI_API_KEY` with `OPENAI_HOST`, or other
 provider keys Goose understands) are required for *ready* chat. The installer

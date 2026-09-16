@@ -5,7 +5,7 @@
 **Audience:** Developers who need a short path from install to first supported
 Python and CLI operations
 **Scope:** Editable/published install, capability inspection, Python entrypoints,
-current `ipfs-accelerate` CLI groups, MCP, optional agent supervisor and Goose
+current `ipfs-accelerate` CLI groups, MCP, optional agent supervisor, Goose, and Muse Code
 **Non-goals:** Exhaustive API reference; inventing a single package version when
 sources disagree
 **Sources:** `pyproject.toml`, `requirements.txt`,
@@ -257,11 +257,49 @@ python -m pytest \
   test/test_goose_p2p_policy.py -q
 ```
 
+## Muse Code CLI (optional LLM provider)
+
+Muse Code is Meta's terminal coding agent (`muse_code` / `muse`), a peer of
+Goose, Codex, Claude Code, and Grok Build. Headless runs use `muse exec`.
+Generic discovery stays off because the agent may edit files; set
+`IPFS_ACCELERATE_MUSE_DISCOVERY=1` only when that is intended.
+
+```bash
+curl -fsSL https://dev.meta.ai/install.sh | bash
+```
+
+```python
+from ipfs_accelerate_py import generate_text
+
+# Requires a muse binary (PATH, ~/.local/bin/muse, or IPFS_ACCELERATE_MUSE_PATH)
+# and META_API_KEY (or a prior `muse` browser login) — never hard-code secrets.
+print(
+    generate_text(
+        "Add a --dry-run flag to the CLI parser.",
+        provider="muse_code",
+        model_name="muse-spark-1.2",
+    )
+)
+```
+
+Install, auth, `--disable-approval` vs `--yolo`, and operator env vars are
+documented in the [LLM router Muse Code section](../LLM_ROUTER.md#muse-code-cli).
+
+Offline contract tests (default; no live provider):
+
+```bash
+python -m pytest \
+  test/test_llm_router_muse.py \
+  test/test_muse_code_cli_integration.py \
+  test/test_muse_cli_endpoint.py \
+  test/test_muse_installer.py -q
+```
+
 ## Next steps
 
 - [Getting started](getting-started/README.md)
 - [Installation](getting-started/installation.md)
-- [LLM router and Goose CLI](../LLM_ROUTER.md)
+- [LLM router, Goose CLI, and Muse Code](../LLM_ROUTER.md)
 - [API overview](../api/overview.md)
 - [Architecture overview](../architecture/overview.md)
 - [Hardware guide](hardware/overview.md)

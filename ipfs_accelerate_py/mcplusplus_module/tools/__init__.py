@@ -8,6 +8,9 @@ refactored from the original MCP implementation to work natively with Trio.
 from typing import Any
 
 from ipfs_accelerate_py.mcp_server.compatibility import _resolve_p2p_registrars
+from ipfs_accelerate_py.mcp_server.tools.llm_allocation_tools import (
+    register_native_llm_allocation_tools as register_llm_allocation_tools,
+)
 
 from .taskqueue_tools import register_p2p_taskqueue_tools
 from .workflow_tools import register_p2p_workflow_tools
@@ -33,4 +36,5 @@ __all__ = [
     "register_p2p_taskqueue_tools",
     "register_p2p_workflow_tools",
     "register_all_p2p_tools",
+    "register_llm_allocation_tools",
 ]

@@ -41,6 +41,7 @@ CLI_PROVIDER_BALANCE_SCHEMA = (
 CLAUDE_PROVIDER_ID = "claude"
 GEMINI_PROVIDER_ID = "gemini"
 META_SPARK_PROVIDER_ID = "meta_spark"
+MUSE_CODE_PROVIDER_ID = "muse_code"
 MISTRAL_PROVIDER_ID = "mistral"
 COPILOT_PROVIDER_ID = "copilot"
 
@@ -277,6 +278,20 @@ _GOOSE_BIN_ENVS = (
     "ipfs_accelerate_py_GOOSE_BIN",
     "GOOSE_BIN",
 )
+_MUSE_BIN_ENVS = (
+    "IPFS_ACCELERATE_AGENT_MUSE_BIN",
+    "IPFS_ACCELERATE_MUSE_PATH",
+    "ipfs_accelerate_py_MUSE_BIN",
+    "MUSE_BIN",
+    "MUSE_CLI_PATH",
+)
+_MUSE_AUTH_ENVS = (
+    "META_API_KEY",
+    "MODEL_API_KEY",
+    "META_AI_API_KEY",
+    "ipfs_accelerate_py_META_AI_API_KEY",
+    "IPFS_ACCELERATE_PY_META_AI_API_KEY",
+)
 _MISTRAL_BIN_ENVS = (
     "IPFS_ACCELERATE_MISTRAL_VIBE_CLI_CMD",
     "ipfs_accelerate_py_MISTRAL_VIBE_CLI_CMD",
@@ -456,6 +471,79 @@ def gemini_cli_auth_available() -> bool:
     except OSError:
         pass
     return False
+
+
+def resolve_muse_cli_binary() -> str | None:
+    """Locate Muse Code CLI without executing or installing it."""
+
+    try:
+        from ipfs_accelerate_py.llm_router import find_muse_cli
+
+        found = find_muse_cli()
+        if found:
+            return found
+    except Exception:
+        pass
+    try:
+        from ipfs_accelerate_py.cli_runtime.installers.muse import discover_muse
+
+        result = discover_muse(probe_version=False)
+        if result.available and result.executable:
+            return str(result.executable)
+    except Exception:
+        pass
+    for env_name in _MUSE_BIN_ENVS:
+        configured = str(os.environ.get(env_name) or "").strip()
+        if not configured:
+            continue
+        token = _first_path_component(configured)
+        if not token:
+            continue
+        path = Path(token).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        found = shutil.which(token)
+        if found:
+            return found
+    found = shutil.which("muse")
+    if found:
+        return found
+    default = Path.home() / ".local" / "bin" / "muse"
+    try:
+        if default.is_file() and os.access(default, os.X_OK):
+            return str(default)
+    except OSError:
+        pass
+    return None
+
+
+def ensure_muse_cli_binary() -> str | None:
+    """Install Muse Code via the official installer when the binary is missing.
+
+    Detect-only probes must keep using :func:`resolve_muse_cli_binary`. This
+    helper is for explicit supervisor ``muse_code`` dispatch.
+    """
+
+    found = resolve_muse_cli_binary()
+    if found:
+        return found
+    try:
+        from ipfs_accelerate_py.cli_runtime.installers.muse import ensure_muse
+
+        result = ensure_muse(auto_install=True)
+        if result.available and result.executable:
+            return str(result.executable)
+    except Exception:
+        return None
+    return resolve_muse_cli_binary()
+
+
+def muse_code_auth_available() -> bool:
+    """Return whether Muse Code / Meta API credentials are present (no network)."""
+
+    if _env_nonempty(*_MUSE_AUTH_ENVS):
+        return True
+    return meta_spark_auth_available()
 
 
 def resolve_goose_cli_binary() -> str | None:
@@ -885,8 +973,28 @@ def classify_cli_provider_text(provider_id: str, text: str) -> CliQuotaClassific
         "muse",
         "muse_spark",
         "spark",
+        "muse_code",
+        "muse_cli",
+        "musecode",
     }:
-        return classify_meta_spark_cli_text(text)
+        classified = classify_meta_spark_cli_text(text)
+        if pid in {"muse_code", "muse_cli", "musecode"}:
+            return CliQuotaClassification(
+                provider_id=MUSE_CODE_PROVIDER_ID,
+                failure_class=classified.failure_class,
+                hard_quota_exhausted=classified.hard_quota_exhausted,
+                capacity_restricted=classified.capacity_restricted,
+                authenticated_failure=classified.authenticated_failure,
+                retry_after_seconds=classified.retry_after_seconds,
+                reason_codes=tuple(
+                    code if code != "cli.meta_spark" else "cli.muse_code"
+                    for code in classified.reason_codes
+                )
+                or ("cli.muse_code",),
+                kind=classified.kind,
+                evidence_sha256=classified.evidence_sha256,
+            )
+        return classified
     if pid in {"mistral", "mistral_vibe", "vibe", "mistral_cli"}:
         return classify_mistral_cli_text(text)
     if pid in {"copilot", "github_copilot", "github-copilot"}:
@@ -914,6 +1022,8 @@ def parse_cli_balance_observation(
         family = CLAUDE_PROVIDER_ID
     elif pid in {"gemini", "gemini_cli"}:
         family = GEMINI_PROVIDER_ID
+    elif pid in {"muse_code", "muse_cli", "musecode"}:
+        family = MUSE_CODE_PROVIDER_ID
     elif pid in {"meta_spark", "meta", "goose", "muse", "muse_spark", "spark"}:
         family = META_SPARK_PROVIDER_ID
     elif pid in {"mistral", "mistral_vibe", "vibe"}:
@@ -1089,6 +1199,22 @@ def probe_claude_and_gemini_readiness() -> dict[str, dict[str, Any]]:
     }
 
 
+def probe_muse_code_readiness() -> dict[str, Any]:
+    """Non-charging readiness snapshot for Muse Code CLI. Never installs."""
+
+    binary = resolve_muse_cli_binary()
+    authenticated = muse_code_auth_available()
+    return {
+        "provider_id": MUSE_CODE_PROVIDER_ID,
+        "binary_available": bool(binary),
+        "binary_path": binary or "",
+        "authenticated": authenticated,
+        "ready": bool(binary and authenticated),
+        "source": "cli_probe",
+        "family": "muse_code",
+    }
+
+
 def probe_meta_spark_readiness() -> dict[str, Any]:
     """Non-charging readiness snapshot for Meta Spark via Goose."""
 
@@ -1142,6 +1268,7 @@ def probe_all_cli_provider_readiness() -> dict[str, dict[str, Any]]:
         CLAUDE_PROVIDER_ID: probe_claude_cli_readiness(),
         GEMINI_PROVIDER_ID: probe_gemini_cli_readiness(),
         META_SPARK_PROVIDER_ID: probe_meta_spark_readiness(),
+        MUSE_CODE_PROVIDER_ID: probe_muse_code_readiness(),
         MISTRAL_PROVIDER_ID: probe_mistral_cli_readiness(),
         COPILOT_PROVIDER_ID: probe_copilot_cli_readiness(),
     }
@@ -1154,6 +1281,7 @@ __all__ = [
     "CliQuotaClassification",
     "GEMINI_PROVIDER_ID",
     "META_SPARK_PROVIDER_ID",
+    "MUSE_CODE_PROVIDER_ID",
     "MISTRAL_PROVIDER_ID",
     "SECONDARY_IMPLEMENTATION_PREFERENCE",
     "classify_claude_cli_text",
@@ -1166,7 +1294,9 @@ __all__ = [
     "copilot_cli_auth_available",
     "gemini_cli_auth_available",
     "meta_spark_auth_available",
+    "muse_code_auth_available",
     "mistral_cli_auth_available",
+    "ensure_muse_cli_binary",
     "parse_cli_balance_observation",
     "probe_all_cli_provider_readiness",
     "probe_claude_and_gemini_readiness",
@@ -1174,10 +1304,12 @@ __all__ = [
     "probe_copilot_cli_readiness",
     "probe_gemini_cli_readiness",
     "probe_meta_spark_readiness",
+    "probe_muse_code_readiness",
     "probe_mistral_cli_readiness",
     "resolve_claude_cli_binary",
     "resolve_copilot_cli_binary",
     "resolve_gemini_cli_binary",
     "resolve_goose_cli_binary",
+    "resolve_muse_cli_binary",
     "resolve_mistral_cli_binary",
 ]

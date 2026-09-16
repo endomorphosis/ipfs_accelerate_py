@@ -22,6 +22,7 @@ try:
         HuggingFaceCLIIntegration,
         VastAICLIIntegration,
         GroqCLIIntegration,
+        MuseCodeCLIIntegration,
         get_all_cli_integrations,
     )
     from ipfs_accelerate_py.common.base_cache import get_all_caches
@@ -65,6 +66,7 @@ def demo_cli_integrations():
         ("HuggingFace CLI", lambda: HuggingFaceCLIIntegration()),
         ("Vast AI CLI", lambda: VastAICLIIntegration()),
         ("Groq CLI", lambda: GroqCLIIntegration()),
+        ("Muse Code CLI", lambda: MuseCodeCLIIntegration()),
     ]
 
     initialized = []

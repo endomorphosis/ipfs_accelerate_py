@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Non-interactive Claude Code / Gemini CLI implement runner (stdin prompt).
+"""Non-interactive CLI implement runner (stdin prompt).
 
 The implementation daemon streams the task prompt on stdin and expects a
 subprocess argv that performs agent-style edits in the worktree cwd.  This
-module adapts Claude Code and Gemini CLI to that contract without charging
-quota at import time.
+module adapts Claude Code, Gemini CLI, Mistral Vibe, and Muse Code to that
+contract without charging quota at import time. Muse Code may install the
+official ``muse`` binary when explicitly selected.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -196,12 +198,100 @@ def _run_mistral(*, workspace: Path, model: str, prompt: str) -> int:
     return int(completed.returncode)
 
 
+def _resolve_muse(*, auto_install: bool = True) -> str:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.cli_provider_balance import (
+            ensure_muse_cli_binary,
+            resolve_muse_cli_binary,
+        )
+    except Exception:
+        ensure_muse_cli_binary = None  # type: ignore[assignment]
+        resolve_muse_cli_binary = None  # type: ignore[assignment]
+    if auto_install and callable(ensure_muse_cli_binary):
+        found = ensure_muse_cli_binary()
+        if found:
+            return found
+    if callable(resolve_muse_cli_binary):
+        found = resolve_muse_cli_binary()
+        if found:
+            return found
+    try:
+        from ipfs_accelerate_py.cli_runtime.installers.muse import ensure_muse
+
+        result = ensure_muse(auto_install=auto_install)
+        if result.available and result.executable:
+            return str(result.executable)
+    except Exception:
+        pass
+    found = shutil.which("muse")
+    if found:
+        return found
+    default = Path.home() / ".local" / "bin" / "muse"
+    if default.is_file() and os.access(default, os.X_OK):
+        return str(default)
+    raise SystemExit("muse CLI not found on PATH; official install failed")
+
+
+def _run_muse(*, workspace: Path, model: str, prompt: str) -> int:
+    muse = _resolve_muse(auto_install=True)
+    try:
+        from ipfs_accelerate_py.cli_runtime.providers.muse import (
+            DEFAULT_AGENT_MAX_MODEL_STEPS,
+            build_muse_exec_argv,
+            build_muse_process_env,
+        )
+    except Exception as exc:
+        print(f"muse adapter unavailable: {exc}", file=sys.stderr)
+        return 2
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="muse-supervisor-prompt-",
+        suffix=".txt",
+        delete=False,
+    )
+    prompt_file = handle.name
+    try:
+        handle.write(prompt)
+        handle.flush()
+        handle.close()
+        argv = build_muse_exec_argv(
+            executable=muse,
+            prompt_file=prompt_file,
+            model_name=model or None,
+            json_events=True,
+            disable_approval=True,
+            yolo=False,
+            workspace=str(workspace),
+            max_model_steps=DEFAULT_AGENT_MAX_MODEL_STEPS,
+        )
+        overlay = build_muse_process_env()
+        env = os.environ.copy()
+        for key, value in overlay.items():
+            if value is None:
+                env.pop(str(key), None)
+            else:
+                env[str(key)] = str(value)
+        completed = subprocess.run(
+            argv,
+            cwd=str(workspace),
+            env=env,
+            check=False,
+        )
+        return int(completed.returncode)
+    finally:
+        try:
+            os.unlink(prompt_file)
+        except OSError:
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--provider",
         required=True,
-        choices=("claude", "gemini", "mistral"),
+        choices=("claude", "gemini", "mistral", "muse_code"),
         help="CLI implement provider",
     )
     parser.add_argument(
@@ -229,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_claude(workspace=workspace, model=model, prompt=prompt)
     if args.provider == "mistral":
         return _run_mistral(workspace=workspace, model=model, prompt=prompt)
+    if args.provider == "muse_code":
+        return _run_muse(workspace=workspace, model=model, prompt=prompt)
     return _run_gemini(workspace=workspace, model=model, prompt=prompt)
 
 

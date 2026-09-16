@@ -958,6 +958,9 @@ PROVIDER_CAPACITY_FAMILY_ALIASES = {
     "muse": "goose",
     "muse_spark": "goose",
     "spark": "goose",
+    "muse_code": "muse_code",
+    "muse_cli": "muse_code",
+    "musecode": "muse_code",
     "provider": "provider",
     "infrastructure": "infrastructure",
 }
@@ -1103,6 +1106,7 @@ PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
 PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
 )
+PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@3"
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
 )
@@ -2042,6 +2046,107 @@ def _goose_meta_spark_available() -> bool:
         return bool(_goose_binary() and _resolve_meta_spark_api_key())
 
 
+def _muse_code_binary(*, auto_install: bool = False) -> str | None:
+    """Locate Muse Code, optionally installing the official ``muse`` launcher."""
+
+    try:
+        from .cli_provider_balance import (
+            ensure_muse_cli_binary,
+            resolve_muse_cli_binary,
+        )
+
+        if auto_install:
+            found = ensure_muse_cli_binary()
+        else:
+            found = resolve_muse_cli_binary()
+        if found:
+            return found
+    except Exception:
+        pass
+    try:
+        from ...llm_router import find_muse_cli
+
+        found = find_muse_cli()
+        if found:
+            return found
+    except Exception:
+        pass
+    configured = os.environ.get("IPFS_ACCELERATE_AGENT_MUSE_BIN", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        found = shutil.which(configured)
+        if found:
+            return found
+    return shutil.which("muse")
+
+
+def _muse_code_available() -> bool:
+    """True when Muse Code can run headless (binary + Meta API key)."""
+
+    if not _muse_code_binary(auto_install=False):
+        return False
+    if (
+        _resolve_meta_spark_api_key()
+        or os.environ.get("META_API_KEY", "").strip()
+        or os.environ.get("MODEL_API_KEY", "").strip()
+    ):
+        return True
+    try:
+        from ...llm_allocation.api_key_slots import select_api_key
+
+        selected = select_api_key("muse_code") or select_api_key("meta_ai")
+        return bool(selected.get("secret"))
+    except Exception:
+        return False
+
+
+def _muse_code_implementation_command(
+    *,
+    workspace_path: Path,
+    model_override: str | None = None,
+) -> list[str]:
+    """Build the non-interactive Muse Code implementation argv (stdin prompt).
+
+    Explicit ``muse_code`` dispatch installs the official CLI when missing.
+    """
+
+    binary = _muse_code_binary(auto_install=True)
+    if not binary:
+        raise RuntimeError(
+            "Muse Code CLI is not installed; official install "
+            "(curl -fsSL https://dev.meta.ai/install.sh | sh) failed"
+        )
+    if not (
+        _resolve_meta_spark_api_key()
+        or os.environ.get("META_API_KEY", "").strip()
+        or os.environ.get("MODEL_API_KEY", "").strip()
+    ):
+        raise RuntimeError(
+            "Muse Code requires META_API_KEY / MODEL_API_KEY / meta_ai_api_key"
+        )
+    model = (
+        str(model_override).strip()
+        if model_override is not None
+        else os.environ.get("IPFS_ACCELERATE_AGENT_MUSE_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_MUSE_CODE_MODEL", "").strip()
+        or os.environ.get("MUSE_MODEL", "").strip()
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.cli_implement_runner",
+        "--provider",
+        "muse_code",
+        "--workspace",
+        str(workspace_path.resolve()),
+    ]
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
 def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
     """Build a goose agent command through llm_router's goose_cli surface.
 
@@ -2581,6 +2686,15 @@ GOOSE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
         "spark",
     }
 )
+MUSE_CODE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
+    {
+        "muse_code",
+        "muse-code",
+        "musecode",
+        "muse_cli",
+        "muse-cli",
+    }
+)
 CODEX_IMPLEMENTATION_PROVIDER_NAMES = frozenset({"codex", "openai"})
 CLAUDE_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {
@@ -2605,6 +2719,7 @@ SUPPORTED_IMPLEMENTATION_PROVIDER_NAMES = frozenset(
     {"auto", "copilot"}
     | set(GROK_IMPLEMENTATION_PROVIDER_NAMES)
     | set(GOOSE_IMPLEMENTATION_PROVIDER_NAMES)
+    | set(MUSE_CODE_IMPLEMENTATION_PROVIDER_NAMES)
     | set(CODEX_IMPLEMENTATION_PROVIDER_NAMES)
     | set(CLAUDE_IMPLEMENTATION_PROVIDER_NAMES)
     | set(GEMINI_IMPLEMENTATION_PROVIDER_NAMES)
@@ -3491,6 +3606,8 @@ def _provider_labels_from_implementation_command(
             provider_labels = ("gemini",)
         elif normalized in {"vibe", "mistral", "mistral-vibe", "mistral_vibe"}:
             provider_labels = ("mistral",)
+        elif normalized in {"muse", "muse-code", "muse_code", "musecode"}:
+            provider_labels = ("muse_code", "muse")
         elif normalized in {"copilot", "github-copilot"}:
             # also matched above; keep for explicit secondary token scans
             provider_labels = ("copilot",)
@@ -18852,6 +18969,8 @@ class PortalImplementationDaemon:
             return {"claude", "anthropic", "provider"}
         if provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES:
             return {"gemini", "provider"}
+        if provider in MUSE_CODE_IMPLEMENTATION_PROVIDER_NAMES:
+            return {"muse_code", "muse", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
@@ -18863,12 +18982,15 @@ class PortalImplementationDaemon:
             from .cli_provider_balance import (
                 resolve_claude_cli_binary,
                 resolve_gemini_cli_binary,
+                resolve_muse_cli_binary,
             )
 
             if resolve_claude_cli_binary():
                 labels.update({"claude", "anthropic", "provider"})
             if resolve_gemini_cli_binary():
                 labels.update({"gemini", "provider"})
+            if resolve_muse_cli_binary():
+                labels.update({"muse_code", "muse", "provider"})
         except Exception:
             pass
         return labels or {"provider"}
@@ -20711,6 +20833,8 @@ class PortalImplementationDaemon:
                     state=state,
                 )
             )
+            if command:
+                command = self._apply_allocation_compat(command, task)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -24274,6 +24398,26 @@ class PortalImplementationDaemon:
                 and commit_result.get("committed") is True
             )
         )
+        database_projection_snapshot: dict[str, Any] = {}
+        database_snapshotter = getattr(
+            self, "_database_portal_reconciled_snapshot", None
+        )
+        if (
+            not todo_update_result.get("task_source_identity")
+            and (already_completed or (
+                updated
+                and commit_result is not None
+                and commit_result.get("committed") is False
+                and commit_result.get("reason") == "not_in_git_repo"
+            ))
+            and callable(database_snapshotter)
+        ):
+            database_projection_snapshot = dict(
+                database_snapshotter(todo_update_result, expected)
+            )
+            base_durable_update = (
+                database_projection_snapshot.get("passed") is True
+            )
         runtime_binding_uncertain = bool(
             runtime_binding.get("runtime_projection") is True
             and runtime_binding.get("authoritative") is not True
@@ -24319,6 +24463,8 @@ class PortalImplementationDaemon:
             )
         if runtime_binding:
             result["runtime_taskboard_binding"] = runtime_binding
+        if database_projection_snapshot:
+            result["database_projection_snapshot"] = database_projection_snapshot
         return result
 
     def _mark_tasks_completed_in_todo(
@@ -30128,6 +30274,8 @@ class PortalImplementationDaemon:
                     state=state,
                 )
             )
+            if command:
+                command = self._apply_allocation_compat(command, task)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -38539,6 +38687,11 @@ class PortalImplementationDaemon:
                 )
                 for entry in expansion["entries"]
             )
+        entries = [
+            entry
+            for entry in entries
+            if not self._proposal_entry_is_inline_binary(entry)
+        ]
         return (
             tuple(
                 sorted(
@@ -38552,6 +38705,30 @@ class PortalImplementationDaemon:
             ),
             tuple(expansions),
         )
+
+    @staticmethod
+    def _proposal_entry_is_inline_binary(entry: Any) -> bool:
+        """Omit inline binary blobs from proposal admission.
+
+        Hash-only authorized artifacts (no inline source) are kept so policy
+        can still admit bounded PDF/ZIP identities. Inline .bin/.pt/.npz
+        bodies are dropped so a useful text/json patch can still persist.
+        """
+
+        after = getattr(entry, "after_source", None)
+        before = getattr(entry, "before_source", None)
+        if getattr(entry, "binary", False) and after is None and before is None:
+            return False
+        if getattr(entry, "binary", False):
+            return True
+        path = str(getattr(entry, "path", "") or "").lower()
+        if path.endswith(
+            (".bin", ".npz", ".pt", ".pth", ".so", ".dylib", ".gguf", ".duckdb", ".sqlite")
+        ):
+            return True
+        if isinstance(after, str) and ("\0" in after[:2048] or after.startswith("\x7fELF")):
+            return True
+        return False
 
     def _restore_empty_scoped_submodule_gitlinks(
         self,
@@ -38718,11 +38895,33 @@ class PortalImplementationDaemon:
                 ]
             )
         tracked_command.extend([baseline_ref or "HEAD", "--"])
-        if excluded_paths:
+        tracked_paths: list[str] = []
+        for entry in entries:
+            kind = str(getattr(getattr(entry, "change_kind", ""), "value", "") or "")
+            if kind == "add" and not getattr(entry, "old_path", ""):
+                continue
+            for path in (
+                str(getattr(entry, "old_path", "") or ""),
+                str(getattr(entry, "new_path", "") or ""),
+                str(getattr(entry, "path", "") or ""),
+            ):
+                if path and path not in tracked_paths:
+                    tracked_paths.append(path)
+        if tracked_paths:
+            tracked_command.extend(tracked_paths)
+        elif excluded_paths:
             tracked_command.append(".")
             tracked_command.extend(
                 f":(exclude,literal){path}"
                 for path in excluded_paths
+            )
+        else:
+            return "".join(
+                PortalImplementationDaemon._proposal_untracked_add_sections(
+                    repo_root,
+                    entries=entries,
+                    path_prefix=prefix,
+                )
             )
         tracked = subprocess.run(
             tracked_command,
@@ -38861,7 +39060,7 @@ class PortalImplementationDaemon:
         ceilings cannot exceed the daemon's immutable process bounds. The
         resulting policy uses measured sizes, not the looser declared
         ceilings, and does not enable generated, binary, archive, or other
-        content exemptions.
+        content exemptions. Version3 may grant exact PDF/ZIP output authority only.
         """
 
         defaults = {
@@ -38921,6 +39120,14 @@ class PortalImplementationDaemon:
                 if after_source is not None
                 else 0
             )
+            if bool(getattr(entry, "binary", False)):
+                metadata = getattr(entry, "metadata", {})
+                if not isinstance(metadata, Mapping):
+                    return defaults
+                before_bytes = metadata.get("before_size_bytes", 0)
+                after_bytes = metadata.get("after_size_bytes", 0)
+                if any(type(value) is not int or value < 0 for value in (before_bytes, after_bytes)):
+                    return defaults
             total_before_bytes += before_bytes
             total_after_bytes += after_bytes
             if (
@@ -38970,6 +39177,14 @@ class PortalImplementationDaemon:
                     return defaults
             metadata = getattr(entry, "metadata", None)
             if isinstance(metadata, Mapping):
+                if bool(getattr(entry, "binary", False)):
+                    for side in ("before", "after"):
+                        value = metadata.get(side + "_size_bytes", 0)
+                        if type(value) is not int or value < 0:
+                            return defaults
+                        materialized_bytes += value
+                    if materialized_bytes > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES:
+                        return defaults
                 for name in (
                     "size_bytes",
                     "before_size_bytes",
@@ -39052,7 +39267,8 @@ class PortalImplementationDaemon:
         # the process absolute caps so bounded thin-host edits remain
         # proposal-gate admissible without a declared artifact envelope.
         if (
-            raw_patch_bytes
+            not declared_artifact_envelope
+            and raw_patch_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
@@ -39107,11 +39323,15 @@ class PortalImplementationDaemon:
         }
         if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
             expected_fields.add("allow_binary")
+        if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            expected_fields.remove("paths")
+            expected_fields.add("binary_paths")
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
         if envelope_schema not in {
             PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
             PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
         }:
             return defaults
         allow_binary = False
@@ -39120,7 +39340,7 @@ class PortalImplementationDaemon:
                 return defaults
             allow_binary = envelope["allow_binary"]
 
-        raw_paths = envelope.get("paths")
+        raw_paths = envelope.get("binary_paths" if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA else "paths")
         if type(raw_paths) is not list or not raw_paths:
             return defaults
         artifact_paths: list[str] = []
@@ -39160,8 +39380,8 @@ class PortalImplementationDaemon:
             include_ast_companions=False,
         )
         if (
-            set(changed_paths) != set(artifact_paths)
-            or len(changed_paths) != len(artifact_paths)
+            (envelope_schema != PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA
+             and (set(changed_paths) != set(artifact_paths) or len(changed_paths) != len(artifact_paths)))
             or not all(
                 any(
                     artifact_path == scope_path
@@ -39173,6 +39393,14 @@ class PortalImplementationDaemon:
         ):
             return defaults
 
+        binary_paths: tuple[str, ...] = ()
+        if envelope_schema == PROPOSAL_SCOPED_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            raw_binary = envelope["binary_paths"]
+            if (type(raw_binary) is not list or not raw_binary
+                    or any(type(path) is not str or path not in artifact_paths or not path.lower().endswith((".pdf", ".zip")) for path in raw_binary)
+                    or len(set(raw_binary)) != len(raw_binary)):
+                return defaults
+            binary_paths = tuple(sorted(raw_binary))
         requested_limits: dict[str, int] = {}
         for name in (
             "max_file_bytes",
@@ -39232,6 +39460,7 @@ class PortalImplementationDaemon:
         return {
             **measured_limits,
             "allow_binary": allow_binary,
+            **({"binary_artifact_paths": binary_paths} if binary_paths else {}),
         }
 
     @staticmethod
@@ -41000,6 +41229,7 @@ class PortalImplementationDaemon:
                     "max_file_bytes",
                     "max_patch_bytes",
                     "max_output_bytes",
+                    "binary_artifact_paths",
                 }
             },
         }
@@ -41024,13 +41254,16 @@ class PortalImplementationDaemon:
             and "max_file_bytes" in local_envelope_limits
         ):
             policy_version += (
+                "+declared-binary-artifact-envelope-v3"
+                if local_envelope_limits.get("binary_artifact_paths") else
                 "+declared-binary-artifact-envelope-v2"
                 if local_envelope_limits.get("allow_binary")
                 else "+declared-artifact-envelope-v1"
             )
-            # The envelope helper admitted only exact set equality between
-            # these changed paths and the identity-bound task outputs.
-            policy_allowed_paths = changed_paths
+            # Legacy envelopes bind every changed path. Version3 grants only
+            # exact binary paths and leaves ordinary text scope unchanged.
+            if not local_envelope_limits.get("binary_artifact_paths"):
+                policy_allowed_paths = changed_paths
         replayable_proposal_ids = {
             str(proposal_id).strip()
             for proposal_id in replayable_consumed_proposal_ids
@@ -41435,6 +41668,22 @@ class PortalImplementationDaemon:
             )
             for entry in entries
         ]
+        # Git -C may discover a copy only after an untracked destination is
+        # staged.  The filesystem mutation is still a destination addition.
+        # Normalize only this incidental copy provenance for the fingerprint;
+        # proposal validation retains the original complete COPY entry.
+        for item in payload:
+            if item.get("change_kind") == "copy":
+                item.update(
+                    old_path="",
+                    change_kind="add",
+                    before_source=None,
+                    before_blob_id="",
+                )
+                metadata = dict(item.get("metadata") or {})
+                if "before_mode" in metadata:
+                    metadata["before_mode"] = ""
+                item["metadata"] = metadata
         encoded = json.dumps(
             payload,
             sort_keys=True,
@@ -60638,6 +60887,25 @@ class PortalImplementationDaemon:
             )
         return tuple(matches)
 
+    def _apply_allocation_compat(
+        self,
+        command: list[str],
+        task: PortalTask | None,
+    ) -> list[str]:
+        """Attach llm_allocation session resume flags. Fail-soft."""
+        try:
+            from .allocation_compat import apply_resume_argv, ensure_allocation_schema
+
+            ensure_allocation_schema()
+            provider = ""
+            task_id = ""
+            if task is not None:
+                provider = self._task_declared_implementation_provider(task) or ""
+                task_id = str(getattr(task, "task_id", "") or "")
+            return apply_resume_argv(command, provider=provider, task_id=task_id)
+        except Exception:
+            return list(command)
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
@@ -60647,6 +60915,12 @@ class PortalImplementationDaemon:
         attempt: int = 0,
         state: PortalTaskState | None = None,
     ) -> list[str]:
+        try:
+            from .allocation_compat import ensure_allocation_schema
+
+            ensure_allocation_schema()
+        except Exception:
+            pass
         if self.manual_completion_authority_revalidation_only:
             raise RuntimeError(
                 "model dispatch is forbidden in manual completion authority "
@@ -60819,6 +61093,7 @@ class PortalImplementationDaemon:
         force_codex = provider in {"codex", "openai"}
         force_claude = provider in CLAUDE_IMPLEMENTATION_PROVIDER_NAMES
         force_gemini = provider in GEMINI_IMPLEMENTATION_PROVIDER_NAMES
+        force_muse_code = provider in MUSE_CODE_IMPLEMENTATION_PROVIDER_NAMES
         force_copilot = provider == "copilot"
         automatic_latches = (
             self._provider_capacity_latch_states()
@@ -61056,6 +61331,17 @@ class PortalImplementationDaemon:
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
+            if route_plan is not None:
+                # Preserve the explicitly configured closed quota tuple. The
+                # runner still requires fresh typed failure and independent
+                # native quota evidence before any fallback can dispatch.
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=route_plan.primary_model_id,
+                    failure_receipt_nonce=secrets.token_hex(32),
+                    fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
+                    route_plan=route_plan,
+                )
             return _grok_cli_command(workspace_path=workspace_path)
         if (
             prefer_grok
@@ -61130,6 +61416,8 @@ class PortalImplementationDaemon:
                     f"Implementation provider {provider!r} requires Gemini CLI"
                 ) from exc
             return _gemini_implementation_command(workspace_path=workspace_path)
+        if force_muse_code:
+            return _muse_code_implementation_command(workspace_path=workspace_path)
         if force_copilot:
             if not copilot_allowed:
                 raise RuntimeError(
@@ -61166,8 +61454,9 @@ class PortalImplementationDaemon:
             )
         raise RuntimeError(
             "No implementation command configured. Install the Grok Build CLI "
-            "(`grok` with auth), goose (with Meta Spark credentials), codex, "
-            "claude, gemini, or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "(`grok` with auth), goose (with Meta Spark credentials), Muse Code "
+            "(`muse_code`), codex, claude, gemini, or copilot, or set "
+            "IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
@@ -69266,6 +69555,7 @@ class DatabaseImplementationDaemon:
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
+        return False
 
         return False
 
@@ -70971,13 +71261,17 @@ class DatabaseImplementationDaemon:
         if isinstance(completion, Mapping):
             completion = completion.get("mode") or completion.get("kind")
         manual_completion = str(completion or "").strip().lower() == "manual"
-        review_raw = body.get("review_only")
+        review_raw = body.get("review_only", body.get("review only"))
         review_only = review_raw is True or str(review_raw or "").strip().lower() in {
             "1",
             "true",
             "yes",
         }
-        return manual_completion or review_only
+        schedulable_raw = body.get("is_schedulable", body.get("is schedulable", True))
+        unschedulable = schedulable_raw is False or str(schedulable_raw).strip().lower() in {
+            "0", "false", "no", "off",
+        }
+        return manual_completion or review_only or unschedulable
 
     def _automatic_claim_exclusions(self) -> set[str]:
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
@@ -72581,6 +72875,44 @@ class DatabaseImplementationDaemon:
                 "cross-store reconciliation does not match execution attempt "
                 + ", ".join(mismatched)
             )
+        if not succeeded:
+            # The coordinator has already durably expired the exact claim or
+            # aborted its unchanged completion preparation. Requeue only the
+            # owner row still bearing that claim's own in_progress receipt;
+            # a later block/cancel/completion/claim must remain untouched.
+            task = self.task_source.get(current.task_cid)
+            body = getattr(task, "body", None)
+            receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+            if (
+                task is not None and str(task.status) == "in_progress"
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation") == "database_claim"
+                and receipt.get("claim_id") == current.claim_id
+                and receipt.get("attempt_id") == current.attempt_id
+                and receipt.get("owner_session_id") == current.owner_session_id
+                and receipt.get("control_claimed_revision") == int(task.revision)
+            ):
+                from ..task_sources.database_task_source import TaskSourceConflictError
+
+                try:
+                    self._cas_task_status_database(
+                        current.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="ready",
+                        receipt={
+                            "operation": "database_requeue_reconciled_attempt",
+                            "claim_id": current.claim_id,
+                            "attempt_id": current.attempt_id,
+                            "owner_session_id": current.owner_session_id,
+                            "reason": str(reconciliation.get("reason") or reconciliation.get("status") or ""),
+                            "provider_evidence_reused": False,
+                            "effect_evidence_reused": False,
+                        },
+                    )
+                except TaskSourceConflictError:
+                    # Another owner mutation won. The expired local attempt
+                    # still retires; its stale status must never overwrite it.
+                    pass
         expected_status = "succeeded" if succeeded else "failed"
         expected_phase = (
             ATTEMPT_PHASE_COMPLETE if succeeded else ATTEMPT_PHASE_FAILED
@@ -74375,10 +74707,13 @@ class DatabaseImplementationDaemon:
         }
 
     def wait_for_wake(self, timeout: float = 0.0) -> None:
-        """Bounded idle wait; database authority uses polling, not FS notify."""
+        """Honor the runner's poll/retry deadline, interruptible by its signals."""
 
         if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+            # The runner bounds this by the configured interval/retry deadline.
+            # Its SIGTERM/SIGINT handler raises SystemExit and interrupts sleep;
+            # truncating to one second instead creates a busy resumption loop.
+            time.sleep(float(timeout))
 
     def close_event_runtime(self) -> None:
         self.close()

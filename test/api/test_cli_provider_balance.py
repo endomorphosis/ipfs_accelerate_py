@@ -7,16 +7,20 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.cli_provider_balance import
     COPILOT_PROVIDER_ID,
     GEMINI_PROVIDER_ID,
     META_SPARK_PROVIDER_ID,
+    MUSE_CODE_PROVIDER_ID,
     MISTRAL_PROVIDER_ID,
     classify_claude_cli_text,
+    classify_cli_provider_text,
     classify_copilot_cli_text,
     classify_gemini_cli_text,
     classify_meta_spark_cli_text,
     classify_mistral_cli_text,
+    ensure_muse_cli_binary,
     parse_cli_balance_observation,
     probe_all_cli_provider_readiness,
     probe_claude_cli_readiness,
     probe_gemini_cli_readiness,
+    probe_muse_code_readiness,
 )
 
 
@@ -166,6 +170,7 @@ def test_probe_all_includes_meta_mistral_copilot() -> None:
         CLAUDE_PROVIDER_ID,
         GEMINI_PROVIDER_ID,
         META_SPARK_PROVIDER_ID,
+        MUSE_CODE_PROVIDER_ID,
         MISTRAL_PROVIDER_ID,
         COPILOT_PROVIDER_ID,
     }
@@ -174,3 +179,41 @@ def test_probe_all_includes_meta_mistral_copilot() -> None:
         assert "binary_available" in snapshot
         assert "authenticated" in snapshot
         assert "ready" in snapshot
+
+
+def test_probe_muse_code_does_not_install(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.cli_runtime.installers.muse.ensure_muse",
+        lambda **_k: (_ for _ in ()).throw(AssertionError("probe must not install")),
+    )
+    snapshot = probe_muse_code_readiness()
+    assert snapshot["provider_id"] == MUSE_CODE_PROVIDER_ID
+    assert "binary_available" in snapshot
+    assert "ready" in snapshot
+
+
+def test_ensure_muse_cli_binary_installs_when_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.cli_provider_balance.resolve_muse_cli_binary",
+        lambda: None,
+    )
+
+    class _Result:
+        available = True
+        executable = "/tmp/fake-muse"
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.cli_runtime.installers.muse.ensure_muse",
+        lambda **kwargs: _Result(),
+    )
+    assert ensure_muse_cli_binary() == "/tmp/fake-muse"
+
+
+def test_classify_muse_code_quota_text() -> None:
+    classified = classify_cli_provider_text(
+        "muse_code",
+        "Error: insufficient_quota — payment required for Meta AI",
+    )
+    assert classified.provider_id == MUSE_CODE_PROVIDER_ID
+    assert classified.hard_quota_exhausted is True
+    assert "cli.muse_code" in classified.reason_codes

@@ -73,6 +73,15 @@ def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) ->
             logger.warning(f"Model tools not registered: {e}")
 
         # If FastMCP-style decorators are available, register decorator-based tool modules
+        try:
+            from ipfs_accelerate_py.mcp_server.tools.llm_allocation_tools import (
+                register_native_llm_allocation_tools,
+            )
+
+            register_native_llm_allocation_tools(mcp)
+        except Exception as e:
+            logger.debug("LLM allocation tools not registered: %s", e)
+
         if hasattr(mcp, "tool"):
             try:
                 from .inference import register_tools as register_inference_tools

@@ -96,6 +96,9 @@ async def generate_text(
     model: str = "auto",
     max_tokens: int = 512,
     temperature: float = 0.7,
+    provider: Optional[str] = None,
+    allocation_session_id: Optional[str] = None,
+    allocation_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate text using an available language model."""
     if not isinstance(prompt, str) or not prompt.strip():
@@ -127,23 +130,31 @@ async def generate_text(
             "leanstral_local",
             "labs_leanstral_1_5",
         }
-        provider = "llama_cpp" if normalized_model in leanstral_aliases else None
+        routed_provider = provider or (
+            "llama_cpp" if normalized_model in leanstral_aliases else None
+        )
         model_name = None if normalized_model in leanstral_aliases | {"", "auto"} else model_key
+        route_kwargs: Dict[str, Any] = {
+            "model_name": model_name,
+            "provider": routed_provider,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if allocation_session_id:
+            route_kwargs["allocation_session_id"] = allocation_session_id
+        if allocation_path:
+            route_kwargs["allocation_path"] = allocation_path
         generated_text = await anyio.to_thread.run_sync(
-            lambda: route_generate_text(
-                prompt.strip(),
-                model_name=model_name,
-                provider=provider,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
+            lambda: route_generate_text(prompt.strip(), **route_kwargs)
         )
         return _normalize_payload(
             {
                 "prompt": prompt.strip(),
                 "model": model_key,
-                "provider": provider or "auto",
+                "provider": routed_provider or "auto",
                 "generated_text": generated_text,
+                "allocation_session_id": allocation_session_id or "",
+                "allocation_path": allocation_path or "",
             }
         )
     except Exception as exc:
@@ -527,6 +538,9 @@ def register_native_shared_tools(manager: Any) -> None:
                 "model": {"type": "string", "default": "auto"},
                 "max_tokens": {"type": "integer", "default": 512},
                 "temperature": {"type": "number", "default": 0.7},
+                "provider": {"type": "string"},
+                "allocation_session_id": {"type": "string"},
+                "allocation_path": {"type": "string", "enum": ["cli", "api"]},
             },
             "required": ["prompt"],
         },

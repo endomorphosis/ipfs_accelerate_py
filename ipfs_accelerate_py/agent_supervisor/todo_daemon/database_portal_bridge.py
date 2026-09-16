@@ -94,6 +94,10 @@ _MAX_ATTEMPT_CONTROL_BYTES: Final[int] = 4 * 1024 * 1024
 class DatabasePortalBridgeError(RuntimeError):
     """A database claim could not obtain trustworthy Portal evidence."""
 
+    def __init__(self, message: str, *, result: Mapping[str, Any] | None = None):
+        super().__init__(message)
+        self.result = dict(result or {})
+
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
     """Portal execution made bounded progress but is not yet acceptable."""
@@ -1609,6 +1613,12 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
                 "implementation_commit",
                 "branch",
                 "merge_queued",
+                "attempt_consumed",
+                "failure_kind",
+                "provider_dispatched",
+                "provider_call_allowed",
+                "backoff_seconds",
+                "infrastructure_failure",
             )
             if key in implementation
         }
@@ -10847,7 +10857,17 @@ class DatabasePortalExecutionBridge:
                     )
                 failure = self._terminal_failure(raw_result)
                 if failure:
+                    implementation = summary.get("implementation", {})
+                    setup_deferred = (
+                        implementation.get("failure_kind") == "lifecycle_setup"
+                        and implementation.get("attempt_consumed") is False
+                        and (implementation.get("provider_dispatched") is False
+                             or (implementation.get("provider_dispatched") is None
+                                 and implementation.get("provider_call_allowed") is False))
+                    )
                     if (
+                        not setup_deferred
+                        and (
                         "deferred" in failure
                         or "backoff" in failure
                         or "capacity" in failure
@@ -10858,9 +10878,10 @@ class DatabasePortalExecutionBridge:
                             "inflight_process_missing",
                             "worktree_lifecycle_claim_exists",
                         }
+                        )
                     ):
-                        raise DatabasePortalBridgeDeferred(failure)
-                    raise DatabasePortalBridgeError(failure)
+                        raise DatabasePortalBridgeDeferred(failure, result=summary)
+                    raise DatabasePortalBridgeError(failure, result=summary)
             return self._acceptance_receipt(
                 attempt=attempt,
                 paths=paths,

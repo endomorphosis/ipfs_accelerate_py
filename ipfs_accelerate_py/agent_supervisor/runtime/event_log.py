@@ -359,6 +359,82 @@ def _canonical_event_bytes(value: Mapping[str, Any], maximum: int) -> bytes:
     return encoded
 
 
+EVENT_SIDECAR_BLOB_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor.event-sidecar-blob@1"
+)
+_EVENT_SIDECAR_MIN_BYTES = 4096
+
+
+def _event_sidecar_dir(path: Path) -> Path:
+    return path.with_name(path.name + ".artifacts")
+
+
+def _write_event_sidecar(directory: Path, payload: bytes) -> dict[str, Any]:
+    digest = hashlib.sha256(payload).hexdigest()
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / digest
+    if not target.exists():
+        _atomic_write_bytes(target, payload)
+    return {
+        "schema": EVENT_SIDECAR_BLOB_SCHEMA,
+        "digest": "sha256:" + digest,
+        "bytes": len(payload),
+    }
+
+
+def _spill_value(value: Any, directory: Path, threshold: int) -> Any:
+    if isinstance(value, Mapping):
+        if str(value.get("schema") or "") == EVENT_SIDECAR_BLOB_SCHEMA:
+            return dict(value)
+        return {
+            str(key): _spill_value(item, directory, threshold)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
+        if len(encoded) >= threshold:
+            return _write_event_sidecar(directory, encoded)
+        return [_spill_value(item, directory, threshold) for item in value]
+    if isinstance(value, str):
+        encoded = value.encode("utf-8")
+        if len(encoded) >= threshold:
+            return _write_event_sidecar(directory, encoded)
+    return value
+
+
+def _spill_oversized_event(
+    event: Mapping[str, Any],
+    limit: int,
+    log_path: Path,
+) -> dict[str, Any]:
+    """Replace large nested strings with sidecar blob refs until the event fits."""
+
+    current = dict(event)
+    directory = _event_sidecar_dir(log_path)
+    threshold = max(_EVENT_SIDECAR_MIN_BYTES, limit // 8)
+    reserved = set(_RESERVED_EVENT_FIELDS) | {"type", "timestamp", "event_id"}
+    for _ in range(8):
+        try:
+            _canonical_event_bytes(current, limit)
+            return current
+        except EventPayloadTooLarge:
+            spilled = {
+                key: (
+                    current[key]
+                    if key in reserved
+                    else _spill_value(current[key], directory, threshold)
+                )
+                for key in current
+            }
+            if spilled == current:
+                raise
+            current = spilled
+            threshold = max(512, threshold // 2)
+    return current
+
+
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -1617,12 +1693,12 @@ def append_jsonl_event(
         supplied_payload.pop(field_name, None)
     selected_timestamp = supplied_payload.pop("timestamp", None)
     supplied_payload.pop("type", None)
+    # Only the event type selects the 256 KiB receipt ceiling. A payload key
+    # whose name happens to contain "receipt" must not demote a routine event
+    # (for example implementation_finished) onto the receipt bound.
     default_limit = (
         MAX_RECEIPT_BYTES
-        if (
-            "receipt" in str(event_type).casefold()
-            or any("receipt" in str(name).casefold() for name in payload)
-        )
+        if "receipt" in str(event_type).casefold()
         else MAX_PROJECTION_BYTES
     )
     if max_bytes is not None and (
@@ -1645,7 +1721,12 @@ def append_jsonl_event(
             "previous_event_id": previous_event_id,
         }
         event["event_id"] = _event_identity(event)
-        encoded = _canonical_event_bytes(event, limit) + b"\n"
+        try:
+            encoded = _canonical_event_bytes(event, limit) + b"\n"
+        except EventPayloadTooLarge:
+            event = _spill_oversized_event(event, limit, path)
+            event["event_id"] = _event_identity(event)
+            encoded = _canonical_event_bytes(event, limit) + b"\n"
         offset = path.stat().st_size if path.exists() else 0
         with path.open("ab") as fh:
             fh.write(encoded)

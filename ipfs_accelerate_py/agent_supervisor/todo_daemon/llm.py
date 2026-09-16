@@ -120,6 +120,8 @@ class LlmRouterInvocation:
     # constructor used by older daemon integrations.
     allow_cross_provider_fallback: Optional[bool] = None
     child_file_prefix: str = "todo-daemon-llm-child-"
+    allocation_session_id: str = ""
+    allocation_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -544,6 +546,8 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     result_file_env = _env_name(config, "RESULT_FILE")
     envelope_file_env = _env_name(config, "ENVELOPE_FILE")
     usage_mode_env = _env_name(config, "USAGE_MODE")
+    allocation_session_env = _env_name(config, "ALLOCATION_SESSION_ID")
+    allocation_path_env = _env_name(config, "ALLOCATION_PATH")
     request_id_env = _env_name(config, "REQUEST_ID")
     attempt_env = _env_name(config, "ATTEMPT")
     idempotency_env = _env_name(config, "IDEMPOTENCY_KEY")
@@ -593,6 +597,12 @@ if "trace" in parameters:
 if "trace_dir" in parameters:
     trace_dir = os.environ.get({trace_dir_env!r}) or None
     kwargs["trace_dir"] = trace_dir
+alloc_session = os.environ.get({allocation_session_env!r}) or ""
+alloc_path = os.environ.get({allocation_path_env!r}) or ""
+if alloc_session and "allocation_session_id" in parameters:
+    kwargs["allocation_session_id"] = alloc_session
+if alloc_path and "allocation_path" in parameters:
+    kwargs["allocation_path"] = alloc_path
 text = llm_router.generate_text(prompt, **kwargs)
 reject_provider = os.environ.get({reject_provider_env!r}) or ""
 required_providers = {{
@@ -800,6 +810,10 @@ def call_llm_router_with_receipt(
                 _env_name(config, "ENDPOINT_RECEIPT_ID"): str(config.endpoint_receipt_id or ""),
                 _env_name(config, "RESULT_FILE"): str(result_file or ""),
                 _env_name(config, "ENVELOPE_FILE"): str(envelope_file or ""),
+                _env_name(config, "ALLOCATION_SESSION_ID"): str(
+                    config.allocation_session_id or ""
+                ),
+                _env_name(config, "ALLOCATION_PATH"): str(config.allocation_path or ""),
             }
         )
         command = [config.python_executable, str(child_file)]

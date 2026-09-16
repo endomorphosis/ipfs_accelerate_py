@@ -574,6 +574,8 @@ async def llm_generate(
     allow_fallback: bool = False,
     stream: bool = False,
     max_stream_chunks: int = MAX_STREAM_CHUNKS,
+    allocation_session_id: Optional[str] = None,
+    allocation_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resolve and invoke ``llm_router.generate_text`` with bounded I/O."""
 
@@ -637,15 +639,19 @@ async def llm_generate(
         invocation_model = _invocation_model(selected)
 
         def call() -> Tuple[Any, Any]:
-            value = llm_router.generate_text(
-                prompt_value,
-                model_name=invocation_model,
-                provider=invocation_provider,
-                allow_local_fallback=False,
-                disable_model_retry=True,
-                max_tokens=max_tokens,
-                temperature=float(temperature),
-            )
+            generate_kwargs: Dict[str, Any] = {
+                "model_name": invocation_model,
+                "provider": invocation_provider,
+                "allow_local_fallback": False,
+                "disable_model_retry": True,
+                "max_tokens": max_tokens,
+                "temperature": float(temperature),
+            }
+            if allocation_session_id:
+                generate_kwargs["allocation_session_id"] = allocation_session_id
+            if allocation_path:
+                generate_kwargs["allocation_path"] = allocation_path
+            value = llm_router.generate_text(prompt_value, **generate_kwargs)
             return value, getattr(llm_router, "get_last_generation_trace", None)
 
         generated, trace = await _invoke_with_timeout(call, timeout_value)
@@ -1070,6 +1076,15 @@ def register_native_ai_router_tools(manager: Any) -> None:
                 "minimum": 0,
                 "maximum": 2,
                 "default": 0.7,
+            },
+            "allocation_session_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+            },
+            "allocation_path": {
+                "type": "string",
+                "enum": ["cli", "api"],
             },
         }
     )
