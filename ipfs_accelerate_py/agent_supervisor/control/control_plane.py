@@ -3965,6 +3965,18 @@ class JsonlControlStateStore(InMemoryControlStateStore):
                 stream.write(encoded + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce import (
+                observe_control_audit,
+            )
+
+            observe_control_audit(
+                path,
+                privacy_class="local_only",
+                remote_disclosure_permitted=False,
+            )
+        except Exception:
+            pass
 
     def query_receipts(
         self, request: OperationRequest, *, limit: int, offset: int

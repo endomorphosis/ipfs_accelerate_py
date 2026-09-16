@@ -7,6 +7,8 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce import (
     TRACE_LABELS,
     classify_event_deterministic,
+    last_audit_reduce,
+    observe_control_audit,
     redact_event,
     reduce_events,
     reduce_jsonl,
@@ -107,3 +109,26 @@ def test_reduce_jsonl_and_never_completes(tmp_path, monkeypatch: pytest.MonkeyPa
     assert report.to_dict()["may_complete_task"] is False
     assert set(TRACE_LABELS) == set(report.counts)
     assert classify_event_deterministic({"status": "failed", "error_code": "denied"}) == "real_fail"
+
+
+def test_observe_control_audit_fail_open_without_key(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    path = tmp_path / "control-audit.jsonl"
+    path.write_text(
+        '{"operation":"capabilities","status":"succeeded"}\n',
+        encoding="utf-8",
+    )
+    report = observe_control_audit(path)
+    assert report is not None
+    assert report.may_complete_task is False
+    snapshot = last_audit_reduce()
+    assert snapshot["may_complete_task"] is False
+    assert snapshot["counts"]["success"] == 1

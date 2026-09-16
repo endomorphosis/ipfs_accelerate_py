@@ -8,6 +8,7 @@ from status/error_code only. Events never include prompts or grant payloads.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -27,6 +28,7 @@ TRACE_LABELS: tuple[str, ...] = (
     "other",
 )
 MAX_EVENTS = 16
+_LAST_AUDIT = threading.local()
 
 
 def redact_event(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -212,10 +214,42 @@ def reduce_jsonl(
     )
 
 
+def last_audit_reduce() -> dict[str, Any]:
+    value = getattr(_LAST_AUDIT, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def observe_control_audit(
+    path: str | Path,
+    *,
+    privacy_class: str = "local_only",
+    remote_disclosure_permitted: bool = False,
+    timeout: float = 15.0,
+) -> Optional[TraceReduceReport]:
+    """Snapshot a JSONL audit file. Never completes a task. Never raises."""
+
+    try:
+        report = reduce_jsonl(
+            path,
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+            timeout=timeout,
+        )
+    except Exception:
+        return None
+    payload = report.to_dict()
+    payload["path"] = str(path)
+    payload["may_complete_task"] = False
+    _LAST_AUDIT.value = payload
+    return report
+
+
 __all__ = [
     "TRACE_LABELS",
     "TraceReduceReport",
     "classify_event_deterministic",
+    "last_audit_reduce",
+    "observe_control_audit",
     "reduce_events",
     "reduce_jsonl",
     "redact_event",
