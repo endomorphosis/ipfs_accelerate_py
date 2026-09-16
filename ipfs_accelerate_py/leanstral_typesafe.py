@@ -201,9 +201,11 @@ def typesafe_state(goal: LeanstralGoal, parsed: ParsedLeanstralOutput) -> dict[s
     """State for System One. Includes the parsed draft, never thought text."""
 
     return {
-        "goal_id": goal.goal_id,
-        "declaration": goal.declaration,
-        "expected_provable": goal.expected_provable,
+        "goal": {
+            "id": goal.goal_id,
+            "declaration": goal.declaration,
+            "expected_provable": goal.expected_provable,
+        },
         "draft": {
             "kind": parsed.kind,
             "body": parsed.body,
@@ -214,59 +216,110 @@ def typesafe_state(goal: LeanstralGoal, parsed: ParsedLeanstralOutput) -> dict[s
 
 
 def solver_questions() -> dict[str, Any]:
-    """Closed TypeSafe questions that turn a Leanstral draft into a solver verdict."""
+    """Atomic TypeSafe questions over the same draft. Combined in code."""
 
     return {
         "is_abstain": Noul(
-            instructions="Did the model abstain instead of proposing a proof body?",
+            instructions={
+                "question": "Did the model abstain instead of proposing a proof?",
+                "inspect": "`draft.kind`",
+                "focus": "Exact ABSTAIN, not a tactic script that mentions ABSTAIN.",
+            },
             criteria={
-                "true": "The draft is exactly ABSTAIN or clearly declines to prove.",
-                "false": "The draft proposes tactics or other proof text.",
+                "true": {
+                    "what": "`draft.kind` is abstain or `draft.body` is exactly ABSTAIN",
+                    "not_for": "A by-proof that contains the identifier ABSTAIN",
+                },
+                "false": {"what": "The draft proposes tactics or other proof text"},
             },
         ),
         "is_proof_body": Noul(
-            instructions="Is the extracted draft a Lean 4 tactic proof starting with by?",
+            instructions={
+                "question": "Is `draft.body` a Lean 4 tactic proof starting with by?",
+                "inspect": "`draft.body`",
+            },
         ),
         "well_formed": Noul(
-            instructions=(
-                "Is the extracted draft a tactic script only, with no extra prose, "
-                "chat turns, comments, or thought text?"
-            ),
+            instructions={
+                "question": "Is `draft.body` a tactic script only?",
+                "inspect": "`draft.body`",
+                "focus": "No extra prose, chat turns, comments, or thought text.",
+            },
         ),
         "uses_forbidden": Noul(
-            instructions=(
-                "Does the draft use sorry, admit, axioms, imports, comments, "
-                "metaprogramming, or identifiers that are not elementary tactics?"
-            ),
+            instructions={
+                "question": "Does `draft.body` use a forbidden construct?",
+                "inspect": "`draft.body`",
+                "focus": "sorry, admit, axioms, imports, comments, or metaprogramming.",
+            },
         ),
         "disposition": Choice(
-            instructions="What should the solver do with this untrusted Leanstral draft?",
+            instructions={
+                "question": "What should code do with this untrusted Leanstral draft?",
+                "inspect": "`draft`",
+            },
             criteria={
-                "accept_candidate": "Well-formed elementary proof body; send to the kernel.",
-                "abstain": "The model declined; there is no candidate.",
-                "reject": "Malformed, forbidden, incomplete, or not a proof.",
-                "needs_kernel": "Looks like a proof, but only the kernel may accept it.",
+                "accept_candidate": {
+                    "what": "Well-formed elementary proof body; send to the kernel",
+                    "not_for": "Abstain, malformed, or forbidden constructs",
+                },
+                "abstain": {
+                    "what": "The model declined; there is no candidate",
+                    "not_for": "A by-proof, even a bad one",
+                },
+                "reject": {
+                    "what": "Malformed, forbidden, incomplete, or not a proof",
+                    "not_for": "A clean elementary tactic script",
+                },
+                "needs_kernel": {
+                    "what": "Looks like a proof; only the kernel may accept it",
+                    "not_for": "Exact ABSTAIN or empty thought-only output",
+                },
             },
         ),
         "claim_status": Choice(
-            instructions=(
-                "Treat the declaration as a closed logical claim from its explicit "
-                "parameters only. Ignore whether the draft would typecheck. "
-                "unsat means the claim holds (negation unsatisfiable). "
-                "sat means there is a countermodel. unknown if it is not a "
-                "decidable first-order claim from the given parameters."
-            ),
+            instructions={
+                "question": "SMT-LIB check-sat of the negation of `goal.declaration`?",
+                "inspect": "`goal.declaration`",
+                "focus": "Ignore whether `draft.body` would typecheck.",
+            },
             criteria={
-                "unsat": "The claim is valid from the stated parameters.",
-                "sat": "The claim is not valid; a countermodel exists.",
-                "unknown": "Not a first-order/decidable claim from these parameters.",
+                "unsat": {
+                    "what": "The claim holds from the stated parameters",
+                    "not_for": "A countermodel exists",
+                },
+                "sat": {
+                    "what": "A countermodel exists from the stated parameters",
+                    "not_for": "The claim is valid",
+                },
+                "unknown": {
+                    "what": "Not a first-order/decidable claim from these parameters",
+                    "not_for": "A clear sat or unsat FOL/SMT claim",
+                },
             },
         ),
         "candidate_quality": Score(
-            instructions="How close is this draft to a kernel-checkable elementary proof?",
+            instructions={
+                "question": "How close is `draft.body` to a kernel-checkable elementary proof?",
+                "inspect": "`draft.body`",
+            },
             criteria=["unusable", "partial", "kernel-ready"],
         ),
     }
+
+
+def compose_draft_quality(*, is_proof_body: float, well_formed: float, uses_forbidden: float) -> float:
+    """Weighted draft quality in [0, 1]. Code owns the weights."""
+
+    return max(
+        0.0,
+        min(
+            1.0,
+            0.4 * float(is_proof_body)
+            + 0.4 * float(well_formed)
+            + 0.2 * (1.0 - float(uses_forbidden)),
+        ),
+    )
 
 
 def typesafe_request(goal: LeanstralGoal, parsed: ParsedLeanstralOutput) -> dict[str, Any]:
@@ -498,6 +551,7 @@ __all__ = [
     "parse_leanstral_output",
     "propose_and_solve",
     "solve_with_typesafe",
+    "compose_draft_quality",
     "solver_questions",
     "typesafe_request",
     "typesafe_state",

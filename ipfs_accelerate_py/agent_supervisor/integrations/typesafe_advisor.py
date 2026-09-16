@@ -184,10 +184,18 @@ def advise_proof_draft(
             action=KernelSpend.SPEND.value,
             reason_codes=("typesafe_error_fail_open_to_kernel",),
         )
+    from ipfs_accelerate_py.leanstral_typesafe import compose_draft_quality
+
+    quality = compose_draft_quality(
+        is_proof_body=verdict.is_proof_body,
+        well_formed=verdict.well_formed,
+        uses_forbidden=verdict.uses_forbidden,
+    )
     skip = (
         verdict.disposition in {"reject", "abstain"}
         and verdict.confidence >= HIGH_CONFIDENCE
         and verdict.parsed.kind in {"abstain", "malformed", "incomplete"}
+        and quality < 0.35
     )
     action = KernelSpend.SKIP.value if skip else KernelSpend.SPEND.value
     reasons = []
@@ -197,12 +205,13 @@ def advise_proof_draft(
         reasons.append("advisory_spend_kernel")
     if verdict.confidence < LOW_CONFIDENCE:
         reasons.append("low_confidence")
+    reasons.append("composed_draft_quality")
     return AdvisoryReceipt(
         action=action,
         disposition=verdict.disposition,
         claim_status=verdict.claim_status,
         confidence=verdict.confidence,
-        noul=verdict.is_proof_body,
+        noul=quality,
         score=verdict.candidate_quality,
         reason_codes=tuple(reasons),
         usage=_usage(),
@@ -271,6 +280,202 @@ def triage_smt(
     )
 
 
+def _noul_answer(result: Any, name: str) -> float:
+    nouls = getattr(result, "nouls", None) or {}
+    item = nouls.get(name) if isinstance(nouls, Mapping) else None
+    if item is None:
+        return 0.0
+    try:
+        return float(getattr(item, "noul", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _choice_answer(result: Any, name: str) -> str:
+    choices = getattr(result, "choices", None) or {}
+    item = choices.get(name) if isinstance(choices, Mapping) else None
+    if item is None:
+        return ""
+    return str(getattr(item, "choice", "") or "")
+
+
+def _contrastive_choice(kind: str, allowed: Sequence[str]) -> Choice:
+    criteria = {
+        item: {
+            "what": item,
+            "not_for": "any other listed option",
+        }
+        for item in allowed
+    }
+    return Choice(
+        instructions={
+            "question": f"Which allowlisted option applies for {kind.replace('_', ' ')}?",
+            "focus": "Select exactly one listed alternative.",
+        },
+        criteria=criteria,
+    )
+
+
+def planning_atomic_questions(
+    question_type: str,
+    alternatives: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Narrow parallel questions. Code composes the nomination."""
+
+    kind = str(question_type or "").strip().casefold()
+    allowed = tuple(str(item).strip() for item in alternatives if str(item).strip())
+    questions: dict[str, Any] = {}
+    if kind == "whether_replan_is_required":
+        questions = {
+            "mandatory_check_failed": Noul(
+                instructions={
+                    "question": "Did a mandatory check fail?",
+                    "inspect": "`failure`",
+                    "focus": "Failed tests, typecheck, or kernel — not warnings.",
+                },
+                criteria={
+                    "true": {"what": "A required check failed"},
+                    "false": {"what": "No required check failed", "not_for": "warnings only"},
+                },
+            ),
+            "stale_evidence": Noul(
+                instructions={
+                    "question": "Is the failure explained by stale evidence?",
+                    "inspect": "`failure`",
+                },
+            ),
+            "suffix_still_matches_tree": Noul(
+                instructions={
+                    "question": "Does the remaining plan suffix still match the tree?",
+                    "inspect": "`plan`",
+                },
+            ),
+        }
+    elif kind == "whether_patch_is_semantically_nonempty":
+        questions = {
+            "edits_tracked_files": Noul(
+                instructions={
+                    "question": "Does the patch edit tracked files?",
+                    "inspect": "`patch`",
+                },
+            ),
+            "changes_behavior": Noul(
+                instructions={
+                    "question": "Does the patch change runtime or proof behavior?",
+                    "inspect": "`patch`",
+                },
+            ),
+            "only_comments_or_whitespace": Noul(
+                instructions={
+                    "question": "Are the edits comments or whitespace only?",
+                    "inspect": "`patch`",
+                },
+            ),
+        }
+    elif kind == "which_proof_obligation_applies":
+        for item in allowed[:8]:
+            key = "applies_" + "".join(ch if ch.isalnum() else "_" for ch in item)[:48]
+            questions[key] = Noul(
+                instructions={
+                    "question": "Does this allowlisted obligation apply?",
+                    "inspect": "`obligation_ids`",
+                    "focus": item,
+                },
+            )
+    if allowed:
+        questions["answer"] = _contrastive_choice(kind, allowed)
+    elif kind.startswith(WHETHER_PREFIX) and not questions:
+        questions["answer"] = Noul(
+            instructions={"question": f"Decide {kind.replace('_', ' ')} for this state."},
+        )
+    elif kind.startswith(WHETHER_PREFIX) and "answer" not in questions:
+        questions["answer"] = Noul(
+            instructions={"question": f"Decide {kind.replace('_', ' ')} for this state."},
+        )
+    elif kind.startswith(WHICH_PREFIX) and not allowed:
+        return {}
+    elif not questions and kind.startswith(WHICH_PREFIX):
+        questions["answer"] = _contrastive_choice(kind, allowed)
+    return questions
+
+
+def compose_planning_nomination(
+    question_type: str,
+    result: Any,
+    alternatives: Sequence[str] = (),
+) -> tuple[str, tuple[str, ...], float]:
+    """Combine atomic answers in code. Never invents an alternative."""
+
+    kind = str(question_type or "").strip().casefold()
+    allowed = tuple(str(item).strip() for item in alternatives if str(item).strip())
+    reasons: list[str] = ["composed_in_code"]
+    model_choice = _choice_answer(result, "answer")
+    nominated = model_choice if (not allowed or model_choice in allowed) else ""
+    if allowed and model_choice and model_choice not in allowed:
+        reasons.append("choice_not_in_allowlist")
+
+    if kind == "whether_replan_is_required":
+        failed = _noul_answer(result, "mandatory_check_failed")
+        stale = _noul_answer(result, "stale_evidence")
+        matches = _noul_answer(result, "suffix_still_matches_tree")
+        if stale >= 0.7:
+            for name in ("preserve", "not_required", "reuse"):
+                if name in allowed:
+                    nominated = name
+                    reasons.append("stale_evidence_prefer_preserve")
+                    break
+        elif failed >= 0.7 and matches < 0.4:
+            for name in ("replan_suffix", "selected", "recompute"):
+                if name in allowed:
+                    nominated = name
+                    reasons.append("failed_and_suffix_mismatch")
+                    break
+        if not allowed:
+            answer_noul = _noul_answer(result, "answer")
+            if failed or answer_noul:
+                nominated = "yes" if max(failed, answer_noul) >= 0.5 else "no"
+                reasons.append("noul_threshold_0_5")
+    elif kind == "whether_patch_is_semantically_nonempty":
+        edits = _noul_answer(result, "edits_tracked_files")
+        behavior = _noul_answer(result, "changes_behavior")
+        comments = _noul_answer(result, "only_comments_or_whitespace")
+        nonempty = (0.5 * edits + 0.5 * behavior) * (1.0 - comments)
+        if allowed:
+            if nonempty >= 0.5:
+                for name in ("nonempty", "selected", "yes"):
+                    if name in allowed:
+                        nominated = name
+                        reasons.append("composite_nonempty")
+                        break
+            else:
+                for name in ("empty", "not_required", "no"):
+                    if name in allowed:
+                        nominated = name
+                        reasons.append("composite_empty")
+                        break
+        else:
+            nominated = "yes" if nonempty >= 0.5 else "no"
+            reasons.append("composite_nonempty_noul")
+    elif kind == "which_proof_obligation_applies" and allowed:
+        scored = []
+        for item in allowed[:8]:
+            key = "applies_" + "".join(ch if ch.isalnum() else "_" for ch in item)[:48]
+            scored.append((_noul_answer(result, key), item))
+        scored.sort(reverse=True)
+        if scored and scored[0][0] >= 0.6:
+            nominated = scored[0][1]
+            reasons.append("highest_applies_noul")
+        elif model_choice in allowed:
+            nominated = model_choice
+            reasons.append("allowlist_choice")
+
+    if nominated and allowed and nominated not in allowed:
+        nominated = ""
+        reasons.append("composed_choice_not_in_allowlist")
+    confidence = _confidence_from_result(result)
+    return nominated, tuple(reasons), confidence
+
+
 def evaluate_closed_question(
     *,
     question_id: str,
@@ -302,18 +507,8 @@ def evaluate_closed_question(
             question_id=question_id,
             reason_codes=("empty_allowlist",),
         )
-    if allowed and (kind.startswith(WHICH_PREFIX) or kind.startswith(WHETHER_PREFIX)):
-        questions: dict[str, Any] = {
-            "answer": Choice(
-                instructions=f"Select one allowlisted option for {kind.replace('_', ' ')}.",
-                criteria={item: None for item in allowed},
-            ),
-        }
-    elif kind.startswith(WHETHER_PREFIX):
-        questions = {
-            "answer": Noul(instructions=f"Decide {kind.replace('_', ' ')} for this state."),
-        }
-    else:
+    questions = planning_atomic_questions(kind, allowed)
+    if not questions:
         return AdvisoryReceipt(
             action="abstain",
             question_id=question_id,
@@ -322,10 +517,8 @@ def evaluate_closed_question(
     from ipfs_accelerate_py.typesafe_inference import system_one
 
     redacted_state = {
-        "question_id": question_id,
-        "question_type": kind,
-        "alternatives": list(allowed),
-        "state": dict(state),
+        "question": {"id": question_id, "type": kind, "alternatives": list(allowed)},
+        "facts": dict(state),
     }
     try:
         result = system_one(redacted_state, questions, timeout=timeout)
@@ -335,34 +528,23 @@ def evaluate_closed_question(
             question_id=question_id,
             reason_codes=("typesafe_error",),
         )
-    if kind.startswith(WHETHER_PREFIX) and not allowed:
-        noul = float(result.nouls["answer"].noul) if "answer" in result.nouls else 0.0
-        choice = "yes" if noul >= 0.5 else "no"
-        return AdvisoryReceipt(
-            action="answered",
-            question_id=question_id,
-            choice=choice,
-            noul=noul,
-            confidence=_confidence_from_result(result),
-            reason_codes=("noul_threshold_0_5",),
-            usage=_usage(),
-        )
-    chosen = str(result.choices["answer"].choice) if "answer" in result.choices else ""
-    if chosen not in allowed:
+    nominated, reasons, confidence = compose_planning_nomination(kind, result, allowed)
+    if not nominated:
         return AdvisoryReceipt(
             action="abstain",
             question_id=question_id,
-            choice=chosen,
-            confidence=_confidence_from_result(result),
-            reason_codes=("choice_not_in_allowlist",),
+            choice=_choice_answer(result, "answer"),
+            confidence=confidence,
+            reason_codes=reasons or ("choice_not_in_allowlist",),
             usage=_usage(),
         )
     return AdvisoryReceipt(
         action="answered",
         question_id=question_id,
-        choice=chosen,
-        confidence=_confidence_from_result(result),
-        reason_codes=("allowlist_choice",),
+        choice=nominated,
+        noul=_noul_answer(result, "answer"),
+        confidence=confidence,
+        reason_codes=reasons,
         usage=_usage(),
     )
 
@@ -576,13 +758,16 @@ def maybe_verify_leanstral_draft(
     else:
         declaration = str(theorem.get("expected_statement") or theorem.get("theorem_id") or "")
         goal_id = str(theorem.get("obligation_id") or theorem.get("theorem_id") or "")
-    advice = advise_proof_draft(
-        goal_id=goal_id or "unknown",
-        declaration=declaration or "unknown",
-        draft_text=text,
-        privacy_class=privacy_class,
-        remote_disclosure_permitted=remote_disclosure_permitted,
-    )
+    try:
+        advice = advise_proof_draft(
+            goal_id=goal_id or "unknown",
+            declaration=declaration or "unknown",
+            draft_text=text,
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+        )
+    except Exception:
+        return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
     if advice.action == KernelSpend.SKIP.value:
         raise TypesafeKernelSkip(advice)
     return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
@@ -610,8 +795,10 @@ __all__ = [
     "TypesafeKernelSkip",
     "advise_decision_question",
     "advise_proof_draft",
+    "compose_planning_nomination",
     "escalation_meta_action",
     "evaluate_closed_question",
+    "planning_atomic_questions",
     "is_trap_family",
     "maybe_verify_leanstral_draft",
     "residual_uncertainty_bp",

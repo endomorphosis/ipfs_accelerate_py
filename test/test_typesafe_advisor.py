@@ -50,6 +50,8 @@ def test_proof_advice_skips_kernel_on_confident_abstain(monkeypatch: pytest.Monk
         claim_status = "unknown"
         confidence = HIGH_CONFIDENCE
         is_proof_body = 0.01
+        well_formed = 0.01
+        uses_forbidden = 0.01
         candidate_quality = 0.0
         parsed = SimpleNamespace(kind="abstain")
 
@@ -78,6 +80,8 @@ def test_proof_advice_spends_kernel_on_low_confidence(monkeypatch: pytest.Monkey
         claim_status = "sat"
         confidence = 0.4
         is_proof_body = 0.2
+        well_formed = 0.1
+        uses_forbidden = 0.8
         candidate_quality = 0.1
         parsed = SimpleNamespace(kind="incomplete")
 
@@ -223,6 +227,50 @@ def test_whether_with_alternatives_uses_allowlist_choice(
     assert advice.residual_uncertainty_bp >= 1
     assert advice.next_action == "CALL_REMOTE_STRONG_MODEL"
     assert advice.receipt.accepted_as_authority is False
+
+
+def test_replan_atomic_signals_override_choice_in_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"answer": SimpleNamespace(choice="preserve", confidence=0.9)}
+        scores = {}
+        nouls = {
+            "mandatory_check_failed": SimpleNamespace(noul=0.92),
+            "stale_evidence": SimpleNamespace(noul=0.05),
+            "suffix_still_matches_tree": SimpleNamespace(noul=0.1),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_args, **_kwargs: _Result(),
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+        planning_atomic_questions,
+    )
+
+    questions = planning_atomic_questions(
+        "whether_replan_is_required",
+        ("preserve", "replan_suffix"),
+    )
+    assert "mandatory_check_failed" in questions
+    assert "stale_evidence" in questions
+    assert "suffix_still_matches_tree" in questions
+    assert "answer" in questions
+    advice = advise_decision_question(
+        question_id="q-replan-atomic",
+        question_type="whether_replan_is_required",
+        alternatives=("preserve", "replan_suffix"),
+        state={"failure": {"step": "tests"}},
+    )
+    assert advice.nominated_answer == "replan_suffix"
+    assert "failed_and_suffix_mismatch" in advice.receipt.reason_codes
+    assert advice.can_resolve is False
 
 
 def test_proof_question_escalates_to_smt(monkeypatch: pytest.MonkeyPatch) -> None:

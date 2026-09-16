@@ -112,7 +112,7 @@ def test_typesafe_request_uses_parsed_draft_not_thoughts() -> None:
     dumped = json.dumps(request)
     assert "thought" not in dumped.casefold() or request["state"]["draft"]["kind"] == "incomplete"
     assert request["state"]["draft"]["body"] == ""
-    assert request["state"]["declaration"] == PROTECTED.declaration
+    assert request["state"]["goal"]["declaration"] == PROTECTED.declaration
     questions = request["questions"]
     assert questions["disposition"]["type"] == "choice"
     assert set(questions["claim_status"]["criteria"]) == {"unsat", "sat", "unknown"}
@@ -193,7 +193,7 @@ def test_live_leanstral_identity_parses_to_typesafe_request() -> None:
     assert payload["goal_id"] == IDENTITY.goal_id
     assert payload["parsed"]["kind"] in {"proof_body", "abstain", "incomplete", "malformed"}
     request = payload["typesafe_request"]
-    assert request["state"]["declaration"] == IDENTITY.declaration
+    assert request["state"]["goal"]["declaration"] == IDENTITY.declaration
     assert "questions" in request
     assert request["questions"]["claim_status"]["type"] == "choice"
     if payload["parsed"]["kind"] == "proof_body":

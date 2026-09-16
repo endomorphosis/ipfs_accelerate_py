@@ -68,6 +68,10 @@ def test_apply_typesafe_advice_records_evidence_without_resolving(
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
         lambda **_kwargs: True,
     )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
 
     class _Result:
         choices = {"answer": SimpleNamespace(choice="obl-1", confidence=0.33)}

@@ -174,15 +174,18 @@ class TypesafeSupervisorAdapter:
         prepared: Sequence[ResolutionCandidate] = tuple(candidates)
         if question is not None:
             remote = bool(getattr(context, "remote_disclosure_permitted", False))
-            prepared, _updated, advice = prepare_step_candidates(
-                controller.decision_graph,
-                question,
-                candidates,
-                state=state,
-                privacy_class=self.privacy_class,
-                remote_disclosure_permitted=remote,
-                timeout=self.timeout,
-            )
+            try:
+                prepared, _updated, advice = prepare_step_candidates(
+                    controller.decision_graph,
+                    question,
+                    candidates,
+                    state=state,
+                    privacy_class=self.privacy_class,
+                    remote_disclosure_permitted=remote,
+                    timeout=self.timeout,
+                )
+            except Exception:
+                prepared, advice = tuple(candidates), None
         result = runtime.handle_wake(
             event,
             candidates=tuple(prepared),

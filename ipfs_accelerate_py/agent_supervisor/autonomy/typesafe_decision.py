@@ -69,6 +69,11 @@ def apply_typesafe_question_advice(
         remote_disclosure_permitted=remote_disclosure_permitted,
         timeout=timeout,
     )
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        return advice
     controller.record_evidence(
         question.question_id,
         evidence_ids=(advice.evidence_id,),
@@ -161,18 +166,29 @@ def prepare_step_candidates(
     if not should or not call_typesafe:
         return tuple(candidates), question, None
     previous_id = question.question_id
-    advice = apply_typesafe_question_advice(
-        controller,
-        question,
-        state=state,
+    try:
+        advice = apply_typesafe_question_advice(
+            controller,
+            question,
+            state=state,
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+            timeout=timeout,
+        )
+    except Exception:
+        return tuple(candidates), question, None
+    if not typesafe_permitted(
         privacy_class=privacy_class,
         remote_disclosure_permitted=remote_disclosure_permitted,
-        timeout=timeout,
-    )
+    ):
+        return tuple(candidates), question, advice
     updated = next(
-        item
-        for item in controller.graph.questions
-        if advice.evidence_id in item.known_evidence_ids
+        (
+            item
+            for item in controller.graph.questions
+            if advice.evidence_id in item.known_evidence_ids
+        ),
+        question,
     )
     rebound = rebind_candidates(
         candidates,
@@ -200,15 +216,18 @@ def admit_after_typesafe_advice(
     prepared: Sequence[ResolutionCandidate] = candidates
     if question is not None and meaningful_change:
         remote = bool(getattr(context, "remote_disclosure_permitted", False))
-        prepared, _updated, advice = prepare_step_candidates(
-            meta.decision_graph,
-            question,
-            candidates,
-            state=state,
-            privacy_class=privacy_class,
-            remote_disclosure_permitted=remote,
-            timeout=timeout,
-        )
+        try:
+            prepared, _updated, advice = prepare_step_candidates(
+                meta.decision_graph,
+                question,
+                candidates,
+                state=state,
+                privacy_class=privacy_class,
+                remote_disclosure_permitted=remote,
+                timeout=timeout,
+            )
+        except Exception:
+            prepared, advice = tuple(candidates), None
     step = meta.step(
         candidates=tuple(prepared),
         context=context,

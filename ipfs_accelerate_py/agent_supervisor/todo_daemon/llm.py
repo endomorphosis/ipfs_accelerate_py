@@ -933,6 +933,19 @@ def call_llm_router_with_receipt(
             (completed.stdout or "") + " " + (completed.stderr or ""), limit=1200
         )
         raise RuntimeError(f"llm_router child exited with code {completed.returncode}: {details}")
+    if usage_mode in {LLM_USAGE_MODE_OBSERVE, LLM_USAGE_MODE_SHADOW}:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
+                observe_worker_trace,
+            )
+
+            observe_worker_trace(
+                prompt=prompt,
+                output=str(completed.stdout or ""),
+                usage_mode=usage_mode,
+            )
+        except Exception:
+            pass
     return completed.stdout, result_envelope
 
 
