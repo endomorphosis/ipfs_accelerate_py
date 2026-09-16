@@ -983,6 +983,85 @@ def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkey
     assert read_json(tmp_path / "repair-worker.json")["status"] == "runtime_update_ready"
 
 
+def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    user_dir = tmp_path / "systemd"
+    reloads = []
+    restarts = []
+    real_admit = fleet_heals.admit_native_owner_overlay
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {
+            "status": "skip", "recipe": "unstall_stale_native_work",
+            "completion_authority": False, "reason": "quack_attach_token_absent",
+        },
+    )
+    observation = {
+        "board_id": "doep",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+        "details": {
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+            "task_counts": {"blocked": 2, "todo": 23},
+            "extra_gate": {"live_owner_unit": "agent-supervisor-doep-v1.service"},
+        },
+    }
+    prior = {
+        "recipe": "local_validation_pending_native_admission",
+        "results": [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "receipt_missing"},
+        ],
+    }
+    monkeypatch.setattr(
+        fleet_heals, "admit_native_owner_overlay",
+        lambda *a, **k: {
+            "status": "applied",
+            "recipe": "overlay_first_native_admission",
+            "completion_authority": False,
+            "restarted": True,
+            "reason": "overlay-first extra-gate recycle",
+        },
+    )
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        {"stall_class": "blocked_without_independent_work",
+         "observation": observation, "last_action_result": prior},
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "overlay_first_native_admission"
+    assert result["results"][0]["status"] == "passed"
+    assert result["results"][1]["status"] == "receipt_missing"
+
+    written = real_admit(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        observation,
+        show_unit=lambda unit: [
+            "/usr/bin/python3",
+            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+            "run",
+        ],
+        daemon_reload=lambda: reloads.append(True),
+        restart_unit=lambda unit: restarts.append(unit),
+        systemd_user_dir=user_dir,
+    )
+    assert written["status"] == "applied"
+    assert written["completion_authority"] is False
+    assert written["restarted"] is True
+    assert restarts == ["agent-supervisor-doep-v1.service"]
+    text = (user_dir / "agent-supervisor-doep-v1.service.d" / "91-overlay-first-admission.conf").read_text()
+    assert "sealed_board_supervisor_launch.py" in text
+    assert "TimeoutStopSec=180" in text
+    skipped = real_admit(
+        {"id": "spar", "cwd": str(tmp_path)},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}}},
+        systemd_user_dir=user_dir,
+    )
+    assert skipped["reason"] == "retain_owner_not_rewrapped"
+
+
 def test_extra_gate_recursion_heal_unstalls_for_native_admission(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal

@@ -225,13 +225,12 @@ def main(argv: list[str] | None = None) -> int:
             "--overlay DIR --source-root DIR -- script.py [args...]"
         )
     os.chdir(source_root)
-    if source_root not in sys.path:
-        sys.path.insert(0, source_root)
+    install_overlay(overlay, source_root)
     nested = Path(source_root) / "external" / "ipfs_accelerate"
     if nested.is_dir():
-        nested_root = str(nested.resolve())
-        if nested_root not in sys.path:
-            sys.path.insert(0, nested_root)
+        sys.path.insert(0, str(nested.resolve()))
+    if source_root not in sys.path:
+        sys.path.insert(0, source_root)
     overlay_root = Path(overlay)
     if _is_spar_source(source_root, args):
         overlay_module(

@@ -214,7 +214,11 @@ def _owner_transport_env(inventory: Mapping[str, Any]) -> dict[str, str]:
         elif database:
             store_id = database
     if not mutation_dir and runtime:
-        for relative in ("q/mutations", "quack-owner/mutations"):
+        for relative in (
+            "q/mutations",
+            "quack-owner/mutations",
+            "registry/mutations",
+        ):
             candidate = Path(runtime) / relative
             if candidate.is_dir():
                 mutation_dir = str(candidate)
@@ -451,7 +455,10 @@ def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
     """Do not re-run pytest every watchdog cycle after a recorded local pass."""
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
-    if result.get("recipe") != "local_validation_pending_native_admission":
+    if result.get("recipe") not in {
+        "local_validation_pending_native_admission",
+        "overlay_first_native_admission",
+    }:
         return False
     current = _blocked_task_ids(observation)
     if not current:
@@ -576,7 +583,7 @@ def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[s
 
 RETAIN_OWNER_BOARDS = frozenset({"spar", "aseh"})
 HEAL_OVERLAY_LAUNCHER = "sealed_board_supervisor_launch.py"
-RECYCLE_EXTRA_GATE_BOARDS = frozenset({"sawm", "pctdd", "doep"})
+NATIVE_ADMISSION_OVERLAY_BOARDS = frozenset({"doep"})
 
 
 def supervisor_overlay_root() -> str:
@@ -688,6 +695,83 @@ def collapse_extra_gate_recursion(
     }
 
 
+def admit_native_owner_overlay(
+    board: Mapping[str, Any], observation: Mapping[str, Any],
+    *,
+    show_unit=None,
+    daemon_reload=None,
+    restart_unit=None,
+    systemd_user_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Load overlay heals in the live extra-gate so it can natively admit.
+
+    Board scripts insert a sealed ``ipfs_accelerate_py`` first, so PYTHONPATH
+    alone never unstalls DOEP-044. Overlay-first keeps one consistent package
+    (not a mixed quack_state_server). Never forges completion.
+    """
+    empty = {
+        "status": "skip",
+        "recipe": "overlay_first_native_admission",
+        "completion_authority": False,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_rewrapped"}
+    if board_id not in NATIVE_ADMISSION_OVERLAY_BOARDS:
+        return {**empty, "reason": "board_not_native_admission_overlay"}
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
+    live_unit = str(extra.get("live_owner_unit") or "")
+    if not live_unit.endswith(".service") or live_unit == "cron.service":
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    cwd = str(board.get("cwd") or "")
+    if not cwd:
+        return {**empty, "reason": "board_cwd_absent"}
+    overlay = supervisor_overlay_root()
+    show = show_unit or _systemd_show_exec_start
+    raw = show(live_unit)
+    if isinstance(raw, list):
+        argv = [str(item) for item in raw if isinstance(item, str)]
+    else:
+        argv = parse_systemd_exec_start(str(raw or ""))
+    wrapped = overlay_wrapped_execstart(argv, overlay=overlay, source_root=cwd)
+    if not wrapped:
+        return {**empty, "reason": "execstart_not_wrappable"}
+    if any(HEAL_OVERLAY_LAUNCHER in item for item in argv):
+        return {**empty, "reason": "overlay_first_already_bound"}
+    user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
+    dropin_dir = user_dir / f"{live_unit}.d"
+    dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    quoted = " ".join(_systemd_quote(item) for item in wrapped)
+    body = (
+        "[Service]\n"
+        "ExecStart=\n"
+        f"ExecStart={quoted}\n"
+        f"Environment=PYTHONPATH={overlay}\n"
+        "TimeoutStopSec=180\n"
+        "SendSIGKILL=yes\n"
+        "Restart=on-failure\n"
+    )
+    path = dropin_dir / "91-overlay-first-admission.conf"
+    path.write_text(body, encoding="utf-8")
+    os.chmod(path, 0o600)
+    reloader = daemon_reload or _systemd_daemon_reload
+    reloader()
+    restarter = restart_unit or _systemd_restart_unit
+    restarter(live_unit)
+    return {
+        "status": "applied",
+        "recipe": "overlay_first_native_admission",
+        "completion_authority": False,
+        "live_owner_unit": live_unit,
+        "restarted": True,
+        "reason": (
+            "overlay-first extra-gate recycle so owner-side unstall can "
+            "natively admit false-terminal blocks; receipts stay incomplete"
+        ),
+    }
+
+
 def _systemd_quote(value: str) -> str:
     if value.isalnum() or all(ch in "._/-:+@" for ch in value):
         return value
@@ -737,6 +821,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                 "completion_authority": False,
                 "reason": "retain_owner_not_rewrapped",
             }
+    unstall: dict[str, Any] = {"status": "skip"}
     if stall in {
         "independent_work_beside_blocked_peer",
         "independent_todos_unclaimed",
@@ -762,6 +847,17 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "blocked_without_independent_work":
         if local_validation_already_recorded(state):
             prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+            if (
+                unstall.get("reason") == "quack_attach_token_absent"
+                and prior.get("recipe") != "overlay_first_native_admission"
+            ):
+                admission = admit_native_owner_overlay(board, observation)
+                if admission.get("status") != "skip":
+                    admission["results"] = [
+                        item for item in prior.get("results") or []
+                        if isinstance(item, dict)
+                    ]
+                    return admission
             return {
                 "status": "wait",
                 "recipe": "local_validation_pending_native_admission",
