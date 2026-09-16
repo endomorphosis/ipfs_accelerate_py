@@ -312,9 +312,12 @@ def test_token_vault_mints_handle_only_and_destroys(tmp_path: Path) -> None:
         vault.resolve()
 
 
-def test_ready_owner_has_false_terminal_unstall_hook() -> None:
+def test_ready_path_republishes_client_token_handoff() -> None:
+    import inspect
+
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import QuackStateServer
 
+    assert "_ensure_client_token_handoff" in inspect.getsource(QuackStateServer.ready)
     assert callable(getattr(QuackStateServer, "_unstall_false_terminal_blocked"))
 
 

@@ -4793,6 +4793,9 @@ class QuackStateServer:
             }
             sanitized = sanitize_for_export(result, token=token)
             self._vault.assert_absent_from(sanitized, surface_name="ready")
+            # Parent launch may retire the on-disk handoff after extra-gate extra-gate extra-gate
+            # start so providers never inherit it. Fleet still needs the file.
+            self._ensure_client_token_handoff()
             return sanitized
 
     def is_ready(self) -> bool:
