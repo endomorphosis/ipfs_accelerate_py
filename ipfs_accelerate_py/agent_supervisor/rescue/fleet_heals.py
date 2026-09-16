@@ -17,6 +17,15 @@ _RECEIPT_SEARCH_ROOTS = (
 _MAX_RECEIPT_BYTES = 1_000_000
 _LOCAL_VALIDATION_TIMEOUT = 90
 _ALLOWED_VALIDATORS = {"python3", "pytest", "/usr/bin/python3", "/usr/bin/pytest"}
+_CANDIDATE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1"
+)
+_RECORDED_LOCAL_VALIDATION = {
+    "passed",
+    "failed",
+    "validation_unspecified",
+    "validation_source_missing",
+}
 
 
 def live_workers(observation: Mapping[str, Any]) -> bool:
@@ -75,6 +84,105 @@ def _receipt_path(cwd: Path, task_id: str) -> Path | None:
             if path.is_file():
                 return path
     return None
+
+
+def _validation_profiles_path(board: Mapping[str, Any], cwd: Path) -> Path | None:
+    """Locate the board's validation-profile catalog. Never searches the live DuckDB."""
+    config_path = board.get("config_path")
+    if not isinstance(config_path, str) or not config_path:
+        config_path = _inventory_board(board).get("config_path")
+    if isinstance(config_path, str) and config_path:
+        path = Path(config_path)
+        for candidate in (
+            path.with_name(path.name.replace("_scheduler.json", "_validation_profiles.json")),
+            path.with_name(path.name.replace("scheduler.json", "validation_profiles.json")),
+        ):
+            if candidate.is_file():
+                return candidate
+    config_dir = cwd / "config"
+    if config_dir.is_dir():
+        matches = sorted(config_dir.glob("*validation_profiles.json"))
+        if matches:
+            return matches[0]
+    return None
+
+
+def _validation_profile(
+    board: Mapping[str, Any], cwd: Path, task_id: str,
+) -> dict[str, Any] | None:
+    path = _validation_profiles_path(board, cwd)
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    profiles = payload.get(task_id) if isinstance(payload, dict) else None
+    if isinstance(profiles, dict) and profiles.get("task_id") in {task_id, None}:
+        return profiles
+    catalog = payload.get("profiles") if isinstance(payload, dict) else None
+    if isinstance(catalog, dict):
+        item = catalog.get(task_id)
+        if isinstance(item, dict):
+            return item
+    return None
+
+
+def _materialize_candidate_receipt(
+    cwd: Path, board: Mapping[str, Any], task_id: str,
+) -> Path | None:
+    """Write a candidate receipt from the validation profile. Never admits completion."""
+    profile = _validation_profile(board, cwd, task_id)
+    if profile is None:
+        return None
+    relative = profile.get("receipt")
+    if not isinstance(relative, str) or Path(relative).name != f"{task_id}.json":
+        return None
+    root = cwd.resolve()
+    path = (cwd / relative).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return None
+    if path.is_file():
+        return path
+    commands = []
+    for command in profile.get("commands") or []:
+        if not isinstance(command, dict):
+            continue
+        argv = command.get("argv")
+        if (
+            isinstance(argv, list) and argv
+            and all(isinstance(item, str) and item for item in argv)
+            and argv[0] in _ALLOWED_VALIDATORS
+        ):
+            entry: dict[str, Any] = {"argv": list(argv), "status": "candidate_local"}
+            rel = command.get("cwd")
+            if isinstance(rel, str) and rel:
+                entry["cwd"] = rel
+            commands.append(entry)
+    if not commands:
+        return None
+    payload = {
+        "schema": _CANDIDATE_RECEIPT_SCHEMA,
+        "task_id": task_id,
+        "completion_authoritative": False,
+        "worker_completion_insufficient": True,
+        "candidate_status": "receipt_materialized",
+        "plan_revision": profile.get("plan_revision") or "",
+        "profile_id": profile.get("profile_id") or "",
+        "validation": {"commands": commands},
+        "supervisor_acceptance": {
+            "completion_authoritative": False,
+            "state": "pending_independent_fenced_supervisor",
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+    )
+    os.chmod(path, 0o600)
+    return path
 
 
 def _validation_command(payload: Mapping[str, Any]) -> tuple[list[str], str] | None:
@@ -468,10 +576,7 @@ def local_validation_already_recorded(state: Mapping[str, Any]) -> bool:
         for item in result.get("results") or []
         if isinstance(item, dict)
     }
-    return all(
-        prior.get(task_id) in {"passed", "receipt_missing", "validation_unspecified"}
-        for task_id in current
-    )
+    return all(prior.get(task_id) in _RECORDED_LOCAL_VALIDATION for task_id in current)
 
 
 def run_local_blocked_candidate_validation(
@@ -489,6 +594,8 @@ def run_local_blocked_candidate_validation(
     results = []
     for task_id in task_ids:
         path = _receipt_path(cwd, task_id)
+        if path is None:
+            path = _materialize_candidate_receipt(cwd, board, task_id)
         if path is None:
             results.append({"task_id": task_id, "status": "receipt_missing"})
             continue

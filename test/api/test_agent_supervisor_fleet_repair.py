@@ -688,7 +688,7 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
         {"stall_class": "blocked_without_independent_work", "observation": observation,
          "last_action_result": healed},
     )
-    assert recorded["status"] == "wait"
+    assert recorded["completion_authoritative"] is False
     assert recorded["recipe"] == "local_validation_pending_native_admission"
     assert recorded["results"][0]["status"] == "passed"
     assert recorded["results"][1]["status"] == "receipt_missing"
@@ -697,8 +697,76 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
         {"stall_class": "blocked_without_independent_work", "observation": observation,
          "last_action_result": recorded},
     )
-    assert again["status"] == "wait"
-    assert len(calls) == 2
+    assert again["completion_authoritative"] is False
+    assert again["results"][1]["status"] == "receipt_missing"
+    assert len(calls) == 4
+
+
+def test_missing_receipt_is_materialized_from_validation_profile(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_local_blocked_candidate_validation,
+    )
+
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "board_validation_profiles.json").write_text(json.dumps({
+        "DOEP-063": {
+            "task_id": "DOEP-063",
+            "plan_revision": "DOEP-PLAN-V5",
+            "profile_id": "doep-validation/DOEP-PLAN-V5/DOEP-063@1",
+            "receipt": "external/ipfs_accelerate/artifacts/doep/receipts/DOEP-063.json",
+            "commands": [{
+                "argv": [
+                    "python3", "-m", "pytest",
+                    "external/ipfs_accelerate/test/api/doep/test_doep_063.py", "-q",
+                ],
+            }],
+        },
+    }))
+    calls = []
+    def fake_run(argv, cwd=None, **kwargs):
+        calls.append((list(argv), cwd))
+        return subprocess.CompletedProcess(argv, 0)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_local_blocked_candidate_validation(
+        {"cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-063"]}},
+    )
+    receipt = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts/DOEP-063.json"
+    payload = json.loads(receipt.read_text())
+    assert payload["completion_authoritative"] is False
+    assert payload["candidate_status"] == "receipt_materialized"
+    assert payload["supervisor_acceptance"]["completion_authoritative"] is False
+    assert result["completion_authoritative"] is False
+    assert result["recipe"] == "local_validation_pending_native_admission"
+    assert result["results"][0]["status"] == "passed"
+    assert result["results"][0]["completion_authoritative"] is False
+    assert calls and "test_doep_063.py" in calls[0][0][-2]
+
+
+def test_materialized_receipt_does_not_overwrite_existing_receipt(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        _materialize_candidate_receipt,
+    )
+
+    receipts = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts"
+    receipts.mkdir(parents=True)
+    existing = receipts / "DOEP-044.json"
+    existing.write_text(json.dumps({"task_id": "DOEP-044", "keep": True}))
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "board_validation_profiles.json").write_text(json.dumps({
+        "DOEP-044": {
+            "task_id": "DOEP-044",
+            "receipt": "external/ipfs_accelerate/artifacts/doep/receipts/DOEP-044.json",
+            "commands": [{"argv": ["python3", "-m", "pytest", "x.py", "-q"]}],
+        },
+    }))
+    path = _materialize_candidate_receipt(
+        tmp_path, {"cwd": str(tmp_path)}, "DOEP-044",
+    )
+    assert path == existing
+    assert json.loads(existing.read_text())["keep"] is True
 
 
 def test_restore_dirty_control_plane_checkouts_configured_paths(tmp_path):
@@ -1011,7 +1079,7 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
         "recipe": "local_validation_pending_native_admission",
         "results": [
             {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
-            {"task_id": "DOEP-063", "status": "receipt_missing"},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
         ],
     }
     monkeypatch.setattr(
@@ -1033,7 +1101,7 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
     assert result["completion_authority"] is False
     assert result["recipe"] == "overlay_first_native_admission"
     assert result["results"][0]["status"] == "passed"
-    assert result["results"][1]["status"] == "receipt_missing"
+    assert result["results"][1]["status"] == "passed"
 
     written = real_admit(
         {"id": "doep", "cwd": str(tmp_path / "board")},
