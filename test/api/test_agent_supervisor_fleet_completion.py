@@ -364,24 +364,39 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
 
 
 def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True,
-              billing_locked=False, local_gates_fail=False):
+              billing_locked=False, local_gates_fail=False, merged=False, merged_head=None,
+              listed_after_create=None, commit_pulls=None):
     candidate = "a" * 40
     calls = []
     views = 0
+    creates = 0
     ready = {"number": 7, "state": "OPEN", "isDraft": False, "baseRefName": "main",
              "headRefOid": candidate, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
              "reviewDecision": "APPROVED"}
 
     def run(argv, root, *args, **kwargs):
-        nonlocal views
+        nonlocal views, creates
         calls.append(argv)
         if argv[:3] == ["gh", "pr", "list"]:
-            return json.dumps([{"number": 7, "headRefOid": candidate}] if listed else [])
+            state = argv[argv.index("--state") + 1] if "--state" in argv else "open"
+            if state == "merged":
+                if merged:
+                    return json.dumps([{
+                        "number": 7, "headRefOid": merged_head or candidate, "state": "MERGED",
+                    }])
+                return "[]"
+            show = listed_after_create if creates and listed_after_create is not None else listed
+            return json.dumps([{"number": 7, "headRefOid": candidate}] if show else [])
+        if argv[:3] == ["gh", "pr", "create"]:
+            creates += 1
+            return "https://github.com/owner/repo/pull/7"
         if argv[:3] == ["gh", "pr", "view"]:
             views += 1
             return json.dumps({**ready, **(patch or {}), **(second_patch or {} if views == 2 else {})})
         if argv[:3] == ["gh", "pr", "checks"] and checks_fail:
             raise fleet.PublicationHold("hosted check unavailable due to billing")
+        if argv[:2] == ["gh", "api"] and "/pulls" in str(argv[2] if len(argv) > 2 else ""):
+            return json.dumps(commit_pulls if commit_pulls is not None else [])
         if argv[:3] == ["gh", "run", "list"]:
             if billing_locked:
                 return json.dumps([{"databaseId": 9, "conclusion": "failure", "status": "completed"}])
@@ -466,6 +481,47 @@ def test_new_pr_waits_for_hosted_checks(tmp_path, monkeypatch):
         fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo", candidate)
     assert any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_merged_publication_pr_at_exact_candidate_is_already_published(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, listed=False, merged=True)
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_merged_publication_pr_associated_commit_is_already_published(tmp_path, monkeypatch):
+    candidate = "a" * 40
+    candidate, calls = github_pr(
+        monkeypatch, listed=False,
+        commit_pulls=[{
+            "number": 266, "state": "closed", "merged_at": "2026-09-15T23:52:12Z",
+            "merged": True, "head": {"sha": candidate},
+        }],
+    )
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+    assert any(argv[:2] == ["gh", "api"] for argv in calls)
+
+
+def test_merged_publication_pr_with_moved_head_holds(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, listed=False, merged=True, merged_head="b" * 40)
+    with pytest.raises(fleet.PublicationHold, match="head differs"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert not any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+
+
+def test_new_pr_billing_lock_merges_after_local_required_checks(tmp_path, monkeypatch):
+    candidate, calls = github_pr(
+        monkeypatch, listed=False, listed_after_create=True, billing_locked=True,
+    )
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
+    assert any(str(arg).endswith("run_documentation_gates.py") for argv in calls for arg in argv)
+    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--admin",
+                         "--match-head-commit", candidate]
 
 
 def test_pending_pr_retry_reuses_validated_commit_and_checkout(tmp_path, monkeypatch):

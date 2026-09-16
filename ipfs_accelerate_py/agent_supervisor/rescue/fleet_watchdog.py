@@ -532,6 +532,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "blocked_without_independent_work":
         # Remaining todos wait on blocked peers. Rearm false-terminal blocks,
         # then run declared local checks once. Never rewrite those receipts.
+        from .fleet_heals import local_validation_already_recorded
+        if local_validation_already_recorded(state):
+            return ""
         return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""

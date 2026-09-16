@@ -984,12 +984,13 @@ def test_unclaimed_independent_todos_are_a_wait_stall():
                     "lanes": [{"daemon": {"pid": 1}}]},
     }
     assert fleet.classify_stall(observation) == "independent_todos_unclaimed"
+    assert "independent_todos_unclaimed" in fleet.WAIT_STALLS
     state = {"health": "blocked", "observation": observation,
              "stall_class": "independent_todos_unclaimed",
              "incident_since": 0, "next_action_at": 0, "attempts": 0}
     assert fleet.select_action(
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_board_checkout_missing_is_a_wait_stall():

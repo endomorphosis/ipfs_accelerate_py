@@ -364,12 +364,13 @@ def _ancestor(root: Path, older: str, newer: str) -> bool:
     return result.returncode == 0
 
 
-def _github_run_failures(repo: str, branch: str, root: Path) -> list[dict[str, Any]]:
+def _github_run_failures(repo: str, root: Path, branch: str | None = None) -> list[dict[str, Any]]:
+    argv = ["gh", "run", "list", "--repo", repo]
+    if branch:
+        argv.extend(["--branch", branch])
+    argv.extend(["--json", "databaseId,conclusion,status", "--limit", "8"])
     try:
-        payload = json.loads(_run([
-            "gh", "run", "list", "--repo", repo, "--branch", branch,
-            "--json", "databaseId,conclusion,status", "--limit", "8",
-        ], root) or "[]")
+        payload = json.loads(_run(argv, root) or "[]")
     except (PublicationHold, json.JSONDecodeError, TypeError, ValueError):
         return []
     if not isinstance(payload, list):
@@ -377,9 +378,8 @@ def _github_run_failures(repo: str, branch: str, root: Path) -> list[dict[str, A
     return [row for row in payload if isinstance(row, dict)]
 
 
-def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
-    """Hosted checks cannot start while the GitHub Actions account is locked."""
-    for run in _github_run_failures(repo, branch, root):
+def _runs_show_billing_lock(repo: str, runs: list[dict[str, Any]], root: Path) -> bool:
+    for run in runs:
         if run.get("conclusion") != "failure":
             continue
         ident = run.get("databaseId")
@@ -389,8 +389,21 @@ def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
             text = _run(["gh", "run", "view", str(ident), "--repo", repo], root)
         except PublicationHold:
             continue
-        if "billing issue" in text.lower():
+        lowered = text.lower()
+        if "billing issue" in lowered or "account is locked due to a billing issue" in lowered:
             return True
+    return False
+
+
+def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
+    """Hosted checks cannot start while the GitHub Actions account is locked."""
+    branch_runs = _github_run_failures(repo, root, branch)
+    if _runs_show_billing_lock(repo, branch_runs, root):
+        return True
+    # A newly pushed publication branch has no runs yet while the account is
+    # already locked. Repo-wide recent failures carry the same billing text.
+    if not branch_runs:
+        return _runs_show_billing_lock(repo, _github_run_failures(repo, root), root)
     return False
 
 
@@ -403,6 +416,96 @@ def _run_local_required_checks(root: Path) -> None:
         raise PublicationHold(f"local required checks failed: {exc}") from None
 
 
+def _publication_pull_requests(repo: str, branch: str, root: Path, *, state: str) -> list[dict[str, Any]]:
+    payload = json.loads(_run([
+        "gh", "pr", "list", "--repo", repo, "--base", "main", "--head", branch,
+        "--state", state, "--json", "number,headRefOid,state", "--limit", "2",
+    ], root) or "[]")
+    if not isinstance(payload, list):
+        raise PublicationHold("publication pull request is ambiguous")
+    return payload
+
+
+def _commit_pull_requests(repo: str, candidate: str, root: Path) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(_run([
+            "gh", "api", f"repos/{repo}/commits/{candidate}/pulls",
+        ], root) or "[]")
+    except (PublicationHold, json.JSONDecodeError, TypeError, ValueError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [row for row in payload if isinstance(row, dict)]
+
+
+def _pull_request_head_oid(pr: Mapping[str, Any]) -> str:
+    head = pr.get("headRefOid")
+    if isinstance(head, str) and head:
+        return head
+    nested = pr.get("head")
+    if isinstance(nested, Mapping):
+        sha = nested.get("sha")
+        if isinstance(sha, str):
+            return sha
+    return ""
+
+
+def _exact_candidate_pr(prs: list[Any], candidate: str) -> dict[str, Any] | None:
+    if len(prs) > 1:
+        raise PublicationHold("publication pull request is ambiguous")
+    if not prs:
+        return None
+    pr = prs[0]
+    if (not isinstance(pr, dict) or type(pr.get("number")) is not int or pr["number"] <= 0
+            or _pull_request_head_oid(pr) != candidate):
+        raise PublicationHold("publication pull request head differs from the validated candidate")
+    return pr
+
+
+def _merged_publication_pull_request(
+    repo: str, branch: str, candidate: str, root: Path,
+) -> dict[str, Any] | None:
+    """A MERGED PR at this exact candidate is already published. Do not open another."""
+    listed = _exact_candidate_pr(
+        _publication_pull_requests(repo, branch, root, state="merged"), candidate,
+    )
+    if listed is not None:
+        return listed
+    associated = [
+        row for row in _commit_pull_requests(repo, candidate, root)
+        if (
+            row.get("merged_at")
+            or row.get("merged") is True
+            or str(row.get("state") or "").upper() == "MERGED"
+        )
+        and _pull_request_head_oid(row) == candidate
+    ]
+    return _exact_candidate_pr(associated, candidate)
+
+
+def _admin_merge_billing_locked_pr(
+    repo: str, number: str, pr: Mapping[str, Any], candidate: str, root: Path,
+) -> None:
+    identity = json.loads(_run([
+        "gh", "pr", "view", number, "--repo", repo, "--json",
+        "number,state,isDraft,baseRefName,headRefOid,mergeable,reviewDecision",
+    ], root))
+    if not isinstance(identity, dict) or any((
+        identity.get("number") != pr["number"], identity.get("state") != "OPEN",
+        identity.get("isDraft") is not False, identity.get("baseRefName") != "main",
+        identity.get("headRefOid") != candidate, identity.get("mergeable") != "MERGEABLE",
+        identity.get("reviewDecision") not in ("", "APPROVED"),
+    )):
+        raise PublicationHold(
+            "publication PR is not ready at the exact validated head; required checks or reviews may be blocked"
+        )
+    _run_local_required_checks(root)
+    # Hosted required checks cannot start. Local documentation-gates on this
+    # exact candidate are the substitute; --admin is only this billing outage.
+    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge", "--admin",
+          "--match-head-commit", candidate], root)
+
+
 def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> None:
     """Publish only a review branch; GitHub performs the normal PR merge.
 
@@ -410,6 +513,9 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
     required checks remain the default. When GitHub Actions cannot start
     because the account is billing-locked, run those same gates locally on
     this candidate and merge with admin only for that outage.
+
+    A MERGED pull request at this exact candidate is already published;
+    opening a second PR would loop on hosted checks forever.
     """
     path = remote.split(":", 1)[1] if remote.startswith("git@github.com:") else urlparse(remote).path.lstrip("/")
     repo = path.removesuffix(".git")
@@ -417,11 +523,11 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
         raise PublicationHold("publication requires an exact GitHub repository and commit")
     branch = f"fleet-publication/{candidate}"
     _git(root, "push", remote, f"{candidate}:refs/heads/{branch}")
-    prs = json.loads(_run([
-        "gh", "pr", "list", "--repo", repo, "--base", "main", "--head", branch,
-        "--state", "open", "--json", "number,headRefOid", "--limit", "2",
-    ], root))
-    if not isinstance(prs, list) or len(prs) > 1:
+    if _merged_publication_pull_request(repo, branch, candidate, root) is not None:
+        return
+    prs = _publication_pull_requests(repo, branch, root, state="open")
+    created = False
+    if len(prs) > 1:
         raise PublicationHold("publication pull request is ambiguous")
     if not prs:
         with tempfile.TemporaryDirectory(prefix="fleet-publication-pr-") as directory:
@@ -433,10 +539,14 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
                 "gh", "pr", "create", "--repo", repo, "--base", "main", "--head", branch,
                 "--title", "Integrate accepted taskboard work", "--body-file", str(body),
             ], root)
-        raise PublicationHold("publication pull request created; awaiting required GitHub checks and reviews")
-    pr = prs[0]
-    if (not isinstance(pr, dict) or type(pr.get("number")) is not int or pr["number"] <= 0
-            or pr.get("headRefOid") != candidate):
+        created = True
+        prs = _publication_pull_requests(repo, branch, root, state="open")
+        if not prs:
+            if _merged_publication_pull_request(repo, branch, candidate, root) is not None:
+                return
+            raise PublicationHold("publication pull request created; awaiting required GitHub checks and reviews")
+    pr = _exact_candidate_pr(prs, candidate)
+    if pr is None:
         raise PublicationHold("publication pull request head differs from the validated candidate")
     number = str(pr["number"])
 
@@ -454,6 +564,12 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
         )):
             raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
 
+    if created:
+        if _github_actions_billing_locked(repo, branch, root):
+            _admin_merge_billing_locked_pr(repo, number, pr, candidate, root)
+            return
+        raise PublicationHold("publication pull request created; awaiting required GitHub checks and reviews")
+
     try:
         current_ready()
         try:
@@ -468,22 +584,7 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
     except PublicationHold:
         if not _github_actions_billing_locked(repo, branch, root):
             raise
-    identity = json.loads(_run([
-        "gh", "pr", "view", number, "--repo", repo, "--json",
-        "number,state,isDraft,baseRefName,headRefOid,mergeable,reviewDecision",
-    ], root))
-    if not isinstance(identity, dict) or any((
-        identity.get("number") != pr["number"], identity.get("state") != "OPEN",
-        identity.get("isDraft") is not False, identity.get("baseRefName") != "main",
-        identity.get("headRefOid") != candidate, identity.get("mergeable") != "MERGEABLE",
-        identity.get("reviewDecision") not in ("", "APPROVED"),
-    )):
-        raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
-    _run_local_required_checks(root)
-    # Hosted required checks cannot start. Local documentation-gates on this
-    # exact candidate are the substitute; --admin is only this billing outage.
-    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge", "--admin",
-          "--match-head-commit", candidate], root)
+    _admin_merge_billing_locked_pr(repo, number, pr, candidate, root)
 
 
 def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) -> dict[str, Any]:
