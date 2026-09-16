@@ -193,3 +193,28 @@ def test_cite_claim_spans_flags_unsupported(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert unsupported == ("claim-0",)
     assert "claim-evil" not in unsupported
+
+
+def test_observe_source_edit_lint_does_not_block_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_source_edit_lint,
+        observe_source_edit_lint,
+    )
+
+    receipt = observe_source_edit_lint(
+        operator_id="op-1",
+        relative_path="src/foo.py",
+    )
+    assert receipt is not None
+    assert receipt.action == "skipped"
+    assert receipt.accepted_as_authority is False
+    assert last_source_edit_lint()["accepted_as_authority"] is False

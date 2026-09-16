@@ -8,6 +8,7 @@ snippet order and no lint flags.
 from __future__ import annotations
 
 import re
+import threading
 from typing import Any, Mapping, Optional, Sequence
 
 from ipfs_accelerate_py.typesafe_inference import Noul, Score
@@ -18,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
 
 MAX_SNIPPETS = 8
 MAX_SNIPPET_CHARS = 400
+_LAST_SOURCE_EDIT_LINT = threading.local()
 
 
 def _snippet_id(row: Mapping[str, Any]) -> str:
@@ -246,6 +248,36 @@ def lint_admissibility(
     )
 
 
+def last_source_edit_lint() -> dict[str, Any]:
+    value = getattr(_LAST_SOURCE_EDIT_LINT, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def observe_source_edit_lint(
+    *,
+    operator_id: str,
+    relative_path: str,
+    claimed_kernel_verified: bool = False,
+    has_kernel_receipt: bool = False,
+) -> Optional[AdvisoryReceipt]:
+    """Advisory lint only. Never changes source-edit admission. Never raises."""
+
+    try:
+        receipt = lint_admissibility(
+            obligation_id=str(operator_id or "")[:128],
+            obligation_text=str(relative_path or "")[:400],
+            patch_summary=f"{operator_id} {relative_path}"[:400],
+            claimed_kernel_verified=claimed_kernel_verified,
+            has_kernel_receipt=has_kernel_receipt,
+        )
+    except Exception:
+        return None
+    payload = receipt.to_dict()
+    payload["accepted_as_authority"] = False
+    _LAST_SOURCE_EDIT_LINT.value = payload
+    return receipt
+
+
 CLAIM_MARKERS: tuple[str, ...] = (
     "kernel_verified",
     "proved",
@@ -336,8 +368,10 @@ __all__ = [
     "citation_questions",
     "compose_snippet_score",
     "extract_claim_spans",
+    "last_source_edit_lint",
     "lint_admissibility",
     "lint_questions",
+    "observe_source_edit_lint",
     "prepare_evidence_for_compile",
     "rerank_allowlisted_snippets",
     "rerank_questions",

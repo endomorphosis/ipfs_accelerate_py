@@ -1171,6 +1171,17 @@ class AutonomousRepairController:
                     new_digest=operator.new_digest,
                     reason_codes=(str(exc),),
                 )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                observe_source_edit_lint,
+            )
+
+            observe_source_edit_lint(
+                operator_id=operator.operator_id,
+                relative_path=path,
+            )
+        except Exception:
+            pass
         return SourceEditAdmission(
             disposition=SourceEditAdmissionDisposition.ADMITTED_VALIDATION_PENDING,
             admitted=True,
