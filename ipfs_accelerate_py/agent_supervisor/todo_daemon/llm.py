@@ -342,6 +342,33 @@ def _assert_envelope_safe(payload: Mapping[str, Any]) -> None:
             raise RuntimeError(f"LLM envelope must not embed forbidden field {key!r}")
 
 
+def maybe_observe_worker_output(
+    *,
+    prompt: str,
+    output: str,
+    usage_mode: str,
+) -> None:
+    """Run TypeSafe guardrails on off/observe/shadow. Never on enforce/assist.
+
+    Does not change child envelopes. Fail-open without a key.
+    """
+
+    mode = _normalize_usage_mode(usage_mode)
+    if mode in {LLM_USAGE_MODE_ENFORCE, LLM_USAGE_MODE_ASSIST}:
+        return
+    observe_mode = (
+        mode if mode in {LLM_USAGE_MODE_OBSERVE, LLM_USAGE_MODE_SHADOW} else LLM_USAGE_MODE_OBSERVE
+    )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
+            observe_worker_trace,
+        )
+
+        observe_worker_trace(prompt=prompt, output=output, usage_mode=observe_mode)
+    except Exception:
+        return
+
+
 def _normalize_usage_mode(value: str) -> str:
     mode = str(value or LLM_USAGE_MODE_OFF).strip().casefold()
     if mode not in _VALID_USAGE_MODES:
@@ -933,19 +960,11 @@ def call_llm_router_with_receipt(
             (completed.stdout or "") + " " + (completed.stderr or ""), limit=1200
         )
         raise RuntimeError(f"llm_router child exited with code {completed.returncode}: {details}")
-    if usage_mode in {LLM_USAGE_MODE_OBSERVE, LLM_USAGE_MODE_SHADOW}:
-        try:
-            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
-                observe_worker_trace,
-            )
-
-            observe_worker_trace(
-                prompt=prompt,
-                output=str(completed.stdout or ""),
-                usage_mode=usage_mode,
-            )
-        except Exception:
-            pass
+    maybe_observe_worker_output(
+        prompt=prompt,
+        output=str(completed.stdout or ""),
+        usage_mode=usage_mode,
+    )
     return completed.stdout, result_envelope
 
 
@@ -1044,6 +1063,7 @@ __all__ = [
     "build_child_request_envelope",
     "call_llm_router",
     "call_llm_router_with_receipt",
+    "maybe_observe_worker_output",
     "call_with_thread_deadline",
     "collect_descendant_pids",
     "handle_active_llm_signal",

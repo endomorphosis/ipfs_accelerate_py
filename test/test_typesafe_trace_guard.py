@@ -13,9 +13,11 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard impor
     scan_worker_trace,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
+    LLM_USAGE_MODE_ASSIST,
     LLM_USAGE_MODE_ENFORCE,
     LLM_USAGE_MODE_OFF,
     LLM_USAGE_MODE_OBSERVE,
+    maybe_observe_worker_output,
 )
 
 
@@ -117,3 +119,33 @@ def test_observe_shadow_records_advisory_receipt(monkeypatch: pytest.MonkeyPatch
     snapshot = last_trace_guardrail()
     assert "Implement the identity" not in str(snapshot)
     assert snapshot["accepted_as_authority"] is False
+
+
+def test_maybe_observe_runs_on_off_not_enforce(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def fake_observe(**kwargs):
+        seen.append(str(kwargs.get("usage_mode")))
+        return None
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard.observe_worker_trace",
+        fake_observe,
+    )
+    maybe_observe_worker_output(prompt="p", output="o", usage_mode=LLM_USAGE_MODE_OFF)
+    maybe_observe_worker_output(prompt="p", output="o", usage_mode=LLM_USAGE_MODE_OBSERVE)
+    maybe_observe_worker_output(prompt="p", output="o", usage_mode=LLM_USAGE_MODE_ENFORCE)
+    maybe_observe_worker_output(prompt="p", output="o", usage_mode=LLM_USAGE_MODE_ASSIST)
+    assert seen == ["observe", "observe"]
+
+
+def test_ops_snapshot_is_never_authority() -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import (
+        typesafe_ops_snapshot,
+    )
+
+    snap = typesafe_ops_snapshot()
+    assert snap["accepted_as_authority"] is False
+    assert "trace_guardrail" in snap
+    assert "audit_reduce" in snap
+    assert "source_edit_lint" in snap
