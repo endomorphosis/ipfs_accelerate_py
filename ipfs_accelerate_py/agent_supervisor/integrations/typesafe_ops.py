@@ -18,11 +18,16 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         last_audit_reduce,
     )
 
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+        recommend_skip_policy,
+    )
+
     return {
         "accepted_as_authority": False,
         "trace_guardrail": last_trace_guardrail(),
         "audit_reduce": last_audit_reduce(),
         "source_edit_lint": last_source_edit_lint(),
+        "calibration": recommend_skip_policy(),
     }
 
 

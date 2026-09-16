@@ -270,6 +270,23 @@ def triage_smt(
     else:
         reasons.append("default_run_z3")
         action = SmtTriageAction.RUN_Z3.value
+    if action == SmtTriageAction.SKIP_Z3.value:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+                should_trust_skip,
+            )
+
+            if not should_trust_skip(
+                trap_family=trap,
+                confidence=conf,
+                family=case_id,
+                smtlib=smtlib,
+                case_id=case_id,
+            ):
+                action = SmtTriageAction.RUN_Z3.value
+                reasons.append("calibration_force_z3")
+        except Exception:
+            pass
     return AdvisoryReceipt(
         action=action,
         claim_status=status,

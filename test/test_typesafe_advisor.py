@@ -125,6 +125,11 @@ def test_smt_triage_forces_z3_on_trap_even_if_confident(
 def test_smt_triage_skips_z3_when_confident_and_not_trap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+        clear_samples,
+    )
+
+    clear_samples()
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
         lambda **_kwargs: True,
