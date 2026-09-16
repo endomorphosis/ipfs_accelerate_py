@@ -189,6 +189,10 @@ ROUTE_SOURCE_TREE_ENV = (
 )
 ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
+# Cron one-shot relaunch can only start a new exclusive owner after this
+# process exits. Infinite duration pinned extra-gate on a stale capsule so
+# fleet closeout never saw a live attach token.
+CONFIGURED_BOARD_OWNER_DURATION_SECONDS = 28800.0
 COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS = 30.0
 _COORDINATOR_CREDENTIAL_ACK_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2920,7 +2924,7 @@ def configured_board_launch_plan(
     *,
     implement: bool,
     detach: bool,
-    duration_seconds: float = float("inf"),
+    duration_seconds: float = CONFIGURED_BOARD_OWNER_DURATION_SECONDS,
     stamp: str | None = None,
     parallelism_receipt: ParallelismDecisionReceipt | None = None,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
@@ -3374,7 +3378,7 @@ def _build_parser() -> argparse.ArgumentParser:
     launch.add_argument(
         "--duration-seconds",
         type=float,
-        default=float("inf"),
+        default=CONFIGURED_BOARD_OWNER_DURATION_SECONDS,
     )
     return parser
 

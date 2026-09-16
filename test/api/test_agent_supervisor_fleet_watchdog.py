@@ -735,6 +735,19 @@ def test_live_worker_wait_retries_unstall_on_cooldown(tmp_path, monkeypatch):
     assert cooling["planned_action"] == ""
 
 
+def test_configured_board_owner_duration_lets_cron_relaunch():
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        CONFIGURED_BOARD_OWNER_DURATION_SECONDS,
+    )
+
+    assert CONFIGURED_BOARD_OWNER_DURATION_SECONDS == 28800.0
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+    ).read_text(encoding="utf-8")
+    assert 'run.add_argument("--duration-seconds", type=float, default=28800.0)' in source
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")

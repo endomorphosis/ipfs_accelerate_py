@@ -94060,7 +94060,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
-    run.add_argument("--duration-seconds", type=float, default=float("inf"))
+    run.add_argument("--duration-seconds", type=float, default=28800.0)
     commands.add_parser("request-status-refresh")
     show = commands.add_parser("status")
     show.add_argument("--require-ready", action="store_true")
