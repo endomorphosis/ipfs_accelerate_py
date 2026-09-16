@@ -91,6 +91,18 @@ def _live_daemons(details: dict[str, Any]) -> bool:
     return any(isinstance(lane, dict) and lane.get("daemon") for lane in lanes)
 
 
+def _uninterruptible_lanes(details: dict[str, Any]) -> bool:
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            continue
+        for role in ("daemon", "supervisor"):
+            identity = lane.get(role) if isinstance(lane.get(role), dict) else {}
+            if identity.get("process_state") == "D":
+                return True
+    return False
+
+
 def _todos_are_ready_beside_blocked(details: dict[str, Any], counts: dict[str, Any],
                                     reasons: set[str]) -> bool:
     """Remaining todos are independent only when native readiness says they are claimable."""
@@ -176,17 +188,24 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "in_progress_awaiting_effect"
     if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
         return "independent_todos_unclaimed"
-    if any("process_uninterruptible" in reason for reason in reasons):
+    if any("process_uninterruptible" in reason for reason in reasons) or _uninterruptible_lanes(details):
         return "kernel_uninterruptible_wait"
     if "native_status_nonzero" in reasons and _live_daemons(details):
         # A nonzero native status with live lanes is not a coding stall.
         # Task counts may be missing for one sample; workers still own the board.
+        return "native_status_unavailable_with_live_workers"
+    if "native_operator_reports_unhealthy" in reasons and (
+            _live_daemons(details) or details.get("owner_ready") is True):
+        # Extra-gate unhealthy with a live owner is a native projection gap,
+        # not llm_router. Empty task_counts often ride along with D-state I/O.
         return "native_status_unavailable_with_live_workers"
     if "no_task_progress" in reasons or health == "stalled":
         return "stalled_no_progress"
     if "probe_failed" in reasons:
         return "probe_failed"
     if health in {"degraded", "blocked", "unknown"}:
+        if _live_daemons(details) or details.get("owner_ready") is True:
+            return "native_status_unavailable_with_live_workers"
         return str(health)
     return "none"
 

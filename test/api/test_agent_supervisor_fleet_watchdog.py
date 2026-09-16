@@ -1186,6 +1186,58 @@ def test_kernel_uninterruptible_in_progress_is_not_llm_repair():
     ) == "supervisor_heal"
 
 
+def test_native_unhealthy_empty_counts_with_dstate_is_not_llm():
+    observation = {
+        "health": "degraded",
+        "reason_codes": [
+            "goal_closeout_disabled_on_launch",
+            "native_operator_reports_unhealthy",
+            "task_observation_not_completion_authority",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {},
+            "lanes": [{
+                "lane": 0,
+                "daemon": {"pid": 1, "process_state": "D", "wait_channel": "jbd2_log_wait_commit"},
+            }],
+        },
+    }
+    assert fleet.classify_stall(observation) == "kernel_uninterruptible_wait"
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "kernel_uninterruptible_wait",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
+    ) == "supervisor_heal"
+
+
+def test_native_unhealthy_with_live_owner_is_not_llm():
+    observation = {
+        "health": "degraded",
+        "reason_codes": [
+            "native_operator_reports_unhealthy",
+            "task_observation_not_completion_authority",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {},
+            "lanes": [{"lane": 0, "daemon": {"pid": 1, "process_state": "S"}}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "native_status_unavailable_with_live_workers"
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "native_status_unavailable_with_live_workers",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}}, 100
+    ) == ""
+
+
 def test_blocked_independent_work_outranks_remaining_board_doc_dirt():
     observation = {
         "health": "blocked",
