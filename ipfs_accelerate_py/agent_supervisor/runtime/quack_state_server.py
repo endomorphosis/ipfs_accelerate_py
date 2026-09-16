@@ -55,6 +55,7 @@ from ..task_sources.control_plane_contracts import (
     SecretHandle,
     StateAuthorityClass,
     StoreGeneration,
+    canonical_json_bytes,
     content_identity,
     is_secret_handle,
     redact_mapping,
@@ -4222,6 +4223,8 @@ class QuackStateServer:
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _bound_port: int = field(default=0, init=False)
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
+    _command_gateway: Any = field(default=None, init=False, repr=False)
+    _database_status_startup_json: bytes | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
@@ -4270,6 +4273,170 @@ class QuackStateServer:
     def owner_marker_path(self) -> Path:
         db = self.config.database_path
         return db.with_name(f".{db.name}{OWNER_MARKER_SUFFIX}")
+
+    def typed_command_socket_path(self) -> Path:
+        from ..task_sources.typed_state_owner import (
+            TYPED_STATE_OWNER_SOCKET_FILENAME,
+            compact_default_owner_socket_path,
+        )
+        return compact_default_owner_socket_path(
+            self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME,
+            identity=self.config.database_path,
+        )
+
+    def typed_command_token_path(self) -> Path:
+        from ..task_sources.typed_state_owner import TYPED_STATE_OWNER_TOKEN_FILENAME
+        return self.config.state_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
+
+    def configure_database_status_before_start(
+        self,
+        *,
+        board_namespace: str,
+        plan_root_cid: str,
+        repository_tree_id: str,
+        task_cids: Sequence[str],
+        queue_dir: Path | None = None,
+        target_repository_id: str = "",
+        target_branch: str = "",
+    ) -> None:
+        """Store sealed launcher status scope until the owner is ready."""
+        with self._lock:
+            if (
+                self._lifecycle is not ServerLifecycle.CREATED
+                or self._database_status_startup_json is not None
+            ):
+                raise QuackStateServerControlError(
+                    "startup status scope cannot be rebound"
+                )
+            values = (board_namespace, plan_root_cid, repository_tree_id)
+            if (
+                any(
+                    type(value) is not str or not value.strip() or len(value) > 256
+                    for value in values
+                )
+                or isinstance(task_cids, (str, bytes))
+                or not isinstance(task_cids, Sequence)
+                or not 1 <= len(task_cids) <= 512
+                or any(
+                    type(cid) is not str or not cid.strip() or len(cid) > 256
+                    for cid in task_cids
+                )
+                or len(set(task_cids)) != len(task_cids)
+            ):
+                raise QuackStateServerControlError(
+                    "startup database status scope is invalid"
+                )
+            database = {
+                "board_namespace": board_namespace,
+                "plan_root_cid": plan_root_cid,
+                "repository_tree_id": repository_tree_id,
+                "task_cids": sorted(task_cids),
+            }
+            queue = None
+            if queue_dir is not None:
+                queue = {
+                    "queue_dir": str(Path(queue_dir)),
+                    "target_repository_id": str(target_repository_id or ""),
+                    "target_branch": str(target_branch or ""),
+                }
+            elif target_repository_id or target_branch:
+                raise QuackStateServerControlError("startup queue scope is incomplete")
+            self._database_status_startup_json = canonical_json_bytes(
+                {"database": database, "queue": queue}
+            )
+
+    def bind_database_status_scope(self, **binding: Any) -> None:
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "database status requires a ready owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        gateway.bind_database_status_scope(**binding)
+
+    def bind_legacy_merge_queue_status_scope(self, **binding: Any) -> None:
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "legacy queue status requires a ready owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        bind = getattr(gateway, "bind_legacy_merge_queue_status_scope", None)
+        if not callable(bind):
+            return
+        bind(**binding)
+
+    def issue_typed_client_grant_record(
+        self,
+        *,
+        client_id: str,
+        process_birth_id: str = "",
+        allowed_operations: Sequence[str] = (),
+        allowed_command_operations: Sequence[str] = (),
+        tenant_id: str = "",
+        federation_id: str = "",
+        entity_scopes: Mapping[str, str] | None = None,
+        peer_pid: int | None = None,
+        ttl_seconds: float = 3_600.0,
+    ) -> tuple[str, Any]:
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant issuance requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        return gateway.issue_grant(
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            allowed_operations=allowed_operations,
+            allowed_command_operations=allowed_command_operations,
+            tenant_id=tenant_id,
+            federation_id=federation_id,
+            entity_scopes=entity_scopes,
+            peer_pid=peer_pid,
+            ttl_seconds=ttl_seconds,
+        )
+
+    def _bind_configured_database_status(self, gateway: Any) -> None:
+        configured = self._database_status_startup_json
+        if configured is None:
+            return
+        scope = json.loads(configured)
+        gateway.bind_database_status_scope(**scope["database"])
+        queue = scope.get("queue")
+        if not isinstance(queue, dict):
+            return
+        bind = getattr(gateway, "bind_legacy_merge_queue_status_scope", None)
+        if not callable(bind):
+            return
+        bind(
+            queue_dir=Path(queue["queue_dir"]),
+            target_repository_id=queue.get("target_repository_id") or "",
+            target_branch=queue.get("target_branch") or "",
+        )
+
+    def _start_typed_command_gateway(self, connection: Any, identity: Any) -> None:
+        from ..task_sources.typed_state_owner import TypedStateOwnerGateway
+
+        gateway = TypedStateOwnerGateway(
+            connection=connection,
+            socket_path=self.typed_command_socket_path(),
+            store_id=identity.store_id,
+            identity=identity.to_dict(),
+            owner_liveness_probe=self.owner_liveness_probe,
+            transaction_lock=self._lock,
+        )
+        token = gateway.configure_status_bootstrap()
+        self._bind_configured_database_status(gateway)
+        gateway.start()
+        self._command_gateway = gateway
+        _atomic_write_text(self.typed_command_token_path(), token, mode=0o600)
 
     def status_path(self) -> Path:
         return self.config.state_dir / STATUS_FILENAME
@@ -4731,6 +4898,7 @@ class QuackStateServer:
                     ["ready", identity.server_id, identity.generation],
                 )
                 self._lifecycle = ServerLifecycle.READY
+                self._start_typed_command_gateway(connection, identity)
                 self._write_status()
                 self._log(
                     f"state-owner ready server_id={identity.server_id} "
@@ -4747,6 +4915,15 @@ class QuackStateServer:
                 raise
 
     def _emergency_cleanup(self) -> None:
+        gateway = self._command_gateway
+        self._command_gateway = None
+        if gateway is not None:
+            try:
+                stop = getattr(gateway, "stop", None)
+                if callable(stop):
+                    stop()
+            except Exception:
+                pass
         try:
             if self.transport is not None:
                 self.transport.stop(self._connection)

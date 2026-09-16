@@ -1469,10 +1469,16 @@ def test_rearm_locally_validated_blocked_does_not_admit_completion(tmp_path, mon
 
 def test_build_server_accepts_sealed_extra_gate_kwargs():
     import inspect
-    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        QuackStateServer,
+        build_server,
+    )
     params = inspect.signature(build_server).parameters
     assert "repository_root" in params
     assert "allow_legacy_board_unstall" in params
+    assert hasattr(QuackStateServer, "configure_database_status_before_start")
+    assert hasattr(QuackStateServer, "issue_typed_client_grant_record")
+    assert hasattr(QuackStateServer, "bind_database_status_scope")
 
 
 def test_extra_gate_recursion_heal_unstalls_for_native_admission(tmp_path, monkeypatch):
