@@ -10,6 +10,8 @@ from __future__ import annotations
 DEFAULT_GROK_PRIMARY_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
 DEFAULT_CODEX_PROVIDER = "codex_cli"
+# Unpinned llm_router invocations (no provider) ignore this default and
+# select from Intelligence Index v4.3 cost-per-task vs difficulty instead.
 
 # The ordinary implementation route keeps its direct-Codex default separate
 # from the narrowly authorized Grok quota fallback.  A fallback is a distinct

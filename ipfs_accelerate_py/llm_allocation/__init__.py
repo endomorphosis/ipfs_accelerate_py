@@ -12,6 +12,12 @@ from .api_key_slots import (
     select_api_key,
 )
 from .cli_status import cli_tools_status, render_cli_tools_status
+from .intelligence_index import (
+    CATALOG_REVISION,
+    INDEX_VERSION,
+    select_efficient_model,
+    select_efficient_route,
+)
 from .session_route import (
     choose_cli_route,
     migrate_cli_session,
@@ -68,6 +74,8 @@ __all__ = [
     "ProviderLimitHint",
     "RoutingPath",
     "bind_session_api_key",
+    "CATALOG_REVISION",
+    "INDEX_VERSION",
     "choose_cli_route",
     "cli_tools_status",
     "fingerprint_api_key",
@@ -97,4 +105,6 @@ __all__ = [
     "resume_kwargs_for_session",
     "sanitize_session_metadata",
     "score_provider",
+    "select_efficient_model",
+    "select_efficient_route",
 ]

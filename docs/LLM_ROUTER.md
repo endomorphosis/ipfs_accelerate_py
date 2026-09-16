@@ -234,6 +234,8 @@ print(resolve_session("01a0a6e1-88f6-7781-b25f-fdcc17fce794"))
 
 The same allocation schema is exported from the package root (`from ipfs_accelerate_py import generate_text, choose_cli_route, register_api_key, ...`), as MCP tools (`llm_cli_tools_status`, `llm_choose_cli_route`, `llm_migrate_cli_session`, `llm_resolve_session`, `llm_get_allocation_session`, `llm_register_api_key`, `llm_list_api_key_slots`, `llm_bind_session_api_key`, `llm_ensure_cli_tool`, `llm_router_generate_text`, plus `generate_text` / `llm_generate` with `allocation_session_id` and `allocation_path`), and as MCP++ tools through `TrioMCPServer.setup()` / `register_tools()`. MCP responses never include raw API keys, prompts, or credentials.
 
+Unpinned agent-supervisor `llm_router` calls (no provider, or `model_name="auto"`) pick the cheapest Artificial Analysis Intelligence Index v4.3 model that still meets the task-difficulty floor. Implementation/coding work uses GLM-5.3-Flash ($0.25/task at ~42); harder agent work uses GPT-6 Astra at the lowest reasoning effort that clears the floor. Explicit `provider` + `model_name` pairs, including the production Grok/Codex policy, stay pinned. Snapshot: [Intelligence Index v4.3](https://artificialanalysis.ai/articles/artificial-analysis-intelligence-index-v4-3).
+
 ## Configuration
 
 The router reads the following current namespaces. Values are examples, not

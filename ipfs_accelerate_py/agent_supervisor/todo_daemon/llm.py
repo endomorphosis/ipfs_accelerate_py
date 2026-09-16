@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
@@ -122,6 +122,9 @@ class LlmRouterInvocation:
     child_file_prefix: str = "todo-daemon-llm-child-"
     allocation_session_id: str = ""
     allocation_path: str = ""
+    task_kind: str = ""
+    min_intelligence: float = 0.0
+    reasoning_effort: str = ""
 
 
 @dataclass(frozen=True)
@@ -498,6 +501,53 @@ def _env_name(config: LlmRouterInvocation, suffix: str) -> str:
     return f"{config.env_prefix}_{suffix}"
 
 
+def _available_efficiency_providers() -> Optional[tuple[str, ...]]:
+    try:
+        from ipfs_accelerate_py.llm_allocation import (
+            API_PROVIDERS,
+            CLI_PROVIDERS,
+            rank_provider_names,
+        )
+
+        ranked = rank_provider_names(list(CLI_PROVIDERS) + list(API_PROVIDERS))
+    except Exception:
+        return None
+    names = tuple(str(name) for name in ranked if str(name).strip())
+    return names or None
+
+
+def apply_efficient_llm_route(config: LlmRouterInvocation) -> LlmRouterInvocation:
+    """Fill an unpinned invocation from Intelligence Index v4.3 cost/intelligence."""
+
+    from ipfs_accelerate_py.llm_allocation.intelligence_index import (
+        CATALOG_REVISION,
+        select_efficient_route,
+    )
+
+    route = select_efficient_route(
+        model_name=str(config.model_name or ""),
+        provider=str(config.provider or ""),
+        task_kind=str(config.task_kind or ""),
+        min_intelligence=float(config.min_intelligence or 0.0),
+        backend_label=str(config.backend_label or ""),
+        env_prefix=str(config.env_prefix or ""),
+        available_providers=_available_efficiency_providers(),
+        default_model=DEFAULT_CODEX_MODEL,
+    )
+    if not route.auto_selected:
+        return config
+    updates: dict[str, Any] = {
+        "model_name": route.model_name,
+        "provider": route.provider,
+        "reasoning_effort": route.reasoning_effort or config.reasoning_effort,
+        "task_kind": route.task_kind,
+        "min_intelligence": route.min_intelligence,
+    }
+    if not str(config.catalog_revision or "").strip():
+        updates["catalog_revision"] = CATALOG_REVISION
+    return replace(config, **updates)
+
+
 def _allow_cross_provider_fallback(config: LlmRouterInvocation) -> bool:
     """Resolve remote failover while preserving ordinary route compatibility."""
 
@@ -548,6 +598,7 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     usage_mode_env = _env_name(config, "USAGE_MODE")
     allocation_session_env = _env_name(config, "ALLOCATION_SESSION_ID")
     allocation_path_env = _env_name(config, "ALLOCATION_PATH")
+    reasoning_effort_env = _env_name(config, "REASONING_EFFORT")
     request_id_env = _env_name(config, "REQUEST_ID")
     attempt_env = _env_name(config, "ATTEMPT")
     idempotency_env = _env_name(config, "IDEMPOTENCY_KEY")
@@ -603,6 +654,9 @@ if alloc_session and "allocation_session_id" in parameters:
     kwargs["allocation_session_id"] = alloc_session
 if alloc_path and "allocation_path" in parameters:
     kwargs["allocation_path"] = alloc_path
+effort = os.environ.get({reasoning_effort_env!r}) or ""
+if effort and ("reasoning_effort" in parameters or "kwargs" in parameters):
+    kwargs["reasoning_effort"] = effort
 text = llm_router.generate_text(prompt, **kwargs)
 reject_provider = os.environ.get({reject_provider_env!r}) or ""
 required_providers = {{
@@ -691,6 +745,7 @@ def call_llm_router_with_receipt(
         raise RuntimeError(
             f"Unsupported {config.backend_label} {backend!r}; expected 'llm_router'."
         )
+    config = apply_efficient_llm_route(config)
     if len(prompt) > config.max_prompt_chars + len(config.prompt_overage_allowance):
         raise RuntimeError(
             f"LLM prompt exceeds configured budget before llm_router child launch: "
@@ -814,6 +869,9 @@ def call_llm_router_with_receipt(
                     config.allocation_session_id or ""
                 ),
                 _env_name(config, "ALLOCATION_PATH"): str(config.allocation_path or ""),
+                _env_name(config, "REASONING_EFFORT"): str(
+                    config.reasoning_effort or ""
+                ),
             }
         )
         command = [config.python_executable, str(child_file)]
@@ -975,6 +1033,7 @@ __all__ = [
     "LlmChildResultEnvelope",
     "LlmRouterInvocation",
     "active_llm_process",
+    "apply_efficient_llm_route",
     "build_child_request_envelope",
     "call_llm_router",
     "call_llm_router_with_receipt",
