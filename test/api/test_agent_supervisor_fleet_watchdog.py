@@ -1237,6 +1237,32 @@ def test_native_unhealthy_empty_counts_with_dstate_is_not_llm():
     ) == "supervisor_heal"
 
 
+def test_carried_task_counts_keep_independent_work_classification():
+    previous = {
+        "observation": {
+            "details": {
+                "owner_ready": True,
+                "task_counts": {"completed": 22, "in_progress": 3, "todo": 28, "blocked": 2},
+                "blocked_task_ids": ["PCTDD-035", "PCTDD-038"],
+            },
+        },
+    }
+    observation = {
+        "health": "degraded",
+        "reason_codes": ["native_operator_reports_unhealthy", "task_observation_not_completion_authority"],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {},
+            "lanes": [{"lane": 0, "daemon": {"pid": 1, "process_state": "S"}}],
+        },
+    }
+    carried = fleet._carry_observational_task_counts(observation, previous)
+    assert carried["details"]["task_counts"]["in_progress"] == 3
+    assert carried["details"]["blocked_task_ids"] == ["PCTDD-035", "PCTDD-038"]
+    assert carried["details"]["task_counts_source"] == "carried_last_native_projection"
+    assert fleet.classify_stall(carried) == "independent_work_beside_blocked_peer"
+
+
 def test_native_unhealthy_with_live_owner_is_not_llm():
     observation = {
         "health": "degraded",

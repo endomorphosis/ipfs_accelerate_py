@@ -443,8 +443,42 @@ def _ready_owner_epoch(details: Any) -> list[Any] | None:
     return [pid, birth, boot]
 
 
+def _carry_observational_task_counts(
+    observation: dict[str, Any], previous: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep last native counts when extra-gate is live but this probe is empty.
+
+    Never treats carried counts as completion_authority.
+    """
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+    if counts:
+        return observation
+    if details.get("owner_ready") is not True and not _live_daemons(details):
+        return observation
+    prior_obs = previous.get("observation") if isinstance(previous.get("observation"), dict) else {}
+    prior = prior_obs.get("details") if isinstance(prior_obs.get("details"), dict) else {}
+    prior_counts = prior.get("task_counts") if isinstance(prior.get("task_counts"), dict) else {}
+    if not prior_counts:
+        return observation
+    details = dict(details)
+    details["task_counts"] = dict(prior_counts)
+    prior_blocked = prior.get("blocked_task_ids")
+    if not details.get("blocked_task_ids") and isinstance(prior_blocked, list):
+        details["blocked_task_ids"] = [item for item in prior_blocked if isinstance(item, str)]
+    details["task_counts_source"] = "carried_last_native_projection"
+    observation = dict(observation, details=details)
+    blocked_ids = details.get("blocked_task_ids")
+    if isinstance(blocked_ids, list) and blocked_ids:
+        reasons = [str(item) for item in observation.get("reason_codes") or []]
+        if "board_has_blocked_or_quarantined_tasks" not in reasons:
+            observation["reason_codes"] = [*reasons, "board_has_blocked_or_quarantined_tasks"]
+    return observation
+
+
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
+    observation = _carry_observational_task_counts(observation, previous)
     state.update(board_id=board["id"], observed_at=now, observation=observation)
     token = observation.get("progress_token")
     details = observation.get("details", {})

@@ -880,6 +880,15 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         authority = max(fresh_projections, key=lambda value: _age(value.get("heartbeat_at"), now) * -1)
         source = "fresh_daemon_database_projection_non_authoritative"
         authenticated = False
+    elif (not authority or not _counts(authority)) and readiness_projections:
+        # Native status can be unhealthy (D-state journal, receipt gap) while
+        # extra-gate lanes still publish task_state. Observational only.
+        authority = max(
+            readiness_projections,
+            key=lambda value: -(_age(value.get("heartbeat_at"), now) or 10**9),
+        )
+        source = "daemon_task_projection_non_authoritative"
+        authenticated = False
     unsettled = _unsettled_goal_count(authority)
     if unsettled is not None:
         authority["unsettled_goal_count"] = unsettled
