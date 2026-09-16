@@ -697,6 +697,44 @@ def test_local_validation_heal_retries_unstall_on_cooldown(tmp_path, monkeypatch
     assert cooling["planned_action"] == ""
 
 
+def test_live_worker_wait_retries_unstall_on_cooldown(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0,
+                   cooldown_seconds=180, max_backoff_seconds=3600)
+    observation = {
+        "health": "blocked", "complete": False, "board_id": board["id"],
+        "busy": False, "progress_token": "p",
+        "reason_codes": ["board_has_blocked_or_quarantined_tasks"],
+        "details": {
+            "task_counts": {"todo": 28, "blocked": 2, "in_progress": 1},
+            "blocked_task_ids": ["PCTDD-035", "PCTDD-038"],
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    monkeypatch.setattr(
+        fleet_heals, "apply_supervisor_heal",
+        lambda *a, **k: {
+            "status": "wait", "recipe": "independent_work_has_live_workers",
+            "reason": "blocked peers stay blocked; live lanes own independent todos",
+        },
+    )
+    runner = Runner(observation)
+    root = tmp_path / "watch"
+    prior = {
+        "health": "blocked", "observation": observation,
+        "stall_class": "independent_work_beside_blocked_peer",
+        "incident_since": 0, "next_action_at": 0, "attempts": 102,
+    }
+    fleet.write_json(root / board["id"] / "state.json", prior)
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert state["last_action"] == "supervisor_heal"
+    assert state["last_action_result"]["recipe"] == "independent_work_has_live_workers"
+    assert state["next_action_at"] == 280
+    cooling = fleet.tick_board(board, root, apply=True, runner=runner, now=101)
+    assert cooling["planned_action"] == ""
+
+
 def test_aseh_closeout_is_not_spar_clause_stall():
     observation = _observation(health="healthy", complete=False, completion_candidate=True,
                                board_id="aseh")

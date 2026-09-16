@@ -677,8 +677,15 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "local_validation_pending_native_admission",
                     "native_goals_still_active",
                     "provisionally_complete_terminal_goals",
+                    "independent_work_has_live_workers",
+                    "native_lanes_own_independent_todos",
+                    "in_progress_awaiting_effect",
+                    "todos_waiting_on_blocked_dependencies",
+                    "kernel_uninterruptible_wait",
                 }
             ):
+                # Unstall/false-terminal rearm must retry on cooldown, not 1h
+                # max backoff, while native lanes own independent work.
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         elif action == "publish":
             from .fleet_completion import publish_completed_board
