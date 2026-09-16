@@ -267,6 +267,28 @@ def observe_worker_trace(
     payload = receipt.to_dict()
     payload["markers"] = flags["markers"]
     payload["accepted_as_authority"] = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            cite_claim_spans,
+            extract_claim_spans,
+        )
+
+        spans = extract_claim_spans(output)
+        unsupported = cite_claim_spans(
+            spans,
+            receipt_ids=(),
+            allowlisted_ids=tuple(span["id"] for span in spans),
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+            timeout=timeout,
+        )
+        payload["unsupported_claim_ids"] = list(unsupported)
+        if unsupported:
+            payload["reason_codes"] = list(payload.get("reason_codes") or []) + [
+                "unsupported_claim_span"
+            ]
+    except Exception:
+        pass
     _LAST_GUARDRAIL.value = payload
     return receipt
 

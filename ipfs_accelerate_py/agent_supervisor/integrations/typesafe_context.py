@@ -7,6 +7,7 @@ snippet order and no lint flags.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping, Optional, Sequence
 
 from ipfs_accelerate_py.typesafe_inference import Noul, Score
@@ -245,8 +246,96 @@ def lint_admissibility(
     )
 
 
+CLAIM_MARKERS: tuple[str, ...] = (
+    "kernel_verified",
+    "proved",
+    "proof complete",
+    "qed",
+    "theorem holds",
+    "all tests passed",
+)
+
+
+def extract_claim_spans(text: str) -> tuple[dict[str, str], ...]:
+    """Split text into short claim spans that look like proof/test assertions."""
+
+    blob = str(text or "")
+    parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", blob) if part.strip()]
+    spans: list[dict[str, str]] = []
+    for index, part in enumerate(parts):
+        lowered = part.casefold()
+        if any(marker in lowered for marker in CLAIM_MARKERS):
+            spans.append({"id": f"claim-{index}", "text": part[:240]})
+        if len(spans) >= 8:
+            break
+    return tuple(spans)
+
+
+def citation_questions() -> dict[str, Any]:
+    return {
+        "supported": Noul(
+            instructions={
+                "question": "Is `claim.text` supported by one of `receipt_ids`?",
+                "compare": ["`claim.text`", "`receipt_ids`"],
+                "focus": "KERNEL_VERIFIED or test claims need a matching receipt id.",
+            },
+        ),
+    }
+
+
+def cite_claim_spans(
+    spans: Sequence[Mapping[str, Any]],
+    *,
+    receipt_ids: Sequence[str],
+    allowlisted_ids: Sequence[str],
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> tuple[str, ...]:
+    """Return allowlisted claim IDs that look unsupported. Never completes a task."""
+
+    allowed = {str(item).strip() for item in allowlisted_ids if str(item).strip()}
+    receipts = tuple(str(item).strip()[:128] for item in receipt_ids if str(item).strip())
+    selected = [
+        row
+        for row in spans
+        if isinstance(row, Mapping) and str(row.get("id") or "").strip() in allowed
+    ]
+    if not selected:
+        return ()
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        return ()
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    unsupported: list[str] = []
+    for row in selected[:8]:
+        ident = str(row.get("id") or "").strip()
+        state = {
+            "claim": {"id": ident, "text": str(row.get("text") or "")[:240]},
+            "receipt_ids": list(receipts[:16]),
+        }
+        try:
+            result = system_one(state, citation_questions(), timeout=timeout)
+        except Exception:
+            return ()
+        noul = getattr((getattr(result, "nouls", None) or {}).get("supported"), "noul", 1.0)
+        try:
+            supported = float(noul or 0.0)
+        except (TypeError, ValueError):
+            supported = 1.0
+        if supported < 0.4:
+            unsupported.append(ident)
+    return tuple(unsupported)
+
+
 __all__ = [
+    "cite_claim_spans",
+    "citation_questions",
     "compose_snippet_score",
+    "extract_claim_spans",
     "lint_admissibility",
     "lint_questions",
     "prepare_evidence_for_compile",

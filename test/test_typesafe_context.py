@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+    cite_claim_spans,
     compose_snippet_score,
+    extract_claim_spans,
     lint_admissibility,
     prepare_evidence_for_compile,
     rerank_allowlisted_snippets,
@@ -147,3 +149,47 @@ def test_prepare_evidence_keeps_required_first_without_key(
     ids = tuple(item["reference_id"] for item in prepared)
     assert ids[0] == "req-a"
     assert set(ids[1:]) == {"opt-b", "opt-a"}
+
+
+def test_extract_claim_spans_and_cite_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    spans = extract_claim_spans("KERNEL_VERIFIED the identity. Also hello world.")
+    assert spans
+    assert spans[0]["id"].startswith("claim-")
+    assert "KERNEL_VERIFIED" in spans[0]["text"]
+    assert (
+        cite_claim_spans(
+            spans,
+            receipt_ids=(),
+            allowlisted_ids=tuple(span["id"] for span in spans),
+        )
+        == ()
+    )
+
+
+def test_cite_claim_spans_flags_unsupported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        nouls = {"supported": SimpleNamespace(noul=0.1)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    unsupported = cite_claim_spans(
+        ({"id": "claim-0", "text": "KERNEL_VERIFIED everything"},),
+        receipt_ids=(),
+        allowlisted_ids=("claim-0", "claim-evil"),
+    )
+    assert unsupported == ("claim-0",)
+    assert "claim-evil" not in unsupported

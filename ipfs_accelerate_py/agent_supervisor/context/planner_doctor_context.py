@@ -1634,6 +1634,7 @@ def compile_planner_doctor_context(
         evidence=evidence,
         tokenizer=tokenizer or (lambda text: _tokens_for(str(text))),
         provider_context_window=provider_context_window,
+        typesafe_obligation_id=request.objective_id,
     )
 
     # Required core cannot be deferred as expansion handles.

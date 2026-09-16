@@ -529,6 +529,7 @@ def compile_code_proof_context_capsule(
         evidence=evidence,
         tokenizer=tokenizer or (lambda text: _tokens_for(str(text))),
         provider_context_window=provider_context_window,
+        typesafe_obligation_id=request.objective_id,
     )
 
     omitted = tuple(getattr(result.capsule, "omissions", ()) or ())
