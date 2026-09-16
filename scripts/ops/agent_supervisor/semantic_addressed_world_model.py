@@ -29881,7 +29881,7 @@ def build_parser() -> argparse.ArgumentParser:
     recover.add_argument("--timeout-seconds", type=float, default=30)
     launch = sub.add_parser("launch")
     launch.add_argument("--foreground", action="store_true")
-    launch.add_argument("--duration-seconds", type=float, default=float("inf"))
+    launch.add_argument("--duration-seconds", type=float, default=28800.0)
     return parser
 
 
@@ -30263,10 +30263,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     else:
                         if args.foreground:
                             launch_args.append("--foreground")
-                        if math.isfinite(args.duration_seconds):
-                            launch_args.extend(
-                                ["--duration-seconds", str(args.duration_seconds)]
-                            )
+                        duration = args.duration_seconds
+                        if not math.isfinite(duration) or duration <= 0:
+                            duration = 28800.0
+                        launch_args.extend(
+                            ["--duration-seconds", str(duration)]
+                        )
                     result = int(
                         scheduler_runtime.main(
                             launch_args,

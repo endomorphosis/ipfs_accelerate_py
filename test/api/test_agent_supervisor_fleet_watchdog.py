@@ -756,6 +756,11 @@ def test_configured_board_owner_duration_lets_cron_relaunch():
         / "scripts/run_agent_supervisor_efficiency_state_hardening.py"
     ).read_text(encoding="utf-8")
     assert 'run.add_argument("--duration-seconds", type=float, default=28800.0)' in source
+    sawm = (
+        Path(__file__).resolve().parents[2]
+        / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    assert 'launch.add_argument("--duration-seconds", type=float, default=28800.0)' in sawm
 
 
 def test_aseh_closeout_is_not_spar_clause_stall():
