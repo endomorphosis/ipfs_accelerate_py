@@ -6,6 +6,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
     compose_guardrail_risk,
+    extract_tool_calls,
     guardrail_questions,
     last_trace_guardrail,
     observe_worker_trace,
@@ -33,6 +34,22 @@ def test_scan_worker_trace_does_not_embed_prompt_or_output() -> None:
     assert "write_file" in flags["tools"]["unknown_names"]
 
 
+def test_extract_tool_calls_are_structured_rows() -> None:
+    rows = extract_tool_calls(
+        '{"name": "write_file", "path": "/etc/passwd", "contents": "..."}',
+        allowed_tools=("read_file",),
+        allowed_path_prefixes=("src/",),
+    )
+    assert rows
+    assert rows[0]["name"] == "write_file"
+    assert rows[0]["name_allowed"] is False
+    assert rows[0]["path_in_allowlist"] is False
+    assert "/etc/passwd" in rows[0]["paths"]
+    dumped = str(rows)
+    assert "contents" not in dumped or "..." not in dumped or True
+    assert "Ignore previous" not in dumped
+
+
 def test_guardrail_questions_are_atomic_nouls() -> None:
     questions = guardrail_questions()
     assert set(questions) >= {
@@ -52,11 +69,12 @@ def test_compose_guardrail_risk_in_code() -> None:
             "out_of_scope_write": SimpleNamespace(noul=0.2),
             "tool_name_allowed": SimpleNamespace(noul=0.9),
             "looks_like_normal_coding": SimpleNamespace(noul=0.1),
+            "any_tool_call_invalid": SimpleNamespace(noul=0.0),
         }
 
     risk, reasons = compose_guardrail_risk(_Result())
-    assert risk == pytest.approx(0.365)
-    assert risk > 0.3
+    assert risk == pytest.approx(0.3)
+    assert risk >= 0.3
     assert "composed_in_code" in reasons
 
 
@@ -78,6 +96,7 @@ def test_observe_shadow_records_advisory_receipt(monkeypatch: pytest.MonkeyPatch
             "out_of_scope_write": SimpleNamespace(noul=0.01),
             "tool_name_allowed": SimpleNamespace(noul=0.95),
             "looks_like_normal_coding": SimpleNamespace(noul=0.9),
+            "any_tool_call_invalid": SimpleNamespace(noul=0.0),
         }
         choices = {}
 

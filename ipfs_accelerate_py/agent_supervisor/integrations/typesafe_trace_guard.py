@@ -44,12 +44,52 @@ _TOOL_NAME_RE = re.compile(
     r"\b(write_file|search_replace|read_file|run_terminal_command|generate_text|system_one)\b",
     re.I,
 )
+_JSON_CALL_RE = re.compile(
+    r"\{[^{}]{0,500}\"name\"\s*:\s*\"([A-Za-z0-9_]+)\"[^{}]{0,500}\}"
+)
+_PATH_RE = re.compile(r'"(?:path|file|target_file)"\s*:\s*"([^"]{1,240})"')
+_ARG_KEY_RE = re.compile(r'"([A-Za-z0-9_]{1,40})"\s*:')
 
 OBSERVE_MODES = frozenset({"observe", "shadow"})
 
 
 def _haystack(*parts: str) -> str:
     return "\n".join(str(part or "") for part in parts).casefold()
+
+
+def extract_tool_calls(
+    text: str,
+    *,
+    allowed_tools: Sequence[str] = (),
+    allowed_path_prefixes: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """Structured tool-call rows. No prompt/output bodies."""
+
+    allowed = {str(item).strip() for item in allowed_tools if str(item).strip()}
+    prefixes = tuple(str(item) for item in allowed_path_prefixes if str(item).strip())
+    rows: list[dict[str, Any]] = []
+    for match in _JSON_CALL_RE.finditer(str(text or "")):
+        name = match.group(1)
+        chunk = match.group(0)
+        paths = tuple(_PATH_RE.findall(chunk)[:4])
+        keys = tuple(k for k in _ARG_KEY_RE.findall(chunk) if k != "name")[:12]
+        path_ok = True
+        if paths and prefixes:
+            path_ok = all(
+                any(path.startswith(prefix) for prefix in prefixes) for path in paths
+            )
+        rows.append(
+            {
+                "name": name,
+                "arg_keys": list(keys),
+                "paths": list(paths),
+                "name_allowed": (not allowed) or name in allowed,
+                "path_in_allowlist": path_ok,
+            }
+        )
+        if len(rows) >= 8:
+            break
+    return rows
 
 
 def scan_worker_trace(
@@ -59,12 +99,18 @@ def scan_worker_trace(
     allowed_tools: Sequence[str] = (),
     allowed_path_prefixes: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Local flags only. Prompt/output bodies are not stored."""
+    """Local flags and structured tool-call rows. Prompt/output bodies are not stored."""
 
     blob = _haystack(prompt, output)
-    tools = tuple(dict.fromkeys(_TOOL_NAME_RE.findall(output or "") + _TOOL_NAME_RE.findall(prompt or "")))
+    combined = f"{prompt}\n{output}"
+    tools = tuple(dict.fromkeys(_TOOL_NAME_RE.findall(combined)))
     allowed = {str(item).strip() for item in allowed_tools if str(item).strip()}
     unknown = tuple(name for name in tools if allowed and name not in allowed)
+    calls = extract_tool_calls(
+        combined,
+        allowed_tools=allowed_tools,
+        allowed_path_prefixes=allowed_path_prefixes,
+    )
     return {
         "markers": {
             "jailbreak_phrase": any(marker in blob for marker in _JAILBREAK_MARKERS),
@@ -75,6 +121,7 @@ def scan_worker_trace(
             "names": list(tools[:16]),
             "unknown_names": list(unknown[:16]),
         },
+        "tool_calls": calls,
         "policy": {
             "allowed_tools": list(allowed)[:32],
             "allowed_path_prefixes": [str(item) for item in allowed_path_prefixes][:32],
@@ -118,6 +165,13 @@ def guardrail_questions() -> dict[str, Any]:
                 "inspect": "`tools`",
             },
         ),
+        "any_tool_call_invalid": Noul(
+            instructions={
+                "question": "Is any row in `tool_calls` a disallowed name or path?",
+                "inspect": "`tool_calls`",
+                "focus": "name_allowed false or path_in_allowlist false.",
+            },
+        ),
     }
 
 
@@ -138,13 +192,13 @@ def compose_guardrail_risk(result: Any) -> tuple[float, tuple[str, ...]]:
     secrets = noul("requests_secrets")
     scope = noul("out_of_scope_write")
     allowed = noul("tool_name_allowed")
-    normal = noul("looks_like_normal_coding")
+    invalid = noul("any_tool_call_invalid")
     risk = (
-        0.30 * jailbreak
-        + 0.25 * secrets
-        + 0.25 * scope
-        + 0.20 * (1.0 - allowed)
-        + 0.00 * normal
+        0.25 * jailbreak
+        + 0.20 * secrets
+        + 0.20 * scope
+        + 0.15 * (1.0 - allowed)
+        + 0.20 * invalid
     )
     risk = max(0.0, min(1.0, risk))
     reasons = ["composed_in_code"]
@@ -220,6 +274,7 @@ def observe_worker_trace(
 __all__ = [
     "OBSERVE_MODES",
     "compose_guardrail_risk",
+    "extract_tool_calls",
     "guardrail_questions",
     "last_trace_guardrail",
     "observe_worker_trace",

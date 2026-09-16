@@ -131,10 +131,24 @@ def allocate_supervisor_endpoint(
             "slug": "",
             "available_providers": [],
         }
-    from ipfs_accelerate_py.llm_allocation.intelligence_index import ideal_model_for_task
+    from ipfs_accelerate_py.llm_allocation.intelligence_index import (
+        board_task_kind,
+        ideal_model_for_task,
+    )
 
+    routed = dict(payload) if isinstance(payload, dict) else {"task_id": task_id, "kind": task_kind or "implementation"}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_task_router import (
+            advise_board_task_kind,
+        )
+
+        kind = advise_board_task_kind(routed, fallback=board_task_kind(routed))
+        if kind:
+            routed["kind"] = kind
+    except Exception:
+        pass
     route = ideal_model_for_task(
-        payload,
+        routed,
         available_providers=live,
     )
     provider = str(route.provider or "")

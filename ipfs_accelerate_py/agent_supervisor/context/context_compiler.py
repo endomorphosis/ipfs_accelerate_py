@@ -7006,8 +7006,26 @@ def compile_context_capsule(
     budget: ContextBudget,
     **kwargs: Any,
 ) -> ContextCompileResult:
-    """Convenience wrapper around :class:`ContextCompiler`."""
+    """Convenience wrapper around :class:`ContextCompiler`.
 
+    Optional ``typesafe_obligation_id`` reranks *optional* evidence first.
+    Required items and VOI scoring are unchanged. Missing TypeSafe keys
+    leave evidence order as provided.
+    """
+
+    obligation_id = str(kwargs.pop("typesafe_obligation_id", "") or "").strip()
+    if obligation_id and "evidence" in kwargs:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                prepare_evidence_for_compile,
+            )
+
+            kwargs["evidence"] = prepare_evidence_for_compile(
+                tuple(kwargs.get("evidence") or ()),
+                obligation_id=obligation_id,
+            )
+        except Exception:
+            pass
     compiler_options = {
         key: kwargs.pop(key)
         for key in tuple(kwargs)
