@@ -601,9 +601,17 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                 "reason": "rearmed or ready work belongs to live native lanes, not llm_router"}
     if stall == "blocked_without_independent_work":
         if local_validation_already_recorded(state):
-            return {"status": "wait", "recipe": "local_validation_pending_native_admission",
-                    "completion_authoritative": False,
-                    "reason": "local checks already recorded; native fenced admission still required"}
+            prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+            return {
+                "status": "wait",
+                "recipe": "local_validation_pending_native_admission",
+                "completion_authoritative": False,
+                "results": [
+                    item for item in prior.get("results") or []
+                    if isinstance(item, dict)
+                ],
+                "reason": "local checks already recorded; native fenced admission still required",
+            }
         local = run_local_blocked_candidate_validation(board, observation)
         if local.get("status") != "skip":
             return local

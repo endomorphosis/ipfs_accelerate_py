@@ -687,6 +687,14 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
     )
     assert recorded["status"] == "wait"
     assert recorded["recipe"] == "local_validation_pending_native_admission"
+    assert recorded["results"][0]["status"] == "passed"
+    assert recorded["results"][1]["status"] == "receipt_missing"
+    again = apply_supervisor_heal(
+        {"cwd": str(tmp_path)},
+        {"stall_class": "blocked_without_independent_work", "observation": observation,
+         "last_action_result": recorded},
+    )
+    assert again["status"] == "wait"
     assert len(calls) == 2
 
 
