@@ -5648,8 +5648,14 @@ def build_server(
     connection_factory: Callable[[Path], Any] | None = None,
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None,
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    repository_root: Path | str | None = None,
 ) -> QuackStateServer:
-    """Construct a configured :class:`QuackStateServer`."""
+    """Construct a configured :class:`QuackStateServer`.
+
+    ``repository_root`` is accepted for sealed extra-gate launchers and is
+    not a second authority. Identity still comes from ``database_path``.
+    """
+    _ = repository_root
 
     config = QuackStateServerConfig(
         database_path=Path(database_path),

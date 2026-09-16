@@ -719,6 +719,9 @@ def admit_native_owner_overlay(
         return {**empty, "reason": "retain_owner_not_rewrapped"}
     if board_id not in NATIVE_ADMISSION_OVERLAY_BOARDS:
         return {**empty, "reason": "board_not_native_admission_overlay"}
+    # Sealed extra-gate scripts pass kwargs overlay build_server does not
+    # accept (repository_root). Wrapping ExecStart crash-loops the owner.
+    return {**empty, "reason": "overlay_first_wrap_disabled_mixed_package"}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
     live_unit = str(extra.get("live_owner_unit") or "")

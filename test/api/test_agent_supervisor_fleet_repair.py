@@ -1047,13 +1047,10 @@ def test_doep_local_pass_recycles_overlay_first_for_native_admission(tmp_path, m
         restart_unit=lambda unit: restarts.append(unit),
         systemd_user_dir=user_dir,
     )
-    assert written["status"] == "applied"
+    assert written["status"] == "skip"
     assert written["completion_authority"] is False
-    assert written["restarted"] is True
-    assert restarts == ["agent-supervisor-doep-v1.service"]
-    text = (user_dir / "agent-supervisor-doep-v1.service.d" / "91-overlay-first-admission.conf").read_text()
-    assert "sealed_board_supervisor_launch.py" in text
-    assert "TimeoutStopSec=180" in text
+    assert written["reason"] == "overlay_first_wrap_disabled_mixed_package"
+    assert restarts == []
     skipped = real_admit(
         {"id": "spar", "cwd": str(tmp_path)},
         {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}}},
