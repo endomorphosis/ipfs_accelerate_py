@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import subprocess
@@ -739,9 +740,17 @@ def test_live_worker_wait_retries_unstall_on_cooldown(tmp_path, monkeypatch):
 def test_configured_board_owner_duration_lets_cron_relaunch():
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         CONFIGURED_BOARD_OWNER_DURATION_SECONDS,
+        bound_configured_board_owner_duration,
     )
 
     assert CONFIGURED_BOARD_OWNER_DURATION_SECONDS == 28800.0
+    assert bound_configured_board_owner_duration(
+        float("inf"), closeout_disabled=True,
+    ) == CONFIGURED_BOARD_OWNER_DURATION_SECONDS
+    assert math.isinf(bound_configured_board_owner_duration(
+        float("inf"), closeout_disabled=False,
+    ))
+    assert bound_configured_board_owner_duration(60.0, closeout_disabled=True) == 60.0
     source = (
         Path(__file__).resolve().parents[2]
         / "scripts/run_agent_supervisor_efficiency_state_hardening.py"

@@ -193,6 +193,31 @@ MAX_COORDINATOR_WAVES = 4096
 # process exits. Infinite duration pinned extra-gate on a stale capsule so
 # fleet closeout never saw a live attach token.
 CONFIGURED_BOARD_OWNER_DURATION_SECONDS = 28800.0
+
+
+def extra_gate_closeout_disabled(board: Any) -> bool:
+    payload = getattr(board, "payload", None)
+    policy = payload.get("completion_policy") if isinstance(payload, dict) else None
+    return not (
+        isinstance(policy, dict)
+        and policy.get("goal_completion_contracts_required") is True
+    )
+
+
+def bound_configured_board_owner_duration(
+    duration_seconds: float,
+    *,
+    closeout_disabled: bool,
+) -> float:
+    """Cap immortal extra-gate extra-gate extra-gate owners when fleet owns closeout/unstall."""
+
+    if math.isfinite(duration_seconds) and duration_seconds > 0:
+        return float(duration_seconds)
+    if closeout_disabled:
+        return CONFIGURED_BOARD_OWNER_DURATION_SECONDS
+    return float(duration_seconds)
+
+
 COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS = 30.0
 _COORDINATOR_CREDENTIAL_ACK_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2936,6 +2961,10 @@ def configured_board_launch_plan(
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
+    duration_seconds = bound_configured_board_owner_duration(
+        duration_seconds,
+        closeout_disabled=extra_gate_closeout_disabled(board),
+    )
     run_stamp = stamp or utc_run_stamp()
     runtime_root = board.path(board.runtime_paths["root"])
     state_dir = board.path(board.runtime_paths["state"])
