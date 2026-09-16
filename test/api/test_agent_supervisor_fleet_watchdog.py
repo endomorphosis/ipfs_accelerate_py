@@ -1435,6 +1435,20 @@ def test_detached_launcher_stdout_cannot_hold_command_open(tmp_path):
     assert "launched" in result["stdout"]
 
 
+def test_unsettled_goals_outrank_extra_gate_recursion():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": [
+            "board_has_unsettled_goals",
+            "extra_gate_recursion_sealed_package",
+            "goal_closeout_disabled_on_launch",
+        ],
+        "details": {"task_counts": {"completed": 40}, "unsettled_goal_count": 9},
+    }
+    assert fleet.classify_stall(observation) == "closeout_waiting_on_unsettled_goals"
+
+
 def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
     observation = {
         "health": "stalled",

@@ -133,10 +133,6 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "operator_hold"
     if health == "complete" or observation.get("complete") is True:
         return "complete"
-    if "extra_gate_recursion_sealed_package" in reasons:
-        # Sealed extra-gate package hides overlay heals. Collapse to one
-        # exclusive owner with injected heals; do not launch a second extra-gate.
-        return "extra_gate_recursion"
     if "source_integrity_not_verified" in reasons:
         # Supervisor-path dirt is restored separately. Remaining board-doc
         # dirt must not outrank live independent work beside blocked peers.
@@ -154,6 +150,10 @@ def classify_stall(observation: dict[str, Any]) -> str:
         # All-tasks-complete is not goal closeout. Native owner/cron still
         # owns the remaining goals; an LLM cannot mint that admission.
         return "closeout_waiting_on_unsettled_goals"
+    if "extra_gate_recursion_sealed_package" in reasons:
+        # Sealed extra-gate package hides overlay heals. Do not launch a
+        # second extra-gate; closeout and holds already returned above.
+        return "extra_gate_recursion"
     if (
         observation.get("completion_candidate") is True
         and observation.get("complete") is not True

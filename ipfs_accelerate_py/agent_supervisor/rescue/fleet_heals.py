@@ -636,12 +636,10 @@ def overlay_wrapped_execstart(
 def collapse_extra_gate_recursion(
     board: Mapping[str, Any], observation: Mapping[str, Any],
     *,
-    show_unit=None,
     daemon_reload=None,
-    restart_unit=None,
     systemd_user_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Bind overlay heals to the live exclusive owner. Never start a second extra-gate."""
+    """Keep one exclusive owner. Never wrap ExecStart or start a second extra-gate."""
     empty = {
         "status": "skip",
         "recipe": "collapse_extra_gate_recursion",
@@ -653,54 +651,37 @@ def collapse_extra_gate_recursion(
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
     live_unit = str(extra.get("live_owner_unit") or "")
-    if not live_unit.endswith(".service"):
+    if not live_unit.endswith(".service") or live_unit == "cron.service":
         return {**empty, "reason": "live_owner_unit_unknown"}
-    cwd = str(board.get("cwd") or "")
-    if not cwd:
-        return {**empty, "reason": "board_cwd_absent"}
     overlay = supervisor_overlay_root()
-    show = show_unit or _systemd_show_exec_start
-    raw = show(live_unit)
-    if isinstance(raw, list):
-        argv = [str(item) for item in raw if isinstance(item, str)]
-    else:
-        argv = parse_systemd_exec_start(str(raw or ""))
-    wrapped = overlay_wrapped_execstart(argv, overlay=overlay, source_root=cwd)
-    if not wrapped:
-        return {**empty, "reason": "execstart_not_wrappable"}
-    if wrapped == argv and extra.get("heal_overlay") is True:
-        return {**empty, "reason": "heal_overlay_already_bound"}
     user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
     dropin_dir = user_dir / f"{live_unit}.d"
     dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    quoted = " ".join(_systemd_quote(item) for item in wrapped)
-    body = (
-        "[Service]\n"
-        "ExecStart=\n"
-        f"ExecStart={quoted}\n"
-        f"Environment=PYTHONPATH={overlay}\n"
-        f"Environment=IPFS_ACCELERATE_SUPERVISOR_OVERLAY={overlay}\n"
-        f"Environment=IPFS_ACCELERATE_SEALED_SOURCE_ROOT={cwd}\n"
-        "TimeoutStopSec=180\n"
-    )
-    path = dropin_dir / "81-supervisor-heal-overlay.conf"
+    # ExecStart wrapping loads overlay quack_state_server against a sealed
+    # DuckDB opener and crash-loops the exclusive owner. Bind PYTHONPATH only.
+    path = dropin_dir / "80-overlay-pythonpath.conf"
+    body = f"[Service]\nEnvironment=PYTHONPATH={overlay}\n"
+    if path.is_file() and path.read_text(encoding="utf-8") == body:
+        return {
+            **empty,
+            "reason": "heal_overlay_pythonpath_already_bound",
+            "live_owner_unit": live_unit,
+        }
     path.write_text(body, encoding="utf-8")
     os.chmod(path, 0o600)
+    exec_wrap = dropin_dir / "81-supervisor-heal-overlay.conf"
+    if exec_wrap.is_file():
+        exec_wrap.unlink()
     reloader = daemon_reload or _systemd_daemon_reload
     reloader()
-    restarted = False
-    if board_id in RECYCLE_EXTRA_GATE_BOARDS:
-        restarter = restart_unit or _systemd_restart_unit
-        restarter(live_unit)
-        restarted = True
     return {
         "status": "applied",
         "recipe": "collapse_extra_gate_recursion",
         "completion_authority": False,
         "live_owner_unit": live_unit,
         "inventory_owner_unit": extra.get("inventory_owner_unit") or "",
-        "restarted": restarted,
-        "reason": "overlay heals bound to the live exclusive owner; competing extra-gate not started",
+        "restarted": False,
+        "reason": "one exclusive owner; overlay PYTHONPATH bound; competing extra-gate not started",
     }
 
 

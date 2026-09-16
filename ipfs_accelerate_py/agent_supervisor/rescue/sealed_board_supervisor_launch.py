@@ -247,7 +247,6 @@ def main(argv: list[str] | None = None) -> int:
         pin_sealed_sys_path(source_root)
         hold_retain_owner_until_operator_stop()
         hold_retain_owner_until_operator_stop()
-    install_supervisor_heal_overlay(overlay)
     script = Path(args[0])
     if not script.is_absolute():
         script = Path(source_root) / script

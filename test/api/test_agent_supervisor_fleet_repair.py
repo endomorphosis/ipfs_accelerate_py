@@ -1005,8 +1005,10 @@ def test_collapse_extra_gate_recursion_binds_live_unit_not_inventory(tmp_path):
     )
 
     user_dir = tmp_path / "systemd"
+    dropin_dir = user_dir / "pctdd-g9-quack-owner.service.d"
+    dropin_dir.mkdir(parents=True)
+    (dropin_dir / "81-supervisor-heal-overlay.conf").write_text("ExecStart=/broken\n")
     reloads = []
-    restarts = []
     result = collapse_extra_gate_recursion(
         {"id": "pctdd", "cwd": str(tmp_path / "board")},
         {
@@ -1019,24 +1021,16 @@ def test_collapse_extra_gate_recursion_binds_live_unit_not_inventory(tmp_path):
                 }
             },
         },
-        show_unit=lambda unit: [
-            "/usr/bin/python3",
-            "/board/scripts/ops/agent_supervisor/parallel_content.py",
-            "state-owner",
-        ],
         daemon_reload=lambda: reloads.append(True),
-        restart_unit=lambda unit: restarts.append(unit),
         systemd_user_dir=user_dir,
     )
     assert result["status"] == "applied"
     assert result["completion_authority"] is False
+    assert result["restarted"] is False
     assert result["live_owner_unit"] == "pctdd-g9-quack-owner.service"
-    assert result["restarted"] is True
-    assert restarts == ["pctdd-g9-quack-owner.service"]
-    dropin = user_dir / "pctdd-g9-quack-owner.service.d" / "81-supervisor-heal-overlay.conf"
-    text = dropin.read_text()
-    assert "sealed_board_supervisor_launch.py" in text
-    assert "pctdd-g9-watchdog" not in text
+    text = (dropin_dir / "80-overlay-pythonpath.conf").read_text()
+    assert "PYTHONPATH=" in text
+    assert not (dropin_dir / "81-supervisor-heal-overlay.conf").exists()
     assert reloads == [True]
 
     skipped = apply_supervisor_heal(
