@@ -31,9 +31,12 @@ STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
 FALSE_TERMINAL_BLOCKED_REASON_MARKERS = (
     "isolate_merge_queue_to_task_projection",
     "typed_portal_deferral_budget_exhausted",
+    "database_portal_typed_deferral_budget_exhausted",
     "inflight_process_deferral_budget_unstall",
     "implementation_protected_path_mutated",
     "identity_changed",
+    "identity changed",
+    "database_portal_terminal_failure",
     "ProcessLookupError",
     "claim_not_accepted_outputs_missing",
     "Portal task projection is not complete",

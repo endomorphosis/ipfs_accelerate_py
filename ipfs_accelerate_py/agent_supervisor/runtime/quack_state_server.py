@@ -5065,10 +5065,83 @@ class QuackStateServer:
             except Exception:
                 continue
 
+    def _unstall_false_terminal_blocked(self) -> None:
+        """Owner-side rearm of false-terminal blocks. Never completes tasks."""
+
+        connection = self._connection
+        identity = self._identity
+        if connection is None or identity is None:
+            return
+        try:
+            from ..task_sources.intent_repository import IntentRepository
+            from ..task_sources.quack_owner_command import (
+                FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
+                STALE_IN_PROGRESS_UNSTALL_SECONDS,
+            )
+
+            rows = connection.execute(
+                """
+                SELECT task_cid, task_alias, status, revision, body_json, updated_at
+                FROM tasks
+                WHERE lower(status) IN ('blocked', 'in_progress')
+                LIMIT 40
+                """
+            ).fetchall()
+        except Exception:
+            return
+        if not rows:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            clock = datetime.now(timezone.utc)
+            repo = IntentRepository(
+                bound_connection=connection,
+                install_schema=False,
+                owner_id=str(identity.server_id or "quack-owner"),
+                session_id=str(identity.process_birth_id or "quack-session"),
+            )
+        except Exception as exc:
+            self._log(f"false-terminal unstall warning: {type(exc).__name__}")
+            return
+        for row in rows:
+            cid, alias, status, revision, body, updated = row
+            blob = f"{alias}\n{body or ''}"
+            status_text = str(status or "").lower()
+            rearm = False
+            if status_text == "blocked":
+                rearm = any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS)
+            elif status_text == "in_progress":
+                try:
+                    updated_at = datetime.fromisoformat(str(updated or "").replace("Z", "+00:00"))
+                    age = (clock - updated_at).total_seconds()
+                except (TypeError, ValueError):
+                    age = 0
+                rearm = age >= int(STALE_IN_PROGRESS_UNSTALL_SECONDS)
+            if not rearm:
+                continue
+            try:
+                repo.cas_task_status(
+                    task_cid=str(cid),
+                    expected_revision=int(revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": (
+                            "false_terminal_blocked_supervisor_bug"
+                            if status_text == "blocked"
+                            else "stale_in_progress_unstall"
+                        ),
+                        "completion_authority": False,
+                    },
+                )
+            except Exception:
+                continue
+
     def _write_status(self) -> None:
         try:
             if self._lifecycle is ServerLifecycle.READY:
                 self._ensure_client_token_handoff()
+                self._unstall_false_terminal_blocked()
                 self._provisionally_complete_terminal_goals()
             _atomic_write_json(self.status_path(), self.status(), mode=0o600)
         except Exception as exc:

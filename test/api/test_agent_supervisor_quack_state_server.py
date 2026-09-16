@@ -312,6 +312,12 @@ def test_token_vault_mints_handle_only_and_destroys(tmp_path: Path) -> None:
         vault.resolve()
 
 
+def test_ready_owner_has_false_terminal_unstall_hook() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import QuackStateServer
+
+    assert callable(getattr(QuackStateServer, "_unstall_false_terminal_blocked"))
+
+
 def test_ready_owner_republishes_retired_client_token_handoff(tmp_path: Path) -> None:
     state_dir = tmp_path / "state"
     vault = TokenVault(state_dir)

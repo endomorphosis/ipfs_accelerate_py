@@ -462,6 +462,9 @@ def test_database_task_source_imports_owner_command_contract():
     assert "quack_transport_unavailable" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
     assert "callback_authority_incomplete_blocked" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
     assert "database_unknown_outcome_blocked" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert "typed_portal_deferral_budget_exhausted" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert "identity changed" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+    assert "database_portal_terminal_failure" in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
     assert QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS == "compare_and_set_goal_status"
     assert STALE_IN_PROGRESS_UNSTALL_SECONDS == 16_200
     assert callable(submit_quack_owner_command)
