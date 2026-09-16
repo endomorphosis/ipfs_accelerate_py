@@ -12,6 +12,7 @@ state/*
 *model_functionality_report*
 *model_functionality*
 *.json
+!ipfs_accelerate_py/llm_allocation/data/*.json
 !packaging/pcpr/**/*.json
 !config/external_agent_autonomous_execution_fabric_bootstrap.json
 !docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json

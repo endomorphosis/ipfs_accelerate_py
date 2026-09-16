@@ -8,8 +8,11 @@ to pick the cheapest model that still meets a task-difficulty intelligence floor
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Optional, Sequence
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 INDEX_VERSION = "4.3"
 INDEX_SOURCE = (
@@ -21,23 +24,77 @@ CATALOG_REVISION = "aa-intelligence-index-v4.3"
 
 AUTO_MODEL_NAMES = frozenset({"", "auto", "efficient"})
 
-_OPENAI_PROVIDERS = ("openai", "openrouter", "codex_cli")
+_OPENAI_PROVIDERS = ("openai", "openrouter", "codex_cli", "copilot_cli", "copilot_sdk")
 _GROK_PROVIDERS = ("grok_cli", "xai")
 _MUSE_PROVIDERS = ("muse_code", "meta_ai", "goose_cli")
 _CLAUDE_PROVIDERS = ("claude_code", "claude_py")
+_GEMINI_PROVIDERS = ("gemini_cli", "gemini_py", "openrouter")
+_MISTRAL_PROVIDERS = ("mistral_vibe", "openrouter")
 _OPENROUTER_PROVIDERS = ("openrouter",)
+
+LAB_PROVIDERS: Mapping[str, tuple[str, ...]] = {
+    "openai": _OPENAI_PROVIDERS,
+    "anthropic": _CLAUDE_PROVIDERS,
+    "meta": _MUSE_PROVIDERS,
+    "xai": _GROK_PROVIDERS,
+    "google": _GEMINI_PROVIDERS,
+    "mistral": _MISTRAL_PROVIDERS,
+    "zai": _OPENROUTER_PROVIDERS,
+    "alibaba": _OPENROUTER_PROVIDERS,
+    "deepseek": _OPENROUTER_PROVIDERS,
+    "kimi": _OPENROUTER_PROVIDERS,
+    "xiaomi": _OPENROUTER_PROVIDERS,
+    "minimax": _OPENROUTER_PROVIDERS,
+    "thinking-machines": _OPENROUTER_PROVIDERS,
+    "nvidia": _OPENROUTER_PROVIDERS,
+    "ibm": _OPENROUTER_PROVIDERS,
+    "tencent": _OPENROUTER_PROVIDERS,
+    "longcat": _OPENROUTER_PROVIDERS,
+    "inclusionai": _OPENROUTER_PROVIDERS,
+    "multiversecomputing": _OPENROUTER_PROVIDERS,
+    "cohere": _OPENROUTER_PROVIDERS,
+    "inception": _OPENROUTER_PROVIDERS,
+    "arcee": _OPENROUTER_PROVIDERS,
+    "upstage": _OPENROUTER_PROVIDERS,
+    "celeris": _OPENROUTER_PROVIDERS,
+}
+
+CLI_DEFAULT_MODELS: Mapping[str, tuple[str, ...]] = {
+    "grok_cli": ("grok-4.6",),
+    "muse_code": ("muse-spark-1.3", "muse-spark-1.2"),
+    "codex_cli": ("gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
+    "claude_code": ("claude-fable-5.1", "claude-opus-5", "claude-sonnet-5"),
+    "gemini_cli": ("gemini-3.8-flash", "gemini-3.7-flash"),
+    "goose_cli": ("muse-spark-1.3",),
+    "copilot_cli": ("gpt-5.6-sol",),
+    "mistral_vibe": ("mistral-large",),
+}
 
 TASK_KIND_INTELLIGENCE: Mapping[str, float] = {
     "trivial": 18.0,
     "easy": 26.0,
+    "inventory": 26.0,
+    "extraction": 26.0,
+    "rescan": 26.0,
+    "retirement": 26.0,
+    "legal": 26.0,
     "standard": 38.0,
     "review": 38.0,
+    "unblock_review": 38.0,
     "planning": 38.0,
+    "proposal": 38.0,
+    "validation": 38.0,
+    "facade": 38.0,
+    "boundary": 38.0,
+    "state": 38.0,
     "coding": 41.0,
     "implementation": 41.0,
+    "repair": 41.0,
     "agent": 45.0,
+    "merge": 45.0,
     "hard": 48.0,
     "scientific": 48.0,
+    "rescue": 48.0,
     "frontier": 52.0,
 }
 
@@ -291,6 +348,167 @@ INTELLIGENCE_INDEX_MODELS: tuple[IntelligenceIndexModel, ...] = (
 )
 
 
+def providers_for_lab(lab_slug: str) -> tuple[str, ...]:
+    """Map an Artificial Analysis lab slug onto llm_router provider names."""
+
+    return LAB_PROVIDERS.get(str(lab_slug or "").strip().casefold(), _OPENROUTER_PROVIDERS)
+
+
+def _snapshot_path() -> Path:
+    return Path(__file__).resolve().parent / "data" / "intelligence_index_v4_3.json"
+
+
+@lru_cache(maxsize=1)
+def load_intelligence_index_models() -> tuple[IntelligenceIndexModel, ...]:
+    """Load the full Intelligence Index v4.3 cost/intelligence matrix."""
+
+    path = _snapshot_path()
+    if not path.is_file():
+        return INTELLIGENCE_INDEX_MODELS
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return INTELLIGENCE_INDEX_MODELS
+    records = payload.get("records") if isinstance(payload, dict) else None
+    if not isinstance(records, list) or not records:
+        return INTELLIGENCE_INDEX_MODELS
+    loaded: list[IntelligenceIndexModel] = []
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        try:
+            intel = float(row.get("intelligence") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if intel <= 0:
+            continue
+        raw_cost = row.get("cost_usd_per_task")
+        try:
+            cost = float(raw_cost) if raw_cost is not None else 0.0
+        except (TypeError, ValueError):
+            cost = 0.0
+        lab_slug = str(row.get("lab_slug") or "")
+        loaded.append(
+            IntelligenceIndexModel(
+                slug=str(row.get("slug") or ""),
+                name=str(row.get("name") or row.get("slug") or ""),
+                lab=str(row.get("lab") or ""),
+                intelligence=intel,
+                cost_usd_per_task=cost,
+                model_name=str(row.get("model_name") or ""),
+                providers=providers_for_lab(lab_slug),
+                reasoning_effort=str(row.get("reasoning_effort") or ""),
+                pareto=bool(row.get("pareto")),
+            )
+        )
+    return tuple(loaded) or INTELLIGENCE_INDEX_MODELS
+
+
+def discover_available_providers(
+    *,
+    include_model_manager: bool = False,
+) -> tuple[str, ...]:
+    """Return llm_router / CLI / model-manager providers that can actually run."""
+
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def _add(value: object) -> None:
+        key = str(value or "").strip()
+        lowered = key.casefold()
+        if not key or lowered in seen:
+            return
+        seen.add(lowered)
+        names.append(key)
+
+    try:
+        from ipfs_accelerate_py import llm_router
+
+        for descriptor in llm_router.list_providers():
+            state = getattr(descriptor, "state", None)
+            if (
+                getattr(state, "configured", None) is True
+                or getattr(state, "authorized", None) is True
+                or getattr(state, "routable", None) is True
+            ):
+                _add(getattr(descriptor, "name", ""))
+    except Exception:
+        pass
+
+    try:
+        from ipfs_accelerate_py.llm_allocation.cli_status import cli_tools_status
+
+        status = cli_tools_status()
+        for name in status.get("ready") or ():
+            _add(name)
+        for name, row in (status.get("tools") or {}).items():
+            if isinstance(row, dict) and (
+                row.get("ready") or (row.get("installed") and row.get("authenticated"))
+            ):
+                _add(name)
+    except Exception:
+        pass
+
+    if include_model_manager:
+        try:
+            from ipfs_accelerate_py.model_manager import ModelManager
+
+            manager = ModelManager(enable_ipfs=False, project_legacy_models=False)
+            for metadata in getattr(manager, "models", {}).values():
+                backends = getattr(metadata, "supported_backends", None) or []
+                tags = getattr(metadata, "tags", None) or []
+                if "cli" in tags or "artificial-analysis" in tags:
+                    for backend in backends:
+                        _add(backend)
+        except Exception:
+            pass
+    return tuple(names)
+
+
+def intelligence_cost_matrix(
+    *,
+    available_only: bool = False,
+    available_providers: Optional[Sequence[str]] = None,
+    min_intelligence: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Return the full cost/intelligence matrix, optionally filtered to live providers."""
+
+    live = (
+        tuple(available_providers)
+        if available_providers is not None
+        else (discover_available_providers() if available_only else ())
+    )
+    allowed = {str(name).strip().casefold() for name in live if str(name).strip()}
+    floor = float(min_intelligence or 0.0)
+    rows: list[dict[str, Any]] = []
+    for model in load_intelligence_index_models():
+        if model.intelligence + 1e-9 < floor:
+            continue
+        matched = [
+            provider
+            for provider in model.providers
+            if not allowed or provider.casefold() in allowed
+        ]
+        if allowed and not matched:
+            continue
+        rows.append(
+            {
+                "slug": model.slug,
+                "name": model.name,
+                "lab": model.lab,
+                "intelligence": model.intelligence,
+                "cost_usd_per_task": model.cost_usd_per_task,
+                "model_name": model.model_name,
+                "reasoning_effort": model.reasoning_effort,
+                "providers": list(matched or model.providers),
+                "pareto": model.pareto,
+                "available": bool(matched) if allowed else None,
+            }
+        )
+    rows.sort(key=lambda item: (item["cost_usd_per_task"], -item["intelligence"]))
+    return rows
+
+
 def intelligence_floor_for_task(
     task_kind: str = "",
     *,
@@ -370,7 +588,7 @@ def select_efficient_model(
     min_intelligence: float = 38.0,
     provider: str = "",
     available_providers: Optional[Sequence[str]] = None,
-    models: Sequence[IntelligenceIndexModel] = INTELLIGENCE_INDEX_MODELS,
+    models: Optional[Sequence[IntelligenceIndexModel]] = None,
 ) -> IntelligenceIndexModel:
     """Return the cheapest model meeting *min_intelligence*.
 
@@ -379,8 +597,11 @@ def select_efficient_model(
     """
 
     floor = float(min_intelligence or 0.0)
+    catalog = tuple(models) if models is not None else load_intelligence_index_models()
     matched: list[tuple[IntelligenceIndexModel, str]] = []
-    for model in models:
+    for model in catalog:
+        if model.cost_usd_per_task <= 0:
+            continue
         chosen = _provider_match(model, provider, available_providers)
         if chosen is None:
             continue
@@ -471,9 +692,15 @@ __all__ = [
     "IntelligenceIndexModel",
     "SNAPSHOT_DATE",
     "TASK_KIND_INTELLIGENCE",
+    "CLI_DEFAULT_MODELS",
+    "LAB_PROVIDERS",
     "infer_task_kind",
+    "intelligence_cost_matrix",
     "intelligence_floor_for_task",
     "is_auto_model_name",
+    "discover_available_providers",
+    "load_intelligence_index_models",
+    "providers_for_lab",
     "select_efficient_model",
     "select_efficient_route",
 ]

@@ -501,29 +501,23 @@ def _env_name(config: LlmRouterInvocation, suffix: str) -> str:
     return f"{config.env_prefix}_{suffix}"
 
 
-def _available_efficiency_providers() -> Optional[tuple[str, ...]]:
-    try:
-        from ipfs_accelerate_py.llm_allocation import (
-            API_PROVIDERS,
-            CLI_PROVIDERS,
-            rank_provider_names,
-        )
-
-        ranked = rank_provider_names(list(CLI_PROVIDERS) + list(API_PROVIDERS))
-    except Exception:
-        return None
-    names = tuple(str(name) for name in ranked if str(name).strip())
-    return names or None
-
-
-def apply_efficient_llm_route(config: LlmRouterInvocation) -> LlmRouterInvocation:
+def apply_efficient_llm_route(
+    config: LlmRouterInvocation,
+    *,
+    available_providers: Optional[Sequence[str]] = None,
+    discover: bool = True,
+) -> LlmRouterInvocation:
     """Fill an unpinned invocation from Intelligence Index v4.3 cost/intelligence."""
 
     from ipfs_accelerate_py.llm_allocation.intelligence_index import (
         CATALOG_REVISION,
+        discover_available_providers,
         select_efficient_route,
     )
 
+    providers = available_providers
+    if providers is None and discover:
+        providers = discover_available_providers() or None
     route = select_efficient_route(
         model_name=str(config.model_name or ""),
         provider=str(config.provider or ""),
@@ -531,7 +525,7 @@ def apply_efficient_llm_route(config: LlmRouterInvocation) -> LlmRouterInvocatio
         min_intelligence=float(config.min_intelligence or 0.0),
         backend_label=str(config.backend_label or ""),
         env_prefix=str(config.env_prefix or ""),
-        available_providers=_available_efficiency_providers(),
+        available_providers=providers,
         default_model=DEFAULT_CODEX_MODEL,
     )
     if not route.auto_selected:

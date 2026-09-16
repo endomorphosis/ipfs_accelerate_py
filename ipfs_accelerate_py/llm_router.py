@@ -12480,6 +12480,35 @@ def generate_text(
             except Exception:
                 logger.debug("cli handoff inject failed", exc_info=True)
     _set_allocation_context(session_id=session_id, path=path)
+    task_kind = str(kwargs.pop("task_kind", "") or "")
+    try:
+        min_intelligence = float(kwargs.pop("min_intelligence", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        min_intelligence = 0.0
+        kwargs.pop("min_intelligence", None)
+    auto_model = str(model_name or "").strip().casefold() in {"", "auto", "efficient"}
+    if auto_model:
+        try:
+            from .llm_allocation.intelligence_index import (
+                discover_available_providers,
+                select_efficient_route,
+            )
+
+            route = select_efficient_route(
+                model_name=model_name or "auto",
+                provider=str(provider or ""),
+                task_kind=task_kind,
+                min_intelligence=min_intelligence,
+                available_providers=discover_available_providers() or None,
+            )
+            if route.auto_selected:
+                model_name = route.model_name
+                if not str(provider or "").strip():
+                    provider = route.provider
+                if route.reasoning_effort and not kwargs.get("reasoning_effort"):
+                    kwargs["reasoning_effort"] = route.reasoning_effort
+        except Exception:
+            logger.debug("efficient model routing skipped", exc_info=True)
     effective_provider_name = _effective_llm_provider_name(provider)
     cross_provider_fallback_allowed = (
         True

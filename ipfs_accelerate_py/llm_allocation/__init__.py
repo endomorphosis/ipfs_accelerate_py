@@ -15,8 +15,16 @@ from .cli_status import cli_tools_status, render_cli_tools_status
 from .intelligence_index import (
     CATALOG_REVISION,
     INDEX_VERSION,
+    discover_available_providers,
+    intelligence_cost_matrix,
+    load_intelligence_index_models,
     select_efficient_model,
     select_efficient_route,
+)
+from .model_manager_sync import (
+    populate_cli_models,
+    populate_intelligence_index,
+    populate_router_catalog,
 )
 from .session_route import (
     choose_cli_route,
@@ -105,6 +113,12 @@ __all__ = [
     "resume_kwargs_for_session",
     "sanitize_session_metadata",
     "score_provider",
+    "discover_available_providers",
+    "intelligence_cost_matrix",
+    "load_intelligence_index_models",
+    "populate_cli_models",
+    "populate_intelligence_index",
+    "populate_router_catalog",
     "select_efficient_model",
     "select_efficient_route",
 ]

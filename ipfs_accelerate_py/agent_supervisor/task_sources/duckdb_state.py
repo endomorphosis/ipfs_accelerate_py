@@ -539,9 +539,7 @@ class DuckDBConnection:
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
-        if session_queries:
-            pass
-        elif parameters is None:
+        if parameters is None:
             self._connection.execute(statement)
         else:
             self._connection.execute(statement, parameters)
