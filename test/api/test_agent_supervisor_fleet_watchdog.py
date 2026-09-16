@@ -1433,3 +1433,39 @@ def test_detached_launcher_stdout_cannot_hold_command_open(tmp_path):
     assert result["returncode"] == 0
     assert result["timed_out"] is False
     assert "launched" in result["stdout"]
+
+
+def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
+    observation = {
+        "health": "stalled",
+        "complete": False,
+        "reason_codes": [
+            "extra_gate_recursion_sealed_package",
+            "extra_gate_recursion_competing_unit",
+            "no_task_progress",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"in_progress": 3, "todo": 28},
+            "extra_gate": {
+                "live_owner_unit": "pctdd-g9-quack-owner.service",
+                "inventory_owner_unit": "ipfs-accelerate-pctdd-g9-watchdog.service",
+                "heal_overlay": False,
+            },
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    assert fleet.classify_stall(observation) == "extra_gate_recursion"
+    assert "extra_gate_recursion" not in fleet.WAIT_STALLS
+    state = {
+        "health": "stalled", "observation": observation,
+        "stall_class": "extra_gate_recursion",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+        "ensure_attempts": 0,
+    }
+    board = {
+        "failure_grace_seconds": 0, "blocked_grace_seconds": 0,
+        "repair": {"argv": ["llm"]}, "ensure": {"argv": ["ensure"]},
+        "max_ensure_attempts": 2,
+    }
+    assert fleet.select_action(state, board, 100) == "supervisor_heal"

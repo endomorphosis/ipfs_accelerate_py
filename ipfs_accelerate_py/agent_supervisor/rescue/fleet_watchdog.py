@@ -133,6 +133,10 @@ def classify_stall(observation: dict[str, Any]) -> str:
         return "operator_hold"
     if health == "complete" or observation.get("complete") is True:
         return "complete"
+    if "extra_gate_recursion_sealed_package" in reasons:
+        # Sealed extra-gate package hides overlay heals. Collapse to one
+        # exclusive owner with injected heals; do not launch a second extra-gate.
+        return "extra_gate_recursion"
     if "source_integrity_not_verified" in reasons:
         # Supervisor-path dirt is restored separately. Remaining board-doc
         # dirt must not outrank live independent work beside blocked peers.
@@ -611,6 +615,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # Empty native counts with live extra-gate still need false-terminal
         # unstall (PCTDD-035/038). Wait after skip; never llm_router.
         return "supervisor_heal"
+    if stall == "extra_gate_recursion":
+        # Bind overlay heals to the live exclusive owner. Never ensure a
+        # competing extra-gate unit while that owner is live.
+        return "supervisor_heal"
     if stall in WAIT_STALLS:
         return ""
     if stall == "configured_control_plane_dirty":
@@ -759,6 +767,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "todos_waiting_on_blocked_dependencies",
                     "kernel_uninterruptible_wait",
                     "native_status_retry_with_live_workers",
+                    "collapse_extra_gate_recursion",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

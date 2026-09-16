@@ -981,3 +981,74 @@ def test_dispatcher_finishes_job_before_adopting_staged_release(tmp_path, monkey
     assert repair.main(["run", "--config", str(config_path)]) == 0
     assert calls == ["spar"]
     assert read_json(tmp_path / "repair-worker.json")["status"] == "runtime_update_ready"
+
+
+def test_wrap_python_execstart_injects_heal_overlay_once():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import wrap_python_execstart
+
+    overlay = "/overlay"
+    wrapped = wrap_python_execstart(
+        ["/usr/bin/python3", "-P", "state-owner.py", "state-owner"],
+        overlay=overlay, source_root="/board",
+    )
+    assert wrapped[2].endswith("sealed_board_supervisor_launch.py")
+    assert "--overlay" in wrapped and overlay in wrapped
+    assert wrapped[-2:] == ["state-owner.py", "state-owner"]
+    again = wrap_python_execstart(wrapped, overlay=overlay, source_root="/board")
+    assert again == wrapped
+
+
+def test_collapse_extra_gate_recursion_binds_live_unit_not_inventory(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        apply_supervisor_heal,
+        collapse_extra_gate_recursion,
+    )
+
+    user_dir = tmp_path / "systemd"
+    reloads = []
+    restarts = []
+    result = collapse_extra_gate_recursion(
+        {"id": "pctdd", "cwd": str(tmp_path / "board")},
+        {
+            "board_id": "pctdd",
+            "details": {
+                "extra_gate": {
+                    "live_owner_unit": "pctdd-g9-quack-owner.service",
+                    "inventory_owner_unit": "ipfs-accelerate-pctdd-g9-watchdog.service",
+                    "heal_overlay": False,
+                }
+            },
+        },
+        show_unit=lambda unit: [
+            "/usr/bin/python3",
+            "/board/scripts/ops/agent_supervisor/parallel_content.py",
+            "state-owner",
+        ],
+        daemon_reload=lambda: reloads.append(True),
+        restart_unit=lambda unit: restarts.append(unit),
+        systemd_user_dir=user_dir,
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["live_owner_unit"] == "pctdd-g9-quack-owner.service"
+    assert result["restarted"] is True
+    assert restarts == ["pctdd-g9-quack-owner.service"]
+    dropin = user_dir / "pctdd-g9-quack-owner.service.d" / "81-supervisor-heal-overlay.conf"
+    text = dropin.read_text()
+    assert "sealed_board_supervisor_launch.py" in text
+    assert "pctdd-g9-watchdog" not in text
+    assert reloads == [True]
+
+    skipped = apply_supervisor_heal(
+        {"id": "spar", "cwd": str(tmp_path)},
+        {
+            "stall_class": "extra_gate_recursion",
+            "observation": {
+                "board_id": "spar",
+                "details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}},
+            },
+        },
+    )
+    assert skipped["status"] == "wait"
+    assert skipped["completion_authority"] is False
+    assert skipped["reason"] == "retain_owner_not_rewrapped"

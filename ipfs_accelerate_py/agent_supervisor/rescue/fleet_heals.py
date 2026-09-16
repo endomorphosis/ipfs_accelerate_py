@@ -571,6 +571,170 @@ def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[s
     return {"status": "skip"}
 
 
+RETAIN_OWNER_BOARDS = frozenset({"spar", "aseh"})
+HEAL_OVERLAY_LAUNCHER = "sealed_board_supervisor_launch.py"
+RECYCLE_EXTRA_GATE_BOARDS = frozenset({"sawm", "pctdd", "doep"})
+
+
+def supervisor_overlay_root() -> str:
+    return str(Path(__file__).resolve().parents[3])
+
+
+def parse_systemd_exec_start(value: str) -> list[str]:
+    marker = "argv[]="
+    start = str(value or "").find(marker)
+    if start < 0:
+        return []
+    rest = str(value)[start + len(marker):]
+    end = rest.find(" ;")
+    if end >= 0:
+        rest = rest[:end]
+    return [item for item in rest.split() if item]
+
+
+def wrap_python_execstart(
+    argv: list[str], *, overlay: str, source_root: str,
+) -> list[str]:
+    launcher = str(
+        Path(overlay)
+        / "ipfs_accelerate_py/agent_supervisor/rescue"
+        / HEAL_OVERLAY_LAUNCHER
+    )
+    if any(HEAL_OVERLAY_LAUNCHER in item for item in argv):
+        return list(argv)
+    python = argv[0] if argv else "/usr/bin/python3"
+    rest = argv[1:]
+    if rest[:1] == ["-P"]:
+        rest = rest[1:]
+    return [
+        python, "-P", launcher,
+        "--overlay", overlay, "--source-root", source_root, "--",
+        *rest,
+    ]
+
+
+def overlay_wrapped_execstart(
+    argv: list[str], *, overlay: str, source_root: str,
+) -> list[str] | None:
+    if not argv:
+        return None
+    if any(HEAL_OVERLAY_LAUNCHER in item for item in argv):
+        return list(argv)
+    first = Path(argv[0]).name
+    if first in {"python", "python3"} or argv[0].endswith("/python3"):
+        return wrap_python_execstart(argv, overlay=overlay, source_root=source_root)
+    if first == "bash" or argv[0].endswith("/bash"):
+        script = str(
+            Path(overlay)
+            / "ipfs_accelerate_py/agent_supervisor/rescue"
+            / "sawm_supervise_with_heal_overlay.sh"
+        )
+        return ["/bin/bash", script, overlay, source_root]
+    return None
+
+
+def collapse_extra_gate_recursion(
+    board: Mapping[str, Any], observation: Mapping[str, Any],
+    *,
+    show_unit=None,
+    daemon_reload=None,
+    restart_unit=None,
+    systemd_user_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Bind overlay heals to the live exclusive owner. Never start a second extra-gate."""
+    empty = {
+        "status": "skip",
+        "recipe": "collapse_extra_gate_recursion",
+        "completion_authority": False,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_rewrapped"}
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
+    live_unit = str(extra.get("live_owner_unit") or "")
+    if not live_unit.endswith(".service"):
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    cwd = str(board.get("cwd") or "")
+    if not cwd:
+        return {**empty, "reason": "board_cwd_absent"}
+    overlay = supervisor_overlay_root()
+    show = show_unit or _systemd_show_exec_start
+    raw = show(live_unit)
+    if isinstance(raw, list):
+        argv = [str(item) for item in raw if isinstance(item, str)]
+    else:
+        argv = parse_systemd_exec_start(str(raw or ""))
+    wrapped = overlay_wrapped_execstart(argv, overlay=overlay, source_root=cwd)
+    if not wrapped:
+        return {**empty, "reason": "execstart_not_wrappable"}
+    if wrapped == argv and extra.get("heal_overlay") is True:
+        return {**empty, "reason": "heal_overlay_already_bound"}
+    user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
+    dropin_dir = user_dir / f"{live_unit}.d"
+    dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    quoted = " ".join(_systemd_quote(item) for item in wrapped)
+    body = (
+        "[Service]\n"
+        "ExecStart=\n"
+        f"ExecStart={quoted}\n"
+        f"Environment=PYTHONPATH={overlay}\n"
+        f"Environment=IPFS_ACCELERATE_SUPERVISOR_OVERLAY={overlay}\n"
+        f"Environment=IPFS_ACCELERATE_SEALED_SOURCE_ROOT={cwd}\n"
+        "TimeoutStopSec=180\n"
+    )
+    path = dropin_dir / "81-supervisor-heal-overlay.conf"
+    path.write_text(body, encoding="utf-8")
+    os.chmod(path, 0o600)
+    reloader = daemon_reload or _systemd_daemon_reload
+    reloader()
+    restarted = False
+    if board_id in RECYCLE_EXTRA_GATE_BOARDS:
+        restarter = restart_unit or _systemd_restart_unit
+        restarter(live_unit)
+        restarted = True
+    return {
+        "status": "applied",
+        "recipe": "collapse_extra_gate_recursion",
+        "completion_authority": False,
+        "live_owner_unit": live_unit,
+        "inventory_owner_unit": extra.get("inventory_owner_unit") or "",
+        "restarted": restarted,
+        "reason": "overlay heals bound to the live exclusive owner; competing extra-gate not started",
+    }
+
+
+def _systemd_quote(value: str) -> str:
+    if value.isalnum() or all(ch in "._/-:+@" for ch in value):
+        return value
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def _systemd_show_exec_start(unit: str) -> str:
+    completed = subprocess.run(
+        ["systemctl", "--user", "show", unit, "-p", "ExecStart"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=5, check=False, text=True,
+    )
+    return completed.stdout or ""
+
+
+def _systemd_daemon_reload() -> None:
+    subprocess.run(
+        ["systemctl", "--user", "daemon-reload"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=15, check=False,
+    )
+
+
+def _systemd_restart_unit(unit: str) -> None:
+    subprocess.run(
+        ["systemctl", "--user", "restart", unit],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=180, check=False,
+    )
+
+
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -578,6 +742,16 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     dirty = restore_dirty_control_plane(board, observation)
     if dirty.get("status") == "applied":
         return dirty
+    if stall == "extra_gate_recursion":
+        collapsed = collapse_extra_gate_recursion(board, observation)
+        if collapsed.get("status") != "skip":
+            return collapsed
+        return {
+            "status": "wait",
+            "recipe": "collapse_extra_gate_recursion",
+            "completion_authority": False,
+            "reason": collapsed.get("reason") or "retain_owner_not_rewrapped",
+        }
     if stall in {
         "independent_work_beside_blocked_peer",
         "independent_todos_unclaimed",

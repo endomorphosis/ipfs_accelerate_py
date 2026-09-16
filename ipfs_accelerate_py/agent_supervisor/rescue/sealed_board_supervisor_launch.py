@@ -19,16 +19,26 @@ def _abspath(path: str) -> str:
 
 
 class _OverlayPath(list):
-    """Keep the overlay import root ahead of a sealed checkout."""
+    """Keep the overlay import root ahead of a sealed checkout.
+
+    Board operators insert their checkout (or nested ``external/ipfs_accelerate``)
+    at ``sys.path[0]``, which hides PYTHONPATH and loads a second extra-gate
+    package without supervisor heals. One exclusive owner; overlay stays first.
+    """
 
     def __init__(self, values, *, overlay: str, source_root: str) -> None:
         super().__init__(values)
         self._overlay = overlay
-        self._source_root = source_root
+        source = _abspath(source_root)
+        self._source_root = source
+        self._sealed_roots = {
+            source,
+            _abspath(str(Path(source) / "external" / "ipfs_accelerate")),
+        }
 
     def insert(self, index, path):  # type: ignore[no-untyped-def]
         resolved = _abspath(path) if isinstance(path, str) else path
-        if resolved == self._source_root and index == 0:
+        if resolved in self._sealed_roots and index == 0:
             return super().insert(1, path)
         return super().insert(index, path)
 
@@ -160,6 +170,38 @@ def install_overlay(overlay: str, source_root: str) -> None:
     sys.path = _OverlayPath(current, overlay=overlay, source_root=source_root)  # type: ignore[assignment]
 
 
+SUPERVISOR_HEAL_OVERLAY_MODULES = (
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_command",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py.agent_supervisor.runtime",
+    ),
+)
+
+
+def install_supervisor_heal_overlay(overlay: str) -> None:
+    """Pin supervisor heals into the sealed extra-gate package.
+
+    Board scripts insert their own ``ipfs_accelerate_py`` first. Surgical
+    ``sys.modules`` pins keep token republish and owner-side unstall on the
+    one exclusive owner instead of launching a second extra-gate.
+    """
+
+    overlay_root = Path(_abspath(overlay))
+    for qualname, relative, package in SUPERVISOR_HEAL_OVERLAY_MODULES:
+        overlay_module(qualname, str(overlay_root / relative), package=package)
+
+
+def _is_spar_source(source_root: str, args: list[str]) -> bool:
+    blob = f"{source_root} {' '.join(args)}"
+    return "semantic_preserving" in blob or "materialize_semantic_preserving" in blob
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     overlay = os.environ.get("IPFS_ACCELERATE_SUPERVISOR_OVERLAY", "")
@@ -185,20 +227,27 @@ def main(argv: list[str] | None = None) -> int:
     os.chdir(source_root)
     if source_root not in sys.path:
         sys.path.insert(0, source_root)
+    nested = Path(source_root) / "external" / "ipfs_accelerate"
+    if nested.is_dir():
+        nested_root = str(nested.resolve())
+        if nested_root not in sys.path:
+            sys.path.insert(0, nested_root)
     overlay_root = Path(overlay)
-    overlay_module(
-        "ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root",
-        str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
-        package="ipfs_accelerate_py.agent_supervisor.semantic_state",
-    )
-    overlay_module(
-        "ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement",
-        str(overlay_root / "ipfs_accelerate_py/agent_supervisor/task_sources/spar_goal_settlement.py"),
-        package="ipfs_accelerate_py.agent_supervisor.task_sources",
-    )
-    pin_sealed_sys_path(source_root)
-    hold_retain_owner_until_operator_stop()
-    hold_retain_owner_until_operator_stop()
+    if _is_spar_source(source_root, args):
+        overlay_module(
+            "ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root",
+            str(overlay_root / "ipfs_accelerate_py/agent_supervisor/semantic_state/spar_accepted_root.py"),
+            package="ipfs_accelerate_py.agent_supervisor.semantic_state",
+        )
+        overlay_module(
+            "ipfs_accelerate_py.agent_supervisor.task_sources.spar_goal_settlement",
+            str(overlay_root / "ipfs_accelerate_py/agent_supervisor/task_sources/spar_goal_settlement.py"),
+            package="ipfs_accelerate_py.agent_supervisor.task_sources",
+        )
+        pin_sealed_sys_path(source_root)
+        hold_retain_owner_until_operator_stop()
+        hold_retain_owner_until_operator_stop()
+    install_supervisor_heal_overlay(overlay)
     script = Path(args[0])
     if not script.is_absolute():
         script = Path(source_root) / script
