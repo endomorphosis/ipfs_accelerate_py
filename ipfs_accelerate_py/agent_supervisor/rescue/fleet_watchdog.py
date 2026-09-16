@@ -169,11 +169,13 @@ def classify_stall(observation: dict[str, Any]) -> str:
         if int(counts.get("todo") or 0) > 0:
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
-    if int(counts.get("in_progress") or 0) > 0:
-        # Native in-progress work, including D-state I/O and nonzero native
-        # status, is not a coding stall. An LLM cannot unstick __flush_work
-        # or rewrite live receipts.
+    if int(counts.get("in_progress") or 0) > 0 or int(counts.get("retrying") or 0) > 0:
+        # Native in-progress or just-rearmed retrying work, including D-state
+        # I/O, is not a coding stall. An LLM cannot unstick __flush_work or
+        # rewrite live receipts.
         return "in_progress_awaiting_effect"
+    if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
+        return "independent_todos_unclaimed"
     if any("process_uninterruptible" in reason for reason in reasons):
         return "kernel_uninterruptible_wait"
     if "native_status_nonzero" in reasons and _live_daemons(details):
@@ -525,6 +527,17 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         if "no_task_progress" in reasons:
             return "supervisor_heal"
         return ""
+    if stall == "stalled_no_progress":
+        details = (state.get("observation") or {}).get("details")
+        details = details if isinstance(details, dict) else {}
+        counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+        if (
+            int(counts.get("retrying") or 0) > 0
+            or int(counts.get("todo") or 0) > 0
+            and _live_daemons(details)
+        ):
+            return "supervisor_heal"
+        return "repair"
     if stall == "independent_work_beside_blocked_peer":
         return "supervisor_heal"
     if stall == "independent_todos_unclaimed":
@@ -682,6 +695,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "in_progress_awaiting_effect",
                     "todos_waiting_on_blocked_dependencies",
                     "kernel_uninterruptible_wait",
+                    "native_lanes_own_independent_todos",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

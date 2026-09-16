@@ -139,8 +139,8 @@ def test_native_retry_cycles_cannot_postpone_task_stall_repair(tmp_path):
         latest = fleet.tick_board(board, root, apply=True, runner=runner, now=now)
     assert latest["last_progress_at"] == 100
     assert latest["health"] == "stalled"
-    assert latest["last_action"] == "repair"
-    assert len([call for call in runner.calls if call["argv"][0] == "repair"]) == 1
+    assert latest["last_action"] == "supervisor_heal"
+    assert not [call for call in runner.calls if call["argv"][0] == "repair"]
 
 
 def test_native_progress_regression_and_restoration_do_not_extend_deadline(tmp_path):
@@ -1198,6 +1198,31 @@ def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
     assert fleet.classify_stall(stalled) == "stalled_no_progress"
     stalled["details"] = {"task_counts": {"in_progress": 2, "todo": 23}}
     assert fleet.classify_stall(stalled) == "in_progress_awaiting_effect"
+    rearmed = {
+        "health": "stalled", "reason_codes": ["no_task_progress"],
+        "details": {
+            "task_counts": {"completed": 22, "retrying": 2, "todo": 28, "in_progress": 0},
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    assert fleet.classify_stall(rearmed) == "in_progress_awaiting_effect"
+    rearmed_state = {
+        "health": "stalled", "observation": rearmed, "stall_class": "in_progress_awaiting_effect",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        rearmed_state,
+        {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["llm"]}},
+        100,
+    ) == "supervisor_heal"
+    todos = {
+        "health": "stalled", "reason_codes": ["no_task_progress"],
+        "details": {
+            "task_counts": {"todo": 28, "in_progress": 0, "retrying": 0},
+            "lanes": [{"daemon": {"pid": 1}}],
+        },
+    }
+    assert fleet.classify_stall(todos) == "independent_todos_unclaimed"
     waiting = {
         "health": "stalled", "observation": stalled, "stall_class": "in_progress_awaiting_effect",
         "incident_since": 0, "next_action_at": 0, "attempts": 0,

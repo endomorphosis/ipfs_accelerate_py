@@ -565,6 +565,7 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         "independent_todos_unclaimed",
         "in_progress_awaiting_effect",
         "blocked_without_independent_work",
+        "stalled_no_progress",
     }:
         unstall = unstall_stale_native_work(board, observation)
         if unstall.get("status") == "applied":
@@ -575,6 +576,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if stall == "independent_todos_unclaimed":
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
+    if stall == "stalled_no_progress" and live_workers(observation):
+        return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
+                "reason": "rearmed or ready work belongs to live native lanes, not llm_router"}
     if stall == "blocked_without_independent_work":
         if local_validation_already_recorded(state):
             return {"status": "wait", "recipe": "local_validation_pending_native_admission",

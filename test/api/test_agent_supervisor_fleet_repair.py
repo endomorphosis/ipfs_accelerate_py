@@ -255,6 +255,18 @@ def test_supervisor_heals_wait_on_typed_native_stalls():
     })
     assert unclaimed["status"] == "wait"
     assert unclaimed["recipe"] == "native_lanes_own_independent_todos"
+    rearmed = apply_supervisor_heal(board, {
+        "stall_class": "stalled_no_progress",
+        "observation": {
+            "reason_codes": ["no_task_progress"],
+            "details": {
+                "task_counts": {"todo": 28, "retrying": 2, "in_progress": 0},
+                "lanes": [{"daemon": {"pid": 1}}],
+            },
+        },
+    })
+    assert rearmed["status"] == "wait"
+    assert rearmed["recipe"] == "native_lanes_own_independent_todos"
     missing = apply_supervisor_heal(board, {
         "stall_class": "board_checkout_missing",
         "observation": {"reason_codes": ["board_checkout_missing"]},
