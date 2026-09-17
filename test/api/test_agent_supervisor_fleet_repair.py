@@ -863,6 +863,28 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
     assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
 
 
+def test_dump_board_before_owner_stop_copies_duckdb(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import dump_board_before_owner_stop
+
+    db = tmp_path / "control.duckdb"
+    db.write_bytes(b"duck")
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text("{}")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals._inventory_board",
+        lambda board: {
+            "id": "doep",
+            "database_path": str(db),
+            "owner_status_path": str(status),
+        },
+    )
+    result = dump_board_before_owner_stop({"id": "doep"}, dump_root=tmp_path / "dumps")
+    assert result["status"] == "applied"
+    assert result["completion_authoritative"] is False
+    dumped = Path(result["dump_dir"])
+    assert (dumped / "control.duckdb").read_bytes() == b"duck"
+
+
 def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (

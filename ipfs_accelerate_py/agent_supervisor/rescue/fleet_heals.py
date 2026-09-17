@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -1580,6 +1581,40 @@ def clear_overlay_copies_blocking_owner_start(
         "completion_authority": False,
         "removed": removed,
         "reason": "overlay copies removed so exclusive-owner preflight can start",
+    }
+
+
+def dump_board_before_owner_stop(
+    board: Mapping[str, Any],
+    dump_root: Path | None = None,
+) -> dict[str, Any]:
+    """Copy DuckDB and owner status before an operator-requested stop. Never admits."""
+    empty = {
+        "status": "skip",
+        "recipe": "dump_board_before_owner_stop",
+        "completion_authority": False,
+        "completion_authoritative": False,
+    }
+    inventory = _inventory_board(board)
+    database = Path(str(inventory.get("database_path") or ""))
+    status_path = Path(str(inventory.get("owner_status_path") or ""))
+    board_id = str(board.get("id") or inventory.get("id") or "board")
+    if not database.is_file():
+        return {**empty, "reason": "database_absent"}
+    root = Path(dump_root or Path.home() / ".local/state/ipfs-taskboard-watchdog/board-dumps")
+    dest = root / time.strftime("%Y%m%dT%H%M%SZ") / board_id
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(database, dest / database.name)
+    if status_path.is_file():
+        shutil.copy2(status_path, dest / status_path.name)
+    (dest / "inventory-id.txt").write_text(board_id + "\n")
+    return {
+        "status": "applied",
+        "recipe": "dump_board_before_owner_stop",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "dump_dir": str(dest),
+        "reason": "board dump written before exclusive-owner stop",
     }
 
 
