@@ -863,6 +863,28 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
     assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
 
 
+def test_diagnose_board_repair_problems_from_observation():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        diagnose_board_repair_problems,
+    )
+    problems = diagnose_board_repair_problems({
+        "details": {
+            "blocked_task_ids": ["DOEP-044"],
+            "task_counts": {"in_progress": 2, "blocked": 1, "todo": 23},
+            "lanes": [
+                {"lane": 0, "stalled_without_active_worker": True, "claimed": None},
+                {"lane": 1, "stalled_without_active_worker": True, "claimed": None},
+            ],
+            "authenticated_task_observation": {
+                "authoritative_active_task_ids": ["SAWM-016", "SAWM-023"],
+            },
+        },
+    })
+    assert problems["blocked_aliases"] == ["DOEP-044"]
+    assert problems["in_progress_aliases"] == ["SAWM-016", "SAWM-023"]
+    assert "blocked:DOEP-044" in problems["problems"]
+
+
 def test_dump_stop_repair_import_start_skips_spar(tmp_path):
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
         run_board_dump_stop_repair_import_start,
@@ -948,7 +970,12 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = run_board_dump_stop_repair_import_start(
         {"id": "sawm", "cwd": str(tmp_path)},
-        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"}}},
+        {"details": {
+            "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
+            "task_counts": {"in_progress": 1, "todo": 23},
+            "lanes": [{"lane": 0, "stalled_without_active_worker": True, "claimed": None}],
+            "authenticated_task_observation": {"authoritative_active_task_ids": ["SAWM-016"]},
+        }},
         dump_root=tmp_path / "dumps",
     )
     assert result["status"] == "applied"

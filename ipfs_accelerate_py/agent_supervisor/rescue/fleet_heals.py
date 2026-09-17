@@ -1640,13 +1640,52 @@ def _exclusive_owner_unit(
     return ""
 
 
+def diagnose_board_repair_problems(observation: Mapping[str, Any]) -> dict[str, Any]:
+    """Map probe evidence to the rows the dump/stop/repair pipeline may touch."""
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    blocked = [str(item) for item in details.get("blocked_task_ids") or [] if item]
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    named = [lane for lane in lanes if isinstance(lane, dict)]
+    stale_claims = bool(named) and all(
+        lane.get("stalled_without_active_worker") is True
+        or not (lane.get("claimed") or lane.get("task"))
+        for lane in named
+    )
+    in_progress: list[str] = []
+    auth = details.get("authenticated_task_observation")
+    if isinstance(auth, dict):
+        for key in ("in_progress_task_ids", "active_task_ids", "authoritative_active_task_ids"):
+            raw = auth.get(key)
+            if isinstance(raw, list):
+                in_progress.extend(str(item) for item in raw if item)
+    counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+    try:
+        in_progress_count = int(counts.get("in_progress") or 0)
+    except (TypeError, ValueError):
+        in_progress_count = 0
+    unstall_all = (stale_claims and not in_progress) or (
+        not named and not in_progress and in_progress_count > 0
+    )
+    return {
+        "blocked_aliases": blocked,
+        "in_progress_aliases": sorted(set(in_progress)),
+        "unstall_all_in_progress": unstall_all,
+        "problems": [
+            *([f"blocked:{alias}" for alias in blocked]),
+            *([f"in_progress:{alias}" for alias in sorted(set(in_progress))]),
+            *(["stale_in_progress_without_workers"] if stale_claims else []),
+        ],
+    }
+
+
 def repair_board_database(
     database: Path,
     *,
     blocked_aliases: Sequence[str] = (),
-    unstall_in_progress: bool = True,
+    in_progress_aliases: Sequence[str] = (),
+    unstall_in_progress: bool = False,
 ) -> list[dict[str, Any]]:
-    """Flip stale in_progress/blocked rows to retrying. Owners must be stopped."""
+    """Flip diagnosed stale in_progress/blocked rows to retrying. Supervisor stopped."""
     import duckdb
     from datetime import datetime, timezone
 
@@ -1657,13 +1696,16 @@ def repair_board_database(
         rows = con.execute(
             "SELECT task_cid, task_alias, status, revision, body_json FROM tasks",
         ).fetchall()
-        wanted = {str(item) for item in blocked_aliases if item}
+        blocked_wanted = {str(item) for item in blocked_aliases if item}
+        progress_wanted = {str(item) for item in in_progress_aliases if item}
         for cid, alias, status, rev, body in rows:
             alias_s = str(alias or "")
             status_s = str(status or "")
-            if status_s == "in_progress" and unstall_in_progress:
+            if status_s == "in_progress" and (
+                unstall_in_progress or alias_s in progress_wanted
+            ):
                 pass
-            elif status_s == "blocked" and alias_s in wanted:
+            elif status_s == "blocked" and alias_s in blocked_wanted:
                 pass
             else:
                 continue
@@ -1712,7 +1754,10 @@ def run_board_dump_stop_repair_import_start(
     *,
     dump_root: Path | None = None,
 ) -> dict[str, Any]:
-    """dump → stop → repair → import → start. Never SPAR/ASEH. Never admits."""
+    """dump → stop supervisor → repair from problems → import → start supervisor.
+
+    SPAR and ASEH are never stopped. Completion is never admitted.
+    """
     empty = {
         "status": "skip",
         "recipe": "dump_stop_repair_import_start",
@@ -1733,8 +1778,7 @@ def run_board_dump_stop_repair_import_start(
     dump_dir = Path(str(dumped["dump_dir"]))
     inventory = _inventory_board(board)
     database = Path(str(inventory.get("database_path") or ""))
-    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
-    blocked = [str(item) for item in details.get("blocked_task_ids") or [] if item]
+    problems = diagnose_board_repair_problems(observation)
     subprocess.run(
         ["systemctl", "--user", "stop", unit],
         stdout=subprocess.DEVNULL,
@@ -1749,7 +1793,10 @@ def run_board_dump_stop_repair_import_start(
     else:
         shutil.copy2(dump_dir / database.name, repaired_copy)
     changed = repair_board_database(
-        repaired_copy, blocked_aliases=blocked, unstall_in_progress=True,
+        repaired_copy,
+        blocked_aliases=problems["blocked_aliases"],
+        in_progress_aliases=problems["in_progress_aliases"],
+        unstall_in_progress=bool(problems["unstall_all_in_progress"]),
     )
     import_board_dump(repaired_copy, database)
     subprocess.run(
@@ -1778,10 +1825,11 @@ def run_board_dump_stop_repair_import_start(
         "completion_authoritative": False,
         "dump_dir": str(dump_dir),
         "unstalled": changed,
+        "problems": problems.get("problems") or [],
         "started": started.returncode == 0,
         "reason": (
-            "dumped, stopped, repaired stale rows to retrying, imported, started; "
-            "receipts stay incomplete"
+            "dumped, stopped supervisor, repaired diagnosed problems, "
+            "imported, started supervisor; receipts stay incomplete"
         ),
     }
 
