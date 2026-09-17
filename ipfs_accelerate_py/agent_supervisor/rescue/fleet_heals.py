@@ -717,7 +717,11 @@ _OVERLAY_CURRENT_TREE_SMOKE = {
 
 def overlay_current_tree_smoke_already_recorded(state: Mapping[str, Any]) -> bool:
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
-    return result.get("recipe") == "overlay_current_tree_smoke"
+    return (
+        result.get("recipe") == "overlay_current_tree_smoke"
+        and result.get("status") == "applied"
+        and result.get("returncode") == 0
+    )
 
 
 def run_overlay_current_tree_smoke(
@@ -741,15 +745,24 @@ def run_overlay_current_tree_smoke(
         return {**empty, "reason": "overlay_current_tree_tests_missing"}
     try:
         completed = subprocess.run(
-            ["python3", "-m", "pytest", *tests, "-q"],
+            ["python3", "-m", "pytest", *tests, "-q", "--tb=line"],
             cwd=str(overlay),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             timeout=_LOCAL_VALIDATION_TIMEOUT,
             check=False,
+            text=True,
         )
     except (OSError, subprocess.TimeoutExpired):
         return {**empty, "reason": "overlay_current_tree_smoke_unavailable"}
+    collection_error = completed.returncode in {2, 4}
+    reason = (
+        "overlay current-tree tests passed; remaining todos are not stalled"
+        if completed.returncode == 0 else
+        "overlay current-tree tests could not be collected"
+        if collection_error else
+        "overlay current-tree tests did not pass; do not rewrite receipts"
+    )
     return {
         "status": "applied" if completed.returncode == 0 else "wait",
         "recipe": "overlay_current_tree_smoke",
@@ -757,11 +770,7 @@ def run_overlay_current_tree_smoke(
         "completion_authoritative": False,
         "returncode": completed.returncode,
         "tests": [Path(path).name for path in tests],
-        "reason": (
-            "overlay current-tree tests passed; remaining todos are not stalled"
-            if completed.returncode == 0 else
-            "overlay current-tree tests did not pass; do not rewrite receipts"
-        ),
+        "reason": reason,
     }
 
 

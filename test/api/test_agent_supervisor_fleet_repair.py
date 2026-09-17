@@ -892,6 +892,11 @@ def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypat
     assert any("test_sawm_graceful_recovery.py" in item for call, _ in calls for item in call)
     again = run_overlay_current_tree_smoke({"id": "doep"}, {"last_action_result": doep})
     assert again["status"] == "skip"
+    retry = run_overlay_current_tree_smoke(
+        {"id": "sawm"},
+        {"last_action_result": {"recipe": "overlay_current_tree_smoke", "status": "wait", "returncode": 2}},
+    )
+    assert retry["status"] == "applied"
 
 
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
