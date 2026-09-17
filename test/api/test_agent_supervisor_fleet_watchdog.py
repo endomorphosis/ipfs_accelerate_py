@@ -311,6 +311,30 @@ def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
     assert fleet.select_action(state, _board(tmp_path, id="sawm"), 100) == "supervisor_heal"
 
 
+def test_sawm_stale_in_progress_without_claims_does_not_freeze_the_board():
+    observation = {
+        "board_id": "sawm",
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": ["extra_gate_recursion_sealed_package", "lane_3_supervisor_process_uninterruptible"],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"completed": 20, "in_progress": 2, "todo": 23},
+            "lanes": [
+                {"lane": 0, "stalled_without_active_worker": True, "claimed": None,
+                 "supervisor": {"process_state": "R"}},
+                {"lane": 1, "stalled_without_active_worker": True, "claimed": None,
+                 "supervisor": {"process_state": "S"}},
+                {"lane": 2, "stalled_without_active_worker": True, "claimed": None,
+                 "supervisor": {"process_state": "R"}},
+                {"lane": 3, "stalled_without_active_worker": True, "claimed": None,
+                 "supervisor": {"process_state": "D", "wait_channel": "__wait_rcu_gp"}},
+            ],
+        },
+    }
+    assert fleet.classify_stall(observation) == "independent_todos_unclaimed"
+
+
 def test_locally_validated_blocked_tasks_do_not_freeze_the_board(tmp_path):
     observation = _observation(
         health="blocked",

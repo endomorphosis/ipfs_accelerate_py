@@ -96,6 +96,10 @@ def _uninterruptible_lanes(details: dict[str, Any]) -> bool:
     for lane in lanes:
         if not isinstance(lane, dict):
             continue
+        if lane.get("stalled_without_active_worker") is True:
+            continue
+        if not (lane.get("claimed") or lane.get("task")):
+            continue
         for role in ("daemon", "supervisor"):
             identity = lane.get(role) if isinstance(lane.get(role), dict) else {}
             if identity.get("process_state") == "D":
@@ -103,11 +107,24 @@ def _uninterruptible_lanes(details: dict[str, Any]) -> bool:
     return False
 
 
+def _stale_in_progress_without_workers(details: dict[str, Any]) -> bool:
+    """True when in-progress counts have no live claimed worker."""
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    named = [lane for lane in lanes if isinstance(lane, dict)]
+    if not named:
+        return False
+    return all(
+        lane.get("stalled_without_active_worker") is True
+        or not (lane.get("claimed") or lane.get("task"))
+        for lane in named
+    )
+
+
 def _native_admission_work(details: dict[str, Any], counts: dict[str, Any],
                            reasons: set[str]) -> bool:
     """Native extra-gate still has work to admit. Do not treat that as recursion."""
     try:
-        if int(counts.get("in_progress") or 0) > 0:
+        if int(counts.get("in_progress") or 0) > 0 and not _stale_in_progress_without_workers(details):
             return True
         if int(counts.get("retrying") or 0) > 0:
             return True
@@ -218,6 +235,11 @@ def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None 
     ):
         # Native extra-gate is live but not ready. Wait; do not ensure a second owner.
         return "owner_live_status_unreadable"
+    if int(counts.get("in_progress") or 0) > 0 and _stale_in_progress_without_workers(details):
+        # Stale in-progress rows without a claimed worker do not stall SAWM-like boards.
+        if int(counts.get("todo") or 0) > 0:
+            return "independent_todos_unclaimed"
+        return "stalled_no_progress"
     if "extra_gate_recursion_sealed_package" in reasons:
         # Sealed extra-gate is the native owner. Native admission first.
         if not _native_admission_work(details, counts, reasons):
@@ -912,6 +934,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "clear_overlay_copies_for_owner_start",
                     "local_validation_satisfies_current_tree_requirements",
                     "successors_may_run_on_current_tree_evidence",
+                    "stale_in_progress_does_not_stall_remaining_todos",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

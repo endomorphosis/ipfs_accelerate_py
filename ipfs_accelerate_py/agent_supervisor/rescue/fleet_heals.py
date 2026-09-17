@@ -446,18 +446,28 @@ def native_unstall_already_recorded(state: Mapping[str, Any]) -> bool:
 
 
 def _observation_uninterruptible(observation: Mapping[str, Any]) -> bool:
-    reasons = {str(x) for x in observation.get("reason_codes") or []}
-    if any("process_uninterruptible" in reason for reason in reasons):
-        return True
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    claimed_d = False
     for lane in lanes:
         if not isinstance(lane, dict):
+            continue
+        if lane.get("stalled_without_active_worker") is True:
+            continue
+        if not (lane.get("claimed") or lane.get("task")):
             continue
         for role in ("daemon", "supervisor"):
             identity = lane.get(role) if isinstance(lane.get(role), dict) else {}
             if identity.get("process_state") == "D":
-                return True
+                claimed_d = True
+    if claimed_d:
+        return True
+    reasons = {str(x) for x in observation.get("reason_codes") or []}
+    if any("process_uninterruptible" in reason for reason in reasons) and any(
+        isinstance(lane, dict) and (lane.get("claimed") or lane.get("task"))
+        for lane in lanes
+    ):
+        return True
     return False
 
 
@@ -1815,6 +1825,27 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                 "reason": (
                     "current-tree tests passed for DOEP-044/DOEP-063; "
                     "remaining todos are not stalled on a DuckDB write"
+                ),
+            }
+        details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+        lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+        stale_claims = bool(lanes) and all(
+            isinstance(lane, dict)
+            and (
+                lane.get("stalled_without_active_worker") is True
+                or not (lane.get("claimed") or lane.get("task"))
+            )
+            for lane in lanes
+        )
+        if stale_claims:
+            return {
+                "status": "applied",
+                "recipe": "stale_in_progress_does_not_stall_remaining_todos",
+                "completion_authoritative": False,
+                "completion_authority": False,
+                "reason": (
+                    "SAWM-like in-progress rows have no live claim; "
+                    "remaining todos are not stalled on D-state or a sealed package"
                 ),
             }
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
