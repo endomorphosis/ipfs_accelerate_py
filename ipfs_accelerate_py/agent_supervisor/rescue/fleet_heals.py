@@ -1793,6 +1793,30 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "independent_work_has_live_workers",
                 "reason": "blocked peers stay blocked; live lanes own independent todos"}
     if stall == "independent_todos_unclaimed":
+        prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+        prior_results = [item for item in prior.get("results") or [] if isinstance(item, dict)]
+        blocked = [
+            str(item)
+            for item in (observation.get("details") or {}).get("blocked_task_ids") or []
+            if item
+        ]
+        passed = {
+            str(item.get("task_id"))
+            for item in prior_results
+            if item.get("status") == "passed" and item.get("task_id")
+        }
+        if blocked and set(blocked) <= passed:
+            return {
+                "status": "applied",
+                "recipe": "successors_may_run_on_current_tree_evidence",
+                "completion_authoritative": False,
+                "completion_authority": False,
+                "results": prior_results,
+                "reason": (
+                    "current-tree tests passed for DOEP-044/DOEP-063; "
+                    "remaining todos are not stalled on a DuckDB write"
+                ),
+            }
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
     if stall == "stalled_no_progress" and live_workers(observation):

@@ -911,6 +911,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "rearm_locally_validated_blocked_tasks",
                     "clear_overlay_copies_for_owner_start",
                     "local_validation_satisfies_current_tree_requirements",
+                    "successors_may_run_on_current_tree_evidence",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h
