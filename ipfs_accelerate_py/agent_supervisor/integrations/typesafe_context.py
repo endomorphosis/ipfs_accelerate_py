@@ -421,6 +421,118 @@ def observe_refactor_scope(
     return payload
 
 
+_LAST_PRODUCER_CONSUMER = threading.local()
+
+
+def last_producer_consumer() -> dict[str, Any]:
+    value = getattr(_LAST_PRODUCER_CONSUMER, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def producer_consumer_questions() -> dict[str, Any]:
+    return {
+        "producer_matches": Noul(
+            instructions={
+                "question": "Does `artifact.producer` match `admitted.producer`?",
+                "compare": ["`artifact.producer`", "`admitted.producer`"],
+            },
+        ),
+        "producer_version_matches": Noul(
+            instructions={
+                "question": (
+                    "Does `artifact.producer_version` match `admitted.producer_version`?"
+                ),
+                "compare": [
+                    "`artifact.producer_version`",
+                    "`admitted.producer_version`",
+                ],
+            },
+        ),
+    }
+
+
+def lint_producer_consumer(
+    *,
+    artifact_id: str = "",
+    claimed_producer: str = "",
+    admitted_producer: str = "",
+    claimed_producer_version: str = "",
+    admitted_producer_version: str = "",
+    claimed_consumer_id: str = "",
+    admitted_consumer_id: str = "",
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Advisory noul: does this artifact's producer match the admitted producer?
+
+    Never rewrites ``producer_id``. Never replaces polyglot ``PROTOCOL_ERROR``.
+    Never fences merge-queue ``consumer_id``.
+    """
+
+    payload = {
+        "accepted_as_authority": False,
+        "rewrites_producer_id": False,
+        "replaces_protocol_error": False,
+        "replaces_consumer_fence": False,
+        "artifact_id": str(artifact_id or "")[:128],
+        "claimed_producer": str(claimed_producer or "")[:128],
+        "admitted_producer": str(admitted_producer or "")[:128],
+        "claimed_producer_version": str(claimed_producer_version or "")[:128],
+        "admitted_producer_version": str(admitted_producer_version or "")[:128],
+        "claimed_consumer_id": str(claimed_consumer_id or "")[:128],
+        "admitted_consumer_id": str(admitted_consumer_id or "")[:128],
+    }
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        _LAST_PRODUCER_CONSUMER.value = dict(payload)
+        return payload
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    try:
+        result = system_one(
+            {
+                "artifact": {
+                    "id": payload["artifact_id"],
+                    "producer": payload["claimed_producer"],
+                    "producer_version": payload["claimed_producer_version"],
+                    "consumer_id": payload["claimed_consumer_id"],
+                },
+                "admitted": {
+                    "producer": payload["admitted_producer"],
+                    "producer_version": payload["admitted_producer_version"],
+                    "consumer_id": payload["admitted_consumer_id"],
+                },
+            },
+            producer_consumer_questions(),
+            timeout=timeout,
+        )
+    except Exception:
+        _LAST_PRODUCER_CONSUMER.value = dict(payload)
+        return payload
+    nouls = getattr(result, "nouls", None) or {}
+    producer_noul = float(
+        getattr(nouls.get("producer_matches"), "noul", 0.0) or 0.0
+    )
+    version_noul = float(
+        getattr(nouls.get("producer_version_matches"), "noul", 0.0) or 0.0
+    )
+    payload["producer_matches"] = round(producer_noul, 4)
+    payload["producer_version_matches"] = round(version_noul, 4)
+    reasons = ["composed_in_code", "advisory_lint_only"]
+    if producer_noul < 0.4:
+        reasons.append("producer_mismatch")
+    if version_noul < 0.4 and (
+        payload["claimed_producer_version"] or payload["admitted_producer_version"]
+    ):
+        reasons.append("producer_version_mismatch")
+    payload["reason_codes"] = reasons
+    _LAST_PRODUCER_CONSUMER.value = dict(payload)
+    return payload
+
+
 CLAIM_MARKERS: tuple[str, ...] = (
     "kernel_verified",
     "proved",
@@ -513,15 +625,18 @@ __all__ = [
     "extract_claim_spans",
     "inspect_allowlisted_artifacts",
     "last_artifact_view",
+    "last_producer_consumer",
     "last_source_edit_lint",
     "last_refactor_scope",
     "last_static_lint",
     "lint_admissibility",
+    "lint_producer_consumer",
     "observe_refactor_scope",
     "lint_static_span",
     "lint_questions",
     "observe_source_edit_lint",
     "prepare_evidence_for_compile",
+    "producer_consumer_questions",
     "rerank_allowlisted_snippets",
     "rerank_questions",
 ]

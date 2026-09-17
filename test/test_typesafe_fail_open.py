@@ -238,6 +238,7 @@ def test_new_helpers_do_not_call_http_without_key(
         classify_watchdog_symptom,
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        lint_producer_consumer,
         observe_refactor_scope,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
@@ -251,6 +252,16 @@ def test_new_helpers_do_not_call_http_without_key(
     assert observe_refactor_scope(declared_paths=("src/",), changed_paths=("src/a.py",))[
         "replaces_undeclared_refactor_check"
     ] is False
+    producer_lint = lint_producer_consumer(
+        artifact_id="blob:1",
+        claimed_producer="regex-heuristic",
+        admitted_producer="typescript-compiler-api",
+        claimed_consumer_id="other",
+        admitted_consumer_id="owner",
+    )
+    assert producer_lint["rewrites_producer_id"] is False
+    assert producer_lint["replaces_protocol_error"] is False
+    assert producer_lint["replaces_consumer_fence"] is False
     assert select_retrieve_ids_for_tactician(({"id": "a"}, {"id": "b"})) == ("a", "b")
     assert order_candidates_for_hammer(({"id": "a"}, {"id": "b"})) == (
         {"id": "a"},

@@ -340,6 +340,52 @@ def test_unsupported_inputs_and_compiler_version_are_typed() -> None:
     assert mismatch.value.details == {"expected": "5.7.2", "actual": "5.7.3"}
 
 
+def test_unexpected_producer_still_protocol_error_when_typesafe_agrees(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        nouls = {
+            "producer_matches": type("N", (), {"noul": 0.95})(),
+            "producer_version_matches": type("N", (), {"noul": 0.95})(),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+
+    def wrong_producer(command, request, timeout, maximum, environment):
+        payload = json.loads(request)
+        body = json.loads(_successful_response(payload))
+        body["producer"] = "regex-heuristic"
+        return 0, json.dumps(body).encode(), b""
+
+    with pytest.raises(PolyglotASTProviderError) as producer:
+        PolyglotASTProvider(process_runner=wrong_producer).extract(
+            "const value = 1;",
+            "js",
+        )
+    assert producer.value.reason_code == "protocol_error"
+
+    def wrong_version(command, request, timeout, maximum, environment):
+        payload = json.loads(request)
+        body = json.loads(_successful_response(payload))
+        body["producer_version"] = "typescript-ast-extractor@1"
+        return 0, json.dumps(body).encode(), b""
+
+    with pytest.raises(PolyglotASTProviderError) as version:
+        PolyglotASTProvider(process_runner=wrong_version).extract(
+            "const value = 1;",
+            "js",
+        )
+    assert version.value.reason_code == "protocol_error"
+
+
 def test_extractor_protocol_and_output_limit_fail_closed() -> None:
     def invalid_protocol(command, request, timeout, maximum, environment):
         return 0, b'{"protocol_version":999,"ok":true}', b""

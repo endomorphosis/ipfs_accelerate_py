@@ -269,6 +269,78 @@ def test_observe_refactor_scope_does_not_replace_undeclared_check(
     assert last_refactor_scope()["replaces_undeclared_refactor_check"] is False
 
 
+def test_lint_producer_consumer_fail_open_does_not_rewrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_producer_consumer,
+        lint_producer_consumer,
+    )
+
+    view = lint_producer_consumer(
+        artifact_id="blob:1",
+        claimed_producer="regex-heuristic",
+        admitted_producer="typescript-compiler-api",
+        claimed_producer_version="v0",
+        admitted_producer_version="typescript-ast-extractor@2",
+        claimed_consumer_id="other",
+        admitted_consumer_id="owner",
+    )
+    assert view["accepted_as_authority"] is False
+    assert view["rewrites_producer_id"] is False
+    assert view["replaces_protocol_error"] is False
+    assert view["replaces_consumer_fence"] is False
+    assert view["claimed_producer"] == "regex-heuristic"
+    assert view["admitted_producer"] == "typescript-compiler-api"
+    assert view["claimed_consumer_id"] == "other"
+    assert view["admitted_consumer_id"] == "owner"
+    assert last_producer_consumer()["rewrites_producer_id"] is False
+
+
+def test_lint_producer_consumer_flags_mismatch_without_rewriting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        nouls = {
+            "producer_matches": SimpleNamespace(noul=0.1),
+            "producer_version_matches": SimpleNamespace(noul=0.2),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        lint_producer_consumer,
+    )
+
+    view = lint_producer_consumer(
+        artifact_id="blob:1",
+        claimed_producer="regex-heuristic",
+        admitted_producer="typescript-compiler-api",
+        claimed_producer_version="v0",
+        admitted_producer_version="typescript-ast-extractor@2",
+    )
+    assert view["producer_matches"] == pytest.approx(0.1)
+    assert "producer_mismatch" in view["reason_codes"]
+    assert "producer_version_mismatch" in view["reason_codes"]
+    assert view["rewrites_producer_id"] is False
+    assert view["claimed_producer"] == "regex-heuristic"
+    assert view["admitted_producer"] == "typescript-compiler-api"
+
+
 def test_observe_source_edit_lint_does_not_block_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

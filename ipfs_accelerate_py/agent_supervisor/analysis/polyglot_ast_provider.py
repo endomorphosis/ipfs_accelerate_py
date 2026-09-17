@@ -115,6 +115,30 @@ class PolyglotASTProviderError(RuntimeError):
         super().__init__(f"{self.reason_code}: {message}")
 
 
+def _observe_typescript_producer(
+    *,
+    artifact_id: str,
+    claimed_producer: Any,
+    claimed_producer_version: Any,
+) -> None:
+    """Advisory sidecar only. Never rewrites identity or replaces PROTOCOL_ERROR."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            lint_producer_consumer,
+        )
+
+        lint_producer_consumer(
+            artifact_id=str(artifact_id or ""),
+            claimed_producer=str(claimed_producer or ""),
+            admitted_producer="typescript-compiler-api",
+            claimed_producer_version=str(claimed_producer_version or ""),
+            admitted_producer_version=TYPESCRIPT_EXTRACTOR_VERSION,
+        )
+    except Exception:
+        return
+
+
 def _bounded_positive_int(name: str, value: Any, maximum: int) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{name} must be a positive integer")
@@ -815,6 +839,11 @@ class PolyglotASTProvider:
                 PolyglotASTReason.PROCESS_FAILED,
                 f"extractor exited with status {return_code}",
             )
+        _observe_typescript_producer(
+            artifact_id=blob_identity,
+            claimed_producer=payload.get("producer"),
+            claimed_producer_version=payload.get("producer_version"),
+        )
         if payload.get("producer") != "typescript-compiler-api":
             raise PolyglotASTProviderError(
                 PolyglotASTReason.PROTOCOL_ERROR,
