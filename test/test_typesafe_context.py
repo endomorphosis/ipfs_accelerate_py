@@ -274,6 +274,46 @@ def test_inspect_allowlisted_artifacts_fail_open_and_never_writes(
     assert last_artifact_view()["writes_ast"] is False
 
 
+def test_inspect_allowlisted_artifacts_one_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    calls: list[int] = []
+
+    class _Result:
+        nouls = {
+            "matches_sym-a": SimpleNamespace(noul=0.8),
+            "matches_cl-1": SimpleNamespace(noul=0.2),
+        }
+
+    def fake_system_one(_state, questions, **_kwargs):
+        calls.append(1)
+        assert "matches_sym-a" in questions
+        assert "matches_cl-1" in questions
+        return _Result()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        fake_system_one,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        inspect_allowlisted_artifacts,
+    )
+
+    view = inspect_allowlisted_artifacts(
+        obligation_id="obl-1",
+        symbol_ids=("sym-a",),
+        clause_ids=("cl-1",),
+        summaries={"sym-a": "foo", "cl-1": "bar"},
+    )
+    assert calls == [1]
+    assert view["matches"]["sym-a"] == pytest.approx(0.8)
+    assert view["writes_ast"] is False
+
+
 def test_lint_static_span_fail_open_does_not_replace_analyzer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -411,6 +451,47 @@ def test_observe_parser_failure_clusters_never_excludes_protected(
     assert view["protected_contract_surface"] is True
     assert view["accepted_as_authority"] is False
     assert last_parser_triage()["excludes_mcp_surface"] is False
+
+
+def test_observe_parser_failure_clusters_one_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    calls: list[int] = []
+
+    class _Result:
+        nouls = {
+            "fixture_or_generated_cl-a": SimpleNamespace(noul=0.7),
+            "fixture_or_generated_cl-b": SimpleNamespace(noul=0.1),
+        }
+
+    def fake_system_one(_state, questions, **_kwargs):
+        calls.append(1)
+        assert "fixture_or_generated_cl-a" in questions
+        assert "fixture_or_generated_cl-b" in questions
+        return _Result()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        fake_system_one,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        observe_parser_failure_clusters,
+    )
+
+    view = observe_parser_failure_clusters(
+        (
+            {"cluster_id": "cl-a", "path_family": "fixtures/", "protected": False},
+            {"cluster_id": "cl-b", "path_family": "src/", "protected": False},
+        )
+    )
+    assert calls == [1]
+    assert view["fixture_like"]["cl-a"] == pytest.approx(0.7)
+    assert view["excludes_mcp_surface"] is False
+    assert view["weakens_thresholds"] is False
 
 
 def test_rank_allowlisted_artifacts_drops_ineligible_ids(

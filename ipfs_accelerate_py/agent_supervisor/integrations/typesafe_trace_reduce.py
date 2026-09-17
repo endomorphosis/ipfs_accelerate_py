@@ -147,33 +147,57 @@ def reduce_events(
         )
     from ipfs_accelerate_py.typesafe_inference import system_one
 
+    base = classification_questions()
+    label_q = base["label"]
+    retry_q = base["retryable"]
+    state = {"events": {str(index): item for index, item in enumerate(rows)}}
+    questions: dict[str, Any] = {}
+    for index, _item in enumerate(rows):
+        questions[f"label_{index}"] = Choice(
+            instructions={
+                "question": (
+                    f"Which closed label describes `events.{index}`?"
+                ),
+                "inspect": f"`events.{index}`",
+            },
+            criteria=dict(getattr(label_q, "criteria", None) or {}),
+        )
+        questions[f"retryable_{index}"] = Noul(
+            instructions={
+                "question": (
+                    f"Should code retry `events.{index}` without completing the task?"
+                ),
+                "inspect": f"`events.{index}.status`",
+            },
+        )
+    try:
+        result = system_one(state, questions, timeout=timeout)
+    except Exception:
+        labels = [classify_event_deterministic(row) for row in rows]
+        return TraceReduceReport(
+            labels=tuple(labels),
+            counts=_counts(labels),
+            source="deterministic",
+            reason_codes=("typesafe_error_fail_open",),
+        )
+    choices = getattr(result, "choices", None) or {}
+    nouls = getattr(result, "nouls", None) or {}
     labels: list[str] = []
     retryable: list[bool] = []
-    source = "typesafe"
-    for item in rows:
-        try:
-            result = system_one({"event": item}, classification_questions(), timeout=timeout)
-        except Exception:
-            source = "deterministic"
-            labels = [classify_event_deterministic(row) for row in rows]
-            return TraceReduceReport(
-                labels=tuple(labels),
-                counts=_counts(labels),
-                source=source,
-                reason_codes=("typesafe_error_fail_open",),
-            )
-        choice = result.choices.get("label")
-        nominated = str(getattr(choice, "choice", "") or "")
+    for index, item in enumerate(rows):
+        nominated = str(
+            getattr(choices.get(f"label_{index}"), "choice", "") or ""
+        )
         if nominated not in TRACE_LABELS:
             nominated = classify_event_deterministic(item)
         labels.append(nominated)
-        noul = result.nouls.get("retryable")
+        noul = nouls.get(f"retryable_{index}")
         retryable.append(float(getattr(noul, "noul", 0.0) or 0.0) >= 0.5)
     return TraceReduceReport(
         labels=tuple(labels),
         counts=_counts(labels),
         retryable=tuple(retryable),
-        source=source,
+        source="typesafe",
         reason_codes=("composed_in_code",),
     )
 

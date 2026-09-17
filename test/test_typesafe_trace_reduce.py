@@ -64,15 +64,23 @@ def test_typesafe_labels_composed_in_code(monkeypatch: pytest.MonkeyPatch) -> No
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_reduce.typesafe_permitted",
         lambda **_kwargs: True,
     )
-    labels = iter(["flaky_fail", "invented"])
+    calls: list[int] = []
 
     class _Result:
-        def __init__(self, choice: str) -> None:
-            self.choices = {"label": SimpleNamespace(choice=choice, confidence=0.8)}
-            self.nouls = {"retryable": SimpleNamespace(noul=0.9)}
+        choices = {
+            "label_0": SimpleNamespace(choice="flaky_fail", confidence=0.8),
+            "label_1": SimpleNamespace(choice="invented", confidence=0.8),
+        }
+        nouls = {
+            "retryable_0": SimpleNamespace(noul=0.9),
+            "retryable_1": SimpleNamespace(noul=0.9),
+        }
 
     def fake_system_one(state, questions, **kwargs):
-        return _Result(next(labels))
+        calls.append(1)
+        assert "label_0" in questions
+        assert "label_1" in questions
+        return _Result()
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.typesafe_inference.system_one",
@@ -84,6 +92,7 @@ def test_typesafe_labels_composed_in_code(monkeypatch: pytest.MonkeyPatch) -> No
             {"status": "failed", "error_code": "kernel_error"},
         )
     )
+    assert calls == [1]
     assert report.labels[0] == "flaky_fail"
     assert report.labels[1] == "kernel_wait"
     assert report.may_complete_task is False

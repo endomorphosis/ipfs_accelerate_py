@@ -778,37 +778,39 @@ def inspect_allowlisted_artifacts(
         return payload
     from ipfs_accelerate_py.typesafe_inference import system_one
 
-    matches: dict[str, float] = {}
+    idents = tuple(dict.fromkeys((*symbols, *clauses)))
+    state = {
+        "obligation": {"id": str(obligation_id or "")[:128]},
+        "artifacts": {
+            ident: {
+                "id": ident,
+                "kind": "symbol" if ident in symbols else "clause",
+                "summary": texts.get(ident, ""),
+            }
+            for ident in idents
+        },
+    }
+    questions: dict[str, Any] = {
+        f"matches_{ident}": Noul(
+            instructions={
+                "question": (
+                    f"Does `artifacts.{ident}.summary` match `obligation.id`?"
+                ),
+                "inspect": f"`artifacts.{ident}.summary`",
+            },
+        )
+        for ident in idents
+    }
     try:
-        for ident in (*symbols, *clauses):
-            result = system_one(
-                {
-                    "obligation": {"id": str(obligation_id or "")[:128]},
-                    "artifact": {
-                        "id": ident,
-                        "kind": "symbol" if ident in symbols else "clause",
-                        "summary": texts.get(ident, ""),
-                    },
-                },
-                {
-                    "matches_obligation": Noul(
-                        instructions={
-                            "question": "Does `artifact.summary` match `obligation.id`?",
-                            "inspect": "`artifact.summary`",
-                        },
-                    ),
-                },
-                timeout=timeout,
-            )
-            noul = getattr(
-                (getattr(result, "nouls", None) or {}).get("matches_obligation"),
-                "noul",
-                0.0,
-            )
-            matches[ident] = round(float(noul or 0.0), 4)
+        result = system_one(state, questions, timeout=timeout)
     except Exception:
         _LAST_ARTIFACT_VIEW.value = dict(payload)
         return payload
+    nouls = getattr(result, "nouls", None) or {}
+    matches = {
+        ident: round(float(getattr(nouls.get(f"matches_{ident}"), "noul", 0.0) or 0.0), 4)
+        for ident in idents
+    }
     payload["matches"] = matches
     _LAST_ARTIFACT_VIEW.value = dict(payload)
     return payload
@@ -936,40 +938,34 @@ def observe_parser_failure_clusters(
         return payload
     from ipfs_accelerate_py.typesafe_inference import system_one
 
+    clusters_state: dict[str, Any] = {}
+    questions: dict[str, Any] = {}
+    for item in rows:
+        ident = str(item.get("cluster_id") or item.get("path_family") or "")[:128]
+        if not ident:
+            continue
+        clusters_state[ident] = {
+            "id": ident,
+            "path_family": str(item.get("path_family") or "")[:128],
+            "reason": str(item.get("reason_code") or "")[:64],
+        }
+        questions[f"fixture_or_generated_{ident}"] = Noul(
+            instructions={
+                "question": (
+                    f"Is `clusters.{ident}.path_family` a generated or fixture "
+                    "path rather than an MCP or runtime surface?"
+                ),
+                "inspect": f"`clusters.{ident}.path_family`",
+            },
+        )
     try:
-        for item in rows:
-            ident = str(item.get("cluster_id") or item.get("path_family") or "")[:128]
-            if not ident:
-                continue
-            result = system_one(
-                {
-                    "cluster": {
-                        "id": ident,
-                        "path_family": str(item.get("path_family") or "")[:128],
-                        "reason": str(item.get("reason_code") or "")[:64],
-                    }
-                },
-                {
-                    "fixture_or_generated": Noul(
-                        instructions={
-                            "question": (
-                                "Is `cluster.path_family` a generated or fixture "
-                                "path rather than an MCP or runtime surface?"
-                            ),
-                            "inspect": "`cluster.path_family`",
-                        },
-                    ),
-                },
-                timeout=timeout,
-            )
-            noul = getattr(
-                (getattr(result, "nouls", None) or {}).get("fixture_or_generated"),
-                "noul",
-                0.0,
-            )
-            payload["fixture_like"][ident] = round(float(noul or 0.0), 4)
+        result = system_one({"clusters": clusters_state}, questions, timeout=timeout)
     except Exception:
         _LAST_PARSER_TRIAGE.value = dict(payload)
         return payload
+    nouls = getattr(result, "nouls", None) or {}
+    for ident in clusters_state:
+        noul = getattr(nouls.get(f"fixture_or_generated_{ident}"), "noul", 0.0)
+        payload["fixture_like"][ident] = round(float(noul or 0.0), 4)
     _LAST_PARSER_TRIAGE.value = dict(payload)
     return payload
