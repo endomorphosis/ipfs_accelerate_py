@@ -1034,6 +1034,19 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         state.update(last_action=action, last_action_result={
             k: v for k, v in action_result.items() if k not in {"stdout", "stderr"}})
+        if (
+            action == "supervisor_heal"
+            and str((action_result or {}).get("recipe") or "") == "dump_stop_repair_import_start"
+            and (action_result or {}).get("status") == "applied"
+        ):
+            state["last_dump_stop_repair"] = {
+                k: v for k, v in action_result.items() if k not in {"stdout", "stderr"}
+            }
+            consistent = (action_result or {}).get("last_consistent_dump") or (
+                action_result or {}
+            ).get("restored_from")
+            if isinstance(consistent, str) and consistent:
+                state["last_consistent_dump"] = consistent
         write_json(path, state)
         return state
 

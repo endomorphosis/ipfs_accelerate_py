@@ -881,6 +881,27 @@ def test_dump_stop_already_recorded_retriggers_when_blocked_remains():
     assert dump_stop_repair_import_start_already_recorded(state, {"details": {}}) is True
 
 
+def test_dump_stop_already_recorded_when_blocked_alias_was_already_unstalled():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        dump_stop_repair_import_start_already_recorded,
+    )
+    state = {
+        "last_dump_stop_repair": {
+            "recipe": "dump_stop_repair_import_start",
+            "status": "applied",
+            "unstalled": [{"task_alias": "DOEP-044"}],
+        },
+        "last_action_result": {
+            "recipe": "successors_may_run_on_current_tree_evidence",
+            "status": "applied",
+        },
+    }
+    still_blocked = {
+        "details": {"blocked_task_ids": ["DOEP-044"]},
+    }
+    assert dump_stop_repair_import_start_already_recorded(state, still_blocked) is True
+
+
 def test_diagnose_board_repair_problems_from_observation():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
         diagnose_board_repair_problems,
@@ -916,6 +937,25 @@ def test_dump_stop_repair_import_start_skips_spar(tmp_path):
     assert result["completion_authoritative"] is False
 
 
+def test_rewrite_remaining_requirements_clears_exhausted_deferral():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        rewrite_remaining_requirements_for_current_tree,
+    )
+    body = rewrite_remaining_requirements_for_current_tree({
+        "postconditions": ["All exact outputs exist inside the declared write scope"],
+        "completion_receipt": {
+            "reason": "typed_portal_deferral_budget_exhausted",
+            "retry_budget": {"exhausted": True},
+        },
+    })
+    payload = json.loads(body)
+    assert payload["remaining_requirements"][0].startswith("current-tree pytest")
+    assert payload["required_evidence"] == ["current-tree test results"]
+    assert payload["completion_receipt"]["retry_budget"]["exhausted"] is False
+    assert payload["completion_receipt"]["reason"] == "current_tree_remaining_requirement_rearmed"
+    assert payload["postconditions"] == ["The declared current-tree validation argv exits zero"]
+
+
 def test_repair_board_database_flips_stale_rows(tmp_path):
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import repair_board_database
@@ -942,10 +982,18 @@ def test_repair_board_database_flips_stale_rows(tmp_path):
     assert aliases == {"SAWM-016", "DOEP-044"}
     con = duckdb.connect(str(db), read_only=True)
     rows = dict(con.execute("SELECT task_alias, status FROM tasks").fetchall())
+    body = json.loads(
+        con.execute("SELECT body_json FROM tasks WHERE task_alias='DOEP-044'").fetchone()[0]
+    )
     con.close()
     assert rows["SAWM-016"] == "retrying"
     assert rows["DOEP-044"] == "retrying"
     assert rows["SAWM-001"] == "completed"
+    assert body["remaining_requirements"] == [
+        "current-tree pytest of the declared validation argv; "
+        "a DuckDB blocked-to-retrying write is not a remaining requirement"
+    ]
+    assert body["required_evidence"] == ["current-tree test results"]
 
 
 def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
@@ -965,7 +1013,88 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
         "CREATE TABLE task_revisions (task_cid VARCHAR, revision INTEGER, status VARCHAR, "
         "body_json VARCHAR, recorded_at VARCHAR)"
     )
-    con.execute("INSERT INTO tasks VALUES ('cid-16', 'SAWM-016', 'in_progress', 1, 't', '{}')")
+    con.execute(
+        "INSERT INTO tasks VALUES "
+        "('cid-44', 'DOEP-044', 'blocked', 1, 't', "
+        "'{\"completion_receipt\":{\"reason\":\"typed_portal_deferral_budget_exhausted\","
+        "\"retry_budget\":{\"exhausted\":true}},"
+        "\"postconditions\":[\"All exact outputs exist inside the declared write scope\"]}')"
+    )
+    con.close()
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text("{}")
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "doep",
+            "database_path": str(db),
+            "owner_status_path": str(status),
+            "existing_service": "agent-supervisor-doep-v1.service",
+            "ensure_argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
+        },
+    )
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_board_dump_stop_repair_import_start(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"details": {
+            "extra_gate": {"live_owner_unit": "agent-supervisor-doep-v1.service"},
+            "blocked_task_ids": ["DOEP-044"],
+            "task_counts": {"blocked": 1, "todo": 23},
+        }},
+        dump_root=tmp_path / "dumps",
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authoritative"] is False
+    assert result["unstalled"][0]["task_alias"] == "DOEP-044"
+    assert result["unstalled"][0]["remaining_requirements"]
+    assert ["systemctl", "--user", "stop", "agent-supervisor-doep-v1.service"] in calls
+    assert ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"] in calls
+    con = duckdb.connect(str(db), read_only=True)
+    assert con.execute("SELECT status FROM tasks WHERE task_alias='DOEP-044'").fetchone()[0] == "retrying"
+    body = json.loads(
+        con.execute("SELECT body_json FROM tasks WHERE task_alias='DOEP-044'").fetchone()[0]
+    )
+    con.close()
+    assert "current-tree pytest" in body["remaining_requirements"][0]
+    assert body["completion_receipt"]["retry_budget"]["exhausted"] is False
+    assert body["completion_receipt"]["reason"] == "current_tree_remaining_requirement_rearmed"
+
+
+def test_dump_stop_sawm_restores_consistent_dump_without_sql(tmp_path, monkeypatch):
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_board_dump_stop_repair_import_start,
+    )
+
+    db = tmp_path / "control.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute(
+        "CREATE TABLE tasks (task_cid VARCHAR, task_alias VARCHAR, status VARCHAR, "
+        "revision INTEGER, updated_at VARCHAR, body_json VARCHAR)"
+    )
+    con.execute(
+        "CREATE TABLE domain_events (event_id VARCHAR)"
+    )
+    con.execute("INSERT INTO tasks VALUES ('cid-16', 'SAWM-016', 'retrying', 13, 't', '{}')")
+    con.execute("INSERT INTO domain_events VALUES ('evt-1')")
+    con.close()
+    consistent = tmp_path / "dumps" / "20260917T171500Z" / "sawm" / "control.duckdb.post-stop"
+    consistent.parent.mkdir(parents=True)
+    con = duckdb.connect(str(consistent))
+    con.execute(
+        "CREATE TABLE tasks (task_cid VARCHAR, task_alias VARCHAR, status VARCHAR, "
+        "revision INTEGER, updated_at VARCHAR, body_json VARCHAR)"
+    )
+    con.execute("CREATE TABLE domain_events (event_id VARCHAR)")
+    con.execute("INSERT INTO tasks VALUES ('cid-16', 'SAWM-016', 'in_progress', 12, 't', '{}')")
+    con.execute("INSERT INTO domain_events VALUES ('evt-1')")
     con.close()
     status = tmp_path / "quack-state-server.status.json"
     status.write_text("{}")
@@ -975,8 +1104,7 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
             "id": "sawm",
             "database_path": str(db),
             "owner_status_path": str(status),
-            "existing_service": "ipfs-taskboard-sawm-supervisor.service",
-            "ensure_argv": ["systemctl", "--user", "start", "ipfs-taskboard-sawm-supervisor.service"],
+            "ensure_argv": [],
         },
     )
     calls = []
@@ -989,7 +1117,6 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
     result = run_board_dump_stop_repair_import_start(
         {"id": "sawm", "cwd": str(tmp_path)},
         {"details": {
-            "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
             "task_counts": {"in_progress": 1, "todo": 23},
             "lanes": [{"lane": 0, "stalled_without_active_worker": True, "claimed": None}],
             "authenticated_task_observation": {"authoritative_active_task_ids": ["SAWM-016"]},
@@ -998,12 +1125,15 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
     )
     assert result["status"] == "applied"
     assert result["completion_authoritative"] is False
-    assert result["unstalled"][0]["task_alias"] == "SAWM-016"
+    assert result["restored_from"] == str(consistent)
     assert ["systemctl", "--user", "stop", "ipfs-taskboard-sawm-supervisor.service"] in calls
     assert ["systemctl", "--user", "start", "ipfs-taskboard-sawm-supervisor.service"] in calls
     con = duckdb.connect(str(db), read_only=True)
-    assert con.execute("SELECT status FROM tasks WHERE task_alias='SAWM-016'").fetchone()[0] == "retrying"
+    row = con.execute("SELECT status, revision FROM tasks WHERE task_alias='SAWM-016'").fetchone()
+    events = con.execute("SELECT count(*) FROM domain_events").fetchone()[0]
     con.close()
+    assert row == ("in_progress", 12)
+    assert events == 1
 
 
 def test_dump_board_before_owner_stop_copies_duckdb(tmp_path, monkeypatch):
