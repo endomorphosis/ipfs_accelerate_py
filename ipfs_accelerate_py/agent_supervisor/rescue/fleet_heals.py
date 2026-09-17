@@ -715,6 +715,8 @@ def run_board_local_repair(
     if not cwd.is_dir():
         return {**empty, "reason": "board_cwd_absent"}
     command = list(argv)
+    if any("recover-blocked-lock-timeout" in item for item in command):
+        return run_board_claim_verification_recover(board, observation, passed)
     if "--task" not in command and passed:
         # recover-claim-verification style operators accept one task.
         if any("recover-claim-verification" in item or "recover-repaired-dependency" in item for item in command):
@@ -732,9 +734,12 @@ def run_board_local_repair(
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {**empty, "reason": f"board_repair_unavailable:{type(exc).__name__}"}
     if completed.returncode != 0:
+        recovered = run_board_claim_verification_recover(board, observation, passed)
+        if recovered.get("status") == "applied":
+            return recovered
         return {
             **empty,
-            "reason": "board_repair_rejected",
+            "reason": recovered.get("reason") or "board_repair_rejected",
             "returncode": completed.returncode,
         }
     return {
@@ -745,6 +750,159 @@ def run_board_local_repair(
         "unstalled": [{"task_alias": task_id, "reason": "board_local_repair_argv"} for task_id in passed],
         "reason": (
             "board-local repair_argv accepted; native lanes admit; "
+            "receipts stay incomplete"
+        ),
+    }
+
+
+def _board_handoff_argv(inventory: Mapping[str, Any]) -> list[str] | None:
+    """Python + board handoff script, with the subcommand stripped."""
+    for key in ("status_argv", "launch_argv", "repair_argv"):
+        argv = inventory.get(key)
+        if not isinstance(argv, list) or len(argv) < 2:
+            continue
+        if any(not isinstance(item, str) or not item for item in argv):
+            continue
+        for index, item in enumerate(argv):
+            if item.endswith(".py"):
+                prefix = list(argv[: index + 1])
+                if prefix:
+                    return prefix
+    return None
+
+
+def _task_revision_from_status(payload: Mapping[str, Any], task_id: str) -> int | None:
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list):
+        return None
+    for row in tasks:
+        if not isinstance(row, dict):
+            continue
+        alias = str(row.get("task_alias") or row.get("task_id") or "")
+        if alias != task_id:
+            continue
+        if str(row.get("status") or "").lower() != "blocked":
+            return None
+        revision = row.get("revision")
+        if type(revision) is int and revision > 0:
+            return revision
+    return None
+
+
+def run_board_claim_verification_recover(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    passed: list[str],
+) -> dict[str, Any]:
+    """Use authoritative-status then recover-claim-verification. Never completes."""
+    empty = {
+        "status": "skip",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": [],
+    }
+    inventory = _inventory_board(board)
+    cwd = Path(str(inventory.get("cwd") or board.get("cwd") or ""))
+    handoff = _board_handoff_argv(inventory)
+    if not cwd.is_dir() or not handoff:
+        return {**empty, "reason": "board_handoff_argv_absent"}
+    repair = inventory.get("repair_argv") if isinstance(inventory.get("repair_argv"), list) else []
+    if not any("handoff.py" in item for item in handoff) and not any(
+        isinstance(item, str) and "recover-claim-verification" in item for item in repair
+    ):
+        return {**empty, "reason": "board_handoff_argv_absent"}
+    status_cmd = [*handoff, "authoritative-status"]
+    for task_id in passed[:8]:
+        status_cmd.extend(["--history-task", task_id])
+    try:
+        status = subprocess.run(
+            status_cmd,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=_LOCAL_VALIDATION_TIMEOUT,
+            check=False,
+            text=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {**empty, "reason": "authoritative_status_unavailable"}
+    if status.returncode != 0:
+        return {**empty, "reason": "authoritative_status_rejected"}
+    try:
+        payload = json.loads(status.stdout or "")
+    except json.JSONDecodeError:
+        return {**empty, "reason": "authoritative_status_malformed"}
+    if not isinstance(payload, dict) or payload.get("completion_authority") is True:
+        return {**empty, "reason": "authoritative_status_malformed"}
+    planned: list[tuple[str, int]] = []
+    for task_id in passed:
+        revision = _task_revision_from_status(payload, task_id)
+        if revision is None:
+            continue
+        planned.append((task_id, revision))
+    if not planned:
+        return {**empty, "reason": "no_blocked_revisions_for_claim_verification"}
+    board_id = str(board.get("id") or inventory.get("id") or "").lower()
+    unit = str(inventory.get("existing_service") or "")
+    stopped = False
+    if board_id not in RETAIN_OWNER_BOARDS and unit.endswith(".service"):
+        stop = subprocess.run(
+            ["systemctl", "--user", "stop", unit],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=180,
+            check=False,
+        )
+        stopped = stop.returncode == 0
+    unstalled: list[dict[str, Any]] = []
+    try:
+        for task_id, revision in planned:
+            recover = subprocess.run(
+                [
+                    *handoff,
+                    "recover-claim-verification",
+                    "--task",
+                    task_id,
+                    "--expected-revision",
+                    str(revision),
+                ],
+                cwd=str(cwd),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=180,
+                check=False,
+                text=True,
+            )
+            if recover.returncode == 0:
+                unstalled.append({
+                    "task_alias": task_id,
+                    "reason": "recover_claim_verification",
+                    "expected_revision": revision,
+                })
+    finally:
+        ensure = inventory.get("ensure_argv")
+        if stopped and isinstance(ensure, list) and ensure and all(
+            isinstance(item, str) and item for item in ensure
+        ):
+            subprocess.run(
+                list(ensure),
+                cwd=str(cwd),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=180,
+                check=False,
+            )
+    if not unstalled:
+        return {**empty, "reason": "claim_verification_recover_rejected"}
+    return {
+        "status": "applied",
+        "recipe": "rearm_locally_validated_blocked_tasks",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "unstalled": unstalled,
+        "reason": (
+            "recover-claim-verification accepted; native lanes admit; "
             "receipts stay incomplete"
         ),
     }

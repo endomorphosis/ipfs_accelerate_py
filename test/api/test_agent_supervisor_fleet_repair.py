@@ -588,6 +588,85 @@ def test_board_local_repair_argv_runs_after_local_pass_without_token(tmp_path, m
     assert result["unstalled"][0]["reason"] == "board_local_repair_argv"
 
 
+def test_claim_verification_recover_uses_live_status_then_board_command(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        rearm_locally_validated_blocked_tasks,
+    )
+
+    handoff = tmp_path / "handoff.py"
+    handoff.write_text("print('unused')\n")
+    calls = []
+
+    def fake_run(argv, cwd=None, **kwargs):
+        calls.append(list(argv))
+        if "authoritative-status" in argv:
+            payload = {
+                "completion_authority": False,
+                "tasks": [
+                    {"task_alias": "DOEP-044", "status": "blocked", "revision": 7},
+                    {"task_alias": "DOEP-063", "status": "blocked", "revision": 3},
+                ],
+            }
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload), stderr="")
+        if "recover-claim-verification" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+        if argv[:2] == ["systemctl", "--user"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="no")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "doep",
+            "cwd": str(tmp_path),
+            "quack_endpoint": "quack:127.0.0.1:27942",
+            "existing_service": "agent-supervisor-doep-v1.service",
+            "ensure_argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
+            "status_argv": ["/usr/bin/python3", str(handoff), "status"],
+            "repair_argv": ["/usr/bin/python3", str(handoff), "recover-blocked-lock-timeout"],
+        },
+    )
+    monkeypatch.setattr(fleet_heals, "_owner_transport_env", lambda inventory: {})
+    result = rearm_locally_validated_blocked_tasks(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"]}},
+        [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+        ],
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert {item["task_alias"] for item in result["unstalled"]} == {"DOEP-044", "DOEP-063"}
+    assert any("authoritative-status" in item for call in calls for item in call)
+    assert any("recover-claim-verification" in item for call in calls for item in call)
+    assert ["systemctl", "--user", "stop", "agent-supervisor-doep-v1.service"] in calls
+    assert ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"] in calls
+    spar = rearm_locally_validated_blocked_tasks
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "spar",
+            "cwd": str(tmp_path),
+            "quack_endpoint": "quack:127.0.0.1:1",
+            "existing_service": "ipfs-taskboard-spar-supervisor.service",
+            "status_argv": ["/usr/bin/python3", str(handoff), "authoritative-status"],
+            "repair_argv": ["/usr/bin/python3", str(handoff), "recover-blocked-lock-timeout"],
+        },
+    )
+    calls.clear()
+    spar_result = spar(
+        {"id": "spar", "cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["SPAR-001"]}},
+        [{"task_id": "SPAR-001", "status": "passed", "completion_authoritative": False}],
+    )
+    assert spar_result["completion_authority"] is False
+    assert not any(call[:4] == ["systemctl", "--user", "stop", "ipfs-taskboard-spar-supervisor.service"] for call in calls)
+
+
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
