@@ -1906,6 +1906,23 @@ def run_board_dump_stop_repair_import_start(
         if consistent is not None and consistent.is_file():
             shutil.copy2(consistent, repaired_copy)
             restored_from = str(consistent)
+            status_path = Path(str(inventory.get("owner_status_path") or ""))
+            if str(status_path) and status_path.is_file():
+                try:
+                    payload = json.loads(status_path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    payload = {}
+                if isinstance(payload, dict):
+                    payload["lifecycle"] = "stopped"
+                    identity = payload.get("identity")
+                    if isinstance(identity, dict):
+                        identity = dict(identity)
+                        identity["status"] = "stopped"
+                        payload["identity"] = identity
+                    status_path.write_text(json.dumps(payload, indent=2) + "\n")
+            marker = inventory.get("state_owner_marker")
+            if isinstance(marker, str) and marker:
+                Path(marker).unlink(missing_ok=True)
         changed = [
             {
                 "task_alias": alias,
@@ -2316,9 +2333,11 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             smoke = run_overlay_current_tree_smoke(board, state)
             if smoke.get("status") != "skip":
                 return smoke
-            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
-            if pipeline.get("status") != "skip":
-                return pipeline
+            board_id = str(board.get("id") or "").lower()
+            if board_id not in EVENT_REPLAY_BOARDS:
+                pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+                if pipeline.get("status") != "skip":
+                    return pipeline
             return {
                 "status": "applied",
                 "recipe": "stale_in_progress_does_not_stall_remaining_todos",
