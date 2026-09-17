@@ -888,6 +888,24 @@ def run_board_claim_verification_recover(
         return {**empty, "reason": "no_blocked_revisions_for_claim_verification"}
     board_id = str(board.get("id") or inventory.get("id") or "").lower()
     unit = str(inventory.get("existing_service") or "")
+    if unit.endswith(".service"):
+        try:
+            active = subprocess.run(
+                ["systemctl", "--user", "is-active", unit],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+                text=True,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            active = None
+        if (
+            active is not None
+            and active.returncode == 0
+            and str(active.stdout or "").strip() == "active"
+        ):
+            return {**empty, "reason": "owner_live_do_not_stop"}
     copies = _copied_validation_files(cwd, results)
     stopped = False
     unstalled: list[dict[str, Any]] = []
