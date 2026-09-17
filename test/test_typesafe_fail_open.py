@@ -248,7 +248,11 @@ def test_new_helpers_do_not_call_http_without_key(
     )
 
     maybe_observe_worker_output(prompt="p", output="KERNEL_VERIFIED", usage_mode=LLM_USAGE_MODE_OFF)
-    assert nominate_unstall_action({"reason": "stale_evidence"})["action"] == "preserve"
+    assert nominate_unstall_action(
+        {"reason": "stale_evidence"},
+        declared_meta_actions=("REPLAN_AFFECTED_SUFFIX",),
+        possible_resolution_action_ids=("action-replan",),
+    )["action"] == "preserve"
     assert classify_watchdog_symptom({"stalled": True})["kills_process"] is False
     assert observe_refactor_scope(declared_paths=("src/",), changed_paths=("src/a.py",))[
         "replaces_undeclared_refactor_check"

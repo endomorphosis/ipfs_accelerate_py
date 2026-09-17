@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ipfs_accelerate_py.typesafe_inference import Choice, Noul
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
@@ -25,7 +25,54 @@ _META = {
     "retry_provider": "NO_OP",
     "request_human": "REQUEST_HUMAN_DECISION",
 }
+_MAPPED_METAS = frozenset(_META.values())
 _LAST = threading.local()
+
+
+def _meta_name(value: Any) -> str:
+    return str(getattr(value, "value", value) or "").strip()
+
+
+def _as_sequence(value: Any) -> tuple[Any, ...]:
+    if value is None or isinstance(value, (str, bytes, bytearray, Mapping)):
+        return ()
+    try:
+        return tuple(value)
+    except TypeError:
+        return ()
+
+
+def collect_declared_meta_actions(
+    possible_resolution_action_ids: Sequence[str] = (),
+    *,
+    declared_meta_actions: Sequence[Any] = (),
+    action_meta_by_id: Mapping[str, Any] | None = None,
+) -> frozenset[str]:
+    """MetaActions already declared for the question. Unknown ids are ignored."""
+
+    declared: set[str] = set()
+    by_id = {
+        str(key).strip(): _meta_name(value)
+        for key, value in dict(action_meta_by_id or {}).items()
+        if str(key).strip() and _meta_name(value) in _MAPPED_METAS
+    }
+    for ident in _as_sequence(possible_resolution_action_ids):
+        text = str(ident or "").strip()
+        if not text:
+            continue
+        if text in _META:
+            declared.add(_META[text])
+        elif text in _MAPPED_METAS:
+            declared.add(text)
+        elif text in by_id:
+            declared.add(by_id[text])
+    for item in _as_sequence(declared_meta_actions):
+        text = _meta_name(item)
+        if text in _META:
+            declared.add(_META[text])
+        elif text in _MAPPED_METAS:
+            declared.add(text)
+    return frozenset(declared)
 
 
 def last_unstall_nomination() -> dict[str, Any]:
@@ -38,6 +85,7 @@ def _receipt(
     *,
     reason_codes: tuple[str, ...] = (),
     confidence: float = 0.0,
+    declared_meta_actions: Sequence[str] = (),
 ) -> dict[str, Any]:
     chosen = action if action in UNSTALL_ACTIONS else "preserve"
     payload = {
@@ -47,7 +95,11 @@ def _receipt(
         "writes_locks": False,
         "may_complete_task": False,
         "accepted_as_authority": False,
+        "invents_meta_action": False,
         "confidence": round(float(confidence), 4),
+        "declared_meta_actions": sorted(
+            {str(item) for item in declared_meta_actions if str(item)}
+        )[:8],
         "reason_codes": list(reason_codes or ("preserve",)),
     }
     _LAST.value = dict(payload)
@@ -57,22 +109,50 @@ def _receipt(
 def nominate_unstall_action(
     state: Mapping[str, Any] | None = None,
     *,
+    possible_resolution_action_ids: Sequence[str] = (),
+    declared_meta_actions: Sequence[Any] = (),
+    action_meta_by_id: Mapping[str, Any] | None = None,
     privacy_class: str = "repository_private",
     remote_disclosure_permitted: bool = True,
     timeout: float = 15.0,
 ) -> dict[str, Any]:
-    """Closed recovery nomination. No key / low conf / unknown → preserve."""
+    """Closed recovery nomination. No key / low conf / unknown → preserve.
 
+    When a mapped MetaAction is already on ``possible_resolution_action_ids``,
+    keep that nomination instead of preserving. Never invents a MetaAction
+    outside the declared set. Never writes board or locks.
+    """
+
+    payload = state or {}
     redacted = {
-        "reason": str((state or {}).get("reason") or "")[:64],
-        "wake_kind": str((state or {}).get("wake_kind") or "")[:32],
-        "audit_label": str((state or {}).get("audit_label") or "")[:32],
+        "reason": str(payload.get("reason") or "")[:64],
+        "wake_kind": str(payload.get("wake_kind") or "")[:32],
+        "audit_label": str(payload.get("audit_label") or "")[:32],
     }
+    id_seq = _as_sequence(
+        possible_resolution_action_ids
+        or payload.get("possible_resolution_action_ids")
+        or ()
+    )
+    declared_seq = _as_sequence(
+        declared_meta_actions or payload.get("declared_meta_actions") or ()
+    )
+    meta_by_id = action_meta_by_id or payload.get("action_meta_by_id")
+    allowlist_active = bool(id_seq or declared_seq or meta_by_id)
+    declared = collect_declared_meta_actions(
+        id_seq,
+        declared_meta_actions=declared_seq,
+        action_meta_by_id=meta_by_id,
+    )
     if not typesafe_permitted(
         privacy_class=privacy_class,
         remote_disclosure_permitted=remote_disclosure_permitted,
     ):
-        return _receipt("preserve", reason_codes=("privacy_or_unconfigured",))
+        return _receipt(
+            "preserve",
+            reason_codes=("privacy_or_unconfigured",),
+            declared_meta_actions=tuple(declared),
+        )
     from ipfs_accelerate_py.typesafe_inference import system_one
 
     questions = {
@@ -113,7 +193,11 @@ def nominate_unstall_action(
     try:
         result = system_one(redacted, questions, timeout=timeout)
     except Exception:
-        return _receipt("preserve", reason_codes=("typesafe_error",))
+        return _receipt(
+            "preserve",
+            reason_codes=("typesafe_error",),
+            declared_meta_actions=tuple(declared),
+        )
     choices = getattr(result, "choices", None) or {}
     nouls = getattr(result, "nouls", None) or {}
     picked = str(getattr(choices.get("answer"), "choice", "") or "")
@@ -131,7 +215,11 @@ def nominate_unstall_action(
     if picked and picked not in UNSTALL_ACTIONS:
         reasons.append("unknown_choice_preserve")
         action = "preserve"
-    if conf < LOW_CONFIDENCE and action != "preserve":
+    mapped = _META[action]
+    declared_hit = mapped in declared and mapped != "NO_OP"
+    if declared_hit:
+        reasons.append("prefer_declared_meta_action")
+    elif conf < LOW_CONFIDENCE and action != "preserve":
         reasons.append("low_confidence_preserve")
         action = "preserve"
     elif noul("stale_evidence") >= 0.7:
@@ -143,13 +231,23 @@ def nominate_unstall_action(
     elif noul("needs_human") >= 0.7:
         action = "request_human"
         reasons.append("needs_human_noul")
+    mapped = _META[action]
+    if allowlist_active and mapped != "NO_OP" and mapped not in declared:
+        reasons.append("undeclared_meta_preserve")
+        action = "preserve"
     if redacted["reason"] == "stale_evidence" and action == "preserve":
         reasons.append("blocked_stale_existing_path")
-    return _receipt(action, reason_codes=tuple(reasons), confidence=conf)
+    return _receipt(
+        action,
+        reason_codes=tuple(reasons),
+        confidence=conf,
+        declared_meta_actions=tuple(declared),
+    )
 
 
 __all__ = [
     "UNSTALL_ACTIONS",
+    "collect_declared_meta_actions",
     "last_unstall_nomination",
     "nominate_unstall_action",
 ]

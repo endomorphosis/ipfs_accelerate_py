@@ -1340,11 +1340,43 @@ class AutonomyRuntime:
                     nominate_unstall_action,
                 )
 
+                possible_ids: list[str] = []
+                action_meta_by_id: dict[str, str] = {}
+                try:
+                    question = self._controller.next_unresolved_question()
+                    if question is not None:
+                        possible_ids.extend(
+                            str(item).strip()
+                            for item in question.possible_resolution_action_ids
+                            if str(item).strip()
+                        )
+                except Exception:
+                    possible_ids = []
+                extra = (typesafe_state or {}).get("possible_resolution_action_ids") or ()
+                if isinstance(extra, (list, tuple)):
+                    possible_ids.extend(
+                        str(item).strip() for item in extra if str(item).strip()
+                    )
+                for candidate in candidates or ():
+                    resolution = getattr(candidate, "resolution_action", None)
+                    ident = str(getattr(resolution, "action_id", "") or "").strip()
+                    meta = str(
+                        getattr(
+                            getattr(resolution, "action", None),
+                            "value",
+                            getattr(resolution, "action", ""),
+                        )
+                        or ""
+                    ).strip()
+                    if ident and meta:
+                        action_meta_by_id[ident] = meta
                 nominate_unstall_action(
                     {
                         "reason": "stale_evidence",
                         "wake_kind": bound.kind.value,
-                    }
+                    },
+                    possible_resolution_action_ids=possible_ids,
+                    action_meta_by_id=action_meta_by_id,
                 )
             except Exception:
                 pass
