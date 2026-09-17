@@ -2969,14 +2969,39 @@ def wait_task(
 
     import time
 
-    q = TaskQueue(queue_path)
+    # Open a fresh TaskQueue per poll instead of holding one connection for the
+    # whole wait: a held-open DuckDB connection keeps the file lock, which
+    # would block a worker in another process from claiming/completing tasks
+    # on the same queue file (multi-process local delegation).
+    last_task: Optional[dict] = None
+
+    def _poll_task() -> Optional[dict]:
+        nonlocal last_task
+        q = TaskQueue(queue_path)
+        try:
+            task = q.get(str(task_id))
+            if isinstance(task, dict):
+                last_task = task
+            return last_task
+        except Exception as exc:
+            # Transient lock contention with a worker in another process;
+            # keep waiting on the last known state until the deadline.
+            if "lock" in str(exc).lower():
+                return last_task
+            raise
+        finally:
+            try:
+                q.close()
+            except Exception:
+                pass
+
     deadline = time.time() + max(0.0, float(timeout_s))
-    task = q.get(str(task_id))
+    task = _poll_task()
     while (
         task is not None and task.get("status") in {"queued", "running"} and time.time() < deadline
     ):
-        time.sleep(0.1)
-        task = q.get(str(task_id))
+        time.sleep(0.5)
+        task = _poll_task()
     return task if isinstance(task, dict) else None
 
 
