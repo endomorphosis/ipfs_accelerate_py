@@ -827,6 +827,63 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_retrying_control_row_retains_expired_attempt_as_exclusion():
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness import (
+        RetainedAttemptFairness,
+    )
+
+    attempt = SimpleNamespace(
+        attempt_id="attempt:1",
+        claim_id="claim:1",
+        task_cid="sha256:016",
+        attempt_number=4,
+        owner_session_id="session:old",
+        lease_id="lease:1",
+        fencing_token=1,
+        fence_epoch=1,
+        to_dict=lambda: {"attempt_id": "attempt:1", "status": "running"},
+    )
+    claim = SimpleNamespace(
+        state="expired",
+        expires_at_ms=1,
+        to_dict=lambda: {
+            "claim_id": "claim:1",
+            "task_cid": "sha256:016",
+            "attempt_id": "attempt:1",
+            "attempt_number": 4,
+            "owner_session_id": "session:old",
+            "lease_id": "lease:1",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+        },
+    )
+    task = SimpleNamespace(
+        status="retrying",
+        body={"completion_receipt": {"operation": "stale_in_progress_unstall"}},
+        to_dict=lambda: {"status": "retrying"},
+    )
+    daemon = SimpleNamespace(
+        get_attempt=lambda _id: SimpleNamespace(
+            status="running",
+            to_dict=lambda: {"attempt_id": "attempt:1", "status": "running"},
+        ),
+        coordinator=SimpleNamespace(
+            get_task_claim=lambda _id: claim,
+            get_prepared_task_completion=lambda _cid: None,
+        ),
+        task_source=SimpleNamespace(get=lambda _cid: task),
+        _now_ms=lambda: 10_000,
+        _task_is_in_lane=lambda _task, task_cid="": True,
+        _task_has_exact_database_claim_receipt=lambda *_: False,
+        _database_claim_receipt=lambda _claim: {"operation": "database_claim"},
+    )
+    fairness = RetainedAttemptFairness(daemon)
+    assert fairness._read(attempt) is not None
+    task.status = "blocked"
+    assert fairness._read(attempt) is None
+
+
 def test_retrying_without_claim_is_not_native_awaiting_effect():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog import classify_stall
 

@@ -35,14 +35,22 @@ class RetainedAttemptFairness:
             or str(getattr(claim.state, "value", claim.state)) != "expired"
             or type(claim.expires_at_ms) is not int
             or claim.expires_at_ms > daemon._now_ms()
-            or str(task.status) != "in_progress"
             or not daemon._task_is_in_lane(task, task_cid=attempt.task_cid)
-            or not daemon._task_has_exact_database_claim_receipt(task, claim)
-            or _encoded(task.body.get("completion_receipt"))
-            != _encoded(daemon._database_claim_receipt(claim))
             or daemon.coordinator.get_prepared_task_completion(attempt.task_cid)
             is not None
         ):
+            return None
+        status = str(task.status)
+        if status == "in_progress":
+            if (
+                not daemon._task_has_exact_database_claim_receipt(task, claim)
+                or _encoded(task.body.get("completion_receipt"))
+                != _encoded(daemon._database_claim_receipt(claim))
+            ):
+                return None
+        elif status != "retrying":
+            # Fleet/owner unstall may already have rearmed the control row.
+            # The leftover expired attempt stays an exclusion, not a lane freeze.
             return None
         identity = claim.to_dict()
         names = (
