@@ -827,6 +827,28 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_retrying_without_claim_is_not_native_awaiting_effect():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog import classify_stall
+
+    stall = classify_stall(
+        {
+            "health": "degraded",
+            "reason_codes": ["extra_gate_recursion_sealed_package"],
+            "details": {
+                "owner_ready": True,
+                "task_counts": {"completed": 20, "retrying": 2, "todo": 23},
+                "selection_idle_reason": "expired_attempt_settlement_unavailable",
+                "ready_count": 0,
+                "lanes": [
+                    {"lane": 0, "daemon": {"pid": 1}, "claimed": None},
+                    {"lane": 1, "daemon": {"pid": 2}, "claimed": None},
+                ],
+            },
+        }
+    )
+    assert stall == "independent_todos_unclaimed"
+
+
 def test_sawm_idle_daemons_without_claims_unstall_stale_in_progress(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal

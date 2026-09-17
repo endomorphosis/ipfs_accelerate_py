@@ -263,6 +263,18 @@ def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None 
         if int(counts.get("todo") or 0) > 0:
             return "independent_work_beside_blocked_peer"
         return "blocked_without_independent_work"
+    idle = str(details.get("selection_idle_reason") or "")
+    if (
+        int(counts.get("retrying") or 0) > 0
+        and idle in {
+            "expired_attempt_settlement_unavailable",
+            "no_ready_tasks",
+        }
+        and _stale_in_progress_without_workers(details)
+    ):
+        # Retrying without a claim and without a typed cooldown is not native
+        # implementation. Remaining todos stay frozen until fleet rearms.
+        return "independent_todos_unclaimed"
     if int(counts.get("in_progress") or 0) > 0 or int(counts.get("retrying") or 0) > 0:
         # Native in-progress or just-rearmed retrying work, including D-state
         # I/O, is not a coding stall. An LLM cannot unstick __flush_work or

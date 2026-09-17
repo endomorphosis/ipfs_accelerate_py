@@ -1680,14 +1680,25 @@ def diagnose_board_repair_problems(observation: Mapping[str, Any]) -> dict[str, 
     unstall_all = (stale_claims and not in_progress) or (
         not named and not in_progress and in_progress_count > 0
     )
+    try:
+        retrying_count = int(counts.get("retrying") or 0)
+    except (TypeError, ValueError):
+        retrying_count = 0
+    idle = str(details.get("selection_idle_reason") or "")
+    rearm_retrying = retrying_count > 0 and idle in {
+        "no_ready_tasks",
+        "expired_attempt_settlement_unavailable",
+    }
     return {
         "blocked_aliases": blocked,
         "in_progress_aliases": sorted(set(in_progress)),
         "unstall_all_in_progress": unstall_all,
+        "rearm_retrying": rearm_retrying,
         "problems": [
             *([f"blocked:{alias}" for alias in blocked]),
             *([f"in_progress:{alias}" for alias in sorted(set(in_progress))]),
             *(["stale_in_progress_without_workers"] if stale_claims else []),
+            *(["retrying_without_typed_cooldown"] if rearm_retrying else []),
         ],
     }
 
@@ -1787,6 +1798,7 @@ def repair_board_database(
             )
             changed.append({
                 "task_alias": alias_s,
+                "task_cid": str(cid),
                 "from_status": status_s,
                 "revision": new_rev,
                 "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
@@ -1794,7 +1806,45 @@ def repair_board_database(
         con.execute("CHECKPOINT")
     finally:
         con.close()
+    _write_typed_retry_cooldowns(
+        database,
+        [str(item.get("task_cid") or "") for item in changed],
+    )
     return changed
+
+
+def _write_typed_retry_cooldowns(
+    database: Path,
+    task_cids: Sequence[str],
+) -> list[str]:
+    """Write IntentRepository queue backoff so retrying rows are claimable."""
+    wanted = [str(item) for item in task_cids if item]
+    if not wanted:
+        return []
+    try:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+            IntentRepository,
+        )
+        repo = IntentRepository(
+            database_path=database,
+            install_schema=False,
+            owner_id="fleet-watchdog-repair",
+            session_id="typed-retry-cooldown",
+        )
+    except Exception:
+        return []
+    written: list[str] = []
+    for cid in wanted:
+        try:
+            repo.record_queue_backoff(
+                task_cid=cid,
+                delay_ms=0,
+                reason="current_tree_remaining_requirement_rearmed",
+            )
+        except Exception:
+            continue
+        written.append(cid)
+    return written
 
 
 def repair_event_replay_tasks_via_intent(
@@ -1803,6 +1853,7 @@ def repair_event_replay_tasks_via_intent(
     blocked_aliases: Sequence[str] = (),
     in_progress_aliases: Sequence[str] = (),
     unstall_in_progress: bool = False,
+    rearm_retrying: bool = False,
 ) -> list[dict[str, Any]]:
     """CAS stale rows through IntentRepository so event replay stays valid."""
     try:
@@ -1839,31 +1890,50 @@ def repair_event_replay_tasks_via_intent(
     except Exception:
         return []
     changed: list[dict[str, Any]] = []
+    cooldown_cids: list[str] = []
     for cid, alias, status, rev in rows:
         alias_s = str(alias or "")
         status_s = str(status or "")
+        cid_s = str(cid)
         if status_s == "in_progress" and (unstall_in_progress or alias_s in wanted):
             pass
         elif status_s == "blocked" and alias_s in wanted:
             pass
+        elif status_s == "retrying" and (rearm_retrying or alias_s in wanted):
+            cooldown_cids.append(cid_s)
+            changed.append({
+                "task_alias": alias_s,
+                "task_cid": cid_s,
+                "from_status": status_s,
+                "revision": int(rev or 0),
+                "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
+            })
+            continue
         else:
             continue
         try:
             result = repo.cas_task_status(
-                task_cid=str(cid),
+                task_cid=cid_s,
                 expected_revision=int(rev or 0),
                 new_status="retrying",
                 receipt=receipt,
             )
         except Exception:
             continue
-        if getattr(result, "changed", False):
+        cooldown_cids.append(cid_s)
+        if getattr(result, "changed", False) or status_s == "retrying":
             changed.append({
                 "task_alias": alias_s,
+                "task_cid": cid_s,
                 "from_status": status_s,
                 "revision": int(getattr(result, "revision", 0) or 0),
                 "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
             })
+    if cooldown_cids:
+        written = _write_typed_retry_cooldowns(database, cooldown_cids)
+        for item in changed:
+            if item.get("task_cid") in written:
+                item["typed_cooldown"] = True
     return changed
 
 
@@ -1919,6 +1989,11 @@ def dump_stop_repair_import_start_already_recorded(
     }
     blocked = set(problems.get("blocked_aliases") or [])
     progress = set(problems.get("in_progress_aliases") or [])
+    if problems.get("rearm_retrying"):
+        return any(
+            isinstance(item, dict) and item.get("typed_cooldown") is True
+            for item in result.get("unstalled") or []
+        )
     # Do not loop if we already attempted these aliases and the owner re-blocked them.
     if blocked and blocked <= unstalled:
         return True
@@ -2005,6 +2080,7 @@ def run_board_dump_stop_repair_import_start(
             blocked_aliases=problems.get("blocked_aliases") or [],
             in_progress_aliases=problems.get("in_progress_aliases") or [],
             unstall_in_progress=bool(problems.get("unstall_all_in_progress")),
+            rearm_retrying=bool(problems.get("rearm_retrying")),
         )
         changed = intent_changed or [
             {
