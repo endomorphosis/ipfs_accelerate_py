@@ -29,6 +29,9 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
         last_unstall_nomination,
     )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog import (
+        last_watchdog_classification,
+    )
 
     return {
         "accepted_as_authority": False,
@@ -39,6 +42,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "artifact_view": last_artifact_view(),
         "hammer_timeout_hint": last_hammer_hint(),
         "unstall": last_unstall_nomination(),
+        "watchdog": last_watchdog_classification(),
         "calibration": recommend_skip_policy(),
     }
 

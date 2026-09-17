@@ -1029,7 +1029,7 @@ def worktree_phase_worker_status(
         if stall_evidence_available
         else None
     )
-    return {
+    payload = {
         "required": phase_guarded,
         "phase": phase,
         "phase_available": bool(phase),
@@ -1058,6 +1058,22 @@ def worktree_phase_worker_status(
         ),
         "stalled_without_active_worker": stalled,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog import (
+            observe_watchdog_symptom,
+        )
+
+        observe_watchdog_symptom(
+            {
+                "phase": phase,
+                "stalled": bool(stalled),
+                "worker_count": len(workers),
+                "stall_evidence_available": stall_evidence_available,
+            }
+        )
+    except Exception:
+        pass
+    return payload
 
 
 @dataclass(frozen=True)
