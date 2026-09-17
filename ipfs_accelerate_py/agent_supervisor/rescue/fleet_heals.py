@@ -1797,6 +1797,76 @@ def repair_board_database(
     return changed
 
 
+def repair_event_replay_tasks_via_intent(
+    database: Path,
+    *,
+    blocked_aliases: Sequence[str] = (),
+    in_progress_aliases: Sequence[str] = (),
+    unstall_in_progress: bool = False,
+) -> list[dict[str, Any]]:
+    """CAS stale rows through IntentRepository so event replay stays valid."""
+    try:
+        import duckdb
+        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+            IntentRepository,
+        )
+    except Exception:
+        return []
+    wanted = {str(item) for item in (*blocked_aliases, *in_progress_aliases) if item}
+    try:
+        con = duckdb.connect(str(database), read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT task_cid, task_alias, status, revision FROM tasks"
+            ).fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return []
+    receipt = {
+        "operation": "stale_in_progress_unstall",
+        "completion_authority": False,
+        "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
+        "required_evidence": ["current-tree test results"],
+    }
+    try:
+        repo = IntentRepository(
+            database_path=database,
+            install_schema=False,
+            owner_id="fleet-watchdog-repair",
+            session_id="dump-stop-event-replay-repair",
+        )
+    except Exception:
+        return []
+    changed: list[dict[str, Any]] = []
+    for cid, alias, status, rev in rows:
+        alias_s = str(alias or "")
+        status_s = str(status or "")
+        if status_s == "in_progress" and (unstall_in_progress or alias_s in wanted):
+            pass
+        elif status_s == "blocked" and alias_s in wanted:
+            pass
+        else:
+            continue
+        try:
+            result = repo.cas_task_status(
+                task_cid=str(cid),
+                expected_revision=int(rev or 0),
+                new_status="retrying",
+                receipt=receipt,
+            )
+        except Exception:
+            continue
+        if getattr(result, "changed", False):
+            changed.append({
+                "task_alias": alias_s,
+                "from_status": status_s,
+                "revision": int(getattr(result, "revision", 0) or 0),
+                "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
+            })
+    return changed
+
+
 def import_board_dump(source: Path, database: Path) -> None:
     if not source.is_file():
         raise FileNotFoundError(str(source))
@@ -1930,7 +2000,13 @@ def run_board_dump_stop_repair_import_start(
             marker = inventory.get("state_owner_marker")
             if isinstance(marker, str) and marker:
                 Path(marker).unlink(missing_ok=True)
-        changed = [
+        intent_changed = repair_event_replay_tasks_via_intent(
+            repaired_copy,
+            blocked_aliases=problems.get("blocked_aliases") or [],
+            in_progress_aliases=problems.get("in_progress_aliases") or [],
+            unstall_in_progress=bool(problems.get("unstall_all_in_progress")),
+        )
+        changed = intent_changed or [
             {
                 "task_alias": alias,
                 "from_status": "restored_consistent_dump" if restored_from else "event_replay_sql_skipped",
