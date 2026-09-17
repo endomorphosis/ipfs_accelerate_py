@@ -1015,6 +1015,17 @@ def review_implementation_failure(
             for path in changed
             if owned_paths and not _path_owned_by_expected(path, owned_paths)
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            observe_refactor_scope,
+        )
+
+        observe_refactor_scope(
+            declared_paths=declared_scope,
+            changed_paths=changed,
+        )
+    except Exception:
+        pass
     failed_commands = _failed_commands_from_validation(validation)
     reason = str(validation.get("reason") or "").strip()
     error = str(validation.get("error") or "").strip()

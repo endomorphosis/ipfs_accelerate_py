@@ -245,6 +245,30 @@ def test_lint_static_span_fail_open_does_not_replace_analyzer(
     assert last_static_lint().get("action") == "skipped"
 
 
+def test_observe_refactor_scope_does_not_replace_undeclared_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_refactor_scope,
+        observe_refactor_scope,
+    )
+
+    view = observe_refactor_scope(
+        declared_paths=("src/",),
+        changed_paths=("src/a.py", "docs/secret.md"),
+    )
+    assert view["replaces_undeclared_refactor_check"] is False
+    assert view["accepted_as_authority"] is False
+    assert last_refactor_scope()["replaces_undeclared_refactor_check"] is False
+
+
 def test_observe_source_edit_lint_does_not_block_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

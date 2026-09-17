@@ -10,6 +10,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
 
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         last_artifact_view,
+        last_refactor_scope,
         last_source_edit_lint,
         last_static_lint,
     )
@@ -39,6 +40,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "audit_reduce": last_audit_reduce(),
         "source_edit_lint": last_source_edit_lint(),
         "static_lint": last_static_lint(),
+        "refactor_scope": last_refactor_scope(),
         "artifact_view": last_artifact_view(),
         "hammer_timeout_hint": last_hammer_hint(),
         "unstall": last_unstall_nomination(),

@@ -361,6 +361,66 @@ def lint_static_span(
     return receipt
 
 
+_LAST_REFACTOR_SCOPE = threading.local()
+
+
+def last_refactor_scope() -> dict[str, Any]:
+    value = getattr(_LAST_REFACTOR_SCOPE, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def observe_refactor_scope(
+    *,
+    declared_paths: Sequence[str] = (),
+    changed_paths: Sequence[str] = (),
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Advisory view of declared vs changed paths. Does not replace undeclared-refactor."""
+
+    declared = tuple(str(item).strip() for item in declared_paths if str(item).strip())[:8]
+    changed = tuple(str(item).strip() for item in changed_paths if str(item).strip())[:8]
+    payload = {
+        "accepted_as_authority": False,
+        "replaces_undeclared_refactor_check": False,
+        "declared_paths": list(declared),
+        "changed_paths": list(changed),
+    }
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        _LAST_REFACTOR_SCOPE.value = dict(payload)
+        return payload
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    try:
+        result = system_one(
+            {"declared_paths": list(declared), "changed_paths": list(changed)},
+            {
+                "in_declared_scope": Noul(
+                    instructions={
+                        "question": "Are `changed_paths` inside `declared_paths`?",
+                        "compare": ["`changed_paths`", "`declared_paths`"],
+                    },
+                ),
+            },
+            timeout=timeout,
+        )
+    except Exception:
+        _LAST_REFACTOR_SCOPE.value = dict(payload)
+        return payload
+    noul = getattr(
+        (getattr(result, "nouls", None) or {}).get("in_declared_scope"),
+        "noul",
+        0.0,
+    )
+    payload["in_declared_scope"] = round(float(noul or 0.0), 4)
+    _LAST_REFACTOR_SCOPE.value = dict(payload)
+    return payload
+
+
 CLAIM_MARKERS: tuple[str, ...] = (
     "kernel_verified",
     "proved",
@@ -454,8 +514,10 @@ __all__ = [
     "inspect_allowlisted_artifacts",
     "last_artifact_view",
     "last_source_edit_lint",
+    "last_refactor_scope",
     "last_static_lint",
     "lint_admissibility",
+    "observe_refactor_scope",
     "lint_static_span",
     "lint_questions",
     "observe_source_edit_lint",
