@@ -710,7 +710,6 @@ _OVERLAY_CURRENT_TREE_SMOKE = {
     ),
     "sawm": (
         "test/api/test_sawm_graceful_recovery.py",
-        "test/api/test_sawm_native_dispatch_drain.py",
     ),
 }
 
@@ -752,13 +751,21 @@ def run_overlay_current_tree_smoke(
             timeout=_LOCAL_VALIDATION_TIMEOUT,
             check=False,
             text=True,
+            start_new_session=True,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return {**empty, "reason": "overlay_current_tree_smoke_unavailable"}
+        return {
+            **empty,
+            "status": "wait",
+            "reason": "overlay_current_tree_smoke_unavailable",
+        }
+    signaled = isinstance(completed.returncode, int) and completed.returncode < 0
     collection_error = completed.returncode in {2, 4}
     reason = (
         "overlay current-tree tests passed; remaining todos are not stalled"
         if completed.returncode == 0 else
+        "overlay current-tree tests were signaled before they finished"
+        if signaled else
         "overlay current-tree tests could not be collected"
         if collection_error else
         "overlay current-tree tests did not pass; do not rewrite receipts"

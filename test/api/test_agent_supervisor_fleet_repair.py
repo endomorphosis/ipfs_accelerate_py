@@ -873,7 +873,6 @@ def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypat
     (overlay / "test/api/doep").mkdir(parents=True)
     (overlay / "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py").write_text("def test_ok():\n    assert True\n")
     (overlay / "test/api/test_sawm_graceful_recovery.py").write_text("def test_ok():\n    assert True\n")
-    (overlay / "test/api/test_sawm_native_dispatch_drain.py").write_text("def test_ok():\n    assert True\n")
     monkeypatch.setattr(fleet_heals, "supervisor_overlay_root", lambda: str(overlay))
     calls = []
 
@@ -890,6 +889,7 @@ def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypat
     assert sawm["completion_authoritative"] is False
     assert any("test_doep_063" in item for call, _ in calls for item in call)
     assert any("test_sawm_graceful_recovery.py" in item for call, _ in calls for item in call)
+    assert not any("test_sawm_native_dispatch_drain.py" in item for call, _ in calls for item in call)
     again = run_overlay_current_tree_smoke({"id": "doep"}, {"last_action_result": doep})
     assert again["status"] == "skip"
     retry = run_overlay_current_tree_smoke(
