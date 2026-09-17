@@ -863,6 +863,104 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
     assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
 
 
+def test_dump_stop_repair_import_start_skips_spar(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_board_dump_stop_repair_import_start,
+    )
+    result = run_board_dump_stop_repair_import_start(
+        {"id": "spar", "cwd": str(tmp_path)},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}}},
+    )
+    assert result["status"] == "skip"
+    assert result["reason"] == "retain_owner_not_stopped"
+    assert result["completion_authoritative"] is False
+
+
+def test_repair_board_database_flips_stale_rows(tmp_path):
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import repair_board_database
+
+    db = tmp_path / "control.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute(
+        "CREATE TABLE tasks (task_cid VARCHAR, task_alias VARCHAR, status VARCHAR, "
+        "revision INTEGER, updated_at VARCHAR, body_json VARCHAR)"
+    )
+    con.execute(
+        "CREATE TABLE task_revisions (task_cid VARCHAR, revision INTEGER, status VARCHAR, "
+        "body_json VARCHAR, recorded_at VARCHAR)"
+    )
+    con.execute(
+        "INSERT INTO tasks VALUES "
+        "('cid-16', 'SAWM-016', 'in_progress', 12, 't', '{}'), "
+        "('cid-44', 'DOEP-044', 'blocked', 16, 't', '{}'), "
+        "('cid-ok', 'SAWM-001', 'completed', 1, 't', '{}')"
+    )
+    con.close()
+    changed = repair_board_database(db, blocked_aliases=["DOEP-044"], unstall_in_progress=True)
+    aliases = {item["task_alias"] for item in changed}
+    assert aliases == {"SAWM-016", "DOEP-044"}
+    con = duckdb.connect(str(db), read_only=True)
+    rows = dict(con.execute("SELECT task_alias, status FROM tasks").fetchall())
+    con.close()
+    assert rows["SAWM-016"] == "retrying"
+    assert rows["DOEP-044"] == "retrying"
+    assert rows["SAWM-001"] == "completed"
+
+
+def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_board_dump_stop_repair_import_start,
+    )
+
+    db = tmp_path / "control.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute(
+        "CREATE TABLE tasks (task_cid VARCHAR, task_alias VARCHAR, status VARCHAR, "
+        "revision INTEGER, updated_at VARCHAR, body_json VARCHAR)"
+    )
+    con.execute(
+        "CREATE TABLE task_revisions (task_cid VARCHAR, revision INTEGER, status VARCHAR, "
+        "body_json VARCHAR, recorded_at VARCHAR)"
+    )
+    con.execute("INSERT INTO tasks VALUES ('cid-16', 'SAWM-016', 'in_progress', 1, 't', '{}')")
+    con.close()
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text("{}")
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "sawm",
+            "database_path": str(db),
+            "owner_status_path": str(status),
+            "existing_service": "ipfs-taskboard-sawm-supervisor.service",
+            "ensure_argv": ["systemctl", "--user", "start", "ipfs-taskboard-sawm-supervisor.service"],
+        },
+    )
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_board_dump_stop_repair_import_start(
+        {"id": "sawm", "cwd": str(tmp_path)},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"}}},
+        dump_root=tmp_path / "dumps",
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authoritative"] is False
+    assert result["unstalled"][0]["task_alias"] == "SAWM-016"
+    assert ["systemctl", "--user", "stop", "ipfs-taskboard-sawm-supervisor.service"] in calls
+    assert ["systemctl", "--user", "start", "ipfs-taskboard-sawm-supervisor.service"] in calls
+    con = duckdb.connect(str(db), read_only=True)
+    assert con.execute("SELECT status FROM tasks WHERE task_alias='SAWM-016'").fetchone()[0] == "retrying"
+    con.close()
+
+
 def test_dump_board_before_owner_stop_copies_duckdb(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import dump_board_before_owner_stop
 

@@ -13,7 +13,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator, Mapping, Sequence
 
 _RECEIPT_SEARCH_ROOTS = (
     "artifacts",
@@ -1605,6 +1605,9 @@ def dump_board_before_owner_stop(
     dest = root / time.strftime("%Y%m%dT%H%M%SZ") / board_id
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(database, dest / database.name)
+    wal = Path(str(database) + ".wal")
+    if wal.is_file():
+        shutil.copy2(wal, dest / wal.name)
     if status_path.is_file():
         shutil.copy2(status_path, dest / status_path.name)
     (dest / "inventory-id.txt").write_text(board_id + "\n")
@@ -1615,6 +1618,171 @@ def dump_board_before_owner_stop(
         "completion_authoritative": False,
         "dump_dir": str(dest),
         "reason": "board dump written before exclusive-owner stop",
+    }
+
+
+def _exclusive_owner_unit(
+    board: Mapping[str, Any], observation: Mapping[str, Any] | None = None,
+) -> str:
+    inventory = _inventory_board(board)
+    details = (observation or {}).get("details") if isinstance((observation or {}).get("details"), dict) else {}
+    extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
+    ensure = inventory.get("ensure_argv") if isinstance(inventory.get("ensure_argv"), list) else []
+    for candidate in (
+        inventory.get("existing_service"),
+        extra.get("live_owner_unit"),
+        extra.get("inventory_owner_unit"),
+        ensure[-1] if ensure else "",
+    ):
+        name = str(candidate or "")
+        if name.endswith(".service") and name != "cron.service":
+            return name
+    return ""
+
+
+def repair_board_database(
+    database: Path,
+    *,
+    blocked_aliases: Sequence[str] = (),
+    unstall_in_progress: bool = True,
+) -> list[dict[str, Any]]:
+    """Flip stale in_progress/blocked rows to retrying. Owners must be stopped."""
+    import duckdb
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    con = duckdb.connect(str(database), read_only=False)
+    changed: list[dict[str, Any]] = []
+    try:
+        rows = con.execute(
+            "SELECT task_cid, task_alias, status, revision, body_json FROM tasks",
+        ).fetchall()
+        wanted = {str(item) for item in blocked_aliases if item}
+        for cid, alias, status, rev, body in rows:
+            alias_s = str(alias or "")
+            status_s = str(status or "")
+            if status_s == "in_progress" and unstall_in_progress:
+                pass
+            elif status_s == "blocked" and alias_s in wanted:
+                pass
+            else:
+                continue
+            new_rev = int(rev or 0) + 1
+            body_text = body if isinstance(body, str) else json.dumps(body or {})
+            con.execute(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                "WHERE task_cid = ? AND revision = ?",
+                ["retrying", new_rev, now, cid, rev],
+            )
+            con.execute(
+                "INSERT INTO task_revisions (task_cid, revision, status, body_json, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [cid, new_rev, "retrying", body_text, now],
+            )
+            changed.append({
+                "task_alias": alias_s,
+                "from_status": status_s,
+                "revision": new_rev,
+            })
+        con.execute("CHECKPOINT")
+    finally:
+        con.close()
+    return changed
+
+
+def import_board_dump(source: Path, database: Path) -> None:
+    if not source.is_file():
+        raise FileNotFoundError(str(source))
+    database.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, database)
+
+
+def dump_stop_repair_import_start_already_recorded(state: Mapping[str, Any]) -> bool:
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return (
+        result.get("recipe") == "dump_stop_repair_import_start"
+        and result.get("status") == "applied"
+    )
+
+
+def run_board_dump_stop_repair_import_start(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    state: Mapping[str, Any] | None = None,
+    *,
+    dump_root: Path | None = None,
+) -> dict[str, Any]:
+    """dump → stop → repair → import → start. Never SPAR/ASEH. Never admits."""
+    empty = {
+        "status": "skip",
+        "recipe": "dump_stop_repair_import_start",
+        "completion_authority": False,
+        "completion_authoritative": False,
+    }
+    if dump_stop_repair_import_start_already_recorded(state or {}):
+        return {**empty, "reason": "dump_stop_repair_import_start_already_recorded"}
+    board_id = str(board.get("id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_stopped"}
+    unit = _exclusive_owner_unit(board, observation)
+    if not unit:
+        return {**empty, "reason": "exclusive_owner_unit_unknown"}
+    dumped = dump_board_before_owner_stop(board, dump_root=dump_root)
+    if dumped.get("status") != "applied":
+        return {**empty, "reason": dumped.get("reason") or "dump_failed"}
+    dump_dir = Path(str(dumped["dump_dir"]))
+    inventory = _inventory_board(board)
+    database = Path(str(inventory.get("database_path") or ""))
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    blocked = [str(item) for item in details.get("blocked_task_ids") or [] if item]
+    subprocess.run(
+        ["systemctl", "--user", "stop", unit],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=180,
+        check=False,
+    )
+    repaired_copy = dump_dir / (database.name + ".repaired")
+    if database.is_file():
+        shutil.copy2(database, dump_dir / (database.name + ".post-stop"))
+        shutil.copy2(database, repaired_copy)
+    else:
+        shutil.copy2(dump_dir / database.name, repaired_copy)
+    changed = repair_board_database(
+        repaired_copy, blocked_aliases=blocked, unstall_in_progress=True,
+    )
+    import_board_dump(repaired_copy, database)
+    subprocess.run(
+        ["systemctl", "--user", "reset-failed", unit],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=5,
+        check=False,
+    )
+    ensure = inventory.get("ensure_argv") if isinstance(inventory.get("ensure_argv"), list) else []
+    start_argv = (
+        list(ensure) if ensure and all(isinstance(item, str) and item for item in ensure)
+        else ["systemctl", "--user", "start", unit]
+    )
+    started = subprocess.run(
+        start_argv,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=180,
+        check=False,
+    )
+    return {
+        "status": "applied",
+        "recipe": "dump_stop_repair_import_start",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "dump_dir": str(dump_dir),
+        "unstalled": changed,
+        "started": started.returncode == 0,
+        "reason": (
+            "dumped, stopped, repaired stale rows to retrying, imported, started; "
+            "receipts stay incomplete"
+        ),
     }
 
 
@@ -1932,6 +2100,10 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             if smoke.get("status") != "skip":
                 smoke["results"] = prior_results
                 return smoke
+            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+            if pipeline.get("status") != "skip":
+                pipeline["results"] = prior_results
+                return pipeline
             return {
                 "status": "applied",
                 "recipe": "successors_may_run_on_current_tree_evidence",
@@ -1957,6 +2129,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             smoke = run_overlay_current_tree_smoke(board, state)
             if smoke.get("status") != "skip":
                 return smoke
+            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+            if pipeline.get("status") != "skip":
+                return pipeline
             return {
                 "status": "applied",
                 "recipe": "stale_in_progress_does_not_stall_remaining_todos",
