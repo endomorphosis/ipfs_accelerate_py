@@ -311,6 +311,23 @@ def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
     assert fleet.select_action(state, _board(tmp_path, id="sawm"), 100) == "supervisor_heal"
 
 
+def test_reset_failed_ensure_unit_targets_configured_service(tmp_path, monkeypatch):
+    board = _board(tmp_path)
+    board["ensure"] = {
+        "argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
+    }
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert fleet.reset_failed_ensure_unit(board) is True
+    assert calls[0] == ["systemctl", "--user", "reset-failed", "agent-supervisor-doep-v1.service"]
+    assert fleet._ensure_unit_name(board) == "agent-supervisor-doep-v1.service"
+
+
 def test_repair_enqueue_does_not_consume_ensure_attempts(tmp_path):
     board = _board(tmp_path)
     root = tmp_path / "watch"

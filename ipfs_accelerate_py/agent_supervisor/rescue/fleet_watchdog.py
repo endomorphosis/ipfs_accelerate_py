@@ -574,8 +574,7 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     return state
 
 
-def _ensure_unit_already_active(board: dict[str, Any]) -> bool:
-    """True when the configured exclusive-owner unit is already running."""
+def _ensure_unit_name(board: dict[str, Any]) -> str:
     spec = board.get("ensure") if isinstance(board.get("ensure"), dict) else {}
     argv = spec.get("argv") if isinstance(spec.get("argv"), list) else []
     if (
@@ -584,10 +583,18 @@ def _ensure_unit_already_active(board: dict[str, Any]) -> bool:
         or "start" not in argv
         or not str(argv[-1]).endswith(".service")
     ):
+        return ""
+    return str(argv[-1])
+
+
+def _ensure_unit_already_active(board: dict[str, Any]) -> bool:
+    """True when the configured exclusive-owner unit is already running."""
+    unit = _ensure_unit_name(board)
+    if not unit:
         return False
     try:
         completed = subprocess.run(
-            ["systemctl", "--user", "is-active", str(argv[-1])],
+            ["systemctl", "--user", "is-active", unit],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=5,
@@ -597,6 +604,24 @@ def _ensure_unit_already_active(board: dict[str, Any]) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return completed.returncode == 0 and str(completed.stdout or "").strip() == "active"
+
+
+def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
+    """Clear systemd start-limit so a dirty-copy loop can start again."""
+    unit = _ensure_unit_name(board)
+    if not unit:
+        return False
+    try:
+        completed = subprocess.run(
+            ["systemctl", "--user", "reset-failed", unit],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
@@ -940,6 +965,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         else:
             from .fleet_heals import clear_overlay_copies_blocking_owner_start
             cleared = clear_overlay_copies_blocking_owner_start(board)
+            reset_failed_ensure_unit(board)
             action_result = runner(board["ensure"], cwd=board["cwd"], timeout=180)
             if isinstance(action_result, dict) and isinstance(cleared, dict):
                 action_result = dict(action_result, overlay_copies=cleared)
