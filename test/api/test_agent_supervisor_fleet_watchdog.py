@@ -311,6 +311,28 @@ def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
     assert fleet.select_action(state, _board(tmp_path, id="sawm"), 100) == "supervisor_heal"
 
 
+def test_sawm_stalled_or_unclaimed_todos_never_select_llm_router(tmp_path):
+    board = _board(tmp_path, id="sawm")
+    stalled = {
+        "health": "degraded",
+        "stall_class": "stalled_no_progress",
+        "observation": {
+            "board_id": "sawm",
+            "health": "degraded",
+            "complete": False,
+            "reason_codes": ["no_task_progress"],
+            "details": {"task_counts": {"todo": 23, "in_progress": 2}, "owner_ready": True},
+        },
+        "incident_since": 0,
+        "next_action_at": 0,
+    }
+    assert fleet.select_action(stalled, board, 100) == "supervisor_heal"
+    unclaimed = dict(stalled, stall_class="independent_todos_unclaimed")
+    unclaimed["last_action"] = "repair"
+    unclaimed["next_action_at"] = 10_000
+    assert fleet.select_action(unclaimed, board, 200) == "supervisor_heal"
+
+
 def test_sawm_stale_in_progress_without_claims_does_not_freeze_the_board():
     observation = {
         "board_id": "sawm",

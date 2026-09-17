@@ -687,7 +687,11 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
                 and details.get("owner_ready") is True
                 and state.get("last_action") == "ensure"
             )
-            or stall == "owner_missing"
+            or stall in {
+                "owner_missing",
+                "independent_todos_unclaimed",
+                "stalled_no_progress",
+            }
         ):
             return ""
     if health == "complete" or state["observation"].get("complete") is True:
@@ -734,16 +738,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "kernel_uninterruptible_wait":
         return "supervisor_heal"
     if stall == "stalled_no_progress":
-        details = (state.get("observation") or {}).get("details")
-        details = details if isinstance(details, dict) else {}
-        counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
-        if (
-            int(counts.get("retrying") or 0) > 0
-            or int(counts.get("todo") or 0) > 0
-            and _live_daemons(details)
-        ):
-            return "supervisor_heal"
-        return "repair"
+        # Remaining SAWM/DOEP todos are not llm_router work.
+        return "supervisor_heal"
     if stall == "independent_work_beside_blocked_peer":
         return "supervisor_heal"
     if stall == "independent_todos_unclaimed":
