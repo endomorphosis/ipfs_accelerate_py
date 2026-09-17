@@ -195,6 +195,35 @@ def test_cite_claim_spans_flags_unsupported(monkeypatch: pytest.MonkeyPatch) -> 
     assert "claim-evil" not in unsupported
 
 
+def test_inspect_allowlisted_artifacts_fail_open_and_never_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        inspect_allowlisted_artifacts,
+        last_artifact_view,
+    )
+
+    view = inspect_allowlisted_artifacts(
+        obligation_id="obl-1",
+        symbol_ids=("sym-a",),
+        clause_ids=("cl-1",),
+        summaries={"sym-a": "foo", "ignored": "no"},
+    )
+    assert view["accepted_as_authority"] is False
+    assert view["writes_ast"] is False
+    assert view["writes_contracts"] is False
+    assert view["matches"] == {}
+    assert "ignored" not in view["symbol_ids"]
+    assert last_artifact_view()["writes_ast"] is False
+
+
 def test_observe_source_edit_lint_does_not_block_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

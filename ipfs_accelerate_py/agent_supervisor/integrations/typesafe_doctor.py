@@ -123,6 +123,59 @@ def filter_candidates_for_tactician(
     return filtered
 
 
+def order_candidates_for_hammer(
+    candidates: Sequence[Any],
+    *,
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> tuple[Any, ...]:
+    """Reorder candidates by TypeSafe quality. Keep all. Fail-open original order."""
+
+    items = tuple(candidates)
+    if len(items) < 2:
+        return items
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        return items
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+        score_synthesis_candidate,
+    )
+
+    ordered_ids = tuple(_candidate_id(item) for item in items if _candidate_id(item))
+    if len(ordered_ids) < 2:
+        return items
+    ranked: list[tuple[float, int, Any]] = []
+    scores: dict[str, float] = {}
+    for index, item in enumerate(items):
+        ident = _candidate_id(item) or f"anon-{index}"
+        try:
+            receipt = score_synthesis_candidate(
+                candidate_id=ident,
+                allowlisted_ids=ordered_ids or (ident,),
+                state={"summary": _candidate_summary(item)},
+                privacy_class=privacy_class,
+                remote_disclosure_permitted=remote_disclosure_permitted,
+                timeout=timeout,
+            )
+            quality = float(receipt.score) if receipt.action == "scored" else 0.0
+        except Exception:
+            return items
+        scores[ident] = quality
+        ranked.append((-quality, index, item))
+    ranked.sort()
+    hint = {
+        "typesafe_hint_only": True,
+        "accepted_as_authority": False,
+        "ordered_ids": [_candidate_id(item) or f"anon-{idx}" for _q, idx, item in ranked],
+        "scores": scores,
+    }
+    _LAST_HAMMER_HINT.value = dict(hint)
+    return tuple(item for _q, _i, item in ranked)
+
+
 def last_hammer_hint() -> dict[str, Any]:
     value = getattr(_LAST_HAMMER_HINT, "value", None)
     return dict(value) if isinstance(value, Mapping) else {}
@@ -168,5 +221,6 @@ __all__ = [
     "filter_candidates_for_tactician",
     "hammer_timeout_hint",
     "last_hammer_hint",
+    "order_candidates_for_hammer",
     "select_retrieve_ids_for_tactician",
 ]

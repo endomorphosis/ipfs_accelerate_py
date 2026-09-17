@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
 MAX_SNIPPETS = 8
 MAX_SNIPPET_CHARS = 400
 _LAST_SOURCE_EDIT_LINT = threading.local()
+_LAST_ARTIFACT_VIEW = threading.local()
 
 
 def _snippet_id(row: Mapping[str, Any]) -> str:
@@ -368,6 +369,8 @@ __all__ = [
     "citation_questions",
     "compose_snippet_score",
     "extract_claim_spans",
+    "inspect_allowlisted_artifacts",
+    "last_artifact_view",
     "last_source_edit_lint",
     "lint_admissibility",
     "lint_questions",
@@ -376,3 +379,83 @@ __all__ = [
     "rerank_allowlisted_snippets",
     "rerank_questions",
 ]
+
+
+def last_artifact_view() -> dict[str, Any]:
+    value = getattr(_LAST_ARTIFACT_VIEW, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def inspect_allowlisted_artifacts(
+    *,
+    obligation_id: str = "",
+    symbol_ids: Sequence[str] = (),
+    clause_ids: Sequence[str] = (),
+    summaries: Mapping[str, str] | None = None,
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Read-only noul view of allowlisted AST/contract ids. Never writes."""
+
+    symbols = tuple(str(item).strip() for item in symbol_ids if str(item).strip())[:8]
+    clauses = tuple(str(item).strip() for item in clause_ids if str(item).strip())[:8]
+    texts = {
+        str(key).strip(): str(value)[:240]
+        for key, value in dict(summaries or {}).items()
+        if str(key).strip() in set(symbols) | set(clauses)
+    }
+    payload = {
+        "accepted_as_authority": False,
+        "writes_ast": False,
+        "writes_contracts": False,
+        "obligation_id": str(obligation_id or "")[:128],
+        "symbol_ids": list(symbols),
+        "clause_ids": list(clauses),
+        "matches": {},
+    }
+    if not symbols and not clauses:
+        _LAST_ARTIFACT_VIEW.value = dict(payload)
+        return payload
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        _LAST_ARTIFACT_VIEW.value = dict(payload)
+        return payload
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    matches: dict[str, float] = {}
+    try:
+        for ident in (*symbols, *clauses):
+            result = system_one(
+                {
+                    "obligation": {"id": str(obligation_id or "")[:128]},
+                    "artifact": {
+                        "id": ident,
+                        "kind": "symbol" if ident in symbols else "clause",
+                        "summary": texts.get(ident, ""),
+                    },
+                },
+                {
+                    "matches_obligation": Noul(
+                        instructions={
+                            "question": "Does `artifact.summary` match `obligation.id`?",
+                            "inspect": "`artifact.summary`",
+                        },
+                    ),
+                },
+                timeout=timeout,
+            )
+            noul = getattr(
+                (getattr(result, "nouls", None) or {}).get("matches_obligation"),
+                "noul",
+                0.0,
+            )
+            matches[ident] = round(float(noul or 0.0), 4)
+    except Exception:
+        _LAST_ARTIFACT_VIEW.value = dict(payload)
+        return payload
+    payload["matches"] = matches
+    _LAST_ARTIFACT_VIEW.value = dict(payload)
+    return payload

@@ -9,6 +9,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     """Combine last guardrail, audit reduce, and source-edit lint receipts."""
 
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_view,
         last_source_edit_lint,
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
@@ -30,6 +31,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "trace_guardrail": last_trace_guardrail(),
         "audit_reduce": last_audit_reduce(),
         "source_edit_lint": last_source_edit_lint(),
+        "artifact_view": last_artifact_view(),
         "hammer_timeout_hint": last_hammer_hint(),
         "calibration": recommend_skip_policy(),
     }

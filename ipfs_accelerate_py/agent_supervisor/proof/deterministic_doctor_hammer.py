@@ -2769,11 +2769,13 @@ class DeterministicDoctorHammer:
             try:
                 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
                     filter_candidates_for_tactician,
+                    order_candidates_for_hammer,
                 )
 
                 filtered = filter_candidates_for_tactician(candidates)
                 if filtered:
                     candidates = filtered
+                candidates = order_candidates_for_hammer(candidates)
             except Exception:
                 pass
         wall0 = time.monotonic()
@@ -4844,19 +4846,26 @@ class DeterministicDoctorHammer:
         assert self._source_writes == 0
         assert self._llm_calls == 0
         assert self._model_calls == 0
-        if DoctorHammerReasonCode.TIMEOUT.value in tuple(reasons):
-            try:
-                from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
-                    hammer_timeout_hint,
-                )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
+                hammer_timeout_hint,
+                last_hammer_hint,
+            )
 
+            merged = dict(metadata or {})
+            prior = last_hammer_hint()
+            if prior:
+                merged.update(prior)
+            if DoctorHammerReasonCode.TIMEOUT.value in tuple(reasons):
                 hint = hammer_timeout_hint(finding_id=finding_id)
                 if hint:
-                    merged = dict(metadata or {})
                     merged.update(hint)
-                    metadata = merged
-            except Exception:
-                pass
+            if merged:
+                merged.setdefault("typesafe_hint_only", True)
+                merged["accepted_as_authority"] = False
+                metadata = merged
+        except Exception:
+            pass
         receipt_id = _stable_id(
             "doctor-repair-proof",
             {
