@@ -4844,6 +4844,19 @@ class DeterministicDoctorHammer:
         assert self._source_writes == 0
         assert self._llm_calls == 0
         assert self._model_calls == 0
+        if DoctorHammerReasonCode.TIMEOUT.value in tuple(reasons):
+            try:
+                from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
+                    hammer_timeout_hint,
+                )
+
+                hint = hammer_timeout_hint(finding_id=finding_id)
+                if hint:
+                    merged = dict(metadata or {})
+                    merged.update(hint)
+                    metadata = merged
+            except Exception:
+                pass
         receipt_id = _stable_id(
             "doctor-repair-proof",
             {

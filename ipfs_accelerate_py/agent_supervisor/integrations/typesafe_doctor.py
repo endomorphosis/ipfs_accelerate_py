@@ -7,7 +7,8 @@ every candidate and always spend hammer.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+import threading
+from typing import Any, Mapping, Sequence
 
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     HIGH_CONFIDENCE,
@@ -15,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
 )
 
 UNUSABLE_SCORE = 0.5
+_LAST_HAMMER_HINT = threading.local()
 
 
 def _candidate_id(item: Any) -> str:
@@ -121,7 +123,50 @@ def filter_candidates_for_tactician(
     return filtered
 
 
+def last_hammer_hint() -> dict[str, Any]:
+    value = getattr(_LAST_HAMMER_HINT, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def hammer_timeout_hint(
+    *,
+    finding_id: str,
+    declaration: str = "",
+    english: str = "",
+    smtlib: str = "",
+) -> dict[str, Any]:
+    """Advisory sat/unsat after hammer timeout. Never KERNEL_VERIFIED."""
+
+    empty: dict[str, Any] = {}
+    if not typesafe_permitted():
+        return empty
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+            triage_smt,
+        )
+
+        text = str(english or declaration or finding_id or "").strip()
+        receipt = triage_smt(
+            english=text,
+            smtlib=str(smtlib or ""),
+            case_id=str(finding_id or "hammer-timeout")[:64],
+            complexity="hard",
+        )
+        hint = {
+            "typesafe_hint_only": True,
+            "claim_status": receipt.claim_status,
+            "confidence": round(float(receipt.confidence or 0.0), 4),
+            "accepted_as_authority": False,
+        }
+        _LAST_HAMMER_HINT.value = dict(hint)
+        return hint
+    except Exception:
+        return empty
+
+
 __all__ = [
     "filter_candidates_for_tactician",
+    "hammer_timeout_hint",
+    "last_hammer_hint",
     "select_retrieve_ids_for_tactician",
 ]

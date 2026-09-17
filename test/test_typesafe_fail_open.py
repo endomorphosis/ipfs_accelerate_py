@@ -227,6 +227,7 @@ def test_new_helpers_do_not_call_http_without_key(
         observe_control_audit_throttled,
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
+        hammer_timeout_hint,
         select_retrieve_ids_for_tactician,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
@@ -236,6 +237,7 @@ def test_new_helpers_do_not_call_http_without_key(
 
     maybe_observe_worker_output(prompt="p", output="KERNEL_VERIFIED", usage_mode=LLM_USAGE_MODE_OFF)
     assert select_retrieve_ids_for_tactician(({"id": "a"}, {"id": "b"})) == ("a", "b")
+    assert hammer_timeout_hint(finding_id="f1") == {}
     spans = extract_claim_spans("KERNEL_VERIFIED identity.")
     assert cite_claim_spans(spans, receipt_ids=(), allowlisted_ids=tuple(s["id"] for s in spans)) == ()
     assert rerank_allowlisted_snippets(
