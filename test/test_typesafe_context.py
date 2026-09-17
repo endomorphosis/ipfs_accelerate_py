@@ -134,6 +134,9 @@ def test_producer_and_citation_nouls_have_structured_criteria() -> None:
     citation = citation_questions()["supported"].to_dict()
     assert citation["criteria"]["true"]["what"]
     assert "KERNEL_VERIFIED" in citation["criteria"]["false"]["examples"][0]
+    field = producer["instructions"]["field"]
+    assert field["name"] == "producer"
+    assert field["type"] == "string"
 
 
 def test_observe_merge_conflict_paths_does_not_fence_or_write(

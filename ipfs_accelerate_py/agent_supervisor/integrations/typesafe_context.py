@@ -582,6 +582,11 @@ def producer_consumer_questions() -> dict[str, Any]:
     return {
         "producer_matches": Noul(
             instructions={
+                "field": {
+                    "name": "producer",
+                    "type": "string",
+                    "description": "Admitted AST extractor identity",
+                },
                 "question": "Does `artifact.producer` match `admitted.producer`?",
                 "compare": ["`artifact.producer`", "`admitted.producer`"],
             },
@@ -594,6 +599,11 @@ def producer_consumer_questions() -> dict[str, Any]:
         ),
         "producer_version_matches": Noul(
             instructions={
+                "field": {
+                    "name": "producer_version",
+                    "type": "string",
+                    "description": "Admitted AST extractor version string",
+                },
                 "question": (
                     "Does `artifact.producer_version` match `admitted.producer_version`?"
                 ),
@@ -896,6 +906,12 @@ def inspect_allowlisted_artifacts(
     questions: dict[str, Any] = {
         f"matches_{ident}": Noul(
             instructions={
+                "field": {
+                    "name": "artifact_id",
+                    "type": "string",
+                    "description": "Allowlisted AST or ArchitectureIR node id",
+                },
+                "extracted_value": ident,
                 "question": (
                     f"Does `artifacts.{ident}.summary` match `obligation.id`?"
                 ),
