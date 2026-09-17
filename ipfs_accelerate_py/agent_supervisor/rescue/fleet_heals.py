@@ -1806,45 +1806,7 @@ def repair_board_database(
         con.execute("CHECKPOINT")
     finally:
         con.close()
-    _write_typed_retry_cooldowns(
-        database,
-        [str(item.get("task_cid") or "") for item in changed],
-    )
     return changed
-
-
-def _write_typed_retry_cooldowns(
-    database: Path,
-    task_cids: Sequence[str],
-) -> list[str]:
-    """Write IntentRepository queue backoff so retrying rows are claimable."""
-    wanted = [str(item) for item in task_cids if item]
-    if not wanted:
-        return []
-    try:
-        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-            IntentRepository,
-        )
-        repo = IntentRepository(
-            database_path=database,
-            install_schema=False,
-            owner_id="fleet-watchdog-repair",
-            session_id="typed-retry-cooldown",
-        )
-    except Exception:
-        return []
-    written: list[str] = []
-    for cid in wanted:
-        try:
-            repo.record_queue_backoff(
-                task_cid=cid,
-                delay_ms=0,
-                reason="current_tree_remaining_requirement_rearmed",
-            )
-        except Exception:
-            continue
-        written.append(cid)
-    return written
 
 
 def repair_event_replay_tasks_via_intent(
@@ -1890,7 +1852,6 @@ def repair_event_replay_tasks_via_intent(
     except Exception:
         return []
     changed: list[dict[str, Any]] = []
-    cooldown_cids: list[str] = []
     for cid, alias, status, rev in rows:
         alias_s = str(alias or "")
         status_s = str(status or "")
@@ -1900,7 +1861,6 @@ def repair_event_replay_tasks_via_intent(
         elif status_s == "blocked" and alias_s in wanted:
             pass
         elif status_s == "retrying" and (rearm_retrying or alias_s in wanted):
-            cooldown_cids.append(cid_s)
             changed.append({
                 "task_alias": alias_s,
                 "task_cid": cid_s,
@@ -1920,7 +1880,6 @@ def repair_event_replay_tasks_via_intent(
             )
         except Exception:
             continue
-        cooldown_cids.append(cid_s)
         if getattr(result, "changed", False) or status_s == "retrying":
             changed.append({
                 "task_alias": alias_s,
@@ -1929,11 +1888,6 @@ def repair_event_replay_tasks_via_intent(
                 "revision": int(getattr(result, "revision", 0) or 0),
                 "remaining_requirements": [CURRENT_TREE_REMAINING_REQUIREMENT],
             })
-    if cooldown_cids:
-        written = _write_typed_retry_cooldowns(database, cooldown_cids)
-        for item in changed:
-            if item.get("task_cid") in written:
-                item["typed_cooldown"] = True
     return changed
 
 
@@ -1989,11 +1943,6 @@ def dump_stop_repair_import_start_already_recorded(
     }
     blocked = set(problems.get("blocked_aliases") or [])
     progress = set(problems.get("in_progress_aliases") or [])
-    if problems.get("rearm_retrying"):
-        return any(
-            isinstance(item, dict) and item.get("typed_cooldown") is True
-            for item in result.get("unstalled") or []
-        )
     # Do not loop if we already attempted these aliases and the owner re-blocked them.
     if blocked and blocked <= unstalled:
         return True
