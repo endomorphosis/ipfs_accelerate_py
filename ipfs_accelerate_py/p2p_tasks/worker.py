@@ -7,11 +7,18 @@ Task handlers are intentionally minimal and gated:
 - Always enabled: ``text-generation``
 - Enabled when an accelerate instance provides ``call_tool``: ``tool.call``
 - Opt-in via env: ``shell`` (disabled by default)
+
+External agents/plugins can hook in custom task handlers via
+``ipfs_accelerate_py.p2p_tasks.worker_hooks`` (see ``docs/P2P_WORKER_HOOKS.md``):
+registered hooks are advertised as capabilities, claimed from the local queue
+and from peers' queues (mesh), and their results are sent back over the
+existing libp2p / MCP ``complete_task`` transport.
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import shutil
@@ -24,6 +31,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import importlib
 import importlib.util
+from . import worker_hooks as _worker_hooks
 from .task_queue import QueuedTask, TaskQueue
 from .task_types import (
     VOICE_TASK_TYPES,
@@ -2338,6 +2346,58 @@ def _task_types_overridden_via_env() -> bool:
     return bool([p.strip() for p in str(raw).split(",") if p.strip()])
 
 
+# Canonical task types contributed by worker_hooks, for capability
+# advertisement. Populated by run_worker() (which applies the explicit
+# env-allowlist rule); the libp2p service status handler reads them via
+# get_hook_advertised_task_types() so peers can discover hooked capabilities.
+_hook_advertised_types: Optional[list[str]] = None
+_hook_advertised_lock = threading.Lock()
+
+
+def set_hook_advertised_task_types(task_types: object) -> None:
+    """Record the hooked task types this worker advertises as capabilities."""
+
+    if isinstance(task_types, str):
+        items = [task_types]
+    else:
+        try:
+            items = list(task_types or [])
+        except TypeError:
+            items = []
+    normalized = normalize_task_types([str(t) for t in items], expand_aliases=True)
+    with _hook_advertised_lock:
+        global _hook_advertised_types
+        _hook_advertised_types = normalized
+
+
+def get_hook_advertised_task_types() -> list[str]:
+    """Hooked task types to advertise as worker capabilities.
+
+    Returns the types recorded by run_worker(), or -- for a standalone
+    service -- loads env-configured hook specs idempotently and derives them.
+    Honors the explicit env allowlist rule: when the operator pins task types
+    via env, hooks are not advertised beyond that allowlist.
+    """
+
+    with _hook_advertised_lock:
+        explicit = _hook_advertised_types
+    if explicit is not None:
+        return list(explicit)
+    if _worker_hooks.hooks_enabled():
+        try:
+            _worker_hooks.load_hook_specs()
+        except Exception:
+            pass
+    types = [
+        t
+        for t in (canonical_task_type(x) for x in _worker_hooks.registered_task_types())
+        if t
+    ]
+    if not types or _task_types_overridden_via_env():
+        return []
+    return normalize_task_types(types, expand_aliases=True)
+
+
 def _accelerate_supports_tool_call(accelerate_instance: object | None) -> bool:
     fn = getattr(accelerate_instance, "call_tool", None)
     return bool(callable(fn))
@@ -3910,7 +3970,34 @@ def run_worker(
     mesh_claim_interval_s: Optional[float] = None,
     mesh_max_peers: Optional[int] = None,
     stop_event: threading.Event | None = None,
+    extra_handlers: Optional[Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]]] = None,
 ) -> int:
+    # Load task-handler hooks first so the libp2p service (started below),
+    # capability advertisement, and the dispatch table all see the same hooks.
+    if _worker_hooks.hooks_enabled():
+        _hooks_loaded, _hook_errors = _worker_hooks.load_hook_specs()
+        for _hook_err in _hook_errors:
+            print(f"[worker:hooks] hook load error: {_hook_err}")
+        if _hooks_loaded:
+            print(f"[worker:hooks] loaded {_hooks_loaded} task handler(s) from env")
+    _advertised_hook_types: list[str] = []
+    for _ht in list(_worker_hooks.registered_task_types()):
+        _hc = canonical_task_type(_ht)
+        if _hc and _hc not in _advertised_hook_types:
+            _advertised_hook_types.append(_hc)
+    if extra_handlers:
+        for _ht in extra_handlers:
+            _hc = canonical_task_type(_ht)
+            if _hc and _hc not in _advertised_hook_types:
+                _advertised_hook_types.append(_hc)
+    if _task_types_overridden_via_env():
+        # An explicit env allowlist pins capabilities exactly: hooks stay
+        # registered (allowlisted ones still execute) but are not advertised
+        # beyond it.
+        set_hook_advertised_task_types([])
+    else:
+        set_hook_advertised_task_types(_advertised_hook_types)
+
     if p2p_service:
         # Run the libp2p service in a background thread so the worker loop can
         # remain simple and blocking.
@@ -4945,10 +5032,69 @@ def run_worker(
     handlers["docker.github_repo"] = _docker_github_handler
     handlers["docker.build_and_execute_github_repo"] = _docker_github_handler
 
+    # External task-handler hooks: let agents/plugins hook into this worker to
+    # fulfill custom task types claimed from the local queue or from peers'
+    # queues (mesh). Results flow back to the submitting peer over the existing
+    # libp2p / MCP complete_task RPC -- no transport changes needed.
+    def _hook_runner(
+        fn: Callable[..., Dict[str, Any]],
+    ) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+        try:
+            _params = inspect.signature(fn).parameters
+            _wants_instance = "accelerate_instance" in _params or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in _params.values()
+            )
+        except Exception:
+            _wants_instance = False
+
+        def _run(task_dict: Dict[str, Any]) -> Dict[str, Any]:
+            if _wants_instance:
+                return fn(task_dict, accelerate_instance=accelerate_instance)
+            return fn(task_dict)
+
+        return _run
+
+    # (Hook specs were loaded at the top of run_worker; merge them into the
+    # dispatch table here, after the builtin handlers are registered.)
+    _hook_entries = _worker_hooks.get_registry().snapshot()
+    if extra_handlers:
+        for _hook_type, _hook_fn in dict(extra_handlers).items():
+            _hook_canonical = canonical_task_type(_hook_type)
+            if _hook_canonical:
+                # Explicitly passed handlers express direct intent: they win.
+                _hook_entries[_hook_canonical] = _worker_hooks.HookEntry(
+                    handler=_hook_fn, override=True, source="extra_handlers"
+                )
+    for _hook_type, _hook_entry in _hook_entries.items():
+        _hook_canonical = canonical_task_type(_hook_type)
+        if not _hook_canonical:
+            continue
+        if _hook_canonical in handlers and not _hook_entry.override:
+            print(
+                f"[worker:hooks] ignoring hook for {_hook_canonical!r}: a builtin handler "
+                "is already registered (re-register with override=True to replace it)"
+            )
+            continue
+        handlers[_hook_canonical] = _hook_runner(_hook_entry.handler)
+        for _hook_alias in _hook_entry.aliases:
+            _alias_canonical = canonical_task_type(_hook_alias)
+            if _alias_canonical and _alias_canonical not in handlers:
+                handlers[_alias_canonical] = handlers[_hook_canonical]
+    _hook_task_types = [
+        canonical_task_type(_t) for _t in _hook_entries if canonical_task_type(_t)
+    ]
+
     supported = _compute_supported_task_types(
         supported_task_types=supported_task_types,
         accelerate_instance=accelerate_instance,
     )
+    if _hook_task_types and not _task_types_overridden_via_env():
+        # Advertise hooked task types so local claims, mesh claims, and the
+        # capability advertisement all include them. An explicit env allowlist
+        # is respected as-is: only hooked types it names will be claimed.
+        supported = normalize_task_types(
+            [*supported, *_hook_task_types], expand_aliases=True
+        )
 
     mesh_enabled = bool(_worker_mesh_enabled()) if mesh is None else bool(mesh)
     mesh_refresh = (
@@ -6242,6 +6388,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--poll-interval-s", dest="poll_interval_s", type=float, default=0.5)
     parser.add_argument("--once", action="store_true", help="Process at most one task")
     parser.add_argument(
+        "--hooks",
+        dest="hooks",
+        default="",
+        help="Comma-separated task-hook specs (module or module:attr) loaded via "
+        "ipfs_accelerate_py.p2p_tasks.worker_hooks before the worker loop starts. "
+        "Also readable from IPFS_ACCELERATE_PY_TASK_WORKER_HOOKS; exported to the "
+        "environment so autoscaled child workers inherit it.",
+    )
+    parser.add_argument(
         "--p2p-service",
         dest="p2p_service",
         action="store_true",
@@ -6380,6 +6535,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    # Export hook specs to the environment before the worker loop starts so
+    # autoscaled child workers (threads or processes) inherit them.
+    if str(getattr(args, "hooks", "") or "").strip():
+        os.environ[_worker_hooks.HOOKS_ENV_VAR] = str(args.hooks).strip()
 
     # If user explicitly asked for a one-shot run, force autoscale off.
     if bool(args.once):

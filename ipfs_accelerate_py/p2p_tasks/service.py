@@ -214,12 +214,21 @@ def _supported_task_types_env(accelerate_instance: object | None = None) -> list
     try:
         # Import lazily so transport-only service users do not pay worker
         # initialization cost and worker/service remain safe to import alone.
-        from .worker import _compute_supported_task_types
+        from .worker import (
+            _compute_supported_task_types,
+            get_hook_advertised_task_types,
+        )
 
-        return _compute_supported_task_types(
+        supported = _compute_supported_task_types(
             supported_task_types=None,
             accelerate_instance=accelerate_instance,
         )
+        hook_types = get_hook_advertised_task_types()
+        if hook_types:
+            supported = normalize_task_types(
+                [*supported, *hook_types], expand_aliases=True
+            )
+        return supported
     except Exception:
         # Voice execution is provider-lazy and therefore remains a valid
         # baseline even when optional inference dependencies are unavailable.
