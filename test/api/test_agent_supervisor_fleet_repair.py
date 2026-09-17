@@ -531,7 +531,11 @@ def test_unstall_uses_typed_owner_when_quack_attach_token_absent(tmp_path, monke
     sock.write_text("")
     monkeypatch.setattr(fleet_heals, "_typed_owner_socket_path", lambda database: sock)
     recvs = iter([
-        {"ok": True, "schema": fleet_heals._TYPED_OWNER_SCHEMA},
+        {
+            "ok": True,
+            "schema": fleet_heals._TYPED_OWNER_SCHEMA,
+            "grant": {"allowed_command_operations": ["rearm_blocked_task"]},
+        },
         {"ok": True, "result": {"changed": True, "completion_authority": False}},
     ])
     sent = []

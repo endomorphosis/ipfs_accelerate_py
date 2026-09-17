@@ -582,6 +582,13 @@ def _unstall_via_typed_owner(
         opened = _typed_owner_recv(channel)
         if opened.get("ok") is not True:
             return empty
+        grant = opened.get("grant") if isinstance(opened.get("grant"), dict) else {}
+        allowed = grant.get("allowed_command_operations")
+        if not (isinstance(allowed, list) and "rearm_blocked_task" in allowed):
+            return {
+                **empty,
+                "reason": "typed_owner_status_session_read_only",
+            }
         unstalled = []
         for index, task_id in enumerate(blocked):
             command_id = f"request:{os.getpid()}:rearm:{index}:{uuid.uuid4().hex}"
