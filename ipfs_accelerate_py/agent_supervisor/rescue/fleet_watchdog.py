@@ -574,6 +574,31 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     return state
 
 
+def _ensure_unit_already_active(board: dict[str, Any]) -> bool:
+    """True when the configured exclusive-owner unit is already running."""
+    spec = board.get("ensure") if isinstance(board.get("ensure"), dict) else {}
+    argv = spec.get("argv") if isinstance(spec.get("argv"), list) else []
+    if (
+        len(argv) < 4
+        or argv[0] != "systemctl"
+        or "start" not in argv
+        or not str(argv[-1]).endswith(".service")
+    ):
+        return False
+    try:
+        completed = subprocess.run(
+            ["systemctl", "--user", "is-active", str(argv[-1])],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+            text=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and str(completed.stdout or "").strip() == "active"
+
+
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
     if now < state.get("next_action_at", 0):
@@ -684,6 +709,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         ):
             return "supervisor_heal"
         if board.get("ensure") and not hold_paths(board):
+            if _ensure_unit_already_active(board):
+                return ""
             return "ensure"
         return "supervisor_heal"
     if (board.get("ensure") and not hold_paths(board)
@@ -812,9 +839,6 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             action_result = apply_supervisor_heal(board, state)
             reason = str((action_result or {}).get("reason") or "")
             recipe = str((action_result or {}).get("recipe") or "")
-            if recipe == "clear_overlay_copies_for_owner_start":
-                state["ensure_attempts"] = 0
-                state["next_action_at"] = now
             if (
                 reason.startswith("owner_cas_failed:")
                 or reason == "quack_attach_token_absent"
@@ -839,6 +863,9 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h
                 # max backoff, while native lanes own independent work.
                 state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
+            if recipe == "clear_overlay_copies_for_owner_start":
+                state["ensure_attempts"] = 0
+                state["next_action_at"] = now
         elif action == "publish":
             from .fleet_completion import publish_completed_board
             try:

@@ -274,6 +274,26 @@ def test_owner_missing_does_not_spend_llm_router_after_ensure_budget(tmp_path):
     assert fleet.select_action(state, board, 20_000) == "supervisor_heal"
 
 
+def test_owner_missing_does_not_ensure_when_unit_already_active(tmp_path, monkeypatch):
+    board = _board(tmp_path)
+    board["ensure"] = {
+        "argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
+    }
+    monkeypatch.setattr(
+        fleet, "_ensure_unit_already_active", lambda spec: True,
+    )
+    state = {
+        "health": "stopped",
+        "stall_class": "owner_missing",
+        "observation": _observation(health="stopped", recovery_action="ensure"),
+        "incident_since": 0,
+        "last_action": "supervisor_heal",
+        "last_action_result": {"recipe": "clear_overlay_copies_for_owner_start"},
+        "next_action_at": 0,
+    }
+    assert fleet.select_action(state, board, 100) == ""
+
+
 def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
     state = {
         "health": "degraded",
