@@ -64,6 +64,7 @@ from ..task_sources.control_plane_migrations import (
     META_DATABASE_UUID,
     META_SCHEMA_FINGERPRINT,
     META_SCHEMA_VERSION,
+    MigrationDowngradeError,
     MigrationRunReport,
     compute_schema_fingerprint,
     duckdb_available,
@@ -4473,7 +4474,33 @@ class QuackStateServer:
                 tool_version=self.config.tool_version,
                 owner_id=f"quack-state-server:{os.getpid()}",
             )
+        except MigrationDowngradeError as exc:
+            self._log(
+                "live schema is newer than overlay catalog; "
+                f"serving without downgrade: {exc}"
+            )
+            return MigrationRunReport(
+                from_version=0,
+                to_version=0,
+                receipts=(),
+                schema_fingerprint="overlay-no-downgrade",
+                catalog_fingerprint="overlay-no-downgrade",
+                changed=False,
+            )
         except Exception as exc:
+            if "refusing downgrade" in str(exc):
+                self._log(
+                    "live schema is newer than overlay catalog; "
+                    f"serving without downgrade: {exc}"
+                )
+                return MigrationRunReport(
+                    from_version=0,
+                    to_version=0,
+                    receipts=(),
+                    schema_fingerprint="overlay-no-downgrade",
+                    catalog_fingerprint="overlay-no-downgrade",
+                    changed=False,
+                )
             raise QuackStateServerMigrationError(
                 f"control-plane migration failed: {type(exc).__name__}: {exc}"
             ) from exc
