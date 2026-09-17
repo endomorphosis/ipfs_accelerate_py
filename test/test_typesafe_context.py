@@ -224,6 +224,27 @@ def test_inspect_allowlisted_artifacts_fail_open_and_never_writes(
     assert last_artifact_view()["writes_ast"] is False
 
 
+def test_lint_static_span_fail_open_does_not_replace_analyzer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_static_lint,
+        lint_static_span,
+    )
+
+    receipt = lint_static_span(obligation_id="obl-1", path="src/a.py")
+    assert receipt.action == "skipped"
+    assert receipt.accepted_as_authority is False
+    assert last_static_lint().get("action") == "skipped"
+
+
 def test_observe_source_edit_lint_does_not_block_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

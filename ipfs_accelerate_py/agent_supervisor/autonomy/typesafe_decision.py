@@ -196,7 +196,20 @@ def prepare_step_candidates(
         question=updated,
         evidence_id=advice.evidence_id,
     )
-    return prefer_escalation_candidates(rebound, advice), updated, advice
+    preferred = prefer_escalation_candidates(rebound, advice)
+    if str(advice.next_action or "") == "RUN_LOCAL_STATIC_ANALYSIS":
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                lint_static_span,
+            )
+
+            lint_static_span(
+                obligation_id=str(question.question_id or "")[:128],
+                summary=str((state or {}).get("summary") or "")[:400],
+            )
+        except Exception:
+            pass
+    return preferred, updated, advice
 
 
 def admit_after_typesafe_advice(

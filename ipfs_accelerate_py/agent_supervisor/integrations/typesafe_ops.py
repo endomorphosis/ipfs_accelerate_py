@@ -11,6 +11,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         last_artifact_view,
         last_source_edit_lint,
+        last_static_lint,
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
         last_trace_guardrail,
@@ -25,14 +26,19 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
         last_hammer_hint,
     )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+        last_unstall_nomination,
+    )
 
     return {
         "accepted_as_authority": False,
         "trace_guardrail": last_trace_guardrail(),
         "audit_reduce": last_audit_reduce(),
         "source_edit_lint": last_source_edit_lint(),
+        "static_lint": last_static_lint(),
         "artifact_view": last_artifact_view(),
         "hammer_timeout_hint": last_hammer_hint(),
+        "unstall": last_unstall_nomination(),
         "calibration": recommend_skip_policy(),
     }
 

@@ -279,6 +279,88 @@ def observe_source_edit_lint(
     return receipt
 
 
+_LAST_STATIC_LINT = threading.local()
+
+
+def last_static_lint() -> dict[str, Any]:
+    value = getattr(_LAST_STATIC_LINT, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def lint_static_span(
+    *,
+    obligation_id: str,
+    path: str = "",
+    summary: str = "",
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> AdvisoryReceipt:
+    """Semantic lint in front of RUN_LOCAL_STATIC_ANALYSIS. Analyzer still runs."""
+
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        receipt = AdvisoryReceipt(
+            action="skipped",
+            reason_codes=("privacy_or_unconfigured",),
+        )
+        _LAST_STATIC_LINT.value = receipt.to_dict()
+        return receipt
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    try:
+        result = system_one(
+            {
+                "obligation": {"id": str(obligation_id or "")[:128]},
+                "span": {
+                    "path": str(path or "")[:128],
+                    "summary": str(summary or "")[:400],
+                },
+            },
+            {
+                "relevant_to_obligation": Noul(
+                    instructions={
+                        "question": "Is `span` relevant to `obligation.id`?",
+                        "inspect": "`span.summary`",
+                    },
+                ),
+                "review_needed": Score(
+                    instructions={
+                        "question": "How strongly should a human review this span?",
+                    },
+                    criteria=["none", "optional", "required"],
+                ),
+            },
+            timeout=timeout,
+        )
+    except Exception:
+        receipt = AdvisoryReceipt(action="abstain", reason_codes=("typesafe_error",))
+        _LAST_STATIC_LINT.value = receipt.to_dict()
+        return receipt
+    nouls = getattr(result, "nouls", None) or {}
+    scores = getattr(result, "scores", None) or {}
+    relevant = float(getattr(nouls.get("relevant_to_obligation"), "noul", 0.0) or 0.0)
+    review = float(getattr(scores.get("review_needed"), "score", 0.0) or 0.0)
+    reasons = ["composed_in_code", "static_analyzer_still_authoritative"]
+    if relevant < 0.4:
+        reasons.append("low_obligation_relevance")
+    if review >= 1.5:
+        reasons.append("human_review_suggested")
+    receipt = AdvisoryReceipt(
+        action="linted",
+        noul=relevant,
+        score=review,
+        reason_codes=tuple(reasons),
+    )
+    payload = receipt.to_dict()
+    payload["accepted_as_authority"] = False
+    payload["replaces_static_analysis"] = False
+    _LAST_STATIC_LINT.value = payload
+    return receipt
+
+
 CLAIM_MARKERS: tuple[str, ...] = (
     "kernel_verified",
     "proved",
@@ -372,7 +454,9 @@ __all__ = [
     "inspect_allowlisted_artifacts",
     "last_artifact_view",
     "last_source_edit_lint",
+    "last_static_lint",
     "lint_admissibility",
+    "lint_static_span",
     "lint_questions",
     "observe_source_edit_lint",
     "prepare_evidence_for_compile",

@@ -231,12 +231,16 @@ def test_new_helpers_do_not_call_http_without_key(
         order_candidates_for_hammer,
         select_retrieve_ids_for_tactician,
     )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+        nominate_unstall_action,
+    )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
         LLM_USAGE_MODE_OFF,
         maybe_observe_worker_output,
     )
 
     maybe_observe_worker_output(prompt="p", output="KERNEL_VERIFIED", usage_mode=LLM_USAGE_MODE_OFF)
+    assert nominate_unstall_action({"reason": "stale_evidence"})["action"] == "preserve"
     assert select_retrieve_ids_for_tactician(({"id": "a"}, {"id": "b"})) == ("a", "b")
     assert order_candidates_for_hammer(({"id": "a"}, {"id": "b"})) == (
         {"id": "a"},

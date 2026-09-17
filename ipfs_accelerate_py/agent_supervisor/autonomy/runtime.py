@@ -1335,6 +1335,19 @@ class AutonomyRuntime:
                 acknowledged=acknowledged,
             )
         if bound.stale:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+                    nominate_unstall_action,
+                )
+
+                nominate_unstall_action(
+                    {
+                        "reason": "stale_evidence",
+                        "wake_kind": bound.kind.value,
+                    }
+                )
+            except Exception:
+                pass
             self._metrics.record_status(
                 "blocked", reason_codes=("stale_evidence",)
             )
