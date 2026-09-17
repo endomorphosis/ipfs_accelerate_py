@@ -6,10 +6,12 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
     cite_claim_spans,
+    compose_pairwise_order,
     compose_snippet_score,
     extract_claim_spans,
     lint_admissibility,
     observe_merge_conflict_paths,
+    pairwise_questions,
     prepare_evidence_for_compile,
     rerank_allowlisted_snippets,
 )
@@ -63,8 +65,11 @@ def test_rerank_orders_by_composed_score(monkeypatch: pytest.MonkeyPatch) -> Non
 
     calls: list[int] = []
 
+    seen_questions: list[dict] = []
+
     def fake_system_one(state, questions, **kwargs):
         calls.append(1)
+        seen_questions.append(questions)
         assert "needed_ev-low" in questions
         assert "needed_ev-high" in questions
         return SimpleNamespace(
@@ -91,7 +96,30 @@ def test_rerank_orders_by_composed_score(monkeypatch: pytest.MonkeyPatch) -> Non
         allowlisted_ids=("ev-low", "ev-high"),
     )
     assert calls == [1]
+    assert "better_ev-low_than_ev-high" in seen_questions[0]
     assert ordered == ("ev-high", "ev-low")
+
+
+def test_compose_pairwise_order_allowlisted_only() -> None:
+    class _N:
+        def __init__(self, noul: float) -> None:
+            self.noul = noul
+
+    ordered = compose_pairwise_order(
+        ("a", "b", "c"),
+        nouls={"better_a_than_b": _N(0.9), "better_a_than_c": _N(0.8), "better_b_than_c": _N(0.2)},
+        independent={"a": 0.1, "b": 0.9, "c": 0.5},
+    )
+    assert ordered[0] == "a"
+    assert "invented" not in ordered
+    assert set(ordered) == {"a", "b", "c"}
+    questions = pairwise_questions(
+        ("a", "b"),
+        left_path="snippets.{id}.text",
+        right_path="snippets.{id}.text",
+    )
+    assert "better_a_than_b" in questions
+    assert "better_a_than_invented" not in questions
 
 
 def test_observe_merge_conflict_paths_does_not_fence_or_write(

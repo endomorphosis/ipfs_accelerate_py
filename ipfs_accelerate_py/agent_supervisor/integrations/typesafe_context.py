@@ -59,6 +59,76 @@ def compose_snippet_score(result: Any) -> float:
     return max(0.0, min(1.0, 0.4 * needed + 0.6 * (relevance / 2.0)))
 
 
+def _pairwise_keys(ids: Sequence[str]) -> tuple[tuple[str, str, str], ...]:
+    items = [str(ident).strip() for ident in ids if str(ident).strip()]
+    pairs: list[tuple[str, str, str]] = []
+    for index, left in enumerate(items):
+        for right in items[index + 1 :]:
+            pairs.append((f"better_{left}_than_{right}", left, right))
+    return tuple(pairs)
+
+
+def pairwise_questions(
+    ids: Sequence[str],
+    *,
+    left_path: str,
+    right_path: str,
+) -> dict[str, Any]:
+    """One noul per unordered pair. Never invents ids."""
+
+    questions: dict[str, Any] = {}
+    for key, left, right in _pairwise_keys(ids):
+        questions[key] = Noul(
+            instructions={
+                "question": (
+                    f"Is `{left_path.format(id=left)}` more relevant than "
+                    f"`{right_path.format(id=right)}`?"
+                ),
+                "compare": [
+                    f"`{left_path.format(id=left)}`",
+                    f"`{right_path.format(id=right)}`",
+                ],
+            },
+        )
+    return questions
+
+
+def compose_pairwise_order(
+    ids: Sequence[str],
+    *,
+    nouls: Mapping[str, Any] | None = None,
+    independent: Mapping[str, float] | None = None,
+) -> tuple[str, ...]:
+    """Tournament order from pairwise nouls. Unknown ids stay in input order."""
+
+    ordered = tuple(str(ident).strip() for ident in ids if str(ident).strip())
+    if len(ordered) < 2:
+        return ordered
+    scores = {ident: float(independent.get(ident, 0.0) or 0.0) for ident in ordered} if independent else {ident: 0.0 for ident in ordered}
+    wins = {ident: 0.0 for ident in ordered}
+    blob = nouls or {}
+    for key, left, right in _pairwise_keys(ordered):
+        if left not in wins or right not in wins:
+            continue
+        raw = blob.get(key)
+        if isinstance(raw, (int, float)):
+            noul = float(raw)
+        else:
+            noul = float(getattr(raw, "noul", 0.5) or 0.5)
+        wins[left] += noul
+        wins[right] += 1.0 - noul
+    return tuple(
+        sorted(
+            ordered,
+            key=lambda ident: (
+                -wins[ident],
+                -scores.get(ident, 0.0),
+                ordered.index(ident),
+            ),
+        )
+    )
+
+
 def rerank_allowlisted_snippets(
     snippets: Sequence[Mapping[str, Any]],
     *,
@@ -122,21 +192,27 @@ def rerank_allowlisted_snippets(
             },
             criteria=["off-topic", "supporting", "decisive"],
         )
+    questions.update(
+        pairwise_questions(
+            keep,
+            left_path="snippets.{id}.text",
+            right_path="snippets.{id}.text",
+        )
+    )
     try:
         result = system_one(state, questions, timeout=timeout)
     except Exception:
         return keep
     nouls = getattr(result, "nouls", None) or {}
     scores = getattr(result, "scores", None) or {}
-    scored: list[tuple[float, str]] = []
+    independent: dict[str, float] = {}
     for ident in keep:
         adapter = SimpleNamespace(
             nouls={"needed": nouls.get(f"needed_{ident}")},
             scores={"relevance": scores.get(f"relevance_{ident}")},
         )
-        scored.append((compose_snippet_score(adapter), ident))
-    scored.sort(reverse=True)
-    return tuple(ident for _score, ident in scored)
+        independent[ident] = compose_snippet_score(adapter)
+    return compose_pairwise_order(keep, nouls=nouls, independent=independent)
 
 
 def _item_id(item: Any) -> str:
@@ -707,6 +783,7 @@ def cite_claim_spans(
 __all__ = [
     "cite_claim_spans",
     "citation_questions",
+    "compose_pairwise_order",
     "compose_snippet_score",
     "extract_claim_spans",
     "inspect_allowlisted_artifacts",
@@ -726,6 +803,7 @@ __all__ = [
     "observe_merge_conflict_paths",
     "observe_parser_failure_clusters",
     "observe_source_edit_lint",
+    "pairwise_questions",
     "prepare_evidence_for_compile",
     "producer_consumer_questions",
     "rank_allowlisted_artifacts",
@@ -801,6 +879,13 @@ def inspect_allowlisted_artifacts(
         )
         for ident in idents
     }
+    questions.update(
+        pairwise_questions(
+            idents,
+            left_path="artifacts.{id}.summary",
+            right_path="artifacts.{id}.summary",
+        )
+    )
     try:
         result = system_one(state, questions, timeout=timeout)
     except Exception:
@@ -812,6 +897,11 @@ def inspect_allowlisted_artifacts(
         for ident in idents
     }
     payload["matches"] = matches
+    payload["pair_nouls"] = {
+        key: round(float(getattr(nouls.get(key), "noul", 0.5) or 0.5), 4)
+        for key, _left, _right in _pairwise_keys(idents)
+        if key in nouls
+    }
     _LAST_ARTIFACT_VIEW.value = dict(payload)
     return payload
 
@@ -884,12 +974,14 @@ def rank_allowlisted_artifacts(
         for ident, score in dict(view.get("matches") or {}).items()
         if ident in seen
     }
-    ranked = sorted(
+    ranked = compose_pairwise_order(
         ordered,
-        key=lambda ident: (-matches.get(ident, 0.0), ordered.index(ident)),
+        nouls=dict(view.get("pair_nouls") or {}),
+        independent=matches,
     )
     payload["ranked_ids"] = list(ranked)
     payload["matches"] = matches
+    payload["invents_ids"] = False
     _LAST_ARTIFACT_RANK.value = dict(payload)
     return tuple(ranked)
 
