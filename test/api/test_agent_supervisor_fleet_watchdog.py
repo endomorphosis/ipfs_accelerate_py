@@ -245,6 +245,52 @@ def test_blocked_work_does_not_spend_a_ready_owners_later_restart_budget(tmp_pat
     assert fleet.select_action(stopped, board, 501) == "ensure"
 
 
+def test_owner_missing_does_not_spend_llm_router_after_ensure_budget(tmp_path):
+    board = _board(tmp_path, max_ensure_attempts=2)
+    state = {
+        "health": "stopped",
+        "stall_class": "owner_missing",
+        "observation": _observation(
+            health="stopped",
+            recovery_action="ensure",
+            reason_codes=["owner_process_missing_or_birth_mismatch"],
+        ),
+        "incident_since": 0,
+        "ensure_attempts": 2,
+        "attempts": 80,
+        "last_action": "repair",
+        "last_action_result": {
+            "supervisor_heal": {
+                "recipe": "clear_overlay_copies_for_owner_start",
+                "status": "skip",
+                "reason": "no_overlay_copies_to_clear",
+            },
+        },
+        "next_action_at": 10_000,
+    }
+    assert fleet.select_action(state, board, 20_000) == "ensure"
+    state["last_action"] = "ensure"
+    state["last_action_result"] = {"returncode": 1}
+    assert fleet.select_action(state, board, 20_000) == "supervisor_heal"
+
+
+def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
+    state = {
+        "health": "degraded",
+        "stall_class": "in_progress_awaiting_effect",
+        "observation": {
+            "board_id": "sawm",
+            "health": "degraded",
+            "complete": False,
+            "reason_codes": ["extra_gate_recursion_sealed_package"],
+            "details": {"task_counts": {"in_progress": 2, "todo": 23, "completed": 20}},
+        },
+        "incident_since": 0,
+        "next_action_at": 0,
+    }
+    assert fleet.select_action(state, _board(tmp_path, id="sawm"), 100) == "supervisor_heal"
+
+
 def test_repair_enqueue_does_not_consume_ensure_attempts(tmp_path):
     board = _board(tmp_path)
     root = tmp_path / "watch"

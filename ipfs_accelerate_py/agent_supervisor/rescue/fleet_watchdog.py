@@ -627,6 +627,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
             # One D-state lane is not a board-wide freeze. Rearm false-terminal
             # blocks on other lanes; do not CAS the D-state worker's claim.
             return "supervisor_heal"
+        if "extra_gate_recursion_sealed_package" in reasons:
+            return "supervisor_heal"
         if "no_task_progress" in reasons:
             return "supervisor_heal"
         return ""
@@ -670,15 +672,23 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # owner-missing. Ensure would start a competing owner.
         return ""
     if stall == "owner_missing":
+        # A missing exclusive owner is not an llm_router job. Clear overlay
+        # copies if the last ensure failed dirty, then start the owner even
+        # after max_ensure_attempts.
         result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+        nested = result.get("supervisor_heal") if isinstance(result.get("supervisor_heal"), dict) else {}
+        recipe = str(result.get("recipe") or nested.get("recipe") or "")
         if (
-            result.get("recipe") != "clear_overlay_copies_for_owner_start"
-            and state.get("last_action") == "ensure"
+            state.get("last_action") == "ensure"
+            and recipe != "clear_overlay_copies_for_owner_start"
         ):
             return "supervisor_heal"
+        if board.get("ensure") and not hold_paths(board):
+            return "ensure"
+        return "supervisor_heal"
     if (board.get("ensure") and not hold_paths(board)
             and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)
-            and (recovery == "ensure" or stall == "owner_missing")):
+            and recovery == "ensure"):
         return "ensure"
     return "repair"
 
