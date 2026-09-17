@@ -49,6 +49,77 @@ def test_high_confidence_non_trap_may_skip_without_samples() -> None:
     )
 
 
+def test_compare_timeout_is_hint_only_not_a_sample(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+        samples,
+    )
+    from ipfs_accelerate_py.typesafe_z3_benchmark import SmtCase, compare_case
+
+    clear_samples()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_z3_benchmark.run_z3",
+        lambda *_a, **_k: type(
+            "Z",
+            (),
+            {
+                "status": "timeout",
+                "timeout": True,
+                "seconds": 8.0,
+                "to_dict": lambda self: {"status": "timeout", "seconds": 8, "timeout": True},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_z3_benchmark.run_typesafe",
+        lambda *_a, **_k: type(
+            "T",
+            (),
+            {
+                "status": "sat",
+                "confidence": 0.9,
+                "seconds": 0.1,
+                "to_dict": lambda self: {"status": "sat", "seconds": 0.1, "confidence": 0.9},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_z3_benchmark.typesafe_configured",
+        lambda: True,
+    )
+    row = compare_case(
+        SmtCase(
+            case_id="hint-timeout",
+            english="x",
+            smtlib="(check-sat)",
+            expected="sat",
+            complexity="hard",
+        ),
+        call_typesafe=True,
+        z3_timeout_seconds=1.0,
+    )
+    assert row["typesafe_hint_only"] is True
+    assert all(item.family != "hint-timeout" for item in samples())
+
+
+def test_spot_check_can_force_z3_without_changing_skip_policy(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+        spot_check_due,
+    )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration.random.random",
+        lambda: 0.0,
+    )
+    assert spot_check_due(rate=0.01) is True
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration.random.random",
+        lambda: 0.99,
+    )
+    assert spot_check_due(rate=0.01) is False
+    monkeypatch.setenv("TYPESAFE_Z3_SPOT_CHECK_RATE", "0")
+    assert spot_check_due() is False
+
+
 def test_mismatch_rate_forces_z3_on_otherwise_skippable_family(
     monkeypatch,
 ) -> None:

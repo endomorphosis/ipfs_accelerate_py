@@ -130,6 +130,7 @@ def test_smt_triage_skips_z3_when_confident_and_not_trap(
     )
 
     clear_samples()
+    monkeypatch.setenv("TYPESAFE_Z3_SPOT_CHECK_RATE", "0")
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
         lambda **_kwargs: True,

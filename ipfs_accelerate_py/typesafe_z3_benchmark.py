@@ -681,7 +681,8 @@ def compare_case(
     faster = ""
     if ts.status not in {"skipped", "error"} and z3.status not in {"error"}:
         faster = "typesafe" if ts.seconds < z3.seconds else "z3"
-    if ts.status in {"sat", "unsat"} and z3.status in {"sat", "unsat", "timeout"}:
+    hint_only = z3.status == "timeout" or bool(z3.timeout)
+    if ts.status in {"sat", "unsat"} and z3.status in {"sat", "unsat"}:
         try:
             from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
                 record_sample,
@@ -690,7 +691,7 @@ def compare_case(
             record_sample(
                 family=case.case_id,
                 predicted=ts.status,
-                actual=z3.status if z3.status in {"sat", "unsat"} else case.expected,
+                actual=z3.status,
                 confidence=float(ts.confidence or 0.0),
                 trap_family=case.complexity == "trap",
                 case_id=case.case_id,
@@ -704,6 +705,7 @@ def compare_case(
         "expected": case.expected,
         "z3": z3.to_dict(),
         "typesafe": ts.to_dict(),
+        "typesafe_hint_only": hint_only,
         "z3_matches_expected": z3.status == case.expected,
         "typesafe_matches_expected": ts.status == case.expected,
         "faster": faster,

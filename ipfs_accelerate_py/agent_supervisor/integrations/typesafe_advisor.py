@@ -274,6 +274,7 @@ def triage_smt(
         try:
             from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
                 should_trust_skip,
+                spot_check_due,
             )
 
             if not should_trust_skip(
@@ -285,6 +286,9 @@ def triage_smt(
             ):
                 action = SmtTriageAction.RUN_Z3.value
                 reasons.append("calibration_force_z3")
+            elif spot_check_due():
+                action = SmtTriageAction.RUN_Z3.value
+                reasons.append("typesafe_spot_check_z3")
         except Exception:
             pass
     return AdvisoryReceipt(

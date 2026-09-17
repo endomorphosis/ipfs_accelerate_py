@@ -252,6 +252,15 @@ def test_new_helpers_do_not_call_http_without_key(
     observe_control_audit_throttled(audit, min_interval_s=0)
 
 
+def test_ops_cli_prints_json_without_key(forbid_typesafe_http: None, capsys) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import main
+
+    assert main([]) == 0
+    payload = __import__("json").loads(capsys.readouterr().out)
+    assert payload["accepted_as_authority"] is False
+    assert "calibration" in payload
+
+
 def test_enforce_and_assist_never_call_typesafe_http(
     forbid_typesafe_http: None,
 ) -> None:

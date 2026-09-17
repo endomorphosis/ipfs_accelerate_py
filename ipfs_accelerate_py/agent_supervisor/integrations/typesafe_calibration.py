@@ -6,6 +6,8 @@ proof text. Calibration may *force* z3/kernel, never skip extra work.
 
 from __future__ import annotations
 
+import os
+import random
 import threading
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence
@@ -17,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
 
 MAX_SAMPLES = 256
 MISMATCH_FORCE_RATE = 0.10
+DEFAULT_SPOT_CHECK_RATE = 0.01
 _LOCK = threading.Lock()
 _SAMPLES: list["CalibrationSample"] = []
 
@@ -91,6 +94,20 @@ def mismatch_rate(*, family: str = "") -> float:
     return misses / float(len(rows))
 
 
+def spot_check_due(*, rate: float | None = None) -> bool:
+    """Return True for a 1% (default) z3 audit of TypeSafe skips."""
+
+    raw = str(os.environ.get("TYPESAFE_Z3_SPOT_CHECK_RATE") or "").strip()
+    try:
+        probability = float(rate if rate is not None else (raw or DEFAULT_SPOT_CHECK_RATE))
+    except (TypeError, ValueError):
+        probability = DEFAULT_SPOT_CHECK_RATE
+    probability = max(0.0, min(1.0, probability))
+    if probability <= 0.0:
+        return False
+    return random.random() < probability
+
+
 def should_trust_skip(
     *,
     trap_family: bool = False,
@@ -142,4 +159,5 @@ __all__ = [
     "record_sample",
     "samples",
     "should_trust_skip",
+    "spot_check_due",
 ]

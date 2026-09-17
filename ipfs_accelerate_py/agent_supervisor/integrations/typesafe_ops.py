@@ -37,4 +37,26 @@ def typesafe_ops_snapshot_json() -> str:
     return json.dumps(typesafe_ops_snapshot(), sort_keys=True, separators=(",", ":"))
 
 
-__all__ = ["typesafe_ops_snapshot", "typesafe_ops_snapshot_json"]
+def main(argv: list[str] | None = None) -> int:
+    """Print the snapshot. Never authority. Never fails closed on TypeSafe."""
+
+    del argv
+    try:
+        print(typesafe_ops_snapshot_json())
+    except Exception:
+        import json
+
+        print(
+            json.dumps(
+                {"accepted_as_authority": False, "error": "snapshot_unavailable"},
+                separators=(",", ":"),
+            )
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+__all__ = ["main", "typesafe_ops_snapshot", "typesafe_ops_snapshot_json"]
