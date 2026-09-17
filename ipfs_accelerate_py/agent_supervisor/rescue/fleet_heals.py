@@ -402,13 +402,20 @@ def _live_owner_attach_token(payload: Mapping[str, Any]) -> str:
         raw = _process_environ_bytes(pid)
     except (OSError, ValueError, IndexError):
         return ""
-    prefix = f"{_QUACK_TOKEN_ENV}=".encode("ascii")
-    for item in raw.split(b"\0"):
-        if not item.startswith(prefix):
-            continue
-        token = item[len(prefix):].decode("ascii", "replace").strip()
-        if _QUACK_TOKEN_RE.fullmatch(token):
-            return token
+    names = [_QUACK_TOKEN_ENV]
+    handle = str(payload.get("secret_handle") or identity.get("secret_handle") or "")
+    if handle.startswith("env://"):
+        env_name = handle[6:].strip()
+        if env_name and env_name not in names:
+            names.append(env_name)
+    for env_name in names:
+        prefix = f"{env_name}=".encode("ascii")
+        for item in raw.split(b"\0"):
+            if not item.startswith(prefix):
+                continue
+            token = item[len(prefix):].decode("ascii", "replace").strip()
+            if _QUACK_TOKEN_RE.fullmatch(token):
+                return token
     return ""
 
 
@@ -2320,15 +2327,20 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             }
         details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
         lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
-        stale_claims = bool(lanes) and all(
-            isinstance(lane, dict)
-            and not lane.get("daemon")
-            and (
-                lane.get("stalled_without_active_worker") is True
-                or not (lane.get("claimed") or lane.get("task"))
-            )
-            for lane in lanes
+        counts = details.get("task_counts") if isinstance(details.get("task_counts"), dict) else {}
+        try:
+            in_progress_count = int(counts.get("in_progress") or 0)
+        except (TypeError, ValueError):
+            in_progress_count = 0
+        named = [lane for lane in lanes if isinstance(lane, dict)]
+        no_claims = bool(named) and all(
+            lane.get("stalled_without_active_worker") is True
+            or not (lane.get("claimed") or lane.get("task"))
+            for lane in named
         )
+        has_daemon = any(lane.get("daemon") for lane in named)
+        # Idle daemons with no claims do not own stale in_progress heads.
+        stale_claims = no_claims and (not has_daemon or in_progress_count > 0)
         if stale_claims:
             smoke = run_overlay_current_tree_smoke(board, state)
             if smoke.get("status") != "skip":

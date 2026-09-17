@@ -5376,6 +5376,17 @@ class QuackStateServer:
                 except (TypeError, ValueError):
                     age = 0
                 rearm = age >= int(STALE_IN_PROGRESS_UNSTALL_SECONDS)
+                if not rearm:
+                    try:
+                        live_claim = connection.execute(
+                            "SELECT 1 FROM task_claims WHERE task_cid = ? "
+                            "AND released_at IS NULL AND lower(coalesce(state, '')) "
+                            "NOT IN ('released', 'expired', 'abandoned') LIMIT 1",
+                            [cid],
+                        ).fetchone()
+                        rearm = live_claim is None
+                    except Exception:
+                        rearm = False
             if not rearm:
                 continue
             try:
@@ -5397,9 +5408,17 @@ class QuackStateServer:
                             )
                         ),
                         "completion_authority": False,
+                        "remaining_requirements": [
+                            "current-tree pytest of the declared validation argv; "
+                            "a DuckDB blocked-to-retrying write is not a remaining requirement"
+                        ],
+                        "required_evidence": ["current-tree test results"],
                     },
                 )
-            except Exception:
+            except Exception as exc:
+                self._log(
+                    f"false-terminal unstall {alias}: {type(exc).__name__}: {exc}"
+                )
                 continue
 
     def _write_status(self) -> None:

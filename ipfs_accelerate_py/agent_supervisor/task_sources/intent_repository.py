@@ -2876,6 +2876,12 @@ class IntentRepository:
             body_map = dict(body_map)
             if receipt_map:
                 body_map["completion_receipt"] = receipt_map
+                remaining = receipt_map.get("remaining_requirements")
+                if isinstance(remaining, list) and remaining:
+                    body_map["remaining_requirements"] = remaining
+                evidence = receipt_map.get("required_evidence")
+                if isinstance(evidence, list) and evidence:
+                    body_map["required_evidence"] = evidence
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,

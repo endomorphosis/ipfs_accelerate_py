@@ -827,6 +827,43 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_sawm_idle_daemons_without_claims_unstall_stale_in_progress(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
+                         "completion_authority": False},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "run_overlay_current_tree_smoke",
+        lambda *a, **k: {"status": "skip", "recipe": "overlay_current_tree_smoke",
+                         "completion_authority": False},
+    )
+    result = apply_supervisor_heal(
+        {"id": "sawm", "cwd": str(tmp_path)},
+        {
+            "stall_class": "independent_todos_unclaimed",
+            "observation": {
+                "reason_codes": ["extra_gate_recursion_sealed_package"],
+                "details": {
+                    "task_counts": {"in_progress": 2, "todo": 23, "completed": 20},
+                    "owner_ready": True,
+                    "ready_count": 0,
+                    "lanes": [
+                        {"lane": 0, "daemon": {"pid": 1}, "claimed": None},
+                        {"lane": 1, "daemon": {"pid": 2}, "claimed": None},
+                    ],
+                },
+            },
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
+
+
 def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
