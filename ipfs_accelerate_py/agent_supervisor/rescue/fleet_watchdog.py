@@ -780,7 +780,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
             return "supervisor_heal"
         if board.get("ensure") and not hold_paths(board):
             if _ensure_unit_already_active(board):
-                return ""
+                # systemd is up but the probe sees no owner: dump/stop/repair/start.
+                return "supervisor_heal"
             return "ensure"
         return "supervisor_heal"
     if (board.get("ensure") and not hold_paths(board)

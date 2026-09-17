@@ -291,7 +291,7 @@ def test_owner_missing_does_not_ensure_when_unit_already_active(tmp_path, monkey
         "last_action_result": {"recipe": "clear_overlay_copies_for_owner_start"},
         "next_action_at": 0,
     }
-    assert fleet.select_action(state, board, 100) == ""
+    assert fleet.select_action(state, board, 100) == "supervisor_heal"
 
 
 def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):

@@ -863,6 +863,24 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
     assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
 
 
+def test_dump_stop_already_recorded_retriggers_when_blocked_remains():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        dump_stop_repair_import_start_already_recorded,
+    )
+    state = {
+        "last_action_result": {
+            "recipe": "dump_stop_repair_import_start",
+            "status": "applied",
+            "unstalled": [{"task_alias": "DOEP-063"}],
+        },
+    }
+    still_blocked = {
+        "details": {"blocked_task_ids": ["DOEP-044"]},
+    }
+    assert dump_stop_repair_import_start_already_recorded(state, still_blocked) is False
+    assert dump_stop_repair_import_start_already_recorded(state, {"details": {}}) is True
+
+
 def test_diagnose_board_repair_problems_from_observation():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
         diagnose_board_repair_problems,

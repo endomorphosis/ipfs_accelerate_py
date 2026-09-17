@@ -1739,12 +1739,24 @@ def import_board_dump(source: Path, database: Path) -> None:
     shutil.copy2(source, database)
 
 
-def dump_stop_repair_import_start_already_recorded(state: Mapping[str, Any]) -> bool:
+def dump_stop_repair_import_start_already_recorded(
+    state: Mapping[str, Any],
+    observation: Mapping[str, Any] | None = None,
+) -> bool:
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
-    return (
-        result.get("recipe") == "dump_stop_repair_import_start"
-        and result.get("status") == "applied"
-    )
+    if result.get("recipe") != "dump_stop_repair_import_start" or result.get("status") != "applied":
+        return False
+    problems = diagnose_board_repair_problems(observation or {})
+    unstalled = {
+        str(item.get("task_alias"))
+        for item in result.get("unstalled") or []
+        if isinstance(item, dict) and item.get("task_alias")
+    }
+    remaining_blocked = set(problems.get("blocked_aliases") or []) - unstalled
+    remaining_progress = set(problems.get("in_progress_aliases") or []) - unstalled
+    if remaining_blocked or remaining_progress:
+        return False
+    return True
 
 
 def run_board_dump_stop_repair_import_start(
@@ -1764,7 +1776,7 @@ def run_board_dump_stop_repair_import_start(
         "completion_authority": False,
         "completion_authoritative": False,
     }
-    if dump_stop_repair_import_start_already_recorded(state or {}):
+    if dump_stop_repair_import_start_already_recorded(state or {}, observation):
         return {**empty, "reason": "dump_stop_repair_import_start_already_recorded"}
     board_id = str(board.get("id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
@@ -2101,7 +2113,11 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     if dirty.get("status") == "applied":
         return dirty
     if stall == "owner_missing":
-        return clear_overlay_copies_blocking_owner_start(board)
+        cleared = clear_overlay_copies_blocking_owner_start(board)
+        pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+        if pipeline.get("status") != "skip":
+            return pipeline
+        return cleared
     if stall == "extra_gate_recursion":
         collapsed = collapse_extra_gate_recursion(board, observation)
         if collapsed.get("status") == "applied":
