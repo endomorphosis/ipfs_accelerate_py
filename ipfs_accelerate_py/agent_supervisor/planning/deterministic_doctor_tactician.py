@@ -2355,9 +2355,13 @@ class DeterministicDoctorTactician:
             try:
                 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
                     filter_candidates_for_tactician,
+                    observe_doctor_producer,
                 )
 
                 candidates = filter_candidates_for_tactician(candidates)
+                observe_doctor_producer(
+                    candidates, admitted_producer=PRODUCER_ID
+                )
             except Exception:
                 pass
         if compilation is None:

@@ -381,6 +381,23 @@ class ContractRepairReranker:
 
         ranks = tuple(self._evaluate(item, roots, candidate_set_id, active_policy) for item in rows)
         eligible = tuple(item for item in ranks if item.eligible)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                rank_allowlisted_artifacts,
+            )
+
+            eligible_ids = tuple(
+                str(item.candidate_id).strip()
+                for item in eligible
+                if str(item.candidate_id).strip()
+            )
+            if eligible_ids:
+                rank_allowlisted_artifacts(
+                    eligible_ids,
+                    obligation_id=str(candidate_set_id or "")[:128],
+                )
+        except Exception:
+            pass
         if not eligible:
             return RerankReceipt(
                 roots, candidate_set_id, active_policy.receipt_id, ranks,

@@ -189,7 +189,26 @@ def _refs(value: Any, signal: str, raw: Mapping[str, Any]) -> tuple[EvidenceRefe
             refs.append(ref)
     if not refs:
         refs.append(EvidenceReference(signal, _fingerprint(raw), producer_id="contract-repair-candidate-retrieval@1"))
-    return tuple(sorted(refs, key=lambda item: item.content_id))
+    ordered = tuple(sorted(refs, key=lambda item: item.content_id))
+    admitted = "contract-repair-candidate-retrieval@1"
+    claimed = next(
+        (str(item.producer_id).strip() for item in ordered if str(item.producer_id).strip()),
+        admitted,
+    )
+    if claimed != admitted:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                lint_producer_consumer,
+            )
+
+            lint_producer_consumer(
+                artifact_id=str(ordered[0].artifact_id if ordered else "")[:128],
+                claimed_producer=claimed,
+                admitted_producer=admitted,
+            )
+        except Exception:
+            pass
+    return ordered
 
 
 def _signal(name: Any) -> str:

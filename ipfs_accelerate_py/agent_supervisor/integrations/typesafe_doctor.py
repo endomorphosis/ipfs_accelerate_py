@@ -268,10 +268,45 @@ def hammer_timeout_hint(
         return empty
 
 
+def observe_doctor_producer(
+    candidates: Sequence[Any] = (),
+    *,
+    admitted_producer: str,
+) -> dict[str, Any]:
+    """Lint claimed candidate producer_id vs admitted doctor producer. Sidecar only."""
+
+    claimed = ""
+    for item in candidates or ():
+        if isinstance(item, Mapping):
+            claimed = str(item.get("producer_id") or "").strip()
+        else:
+            claimed = str(getattr(item, "producer_id", "") or "").strip()
+        if claimed:
+            break
+    if not claimed:
+        claimed = str(admitted_producer or "")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            lint_producer_consumer,
+        )
+
+        return lint_producer_consumer(
+            claimed_producer=claimed,
+            admitted_producer=str(admitted_producer or ""),
+        )
+    except Exception:
+        return {
+            "accepted_as_authority": False,
+            "rewrites_producer_id": False,
+            "replaces_protocol_error": False,
+        }
+
+
 __all__ = [
     "filter_candidates_for_tactician",
     "hammer_timeout_hint",
     "last_hammer_hint",
+    "observe_doctor_producer",
     "order_candidates_for_hammer",
     "select_retrieve_ids_for_tactician",
 ]

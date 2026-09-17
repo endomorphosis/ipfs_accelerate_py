@@ -626,6 +626,7 @@ __all__ = [
     "inspect_allowlisted_artifacts",
     "last_artifact_rank",
     "last_artifact_view",
+    "last_parser_triage",
     "last_producer_consumer",
     "last_source_edit_lint",
     "last_refactor_scope",
@@ -635,6 +636,7 @@ __all__ = [
     "observe_refactor_scope",
     "lint_static_span",
     "lint_questions",
+    "observe_parser_failure_clusters",
     "observe_source_edit_lint",
     "prepare_evidence_for_compile",
     "producer_consumer_questions",
@@ -800,3 +802,86 @@ def rank_allowlisted_artifacts(
     payload["matches"] = matches
     _LAST_ARTIFACT_RANK.value = dict(payload)
     return tuple(ranked)
+
+
+_LAST_PARSER_TRIAGE = threading.local()
+
+
+def last_parser_triage() -> dict[str, Any]:
+    value = getattr(_LAST_PARSER_TRIAGE, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def observe_parser_failure_clusters(
+    clusters: Sequence[Mapping[str, Any]] = (),
+    *,
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Advisory labels for parser-failure clusters. Never weakens thresholds.
+
+    Protected MCP/runtime surfaces cannot be excluded by TypeSafe.
+    """
+
+    rows = tuple(dict(item) for item in clusters if isinstance(item, Mapping))[:8]
+    protected = any(
+        bool(item.get("protected") or item.get("protected_member_count"))
+        for item in rows
+    )
+    payload = {
+        "accepted_as_authority": False,
+        "weakens_thresholds": False,
+        "excludes_mcp_surface": False,
+        "protected_contract_surface": protected,
+        "cluster_ids": [str(item.get("cluster_id") or "")[:128] for item in rows],
+        "fixture_like": {},
+    }
+    if protected:
+        _LAST_PARSER_TRIAGE.value = dict(payload)
+        return payload
+    if not rows or not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        _LAST_PARSER_TRIAGE.value = dict(payload)
+        return payload
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    try:
+        for item in rows:
+            ident = str(item.get("cluster_id") or item.get("path_family") or "")[:128]
+            if not ident:
+                continue
+            result = system_one(
+                {
+                    "cluster": {
+                        "id": ident,
+                        "path_family": str(item.get("path_family") or "")[:128],
+                        "reason": str(item.get("reason_code") or "")[:64],
+                    }
+                },
+                {
+                    "fixture_or_generated": Noul(
+                        instructions={
+                            "question": (
+                                "Is `cluster.path_family` a generated or fixture "
+                                "path rather than an MCP or runtime surface?"
+                            ),
+                            "inspect": "`cluster.path_family`",
+                        },
+                    ),
+                },
+                timeout=timeout,
+            )
+            noul = getattr(
+                (getattr(result, "nouls", None) or {}).get("fixture_or_generated"),
+                "noul",
+                0.0,
+            )
+            payload["fixture_like"][ident] = round(float(noul or 0.0), 4)
+    except Exception:
+        _LAST_PARSER_TRIAGE.value = dict(payload)
+        return payload
+    _LAST_PARSER_TRIAGE.value = dict(payload)
+    return payload

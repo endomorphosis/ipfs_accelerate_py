@@ -2769,6 +2769,7 @@ class DeterministicDoctorHammer:
             try:
                 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
                     filter_candidates_for_tactician,
+                    observe_doctor_producer,
                     order_candidates_for_hammer,
                 )
 
@@ -2776,6 +2777,9 @@ class DeterministicDoctorHammer:
                 if filtered:
                     candidates = filtered
                 candidates = order_candidates_for_hammer(candidates)
+                observe_doctor_producer(
+                    candidates, admitted_producer=PRODUCER_ID
+                )
             except Exception:
                 pass
         wall0 = time.monotonic()

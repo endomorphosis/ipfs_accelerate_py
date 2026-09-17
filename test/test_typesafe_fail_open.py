@@ -232,6 +232,7 @@ def test_new_helpers_do_not_call_http_without_key(
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
         hammer_timeout_hint,
+        observe_doctor_producer,
         order_candidates_for_hammer,
         select_retrieve_ids_for_tactician,
     )
@@ -243,6 +244,7 @@ def test_new_helpers_do_not_call_http_without_key(
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         lint_producer_consumer,
+        observe_parser_failure_clusters,
         observe_refactor_scope,
         rank_allowlisted_artifacts,
     )
@@ -273,6 +275,16 @@ def test_new_helpers_do_not_call_http_without_key(
     assert producer_lint["replaces_consumer_fence"] is False
     ranked = rank_allowlisted_artifacts(("node-b", "node-a"), obligation_id="obl")
     assert ranked == ("node-b", "node-a")
+    parser_view = observe_parser_failure_clusters(
+        ({"cluster_id": "cl-1", "path_family": "src/", "protected": True},)
+    )
+    assert parser_view["weakens_thresholds"] is False
+    assert parser_view["excludes_mcp_surface"] is False
+    doctor_lint = observe_doctor_producer(
+        ({"id": "c1", "producer_id": "other"},),
+        admitted_producer="deterministic-doctor-hammer@1",
+    )
+    assert doctor_lint["rewrites_producer_id"] is False
     assert score_synthesis_candidates_fanout(
         (("a", "one"), ("b", "two")),
         allowlisted_ids=("a", "b"),

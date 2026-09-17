@@ -331,6 +331,58 @@ def test_rank_allowlisted_artifacts_orders_existing_ids_only(
     assert "node-invented" not in view["matches"]
 
 
+def test_observe_parser_failure_clusters_never_excludes_protected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_parser_triage,
+        observe_parser_failure_clusters,
+    )
+
+    view = observe_parser_failure_clusters(
+        (
+            {
+                "cluster_id": "cl-mcp",
+                "path_family": "mcp/runtime",
+                "protected": True,
+                "protected_member_count": 2,
+            },
+        )
+    )
+    assert view["weakens_thresholds"] is False
+    assert view["excludes_mcp_surface"] is False
+    assert view["protected_contract_surface"] is True
+    assert view["accepted_as_authority"] is False
+    assert last_parser_triage()["excludes_mcp_surface"] is False
+
+
+def test_rank_allowlisted_artifacts_drops_ineligible_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.inspect_allowlisted_artifacts",
+        lambda **_kwargs: {"matches": {"elig-b": 0.9, "elig-a": 0.1, "ineligible": 1.0}},
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(("elig-a", "elig-b"), obligation_id="repair")
+    assert ranked == ("elig-b", "elig-a")
+    assert "ineligible" not in ranked
+
+
 def test_lint_producer_consumer_fail_open_does_not_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

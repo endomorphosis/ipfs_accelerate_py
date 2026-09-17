@@ -1714,6 +1714,25 @@ def triage_parser_failures(
         max_parser_failures=max_parser_failures,
         max_parser_failure_ratio=max_parser_failure_ratio,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            observe_parser_failure_clusters,
+        )
+
+        observe_parser_failure_clusters(
+            tuple(
+                {
+                    "cluster_id": str(getattr(cluster, "cluster_id", "") or ""),
+                    "path_family": str(cluster.path_family or ""),
+                    "reason_code": str(cluster.reason_code or ""),
+                    "protected_member_count": int(cluster.protected_member_count or 0),
+                    "protected": int(cluster.protected_member_count or 0) > 0,
+                }
+                for cluster in clusters[:8]
+            )
+        )
+    except Exception:
+        pass
     active_repairs = tuple(repairs if repairs is not None else default_parser_repairs())
     fixture_report = run_parser_repair_fixtures(active_repairs)
 
