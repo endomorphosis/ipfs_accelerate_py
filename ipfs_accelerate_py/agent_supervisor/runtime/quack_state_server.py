@@ -5370,6 +5370,12 @@ class QuackStateServer:
                     marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
                 ) or candidate_receipt_admits_owner_rearm(str(alias or ""))
             elif status_text == "in_progress":
+                store_id = str(getattr(identity, "store_id", "") or "")
+                if "semantic_addressed_world_model" in store_id:
+                    # Sealed SAWM daemons retain one expired leftover attempt
+                    # only while control stays in_progress. Rearming to
+                    # retrying freezes the whole shard.
+                    continue
                 try:
                     updated_at = datetime.fromisoformat(str(updated or "").replace("Z", "+00:00"))
                     age = (clock - updated_at).total_seconds()

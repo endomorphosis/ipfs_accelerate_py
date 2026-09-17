@@ -827,6 +827,14 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_overlay_sitecustomize_pins_without_wrapping_execstart():
+    from pathlib import Path
+    from ipfs_accelerate_py.agent_supervisor.rescue.overlay_sys_path import overlay_root
+    text = (Path(overlay_root()) / "sitecustomize.py").read_text(encoding="utf-8")
+    assert "pin_overlay_sys_path" in text
+    assert "ExecStart=" not in text
+
+
 def test_managed_daemon_pythonpath_keeps_overlay_first(monkeypatch):
     import os
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (

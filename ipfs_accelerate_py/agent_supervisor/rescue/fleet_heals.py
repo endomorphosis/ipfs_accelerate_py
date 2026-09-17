@@ -1857,7 +1857,9 @@ def repair_event_replay_tasks_via_intent(
         status_s = str(status or "")
         cid_s = str(cid)
         if status_s == "in_progress" and (unstall_in_progress or alias_s in wanted):
-            pass
+            # Sealed SAWM daemons need leftover in_progress heads so fairness
+            # can still claim independent same-shard work.
+            continue
         elif status_s == "blocked" and alias_s in wanted:
             pass
         elif status_s == "retrying" and (rearm_retrying or alias_s in wanted):
