@@ -704,6 +704,67 @@ def unstall_stale_native_work(
     }
 
 
+_OVERLAY_CURRENT_TREE_SMOKE = {
+    "doep": (
+        "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+    ),
+    "sawm": (
+        "test/api/test_sawm_graceful_recovery.py",
+        "test/api/test_sawm_native_dispatch_drain.py",
+    ),
+}
+
+
+def overlay_current_tree_smoke_already_recorded(state: Mapping[str, Any]) -> bool:
+    result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    return result.get("recipe") == "overlay_current_tree_smoke"
+
+
+def run_overlay_current_tree_smoke(
+    board: Mapping[str, Any],
+    state: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run overlay current-tree tests for remaining SAWM/DOEP work. Never admits."""
+    empty = {
+        "status": "skip",
+        "recipe": "overlay_current_tree_smoke",
+        "completion_authority": False,
+        "completion_authoritative": False,
+    }
+    if overlay_current_tree_smoke_already_recorded(state or {}):
+        return {**empty, "reason": "overlay_current_tree_smoke_already_recorded"}
+    board_id = str(board.get("id") or "").lower()
+    relatives = _OVERLAY_CURRENT_TREE_SMOKE.get(board_id) or ()
+    overlay = Path(supervisor_overlay_root())
+    tests = [str(overlay / relative) for relative in relatives if (overlay / relative).is_file()]
+    if not tests:
+        return {**empty, "reason": "overlay_current_tree_tests_missing"}
+    try:
+        completed = subprocess.run(
+            ["python3", "-m", "pytest", *tests, "-q"],
+            cwd=str(overlay),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=_LOCAL_VALIDATION_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {**empty, "reason": "overlay_current_tree_smoke_unavailable"}
+    return {
+        "status": "applied" if completed.returncode == 0 else "wait",
+        "recipe": "overlay_current_tree_smoke",
+        "completion_authority": False,
+        "completion_authoritative": False,
+        "returncode": completed.returncode,
+        "tests": [Path(path).name for path in tests],
+        "reason": (
+            "overlay current-tree tests passed; remaining todos are not stalled"
+            if completed.returncode == 0 else
+            "overlay current-tree tests did not pass; do not rewrite receipts"
+        ),
+    }
+
+
 def locally_validated_rearm_already_recorded(state: Mapping[str, Any]) -> bool:
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
     return result.get("recipe") == "rearm_locally_validated_blocked_tasks"
@@ -1816,6 +1877,10 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             if item.get("status") == "passed" and item.get("task_id")
         }
         if blocked and set(blocked) <= passed:
+            smoke = run_overlay_current_tree_smoke(board, state)
+            if smoke.get("status") != "skip":
+                smoke["results"] = prior_results
+                return smoke
             return {
                 "status": "applied",
                 "recipe": "successors_may_run_on_current_tree_evidence",
@@ -1838,6 +1903,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             for lane in lanes
         )
         if stale_claims:
+            smoke = run_overlay_current_tree_smoke(board, state)
+            if smoke.get("status") != "skip":
+                return smoke
             return {
                 "status": "applied",
                 "recipe": "stale_in_progress_does_not_stall_remaining_todos",

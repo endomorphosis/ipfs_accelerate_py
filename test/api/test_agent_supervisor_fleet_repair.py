@@ -796,6 +796,11 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
         lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
                          "completion_authority": False},
     )
+    monkeypatch.setattr(
+        fleet_heals, "run_overlay_current_tree_smoke",
+        lambda *a, **k: {"status": "skip", "recipe": "overlay_current_tree_smoke",
+                         "completion_authority": False},
+    )
     prior = {
         "results": [
             {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
@@ -831,6 +836,11 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
         lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
                          "completion_authority": False},
     )
+    monkeypatch.setattr(
+        fleet_heals, "run_overlay_current_tree_smoke",
+        lambda *a, **k: {"status": "skip", "recipe": "overlay_current_tree_smoke",
+                         "completion_authority": False},
+    )
     result = apply_supervisor_heal(
         {"id": "sawm", "cwd": str(tmp_path)},
         {
@@ -851,6 +861,37 @@ def test_sawm_stale_in_progress_heal_does_not_stall_remaining_todos(tmp_path, mo
     assert result["status"] == "applied"
     assert result["completion_authority"] is False
     assert result["recipe"] == "stale_in_progress_does_not_stall_remaining_todos"
+
+
+def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_overlay_current_tree_smoke,
+    )
+
+    overlay = tmp_path / "overlay"
+    (overlay / "test/api/doep").mkdir(parents=True)
+    (overlay / "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/test_sawm_graceful_recovery.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/test_sawm_native_dispatch_drain.py").write_text("def test_ok():\n    assert True\n")
+    monkeypatch.setattr(fleet_heals, "supervisor_overlay_root", lambda: str(overlay))
+    calls = []
+
+    def fake_run(argv, cwd=None, **kwargs):
+        calls.append((list(argv), cwd))
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    doep = run_overlay_current_tree_smoke({"id": "doep"})
+    sawm = run_overlay_current_tree_smoke({"id": "sawm"})
+    assert doep["status"] == "applied"
+    assert sawm["status"] == "applied"
+    assert doep["completion_authoritative"] is False
+    assert sawm["completion_authoritative"] is False
+    assert any("test_doep_063" in item for call, _ in calls for item in call)
+    assert any("test_sawm_graceful_recovery.py" in item for call, _ in calls for item in call)
+    again = run_overlay_current_tree_smoke({"id": "doep"}, {"last_action_result": doep})
+    assert again["status"] == "skip"
 
 
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
