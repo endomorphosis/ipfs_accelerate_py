@@ -583,9 +583,12 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # A ready exclusive owner after ensure is not a 1h launch backoff.
         # Receipt materialization and unstall retry on cooldown.
         if not (
-            stall == "blocked_without_independent_work"
-            and details.get("owner_ready") is True
-            and state.get("last_action") == "ensure"
+            (
+                stall == "blocked_without_independent_work"
+                and details.get("owner_ready") is True
+                and state.get("last_action") == "ensure"
+            )
+            or stall == "owner_missing"
         ):
             return ""
     if health == "complete" or state["observation"].get("complete") is True:
@@ -666,6 +669,13 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # A live exclusive owner with a torn/failed status projection is not
         # owner-missing. Ensure would start a competing owner.
         return ""
+    if stall == "owner_missing":
+        result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+        if (
+            result.get("recipe") != "clear_overlay_copies_for_owner_start"
+            and state.get("last_action") == "ensure"
+        ):
+            return "supervisor_heal"
     if (board.get("ensure") and not hold_paths(board)
             and state.get("ensure_attempts", state.get("attempts", 0)) < board.get("max_ensure_attempts", 2)
             and (recovery == "ensure" or stall == "owner_missing")):
@@ -810,6 +820,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "unstall_stale_native_work",
                     "overlay_first_native_admission",
                     "rearm_locally_validated_blocked_tasks",
+                    "clear_overlay_copies_for_owner_start",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

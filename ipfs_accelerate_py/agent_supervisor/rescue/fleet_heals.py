@@ -1226,7 +1226,7 @@ def run_local_blocked_candidate_validation(
             results.append({"task_id": task_id, "status": "validation_cwd_rejected"})
             continue
         repaired = _repair_missing_validation_artifacts(
-            cwd, board, task_id, argv, workdir,
+            cwd, board, task_id, argv, workdir, observation=observation,
         )
         missing = _pytest_source_missing(argv, workdir)
         if missing is not None:
@@ -1370,14 +1370,22 @@ def copy_overlay_source(
     return missing
 
 
+def _owner_is_ready(observation: Mapping[str, Any] | None) -> bool:
+    details = (observation or {}).get("details") if isinstance((observation or {}).get("details"), dict) else {}
+    return details.get("owner_ready") is True
+
+
 def _repair_missing_validation_artifacts(
     cwd: Path,
     board: Mapping[str, Any],
     task_id: str,
     argv: list[str],
     workdir: Path,
+    observation: Mapping[str, Any] | None = None,
 ) -> list[str]:
     """Copy missing pytest targets and required outputs from overlay."""
+    if not _owner_is_ready(observation):
+        return []
     repaired: list[str] = []
     missing = _pytest_source_missing(argv, workdir)
     if missing is not None:
@@ -1401,6 +1409,66 @@ def _repair_missing_validation_artifacts(
         if copied:
             repaired.append(copied)
     return repaired
+
+
+def clear_overlay_copies_blocking_owner_start(
+    board: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Remove overlay-copied sources that make exclusive-owner preflight fail."""
+    empty = {
+        "status": "skip",
+        "recipe": "clear_overlay_copies_for_owner_start",
+        "completion_authority": False,
+        "removed": [],
+    }
+    board_id = str(board.get("id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_checkout_untouched"}
+    cwd = Path(str(board.get("cwd") or ""))
+    nested = cwd / "external" / "ipfs_accelerate"
+    if not nested.is_dir():
+        return {**empty, "reason": "nested_accelerate_absent"}
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(nested), "status", "--porcelain", "-uall"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            text=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {**empty, "reason": "nested_git_status_unavailable"}
+    if completed.returncode != 0:
+        return {**empty, "reason": "nested_git_status_unavailable"}
+    removed: list[str] = []
+    for line in (completed.stdout or "").splitlines():
+        if not line.startswith("?? "):
+            continue
+        relative = line[3:].strip()
+        if not relative.endswith((".py", ".json")):
+            continue
+        if overlay_source_path(relative) is None and overlay_source_path(
+            f"external/ipfs_accelerate/{relative}",
+        ) is None:
+            continue
+        path = (nested / relative).resolve()
+        try:
+            path.relative_to(nested.resolve())
+        except ValueError:
+            continue
+        if path.is_file():
+            path.unlink()
+            removed.append(relative)
+    if not removed:
+        return {**empty, "reason": "no_overlay_copies_to_clear"}
+    return {
+        "status": "applied",
+        "recipe": "clear_overlay_copies_for_owner_start",
+        "completion_authority": False,
+        "removed": removed,
+        "reason": "overlay copies removed so exclusive-owner preflight can start",
+    }
 
 
 def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
@@ -1669,6 +1737,8 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     dirty = restore_dirty_control_plane(board, observation)
     if dirty.get("status") == "applied":
         return dirty
+    if stall == "owner_missing":
+        return clear_overlay_copies_blocking_owner_start(board)
     if stall == "extra_gate_recursion":
         collapsed = collapse_extra_gate_recursion(board, observation)
         if collapsed.get("status") == "applied":

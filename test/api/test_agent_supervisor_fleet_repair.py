@@ -845,7 +845,8 @@ def test_local_validation_of_blocked_candidate_does_not_admit_completion(tmp_pat
     monkeypatch.setattr(subprocess, "run", fake_run)
     observation = {
         "details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"],
-                    "task_counts": {"todo": 23, "blocked": 2}},
+                    "task_counts": {"todo": 23, "blocked": 2},
+                    "owner_ready": True},
     }
     result = run_local_blocked_candidate_validation({"cwd": str(tmp_path)}, observation)
     assert result["completion_authoritative"] is False
@@ -910,7 +911,7 @@ def test_missing_receipt_is_materialized_from_validation_profile(tmp_path, monke
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = run_local_blocked_candidate_validation(
         {"cwd": str(tmp_path)},
-        {"details": {"blocked_task_ids": ["DOEP-063"]}},
+        {"details": {"blocked_task_ids": ["DOEP-063"], "owner_ready": True}},
     )
     receipt = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts/DOEP-063.json"
     payload = json.loads(receipt.read_text())
@@ -960,7 +961,7 @@ def test_missing_pytest_source_does_not_fail_sibling_local_pass(tmp_path, monkey
     monkeypatch.setattr(subprocess, "run", fake_run)
     result = run_local_blocked_candidate_validation(
         {"cwd": str(tmp_path)},
-        {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"]}},
+        {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"], "owner_ready": True}},
     )
     assert result["completion_authoritative"] is False
     assert result["status"] == "applied"
@@ -970,6 +971,78 @@ def test_missing_pytest_source_does_not_fail_sibling_local_pass(tmp_path, monkey
     assert "test_doep_063.py" in by_id["DOEP-063"]["missing"]
     assert len(calls) == 1
     assert "overlay copy work" in result["reason"]
+
+
+def test_overlay_copy_is_skipped_until_owner_is_ready(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        run_local_blocked_candidate_validation,
+    )
+
+    overlay = tmp_path / "overlay"
+    source = overlay / "test/api/doep/test_doep_063.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def test_ok():\n    assert True\n")
+    monkeypatch.setattr(fleet_heals, "supervisor_overlay_root", lambda: str(overlay))
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "board_validation_profiles.json").write_text(json.dumps({
+        "DOEP-063": {
+            "task_id": "DOEP-063",
+            "receipt": "external/ipfs_accelerate/artifacts/doep/receipts/DOEP-063.json",
+            "required_outputs": [
+                "external/ipfs_accelerate/test/api/doep/test_doep_063.py",
+            ],
+            "commands": [{
+                "argv": [
+                    "python3", "-m", "pytest",
+                    "external/ipfs_accelerate/test/api/doep/test_doep_063.py",
+                    "-q",
+                ],
+            }],
+        },
+    }))
+    receipts = tmp_path / "external/ipfs_accelerate/artifacts/doep/receipts"
+    receipts.mkdir(parents=True)
+    (receipts / "DOEP-063.json").write_text(json.dumps({
+        "task_id": "DOEP-063",
+        "completion_authoritative": False,
+        "validation": {"commands": [{
+            "argv": [
+                "python3", "-m", "pytest",
+                "external/ipfs_accelerate/test/api/doep/test_doep_063.py",
+                "-q",
+            ],
+        }]},
+    }))
+    dest = tmp_path / "external/ipfs_accelerate/test/api/doep/test_doep_063.py"
+    result = run_local_blocked_candidate_validation(
+        {"cwd": str(tmp_path)},
+        {"details": {"blocked_task_ids": ["DOEP-063"], "owner_ready": False}},
+    )
+    assert not dest.exists()
+    assert result["results"][0]["status"] == "validation_source_missing"
+    assert result["completion_authoritative"] is False
+
+
+def test_owner_missing_heal_removes_overlay_copies(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        apply_supervisor_heal,
+    )
+    nested = tmp_path / "external/ipfs_accelerate"
+    copied = nested / "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py"
+    copied.parent.mkdir(parents=True)
+    copied.write_text("def test_ok():\n    assert True\n")
+    subprocess.run(["git", "init"], cwd=str(nested), check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "-C", str(nested), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(nested), "config", "user.name", "t"], check=True)
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {"stall_class": "owner_missing", "observation": {"details": {"owner_ready": False}}},
+    )
+    assert result["recipe"] == "clear_overlay_copies_for_owner_start"
+    assert result["completion_authority"] is False
+    assert not copied.exists()
 
 
 def test_missing_pytest_source_is_copied_from_overlay(tmp_path, monkeypatch):
@@ -1030,7 +1103,7 @@ def test_missing_pytest_source_is_copied_from_overlay(tmp_path, monkeypatch):
 
     result = run_local_blocked_candidate_validation(
         {"cwd": str(tmp_path)},
-        {"details": {"blocked_task_ids": ["DOEP-063"]}},
+        {"details": {"blocked_task_ids": ["DOEP-063"], "owner_ready": True}},
     )
     dest = tmp_path / (
         "external/ipfs_accelerate/test/api/doep/"
@@ -1055,7 +1128,7 @@ def test_missing_pytest_source_is_copied_from_overlay(tmp_path, monkeypatch):
     dest.write_text("def test_keep():\n    assert True\n")
     again = run_local_blocked_candidate_validation(
         {"cwd": str(tmp_path)},
-        {"details": {"blocked_task_ids": ["DOEP-063"]}},
+        {"details": {"blocked_task_ids": ["DOEP-063"], "owner_ready": True}},
     )
     assert dest.read_text() == "def test_keep():\n    assert True\n"
     assert again["completion_authoritative"] is False
