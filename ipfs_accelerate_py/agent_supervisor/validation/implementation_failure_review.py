@@ -1018,12 +1018,32 @@ def review_implementation_failure(
     try:
         from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
             observe_refactor_scope,
+            rank_allowlisted_artifacts,
         )
 
         observe_refactor_scope(
             declared_paths=declared_scope,
             changed_paths=changed,
         )
+        artifact_ids: list[str] = []
+        for source in (validation, scope):
+            for key in (
+                "rebuilt_graph_node_ids",
+                "symbol_ids",
+                "clause_ids",
+                "artifact_ids",
+                "node_ids",
+            ):
+                raw = source.get(key) or ()
+                if isinstance(raw, (list, tuple)):
+                    artifact_ids.extend(
+                        str(item).strip() for item in raw if str(item).strip()
+                    )
+        if artifact_ids:
+            rank_allowlisted_artifacts(
+                artifact_ids,
+                obligation_id=str(validation.get("obligation_id") or "")[:128],
+            )
     except Exception:
         pass
     failed_commands = _failed_commands_from_validation(validation)

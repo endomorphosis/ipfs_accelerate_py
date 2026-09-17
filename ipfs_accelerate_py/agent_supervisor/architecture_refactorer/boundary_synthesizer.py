@@ -3548,6 +3548,27 @@ def synthesize_interface_boundaries(
                 )
             )
     ranking = rank_boundary_proposals(proposals, rejections)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            rank_allowlisted_artifacts,
+        )
+
+        existing_ids: list[str] = []
+        for item in proposals:
+            for ident in (
+                item.canonical_owner_node_id,
+                item.state_owner_node_id,
+            ):
+                text = str(ident or "").strip()
+                if text:
+                    existing_ids.append(text)
+        if existing_ids:
+            rank_allowlisted_artifacts(
+                existing_ids,
+                obligation_id=str(graph.content_identity or "")[:128],
+            )
+    except Exception:
+        pass
     return BoundarySynthesisResult(
         architecture_ir_identity=graph.content_identity,
         ownership_identity=owners.content_identity,

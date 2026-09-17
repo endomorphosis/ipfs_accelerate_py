@@ -240,6 +240,7 @@ def test_new_helpers_do_not_call_http_without_key(
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         lint_producer_consumer,
         observe_refactor_scope,
+        rank_allowlisted_artifacts,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
         LLM_USAGE_MODE_OFF,
@@ -262,6 +263,8 @@ def test_new_helpers_do_not_call_http_without_key(
     assert producer_lint["rewrites_producer_id"] is False
     assert producer_lint["replaces_protocol_error"] is False
     assert producer_lint["replaces_consumer_fence"] is False
+    ranked = rank_allowlisted_artifacts(("node-b", "node-a"), obligation_id="obl")
+    assert ranked == ("node-b", "node-a")
     assert select_retrieve_ids_for_tactician(({"id": "a"}, {"id": "b"})) == ("a", "b")
     assert order_candidates_for_hammer(({"id": "a"}, {"id": "b"})) == (
         {"id": "a"},

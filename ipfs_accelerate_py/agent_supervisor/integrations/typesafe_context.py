@@ -624,6 +624,7 @@ __all__ = [
     "compose_snippet_score",
     "extract_claim_spans",
     "inspect_allowlisted_artifacts",
+    "last_artifact_rank",
     "last_artifact_view",
     "last_producer_consumer",
     "last_source_edit_lint",
@@ -637,6 +638,7 @@ __all__ = [
     "observe_source_edit_lint",
     "prepare_evidence_for_compile",
     "producer_consumer_questions",
+    "rank_allowlisted_artifacts",
     "rerank_allowlisted_snippets",
     "rerank_questions",
 ]
@@ -720,3 +722,81 @@ def inspect_allowlisted_artifacts(
     payload["matches"] = matches
     _LAST_ARTIFACT_VIEW.value = dict(payload)
     return payload
+
+
+_LAST_ARTIFACT_RANK = threading.local()
+
+
+def last_artifact_rank() -> dict[str, Any]:
+    value = getattr(_LAST_ARTIFACT_RANK, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def rank_allowlisted_artifacts(
+    artifact_ids: Sequence[str],
+    *,
+    obligation_id: str = "",
+    summaries: Mapping[str, str] | None = None,
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> tuple[str, ...]:
+    """Order existing AST/IR ids. Fail-open to input order. Never invents ids.
+
+    Ranking is non-probative. It does not replace undeclared-refactor checks
+    or ArchitectureIR boundary cost ranking.
+    """
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in artifact_ids:
+        ident = str(item).strip()
+        if not ident or ident in seen:
+            continue
+        seen.add(ident)
+        ordered.append(ident)
+        if len(ordered) >= MAX_SNIPPETS:
+            break
+    payload = {
+        "accepted_as_authority": False,
+        "invents_ids": False,
+        "replaces_undeclared_refactor_check": False,
+        "replaces_boundary_cost_ranking": False,
+        "obligation_id": str(obligation_id or "")[:128],
+        "ranked_ids": list(ordered),
+        "matches": {},
+    }
+    if not ordered:
+        _LAST_ARTIFACT_RANK.value = dict(payload)
+        return ()
+    if not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        _LAST_ARTIFACT_RANK.value = dict(payload)
+        return tuple(ordered)
+    try:
+        view = inspect_allowlisted_artifacts(
+            obligation_id=obligation_id,
+            symbol_ids=ordered,
+            summaries=summaries,
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+            timeout=timeout,
+        )
+    except Exception:
+        _LAST_ARTIFACT_RANK.value = dict(payload)
+        return tuple(ordered)
+    matches = {
+        ident: float(score)
+        for ident, score in dict(view.get("matches") or {}).items()
+        if ident in seen
+    }
+    ranked = sorted(
+        ordered,
+        key=lambda ident: (-matches.get(ident, 0.0), ordered.index(ident)),
+    )
+    payload["ranked_ids"] = list(ranked)
+    payload["matches"] = matches
+    _LAST_ARTIFACT_RANK.value = dict(payload)
+    return tuple(ranked)

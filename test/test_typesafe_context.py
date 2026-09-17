@@ -269,6 +269,68 @@ def test_observe_refactor_scope_does_not_replace_undeclared_check(
     assert last_refactor_scope()["replaces_undeclared_refactor_check"] is False
 
 
+def test_rank_allowlisted_artifacts_fail_open_keeps_existing_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_rank,
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(
+        ("node-b", "node-a", "node-evil-not-used"),
+        obligation_id="obl-1",
+    )
+    assert ranked == ("node-b", "node-a", "node-evil-not-used")
+    view = last_artifact_rank()
+    assert view["invents_ids"] is False
+    assert view["replaces_undeclared_refactor_check"] is False
+    assert view["replaces_boundary_cost_ranking"] is False
+    assert view["accepted_as_authority"] is False
+    assert "node-invented" not in view["ranked_ids"]
+
+
+def test_rank_allowlisted_artifacts_orders_existing_ids_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.inspect_allowlisted_artifacts",
+        lambda **_kwargs: {
+            "matches": {
+                "node-low": 0.1,
+                "node-high": 0.9,
+                "node-invented": 1.0,
+            }
+        },
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_rank,
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(
+        ("node-low", "node-high"),
+        obligation_id="obl-1",
+    )
+    assert ranked == ("node-high", "node-low")
+    assert "node-invented" not in ranked
+    view = last_artifact_rank()
+    assert view["invents_ids"] is False
+    assert view["replaces_boundary_cost_ranking"] is False
+    assert "node-invented" not in view["matches"]
+
+
 def test_lint_producer_consumer_fail_open_does_not_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
