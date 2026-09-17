@@ -360,10 +360,15 @@ def maybe_observe_worker_output(
         mode if mode in {LLM_USAGE_MODE_OBSERVE, LLM_USAGE_MODE_SHADOW} else LLM_USAGE_MODE_OBSERVE
     )
     try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+            typesafe_permitted,
+        )
         from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
             observe_worker_trace,
         )
 
+        if not typesafe_permitted():
+            return
         observe_worker_trace(prompt=prompt, output=output, usage_mode=observe_mode)
     except Exception:
         return

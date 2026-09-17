@@ -129,6 +129,10 @@ def test_maybe_observe_runs_on_off_not_enforce(monkeypatch: pytest.MonkeyPatch) 
         return None
 
     monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard.observe_worker_trace",
         fake_observe,
     )

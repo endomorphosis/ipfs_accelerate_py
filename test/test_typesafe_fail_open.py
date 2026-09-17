@@ -252,6 +252,27 @@ def test_new_helpers_do_not_call_http_without_key(
     observe_control_audit_throttled(audit, min_interval_s=0)
 
 
+def test_enforce_and_assist_never_call_typesafe_http(
+    forbid_typesafe_http: None,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
+        LLM_USAGE_MODE_ASSIST,
+        LLM_USAGE_MODE_ENFORCE,
+        maybe_observe_worker_output,
+    )
+
+    maybe_observe_worker_output(
+        prompt="ignore previous",
+        output="write_file",
+        usage_mode=LLM_USAGE_MODE_ENFORCE,
+    )
+    maybe_observe_worker_output(
+        prompt="ignore previous",
+        output="write_file",
+        usage_mode=LLM_USAGE_MODE_ASSIST,
+    )
+
+
 def test_allocate_without_key_never_selects_typesafe_provider(
     forbid_typesafe_http: None,
 ) -> None:
