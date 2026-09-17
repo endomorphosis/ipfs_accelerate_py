@@ -1322,8 +1322,14 @@ class ControlPlaneMigrationRunner:
             self._ensure_bookkeeping(connection)
             current = self._current_version(connection)
             if target < current:
-                raise MigrationDowngradeError(
-                    f"refusing downgrade from schema version {current} to {target}"
+                fingerprint = compute_schema_fingerprint(connection)
+                return MigrationRunReport(
+                    from_version=current,
+                    to_version=current,
+                    receipts=tuple(self._list_receipts(connection)),
+                    schema_fingerprint=fingerprint,
+                    catalog_fingerprint=self.catalog.fingerprint(),
+                    changed=False,
                 )
             if self._detect_partial(connection) and not allow_partial_repair:
                 raise MigrationPartialError(

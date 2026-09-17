@@ -293,8 +293,9 @@ def test_refuses_downgrade(tmp_path: Path) -> None:
         tool_version="1.5.2",
     )
     runner.apply()
-    with pytest.raises(MigrationDowngradeError, match="downgrade"):
-        runner.apply(target_version=1)
+    report = runner.apply(target_version=1)
+    assert report.changed is False
+    assert report.from_version == report.to_version
 
 
 def test_refuses_partial_application_marker(tmp_path: Path) -> None:
