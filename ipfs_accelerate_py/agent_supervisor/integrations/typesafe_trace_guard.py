@@ -175,6 +175,39 @@ def guardrail_questions() -> dict[str, Any]:
     }
 
 
+def tool_call_questions(calls: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """One noul per extracted call field. Same request as marker questions."""
+
+    questions: dict[str, Any] = {}
+    rows = tuple(item for item in (calls or ()) if isinstance(item, Mapping))[:8]
+    for index, _call in enumerate(rows):
+        questions[f"call_{index}_name_allowed"] = Noul(
+            instructions={
+                "question": (
+                    f"Is `tool_calls[{index}].name` an allowed tool for this task?"
+                ),
+                "inspect": f"`tool_calls[{index}].name_allowed`",
+            },
+        )
+        questions[f"call_{index}_path_in_allowlist"] = Noul(
+            instructions={
+                "question": (
+                    f"Are `tool_calls[{index}].paths` inside the allowlisted prefixes?"
+                ),
+                "inspect": f"`tool_calls[{index}].path_in_allowlist`",
+            },
+        )
+        questions[f"call_{index}_result_binds_call"] = Noul(
+            instructions={
+                "question": (
+                    f"Does a tool result bind `tool_calls[{index}]` when a result is present?"
+                ),
+                "inspect": f"`tool_calls[{index}].name`",
+            },
+        )
+    return questions
+
+
 def compose_guardrail_risk(result: Any) -> tuple[float, tuple[str, ...]]:
     """Weighted risk in [0, 1]. Code owns the mix."""
 
@@ -193,6 +226,15 @@ def compose_guardrail_risk(result: Any) -> tuple[float, tuple[str, ...]]:
     scope = noul("out_of_scope_write")
     allowed = noul("tool_name_allowed")
     invalid = noul("any_tool_call_invalid")
+    nouls = getattr(result, "nouls", None) or {}
+    for index in range(8):
+        name_key = f"call_{index}_name_allowed"
+        path_key = f"call_{index}_path_in_allowlist"
+        if name_key not in nouls and path_key not in nouls:
+            continue
+        name_ok = noul(name_key) if name_key in nouls else 1.0
+        path_ok = noul(path_key) if path_key in nouls else 1.0
+        invalid = max(invalid, 1.0 - min(name_ok, path_ok))
     risk = (
         0.25 * jailbreak
         + 0.20 * secrets
@@ -245,8 +287,10 @@ def observe_worker_trace(
     )
     from ipfs_accelerate_py.typesafe_inference import system_one
 
+    questions = dict(guardrail_questions())
+    questions.update(tool_call_questions(flags.get("tool_calls") or ()))
     try:
-        result = system_one(flags, guardrail_questions(), timeout=timeout)
+        result = system_one(flags, questions, timeout=timeout)
     except Exception:
         receipt = AdvisoryReceipt(action="abstain", reason_codes=("typesafe_error",))
         _LAST_GUARDRAIL.value = receipt.to_dict()
@@ -299,6 +343,7 @@ __all__ = [
     "extract_tool_calls",
     "guardrail_questions",
     "last_trace_guardrail",
+    "tool_call_questions",
     "observe_worker_trace",
     "scan_worker_trace",
 ]

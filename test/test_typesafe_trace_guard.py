@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard impor
     last_trace_guardrail,
     observe_worker_trace,
     scan_worker_trace,
+    tool_call_questions,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LLM_USAGE_MODE_ASSIST,
@@ -61,6 +62,67 @@ def test_guardrail_questions_are_atomic_nouls() -> None:
         "tool_name_allowed",
     }
     assert all(q.to_dict()["type"] == "noul" for q in questions.values())
+
+
+def test_tool_call_questions_fan_out_per_extracted_row() -> None:
+    questions = tool_call_questions(
+        (
+            {"name": "write_file", "name_allowed": False, "path_in_allowlist": False},
+            {"name": "read_file", "name_allowed": True, "path_in_allowlist": True},
+        )
+    )
+    assert "call_0_name_allowed" in questions
+    assert "call_0_path_in_allowlist" in questions
+    assert "call_1_name_allowed" in questions
+    assert "call_8_name_allowed" not in questions
+    assert all(q.to_dict()["type"] == "noul" for q in questions.values())
+
+
+def test_observe_asks_per_call_nouls_in_one_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    seen: list[dict] = []
+
+    class _Result:
+        nouls = {
+            "jailbreak_attempt": SimpleNamespace(noul=0.0),
+            "requests_secrets": SimpleNamespace(noul=0.0),
+            "out_of_scope_write": SimpleNamespace(noul=0.0),
+            "tool_name_allowed": SimpleNamespace(noul=1.0),
+            "any_tool_call_invalid": SimpleNamespace(noul=0.0),
+            "call_0_name_allowed": SimpleNamespace(noul=0.0),
+            "call_0_path_in_allowlist": SimpleNamespace(noul=0.0),
+        }
+        choices = {}
+
+    def fake_system_one(state, questions, **_kwargs):
+        seen.append(questions)
+        return _Result()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        fake_system_one,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.cite_claim_spans",
+        lambda *_a, **_k: (),
+    )
+    receipt = observe_worker_trace(
+        prompt='{"name": "write_file", "path": "/etc/passwd"}',
+        output="ok",
+        usage_mode=LLM_USAGE_MODE_OBSERVE,
+        allowed_tools=("read_file",),
+        allowed_path_prefixes=("src/",),
+    )
+    assert len(seen) == 1
+    assert "call_0_name_allowed" in seen[0]
+    assert "jailbreak_attempt" in seen[0]
+    assert receipt is not None
+    assert receipt.accepted_as_authority is False
 
 
 def test_compose_guardrail_risk_in_code() -> None:
