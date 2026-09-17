@@ -72,6 +72,49 @@ def test_dropping_everyone_keeps_original(monkeypatch: pytest.MonkeyPatch) -> No
     assert filter_candidates_for_tactician(rows) == rows
 
 
+def test_retrieve_fanout_one_call_scores_allowlisted_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    calls: list[int] = []
+
+    class _Result:
+        scores = {
+            "quality_cand-good": SimpleNamespace(score=1.8, confidence=0.9),
+            "quality_cand-junk": SimpleNamespace(score=0.0, confidence=HIGH_CONFIDENCE),
+        }
+        nouls = {
+            "unique_cand-good": SimpleNamespace(noul=0.8),
+            "unique_cand-junk": SimpleNamespace(noul=0.1),
+        }
+
+    def fake_system_one(state, questions, **_kwargs):
+        calls.append(1)
+        assert "quality_cand-good" in questions
+        assert "quality_cand-junk" in questions
+        return _Result()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        fake_system_one,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+        score_synthesis_candidates_fanout,
+    )
+
+    scored = score_synthesis_candidates_fanout(
+        (("cand-good", "src/a.py"), ("cand-junk", "tmp/noise.py"), ("evil", "no")),
+        allowlisted_ids=("cand-good", "cand-junk"),
+    )
+    assert calls == [1]
+    assert "evil" not in scored
+    assert scored["cand-good"].score == pytest.approx(1.8)
+    assert scored["cand-junk"].score == pytest.approx(0.0)
+
+
 def test_hammer_timeout_hint_fail_open_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "TYPESAFE_API_KEY",

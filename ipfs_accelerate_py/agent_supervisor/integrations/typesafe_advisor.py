@@ -231,6 +231,12 @@ def triage_smt(
     """Advise whether to spend z3. Trap families and low confidence always run z3."""
 
     trap = is_trap_family(smtlib=smtlib, case_id=case_id, complexity=complexity)
+    if trap:
+        return AdvisoryReceipt(
+            action=SmtTriageAction.RUN_Z3.value,
+            reason_codes=("trap_family_force_z3", "skip_typesafe_http"),
+            trap_family=True,
+        )
     if not typesafe_permitted(
         privacy_class=privacy_class,
         remote_disclosure_permitted=remote_disclosure_permitted,
@@ -240,7 +246,7 @@ def triage_smt(
             reason_codes=("privacy_or_unconfigured",),
             privacy_blocked=str(privacy_class or "").casefold() in REMOTE_BLOCKED_PRIVACY
             or not remote_disclosure_permitted,
-            trap_family=trap,
+            trap_family=False,
         )
     from ipfs_accelerate_py.typesafe_z3_benchmark import (
         SmtCase,
@@ -258,10 +264,7 @@ def triage_smt(
     status = str(timing.status or "unknown")
     conf = float(timing.confidence or 0.0)
     reasons = []
-    if trap:
-        reasons.append("trap_family_force_z3")
-        action = SmtTriageAction.RUN_Z3.value
-    elif status in {"error", "unknown"} or conf < LOW_CONFIDENCE:
+    if status in {"error", "unknown"} or conf < LOW_CONFIDENCE:
         reasons.append("low_confidence_or_unknown")
         action = SmtTriageAction.RUN_Z3.value
     elif conf >= HIGH_CONFIDENCE and status in {"sat", "unsat"}:
@@ -278,7 +281,7 @@ def triage_smt(
             )
 
             if not should_trust_skip(
-                trap_family=trap,
+                trap_family=False,
                 confidence=conf,
                 family=case_id,
                 smtlib=smtlib,
@@ -296,7 +299,7 @@ def triage_smt(
         claim_status=status,
         confidence=conf,
         reason_codes=tuple(reasons),
-        trap_family=trap,
+        trap_family=False,
         usage=dict(timing.usage or {}),
     )
 
@@ -325,13 +328,14 @@ def _contrastive_choice(kind: str, allowed: Sequence[str]) -> Choice:
         item: {
             "what": item,
             "not_for": "any other listed option",
+            "examples": [item],
         }
         for item in allowed
     }
     return Choice(
         instructions={
             "question": f"Which allowlisted option applies for {kind.replace('_', ' ')}?",
-            "focus": "Select exactly one listed alternative.",
+            "focus": "Select exactly one listed alternative. Do not invent an option.",
         },
         criteria=criteria,
     )
@@ -748,6 +752,72 @@ def score_synthesis_candidate(
     )
 
 
+def score_synthesis_candidates_fanout(
+    items: Sequence[tuple[str, str]],
+    *,
+    allowlisted_ids: Sequence[str],
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, AdvisoryReceipt]:
+    """Score up to eight allowlisted candidates in one System One call."""
+
+    allowed = {str(item).strip() for item in allowlisted_ids if str(item).strip()}
+    rows = [
+        (str(ident).strip(), str(summary or "")[:240])
+        for ident, summary in items
+        if str(ident).strip() in allowed
+    ][:8]
+    if not rows or not typesafe_permitted(
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+    ):
+        return {}
+    from ipfs_accelerate_py.typesafe_inference import system_one
+
+    state = {
+        "candidates": {ident: {"id": ident, "summary": summary} for ident, summary in rows}
+    }
+    questions: dict[str, Any] = {}
+    for ident, _summary in rows:
+        questions[f"quality_{ident}"] = Score(
+            instructions={
+                "question": f"How close is `candidates.{ident}.summary` to kernel-ready?",
+                "inspect": f"`candidates.{ident}.summary`",
+            },
+            criteria=["unusable", "partial", "kernel-ready"],
+        )
+        questions[f"unique_{ident}"] = Noul(
+            instructions={
+                "question": f"Is `candidates.{ident}.id` the unique admitted candidate?",
+                "inspect": f"`candidates.{ident}.id`",
+            },
+        )
+    try:
+        result = system_one(state, questions, timeout=timeout)
+    except Exception:
+        return {}
+    scored: dict[str, AdvisoryReceipt] = {}
+    scores = getattr(result, "scores", None) or {}
+    nouls = getattr(result, "nouls", None) or {}
+    for ident, _summary in rows:
+        quality_item = scores.get(f"quality_{ident}")
+        unique_item = nouls.get(f"unique_{ident}")
+        quality = float(getattr(quality_item, "score", 0.0) or 0.0)
+        unique = float(getattr(unique_item, "noul", 0.0) or 0.0)
+        conf = float(getattr(quality_item, "confidence", 0.0) or 0.0)
+        scored[ident] = AdvisoryReceipt(
+            action="scored",
+            question_id=ident,
+            choice=ident,
+            score=quality,
+            noul=unique,
+            confidence=conf,
+            reason_codes=("advisory_rerank_only", "fanout"),
+        )
+    return scored
+
+
 def maybe_verify_leanstral_draft(
     draft: Any,
     theorem: Any,
@@ -841,6 +911,7 @@ __all__ = [
     "maybe_verify_leanstral_draft",
     "residual_uncertainty_bp",
     "score_synthesis_candidate",
+    "score_synthesis_candidates_fanout",
     "triage_smt",
     "typesafe_permitted",
 ]

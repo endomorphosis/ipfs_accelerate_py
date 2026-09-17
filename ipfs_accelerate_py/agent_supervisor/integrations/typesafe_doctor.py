@@ -66,20 +66,37 @@ def select_retrieve_ids_for_tactician(
         return ordered
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
         score_synthesis_candidate,
+        score_synthesis_candidates_fanout,
     )
 
     kept: list[str] = []
     dropped = 0
     by_id = {_candidate_id(item): item for item in candidates if _candidate_id(item)}
-    for ident in ordered:
-        receipt = score_synthesis_candidate(
-            candidate_id=ident,
+    fanout: dict[str, Any] = {}
+    try:
+        fanout = score_synthesis_candidates_fanout(
+            tuple(
+                (ident, _candidate_summary(by_id.get(ident)))
+                for ident in ordered[:8]
+            ),
             allowlisted_ids=ordered,
-            state={"summary": _candidate_summary(by_id.get(ident))},
             privacy_class=privacy_class,
             remote_disclosure_permitted=remote_disclosure_permitted,
             timeout=timeout,
         )
+    except Exception:
+        fanout = {}
+    for ident in ordered:
+        receipt = fanout.get(ident)
+        if receipt is None:
+            receipt = score_synthesis_candidate(
+                candidate_id=ident,
+                allowlisted_ids=ordered,
+                state={"summary": _candidate_summary(by_id.get(ident))},
+                privacy_class=privacy_class,
+                remote_disclosure_permitted=remote_disclosure_permitted,
+                timeout=timeout,
+            )
         unusable = (
             receipt.action == "scored"
             and float(receipt.score) < UNUSABLE_SCORE
@@ -142,24 +159,38 @@ def order_candidates_for_hammer(
         return items
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
         score_synthesis_candidate,
+        score_synthesis_candidates_fanout,
     )
 
     ordered_ids = tuple(_candidate_id(item) for item in items if _candidate_id(item))
     if len(ordered_ids) < 2:
         return items
+    fanout: dict[str, Any] = {}
+    try:
+        fanout = score_synthesis_candidates_fanout(
+            tuple((_candidate_id(item), _candidate_summary(item)) for item in items),
+            allowlisted_ids=ordered_ids,
+            privacy_class=privacy_class,
+            remote_disclosure_permitted=remote_disclosure_permitted,
+            timeout=timeout,
+        )
+    except Exception:
+        fanout = {}
     ranked: list[tuple[float, int, Any]] = []
     scores: dict[str, float] = {}
     for index, item in enumerate(items):
         ident = _candidate_id(item) or f"anon-{index}"
         try:
-            receipt = score_synthesis_candidate(
-                candidate_id=ident,
-                allowlisted_ids=ordered_ids or (ident,),
-                state={"summary": _candidate_summary(item)},
-                privacy_class=privacy_class,
-                remote_disclosure_permitted=remote_disclosure_permitted,
-                timeout=timeout,
-            )
+            receipt = fanout.get(ident)
+            if receipt is None:
+                receipt = score_synthesis_candidate(
+                    candidate_id=ident,
+                    allowlisted_ids=ordered_ids or (ident,),
+                    state={"summary": _candidate_summary(item)},
+                    privacy_class=privacy_class,
+                    remote_disclosure_permitted=remote_disclosure_permitted,
+                    timeout=timeout,
+                )
             quality = float(receipt.score) if receipt.action == "scored" else 0.0
         except Exception:
             return items
@@ -211,6 +242,26 @@ def hammer_timeout_hint(
             "confidence": round(float(receipt.confidence or 0.0), 4),
             "accepted_as_authority": False,
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+                record_sample,
+            )
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+                is_trap_family,
+            )
+
+            record_sample(
+                family=str(finding_id or "hammer-timeout")[:64],
+                predicted=str(receipt.claim_status or ""),
+                actual="timeout",
+                confidence=float(receipt.confidence or 0.0),
+                trap_family=is_trap_family(
+                    smtlib=smtlib, case_id=str(finding_id or ""), complexity="hard"
+                ),
+                case_id=str(finding_id or ""),
+            )
+        except Exception:
+            pass
         _LAST_HAMMER_HINT.value = dict(hint)
         return hint
     except Exception:

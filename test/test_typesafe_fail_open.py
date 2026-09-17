@@ -207,6 +207,10 @@ def test_prepare_step_candidates_without_key_keeps_original_set(
 def test_new_helpers_do_not_call_http_without_key(
     forbid_typesafe_http: None, tmp_path
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
+        score_synthesis_candidates_fanout,
+        triage_smt,
+    )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
         recommend_skip_policy,
         should_trust_skip,
@@ -269,6 +273,17 @@ def test_new_helpers_do_not_call_http_without_key(
     assert producer_lint["replaces_consumer_fence"] is False
     ranked = rank_allowlisted_artifacts(("node-b", "node-a"), obligation_id="obl")
     assert ranked == ("node-b", "node-a")
+    assert score_synthesis_candidates_fanout(
+        (("a", "one"), ("b", "two")),
+        allowlisted_ids=("a", "b"),
+    ) == {}
+    trap = triage_smt(
+        english="fp add",
+        smtlib="(set-logic QF_FP)\n(check-sat)\n",
+        case_id="float32_trap",
+        complexity="trap",
+    )
+    assert trap.action != "skip_z3"
     assert select_retrieve_ids_for_tactician(({"id": "a"}, {"id": "b"})) == ("a", "b")
     assert order_candidates_for_hammer(({"id": "a"}, {"id": "b"})) == (
         {"id": "a"},

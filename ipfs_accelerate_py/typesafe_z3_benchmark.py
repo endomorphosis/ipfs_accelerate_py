@@ -538,16 +538,50 @@ TRAP_CASES: tuple[SmtCase, ...] = (
 def claim_questions() -> dict[str, Any]:
     return {
         "claim_status": Choice(
-            instructions=(
-                "What does SMT-LIB check-sat return for this problem? "
-                "sat means the assertions can hold together. "
-                "unsat means they are contradictory. "
-                "unknown if you cannot decide."
-            ),
+            instructions={
+                "question": "What does SMT-LIB check-sat return for this problem?",
+                "focus": "sat means the assertions can hold together. unsat means they contradict. unknown if you cannot decide.",
+            },
             criteria={
-                "sat": "The assertions are simultaneously satisfiable.",
-                "unsat": "The assertions are unsatisfiable.",
-                "unknown": "The status cannot be decided from the given statement.",
+                "sat": {
+                    "what": "The assertions are simultaneously satisfiable",
+                    "not_for": "A contradiction or an undecidable fragment",
+                    "examples": ["P and not Q with no other constraints"],
+                },
+                "unsat": {
+                    "what": "The assertions are unsatisfiable",
+                    "not_for": "A satisfiable or unknown instance",
+                    "examples": ["not (forall x. P(x) implies P(x))"],
+                },
+                "unknown": {
+                    "what": "The status cannot be decided from the given statement",
+                    "not_for": "A clear sat or unsat FOL identity",
+                },
+            },
+        ),
+        "uses_fp_or_bv": Noul(
+            instructions={
+                "question": "Does `smtlib` use floating-point or bit-vector theory?",
+                "inspect": "`smtlib`",
+                "focus": "QF_FP, QF_BV, FloatingPoint, BitVec, fp.add, bvslt.",
+            },
+        ),
+        "looks_quantifier_free": Noul(
+            instructions={
+                "question": "Does `smtlib` look quantifier-free?",
+                "inspect": "`smtlib`",
+            },
+        ),
+        "english_matches_smtlib_shape": Noul(
+            instructions={
+                "question": "Does `english` match the shape of `smtlib`?",
+                "compare": ["`english`", "`smtlib`"],
+            },
+        ),
+        "likely_unsat": Noul(
+            instructions={
+                "question": "Do the assertions look contradictory?",
+                "inspect": "`english`",
             },
         ),
         "certain": Noul(

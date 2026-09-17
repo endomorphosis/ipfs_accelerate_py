@@ -105,9 +105,11 @@ def test_smt_triage_forces_z3_on_trap_even_if_confident(
         "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
         lambda **_kwargs: True,
     )
+    called: list[int] = []
     monkeypatch.setattr(
         "ipfs_accelerate_py.typesafe_z3_benchmark.run_typesafe",
-        lambda _case, timeout=30.0: SimpleNamespace(
+        lambda _case, timeout=30.0: called.append(1)
+        or SimpleNamespace(
             status="unsat", confidence=0.99, usage={"input_tokens": 10, "output_tokens": 2}
         ),
     )
@@ -120,6 +122,8 @@ def test_smt_triage_forces_z3_on_trap_even_if_confident(
     assert receipt.action == SmtTriageAction.RUN_Z3.value
     assert receipt.trap_family is True
     assert receipt.accepted_as_authority is False
+    assert called == []
+    assert "skip_typesafe_http" in receipt.reason_codes
 
 
 def test_smt_triage_skips_z3_when_confident_and_not_trap(
