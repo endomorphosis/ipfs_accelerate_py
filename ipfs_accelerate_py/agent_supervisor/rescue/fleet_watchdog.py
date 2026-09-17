@@ -909,6 +909,9 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             action_result = apply_supervisor_heal(board, state)
             reason = str((action_result or {}).get("reason") or "")
             recipe = str((action_result or {}).get("recipe") or "")
+            # Supervisor heals are not llm_router. Always retry on cooldown,
+            # never the 1h exponential backoff.
+            state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
             if (
                 reason.startswith("owner_cas_failed:")
                 or reason == "quack_attach_token_absent"
