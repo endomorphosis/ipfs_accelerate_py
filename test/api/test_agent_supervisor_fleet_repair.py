@@ -1719,6 +1719,46 @@ def test_extra_gate_recursion_heal_unstalls_for_native_admission(tmp_path, monke
     assert "native extra-gate lanes admit" in result["reason"]
 
 
+def test_sawm_in_progress_binds_overlay_pythonpath_without_wrapping(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {
+            "status": "skip", "recipe": "unstall_stale_native_work",
+            "completion_authority": False, "reason": "quack_attach_token_absent",
+        },
+    )
+    monkeypatch.setattr(
+        fleet_heals, "collapse_extra_gate_recursion",
+        lambda *a, **k: {
+            "status": "applied",
+            "recipe": "collapse_extra_gate_recursion",
+            "completion_authority": False,
+            "restarted": False,
+            "reason": "one exclusive owner; overlay PYTHONPATH bound; competing extra-gate not started",
+        },
+    )
+    result = apply_supervisor_heal(
+        {"id": "sawm", "cwd": str(tmp_path)},
+        {
+            "stall_class": "in_progress_awaiting_effect",
+            "observation": {
+                "reason_codes": ["extra_gate_recursion_sealed_package"],
+                "details": {
+                    "task_counts": {"in_progress": 2, "todo": 23, "completed": 20},
+                    "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
+                },
+            },
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "collapse_extra_gate_recursion"
+    assert result.get("restarted") is False
+
+
 def test_wrap_python_execstart_injects_heal_overlay_once():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import wrap_python_execstart
 

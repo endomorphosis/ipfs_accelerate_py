@@ -802,6 +802,9 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             action_result = apply_supervisor_heal(board, state)
             reason = str((action_result or {}).get("reason") or "")
             recipe = str((action_result or {}).get("recipe") or "")
+            if recipe == "clear_overlay_copies_for_owner_start":
+                state["ensure_attempts"] = 0
+                state["next_action_at"] = now
             if (
                 reason.startswith("owner_cas_failed:")
                 or reason == "quack_attach_token_absent"
@@ -898,7 +901,11 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 if isinstance(action_result, dict):
                     action_result = dict(action_result, supervisor_heal=heal)
         else:
+            from .fleet_heals import clear_overlay_copies_blocking_owner_start
+            cleared = clear_overlay_copies_blocking_owner_start(board)
             action_result = runner(board["ensure"], cwd=board["cwd"], timeout=180)
+            if isinstance(action_result, dict) and isinstance(cleared, dict):
+                action_result = dict(action_result, overlay_copies=cleared)
         # Keep command output in private action evidence, not the shared status.
         write_json(directory / "last_action.json", {"at": now, "action": action, "result": action_result})
         state.pop("pending_action", None)

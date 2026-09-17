@@ -1817,6 +1817,11 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
         return {"status": "wait", "recipe": "native_status_retry_with_live_workers",
                 "reason": "nonzero native status is not a coding stall while lanes are live"}
     if stall == "in_progress_awaiting_effect":
+        reasons = {str(x) for x in observation.get("reason_codes") or []}
+        if "extra_gate_recursion_sealed_package" in reasons:
+            collapsed = collapse_extra_gate_recursion(board, observation)
+            if collapsed.get("status") == "applied":
+                return collapsed
         if _observation_uninterruptible(observation):
             return {"status": "wait", "recipe": "kernel_uninterruptible_wait",
                     "reason": "D-state I/O is not a coding stall; do not signal or rewrite receipts"}
