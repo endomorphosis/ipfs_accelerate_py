@@ -259,7 +259,10 @@ def test_new_helpers_do_not_call_http_without_key(
         declared_meta_actions=("REPLAN_AFFECTED_SUFFIX",),
         possible_resolution_action_ids=("action-replan",),
     )["action"] == "preserve"
-    assert classify_watchdog_symptom({"stalled": True})["kills_process"] is False
+    watchdog = classify_watchdog_symptom({"stalled": True})
+    assert watchdog["kills_process"] is False
+    assert watchdog["writes_board"] is False
+    assert watchdog["unstall_action"] == "preserve"
     assert observe_refactor_scope(declared_paths=("src/",), changed_paths=("src/a.py",))[
         "replaces_undeclared_refactor_check"
     ] is False
