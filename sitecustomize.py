@@ -1,15 +1,5 @@
-"""Keep overlay imports first when a sealed checkout inserts itself.
+"""Overlay PYTHONPATH is available to the fleet supervisor.
 
-Do not wrap exclusive-owner ExecStart. Pinning sys.path only restores the
-fleet overlay ahead of nested extra-gate inserts so leftover-attempt fairness
-and missing-cooldown skips load in managed daemons.
+Board exclusive-owner launchers keep their sealed package. Overlay extra-gate
+preload mixed migration catalogs and refused start.
 """
-
-try:
-    from ipfs_accelerate_py.agent_supervisor.rescue.overlay_sys_path import (
-        pin_overlay_sys_path,
-    )
-
-    pin_overlay_sys_path()
-except Exception:
-    pass
