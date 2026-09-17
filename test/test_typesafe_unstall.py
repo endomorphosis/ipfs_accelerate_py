@@ -272,3 +272,16 @@ def test_unknown_choice_does_not_invent_declared_meta(
     assert receipt["action"] == "preserve"
     assert "unknown_choice_preserve" in receipt["reason_codes"]
     assert receipt["meta_action"] == "NO_OP"
+
+
+def test_unstall_choice_criteria_exposes_meta_action_subtree() -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+        UNSTALL_CHOICE_CRITERIA,
+    )
+
+    replan = UNSTALL_CHOICE_CRITERIA["replan_suffix"]["maps_to"]
+    assert "REPLAN_AFFECTED_SUFFIX" in replan
+    assert "does not complete a task" in replan["REPLAN_AFFECTED_SUFFIX"]
+    human = UNSTALL_CHOICE_CRITERIA["request_human"]["maps_to"]
+    assert "REQUEST_HUMAN_DECISION" in human
+    assert "CALL_REMOTE_STRONG_MODEL" not in UNSTALL_CHOICE_CRITERIA["preserve"]["maps_to"]

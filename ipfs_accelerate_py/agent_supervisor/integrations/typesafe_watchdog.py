@@ -98,11 +98,36 @@ def classify_watchdog_symptom(
                 "inspect": "`stalled`",
             },
             criteria={
-                "healthy": {"what": "Workers present or not in a guarded phase"},
-                "stalled": {"what": "Guarded phase aged out with no workers"},
-                "provider_down": {"what": "Stall looks like provider outage"},
-                "false_missing": {"what": "Watchdog argv false positive"},
-                "needs_human": {"what": "Human policy needed; do not kill"},
+                "healthy": {
+                    "what": "Workers present or not in a guarded phase",
+                    "kills_process": False,
+                    "nominates": {"preserve": ["NO_OP"]},
+                },
+                "stalled": {
+                    "what": "Guarded phase aged out with no workers",
+                    "kills_process": False,
+                    "nominates": {
+                        "invalidate_stale_evidence": ["NO_OP"],
+                        "replan_suffix": ["REPLAN_AFFECTED_SUFFIX"],
+                    },
+                },
+                "provider_down": {
+                    "what": "Stall looks like provider outage",
+                    "kills_process": False,
+                    "nominates": {"retry_provider": ["NO_OP"]},
+                },
+                "false_missing": {
+                    "what": "Watchdog argv false positive",
+                    "kills_process": False,
+                    "nominates": {"preserve": ["NO_OP"]},
+                },
+                "needs_human": {
+                    "what": "Human policy needed; do not kill",
+                    "kills_process": False,
+                    "nominates": {
+                        "request_human": ["REQUEST_HUMAN_DECISION"],
+                    },
+                },
             },
         ),
     }

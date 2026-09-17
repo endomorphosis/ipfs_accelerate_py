@@ -25,6 +25,48 @@ _META = {
     "retry_provider": "NO_OP",
     "request_human": "REQUEST_HUMAN_DECISION",
 }
+UNSTALL_CHOICE_CRITERIA: dict[str, Any] = {
+    "preserve": {
+        "what": "Leave the stall; existing rules apply",
+        "not_for": "Replanning, retrying a provider, or asking a human",
+        "examples": ["Unknown stall", "Low confidence"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "invalidate_stale_evidence": {
+        "what": "Nominate invalidating stale evidence",
+        "not_for": "Completing the task or inventing a MetaAction",
+        "examples": ["reason is stale_evidence"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "replan_suffix": {
+        "what": "Nominate REPLAN_AFFECTED_SUFFIX",
+        "not_for": "A suffix that still matches the tree",
+        "examples": ["Mandatory check failed and the plan suffix is stale"],
+        "maps_to": {
+            "REPLAN_AFFECTED_SUFFIX": [
+                "already declared only",
+                "does not complete a task",
+            ]
+        },
+    },
+    "retry_provider": {
+        "what": "Retry allocation; do not complete",
+        "not_for": "Completing the task or killing a worker",
+        "examples": ["Provider outage or rate limit"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "request_human": {
+        "what": "Nominate REQUEST_HUMAN_DECISION",
+        "not_for": "A closed software recovery that already exists",
+        "examples": ["A WHETHER/WHICH question needs a human choice"],
+        "maps_to": {
+            "REQUEST_HUMAN_DECISION": [
+                "already declared only",
+                "does not complete a task",
+            ]
+        },
+    },
+}
 _MAPPED_METAS = frozenset(_META.values())
 _LAST = threading.local()
 
@@ -196,33 +238,7 @@ def nominate_unstall_action(
                 "question": "Which closed recovery should code consider?",
                 "focus": "Select one listed action. Code will not complete a task.",
             },
-            criteria={
-                "preserve": {
-                    "what": "Leave the stall; existing rules apply",
-                    "not_for": "Replanning, retrying a provider, or asking a human",
-                    "examples": ["Unknown stall", "Low confidence"],
-                },
-                "invalidate_stale_evidence": {
-                    "what": "Nominate invalidating stale evidence",
-                    "not_for": "Completing the task or inventing a MetaAction",
-                    "examples": ["reason is stale_evidence"],
-                },
-                "replan_suffix": {
-                    "what": "Nominate REPLAN_AFFECTED_SUFFIX",
-                    "not_for": "A suffix that still matches the tree",
-                    "examples": ["Mandatory check failed and the plan suffix is stale"],
-                },
-                "retry_provider": {
-                    "what": "Retry allocation; do not complete",
-                    "not_for": "Completing the task or killing a worker",
-                    "examples": ["Provider outage or rate limit"],
-                },
-                "request_human": {
-                    "what": "Nominate REQUEST_HUMAN_DECISION",
-                    "not_for": "A closed software recovery that already exists",
-                    "examples": ["A WHETHER/WHICH question needs a human choice"],
-                },
-            },
+            criteria=UNSTALL_CHOICE_CRITERIA,
         ),
     }
     try:
