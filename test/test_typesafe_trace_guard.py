@@ -143,6 +143,42 @@ def test_maybe_observe_runs_on_off_not_enforce(monkeypatch: pytest.MonkeyPatch) 
     assert seen == ["observe", "observe"]
 
 
+def test_observe_mode_lints_kernel_verified_claims_enforce_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cited: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard.observe_worker_trace",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.cite_claim_spans",
+        lambda spans, **_kwargs: cited.append(tuple(row.get("id") for row in spans)) or (),
+    )
+    maybe_observe_worker_output(
+        prompt="p",
+        output="KERNEL_VERIFIED. The theorem holds.",
+        usage_mode=LLM_USAGE_MODE_OBSERVE,
+    )
+    maybe_observe_worker_output(
+        prompt="p",
+        output="KERNEL_VERIFIED. The theorem holds.",
+        usage_mode=LLM_USAGE_MODE_ENFORCE,
+    )
+    maybe_observe_worker_output(
+        prompt="p",
+        output="no proof language here",
+        usage_mode=LLM_USAGE_MODE_OBSERVE,
+    )
+    assert len(cited) == 1
+    assert cited[0]
+
+
 def test_ops_snapshot_is_never_authority() -> None:
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import (
         typesafe_ops_snapshot,

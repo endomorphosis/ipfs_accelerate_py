@@ -370,6 +370,19 @@ def maybe_observe_worker_output(
         if not typesafe_permitted():
             return
         observe_worker_trace(prompt=prompt, output=output, usage_mode=observe_mode)
+        if mode in {LLM_USAGE_MODE_OBSERVE, LLM_USAGE_MODE_SHADOW}:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+                cite_claim_spans,
+                extract_claim_spans,
+            )
+
+            spans = extract_claim_spans(output)
+            if spans:
+                cite_claim_spans(
+                    spans,
+                    receipt_ids=(),
+                    allowlisted_ids=tuple(str(row.get("id") or "") for row in spans),
+                )
     except Exception:
         return
 
