@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import HIGH_CONFIDENCE
+from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
+    filter_candidates_for_tactician,
+    select_retrieve_ids_for_tactician,
+)
+
+
+def test_no_key_keeps_all_retrieve_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    rows = (
+        {"id": "cand-a", "path": "src/a.py"},
+        {"id": "cand-b", "path": "src/b.py"},
+    )
+    assert select_retrieve_ids_for_tactician(rows) == ("cand-a", "cand-b")
+    assert filter_candidates_for_tactician(rows) == rows
+
+
+def test_drops_only_high_confidence_unusable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    def fake_score(*, candidate_id, **_kwargs):
+        if candidate_id == "cand-junk":
+            return SimpleNamespace(
+                action="scored",
+                score=0.0,
+                confidence=HIGH_CONFIDENCE,
+            )
+        return SimpleNamespace(action="scored", score=1.8, confidence=0.9)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.score_synthesis_candidate",
+        fake_score,
+    )
+    rows = (
+        {"id": "cand-good", "path": "src/a.py"},
+        {"id": "cand-junk", "path": "tmp/noise.py"},
+    )
+    assert select_retrieve_ids_for_tactician(rows) == ("cand-good",)
+
+
+def test_dropping_everyone_keeps_original(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.score_synthesis_candidate",
+        lambda **_kwargs: SimpleNamespace(
+            action="scored", score=0.0, confidence=HIGH_CONFIDENCE
+        ),
+    )
+    rows = ({"id": "cand-a"}, {"id": "cand-b"})
+    assert select_retrieve_ids_for_tactician(rows) == ("cand-a", "cand-b")
+    assert filter_candidates_for_tactician(rows) == rows

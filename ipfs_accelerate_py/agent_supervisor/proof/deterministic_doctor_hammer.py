@@ -2765,6 +2765,17 @@ class DeterministicDoctorHammer:
         source writes and zero LLM/model-provider calls.
         """
 
+        if candidates:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_doctor import (
+                    filter_candidates_for_tactician,
+                )
+
+                filtered = filter_candidates_for_tactician(candidates)
+                if filtered:
+                    candidates = filtered
+            except Exception:
+                pass
         wall0 = time.monotonic()
         with self._lock:
             return self._verify(
