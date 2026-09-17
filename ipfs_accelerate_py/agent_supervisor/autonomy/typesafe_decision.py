@@ -138,6 +138,50 @@ def prefer_escalation_candidates(
     return matching if matching else tuple(candidates)
 
 
+_UNSTALL_META = {
+    "replan_suffix": "REPLAN_AFFECTED_SUFFIX",
+    "request_human": "REQUEST_HUMAN_DECISION",
+}
+
+
+def prefer_unstall_candidates(
+    candidates: Sequence[ResolutionCandidate],
+) -> tuple[ResolutionCandidate, ...]:
+    """Read last unstall nomination and reorder already-declared candidates.
+
+    Never drops candidates, never invents MetaActions, never writes the board.
+    """
+
+    items = tuple(candidates)
+    if not items:
+        return items
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+            last_unstall_nomination,
+        )
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog import (
+            last_watchdog_classification,
+        )
+
+        nomination = last_unstall_nomination()
+        watchdog = last_watchdog_classification()
+        if nomination.get("writes_board") or watchdog.get("kills_process"):
+            return items
+        action = str(nomination.get("action") or "")
+        if action not in _UNSTALL_META:
+            action = str(watchdog.get("unstall_action") or "")
+        wanted = _UNSTALL_META.get(action)
+        if not wanted:
+            return items
+        matching = tuple(item for item in items if _action_name(item) == wanted)
+        if not matching:
+            return items
+        rest = tuple(item for item in items if _action_name(item) != wanted)
+        return matching + rest
+    except Exception:
+        return items
+
+
 def prepare_step_candidates(
     controller: DecisionGraphController,
     question: DecisionQuestion,
@@ -164,7 +208,7 @@ def prepare_step_candidates(
     if call_typesafe is None:
         call_typesafe = should and permitted
     if not should or not call_typesafe:
-        return tuple(candidates), question, None
+        return prefer_unstall_candidates(tuple(candidates)), question, None
     previous_id = question.question_id
     try:
         advice = apply_typesafe_question_advice(
@@ -176,12 +220,12 @@ def prepare_step_candidates(
             timeout=timeout,
         )
     except Exception:
-        return tuple(candidates), question, None
+        return prefer_unstall_candidates(tuple(candidates)), question, None
     if not typesafe_permitted(
         privacy_class=privacy_class,
         remote_disclosure_permitted=remote_disclosure_permitted,
     ):
-        return tuple(candidates), question, advice
+        return prefer_unstall_candidates(tuple(candidates)), question, advice
     updated = next(
         (
             item
@@ -197,6 +241,7 @@ def prepare_step_candidates(
         evidence_id=advice.evidence_id,
     )
     preferred = prefer_escalation_candidates(rebound, advice)
+    preferred = prefer_unstall_candidates(preferred)
     if str(advice.next_action or "") == "RUN_LOCAL_STATIC_ANALYSIS":
         try:
             from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
@@ -254,6 +299,7 @@ __all__ = [
     "advise_unresolved_question",
     "apply_typesafe_question_advice",
     "prefer_escalation_candidates",
+    "prefer_unstall_candidates",
     "prepare_step_candidates",
     "rebind_candidates",
 ]

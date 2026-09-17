@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
 from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision import (
     apply_typesafe_question_advice,
     prefer_escalation_candidates,
+    prefer_unstall_candidates,
     prepare_step_candidates,
 )
 
@@ -109,6 +110,121 @@ def test_apply_typesafe_advice_records_evidence_without_resolving(
     assert updated.residual_uncertainty_bp >= 1
     assert not question_is_admissibly_terminal(updated)
     assert not controller.complete
+
+
+def test_prefer_unstall_candidates_reorders_declared_meta_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall.last_unstall_nomination",
+        lambda: {
+            "action": "replan_suffix",
+            "writes_board": False,
+            "may_complete_task": False,
+        },
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog.last_watchdog_classification",
+        lambda: {"kills_process": False, "unstall_action": "preserve"},
+    )
+    static = _action(MetaAction.RUN_LOCAL_STATIC_ANALYSIS)
+    replan = _action(MetaAction.REPLAN_AFFECTED_SUFFIX)
+    human = _action(MetaAction.REQUEST_HUMAN_DECISION)
+    candidates = (
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=static,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=replan,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=human,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+    )
+    ordered = prefer_unstall_candidates(candidates)
+    assert ordered[0].resolution_action.action is MetaAction.REPLAN_AFFECTED_SUFFIX
+    assert [item.resolution_action.action for item in ordered] == [
+        MetaAction.REPLAN_AFFECTED_SUFFIX,
+        MetaAction.RUN_LOCAL_STATIC_ANALYSIS,
+        MetaAction.REQUEST_HUMAN_DECISION,
+    ]
+
+
+def test_prefer_unstall_candidates_does_not_invent_or_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall.last_unstall_nomination",
+        lambda: {"action": "replan_suffix", "writes_board": False},
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog.last_watchdog_classification",
+        lambda: {"kills_process": False},
+    )
+    static = _action(MetaAction.RUN_LOCAL_STATIC_ANALYSIS)
+    smt = _action(MetaAction.RUN_SMT_OR_PROVER)
+    candidates = (
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=static,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=smt,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+    )
+    ordered = prefer_unstall_candidates(candidates)
+    assert ordered == candidates
+
+
+def test_prefer_unstall_ignores_nomination_that_would_write_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall.last_unstall_nomination",
+        lambda: {"action": "replan_suffix", "writes_board": True},
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_watchdog.last_watchdog_classification",
+        lambda: {"kills_process": False},
+    )
+    static = _action(MetaAction.RUN_LOCAL_STATIC_ANALYSIS)
+    replan = _action(MetaAction.REPLAN_AFFECTED_SUFFIX)
+    candidates = (
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=static,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+        ResolutionCandidate(
+            question_id="q1",
+            resolution_action=replan,
+            expected_decision_value=100,
+            admissible=True,
+            policy_id="policy:one",
+        ),
+    )
+    assert prefer_unstall_candidates(candidates) == candidates
 
 
 def _budget() -> CognitiveBudget:
