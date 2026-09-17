@@ -1466,6 +1466,13 @@ def _managed_daemon_child_environment(
     """
 
     entries: list[str] = []
+    # Fleet overlay PYTHONPATH must win so leftover-attempt fairness and
+    # retrying-without-cooldown skips load in managed daemons.
+    entries.extend(
+        entry
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if entry
+    )
     source_root = Path(__file__).resolve().parents[3]
     if (source_root / "ipfs_accelerate_py").is_dir():
         entries.append(str(source_root))
@@ -1478,11 +1485,6 @@ def _managed_daemon_child_environment(
             continue
         if (candidate / "ipfs_accelerate_py").is_dir():
             entries.append(str(candidate))
-    entries.extend(
-        entry
-        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
-        if entry
-    )
     pythonpath = os.pathsep.join(dict.fromkeys(entries))
     env: dict[str, str] = {}
     if pythonpath:
@@ -11052,6 +11054,15 @@ class PortalImplementationSupervisor:
         )
         loop_env = dict(spec.launch_env)
         loop_env.update(child_env)
+        overlay = str(os.environ.get("PYTHONPATH") or "").strip()
+        if overlay:
+            existing = str(loop_env.get("PYTHONPATH") or "")
+            loop_env["PYTHONPATH"] = os.pathsep.join(
+                dict.fromkeys(
+                    [part for part in overlay.split(os.pathsep) if part]
+                    + [part for part in existing.split(os.pathsep) if part]
+                )
+            )
         return SupervisorLoopConfig(
             spec=spec,
             command=command,

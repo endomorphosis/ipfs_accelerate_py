@@ -827,6 +827,16 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_managed_daemon_pythonpath_keeps_overlay_first(monkeypatch):
+    import os
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _managed_daemon_child_environment,
+    )
+    monkeypatch.setenv("PYTHONPATH", "/overlay/root:/other")
+    env = _managed_daemon_child_environment()
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == "/overlay/root"
+
+
 def test_retrying_control_row_retains_expired_attempt_as_exclusion():
     from types import SimpleNamespace
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness import (
