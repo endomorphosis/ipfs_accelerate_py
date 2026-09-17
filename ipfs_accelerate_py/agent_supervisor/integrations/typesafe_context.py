@@ -12,7 +12,7 @@ import threading
 from types import SimpleNamespace
 from typing import Any, Mapping, Optional, Sequence
 
-from ipfs_accelerate_py.typesafe_inference import Noul, Score
+from ipfs_accelerate_py.typesafe_inference import Noul, Score, noul_yes_no
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     AdvisoryReceipt,
     typesafe_permitted,
@@ -510,6 +510,12 @@ def observe_refactor_scope(
                         "question": "Are `changed_paths` inside `declared_paths`?",
                         "compare": ["`changed_paths`", "`declared_paths`"],
                     },
+                    criteria=noul_yes_no(
+                        true_what="Every changed path is under a declared prefix",
+                        true_examples=["src/a.py under src/"],
+                        false_what="A changed path sits outside declared prefixes",
+                        false_examples=["docs/secret.md when declared is src/"],
+                    ),
                 ),
             },
             timeout=timeout,
@@ -579,6 +585,12 @@ def producer_consumer_questions() -> dict[str, Any]:
                 "question": "Does `artifact.producer` match `admitted.producer`?",
                 "compare": ["`artifact.producer`", "`admitted.producer`"],
             },
+            criteria=noul_yes_no(
+                true_what="The claimed producer identity equals the admitted producer",
+                true_examples=["typescript-compiler-api vs typescript-compiler-api"],
+                false_what="The claimed producer is a different extractor or empty",
+                false_examples=["regex-heuristic vs typescript-compiler-api"],
+            ),
         ),
         "producer_version_matches": Noul(
             instructions={
@@ -590,6 +602,12 @@ def producer_consumer_questions() -> dict[str, Any]:
                     "`admitted.producer_version`",
                 ],
             },
+            criteria=noul_yes_no(
+                true_what="Extractor versions are the same admitted string",
+                true_examples=["typescript-ast-extractor@2 vs typescript-ast-extractor@2"],
+                false_what="Versions differ or one side is missing",
+                false_examples=["@1 vs @2"],
+            ),
         ),
     }
 
@@ -709,6 +727,12 @@ def citation_questions() -> dict[str, Any]:
                 "compare": ["`claim.text`", "`receipt_ids`"],
                 "focus": "KERNEL_VERIFIED or test claims need a matching receipt id.",
             },
+            criteria=noul_yes_no(
+                true_what="A listed receipt id backs the KERNEL_VERIFIED or test claim",
+                true_examples=["KERNEL_VERIFIED with receipt-1 in receipt_ids"],
+                false_what="The claim asserts KERNEL_VERIFIED with no matching receipt",
+                false_examples=["KERNEL_VERIFIED everything with empty receipt_ids"],
+            ),
         ),
     }
 
@@ -762,6 +786,7 @@ def cite_claim_spans(
                 "compare": [f"`claims.{ident}.text`", "`receipt_ids`"],
                 "focus": "KERNEL_VERIFIED or test claims need a matching receipt id.",
             },
+            criteria=citation_questions()["supported"].criteria,
         )
     try:
         result = system_one(state, questions, timeout=timeout)

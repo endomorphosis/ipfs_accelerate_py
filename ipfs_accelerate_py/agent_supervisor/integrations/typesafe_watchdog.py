@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Mapping
 
-from ipfs_accelerate_py.typesafe_inference import Choice, Noul
+from ipfs_accelerate_py.typesafe_inference import Choice, Noul, noul_yes_no
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     typesafe_permitted,
 )
@@ -85,6 +85,12 @@ def classify_watchdog_symptom(
                 "question": "Is a healthy worker likely misclassified as missing?",
                 "inspect": "`worker_count`",
             },
+            criteria=noul_yes_no(
+                true_what="Argv liveness is a false positive; workers are present",
+                true_examples=["worker_count > 0 in a guarded phase"],
+                false_what="The process is actually missing or stalled",
+                false_examples=["worker_count is 0 and the phase aged out"],
+            ),
         ),
         "label": Choice(
             instructions={

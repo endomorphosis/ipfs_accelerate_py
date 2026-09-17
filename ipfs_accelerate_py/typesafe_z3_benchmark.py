@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence
 
-from .typesafe_inference import Choice, Noul, Score, typesafe_configured
+from .typesafe_inference import Choice, Noul, Score, noul_yes_no, typesafe_configured
 
 DEFAULT_Z3 = "z3"
 DEFAULT_Z3_FALLBACK = "/home/barberb/.local/bin/z3"
@@ -565,6 +565,12 @@ def claim_questions() -> dict[str, Any]:
                 "inspect": "`smtlib`",
                 "focus": "QF_FP, QF_BV, FloatingPoint, BitVec, fp.add, bvslt.",
             },
+            criteria=noul_yes_no(
+                true_what="SMT-LIB uses QF_FP, QF_BV, FloatingPoint, or BitVec",
+                true_examples=["(set-logic QF_FP)", "fp.add", "bvslt"],
+                false_what="Quantifier-free FOL or other non-FP/BV theories",
+                false_examples=["(set-logic QF_UF)", "uninterpreted P(x)"],
+            ),
         ),
         "looks_quantifier_free": Noul(
             instructions={
@@ -583,6 +589,12 @@ def claim_questions() -> dict[str, Any]:
                 "question": "Do the assertions look contradictory?",
                 "inspect": "`english`",
             },
+            criteria=noul_yes_no(
+                true_what="The English claim is an identity contradiction or unsat FOL",
+                true_examples=["not (forall x. P(x) implies P(x))"],
+                false_what="The assertions can hold together or are undecidable here",
+                false_examples=["P and not Q with no other constraints"],
+            ),
         ),
         "certain": Noul(
             instructions="Are you certain of that check-sat status?",

@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
     observe_merge_conflict_paths,
     pairwise_questions,
     prepare_evidence_for_compile,
+    producer_consumer_questions,
     rerank_allowlisted_snippets,
 )
 
@@ -120,6 +121,19 @@ def test_compose_pairwise_order_allowlisted_only() -> None:
     )
     assert "better_a_than_b" in questions
     assert "better_a_than_invented" not in questions
+
+
+def test_producer_and_citation_nouls_have_structured_criteria() -> None:
+    producer = producer_consumer_questions()["producer_matches"].to_dict()
+    assert producer["criteria"]["true"]["what"]
+    assert producer["criteria"]["false"]["examples"]
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        citation_questions,
+    )
+
+    citation = citation_questions()["supported"].to_dict()
+    assert citation["criteria"]["true"]["what"]
+    assert "KERNEL_VERIFIED" in citation["criteria"]["false"]["examples"][0]
 
 
 def test_observe_merge_conflict_paths_does_not_fence_or_write(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Mapping, Sequence
 
-from ipfs_accelerate_py.typesafe_inference import Choice, Noul
+from ipfs_accelerate_py.typesafe_inference import Choice, Noul, noul_yes_no
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     LOW_CONFIDENCE,
     typesafe_permitted,
@@ -161,17 +161,35 @@ def nominate_unstall_action(
                 "question": "Is the stall explained by stale evidence?",
                 "inspect": "`reason`",
             },
+            criteria=noul_yes_no(
+                true_what="reason is stale_evidence or evidence no longer matches the tree",
+                true_examples=["reason is stale_evidence"],
+                false_what="The stall has another cause",
+                false_examples=["provider_down", "needs_human"],
+            ),
         ),
         "provider_down": Noul(
             instructions={
                 "question": "Is the stall a provider outage or rate limit?",
                 "inspect": "`audit_label`",
             },
+            criteria=noul_yes_no(
+                true_what="Audit label indicates outage or rate limit",
+                true_examples=["rate_limit", "provider_outage"],
+                false_what="Workers or evidence are the issue, not the provider",
+                false_examples=["stale_evidence"],
+            ),
         ),
         "needs_human": Noul(
             instructions={
                 "question": "Is a human choice required to continue?",
             },
+            criteria=noul_yes_no(
+                true_what="A WHETHER/WHICH question needs a human choice",
+                true_examples=["REQUEST_HUMAN_DECISION is already declared"],
+                false_what="A closed software recovery already exists",
+                false_examples=["REPLAN_AFFECTED_SUFFIX is already declared"],
+            ),
         ),
         "answer": Choice(
             instructions={
