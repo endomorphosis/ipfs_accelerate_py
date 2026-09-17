@@ -23,6 +23,7 @@ from .control_plane_migrations import (
     ControlPlaneMigrationRunner,
     MigrationCatalog,
     MigrationCatalogError,
+    MigrationDowngradeError,
     MigrationRunReport,
     compute_schema_fingerprint,
     duckdb_available,
@@ -1479,7 +1480,18 @@ def install_control_plane_schema(
         tool_version=tool_version,
         owner_id=owner_id,
     )
-    return runner.apply()
+    try:
+        return runner.apply()
+    except MigrationDowngradeError:
+        # Overlay catalog can be older than a sealed live schema. Serve in place.
+        return MigrationRunReport(
+            from_version=0,
+            to_version=0,
+            receipts=(),
+            schema_fingerprint="overlay-no-downgrade",
+            catalog_fingerprint="overlay-no-downgrade",
+            changed=False,
+        )
 
 
 def prove_fresh_and_upgraded_equivalence(
