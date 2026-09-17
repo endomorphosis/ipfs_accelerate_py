@@ -280,3 +280,128 @@ def test_prepare_evidence_and_compile_flag_without_key(forbid_typesafe_http: Non
         obligation_id="obl-1",
     )
     assert prepared[0]["reference_id"] == "req-a"
+
+
+def test_handle_wake_typesafe_prepare_fail_open_without_key(
+    forbid_typesafe_http: None,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.cognitive_budget import (
+        ObjectiveCognitiveBudgetLedger,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.cognitive_scheduler import (
+        CognitiveSchedulingContext,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.contracts import (
+        AuthorityClass,
+        CancellationBehavior,
+        CognitiveBudget,
+        DecisionQuestion,
+        DecisionQuestionType,
+        MetaAction,
+        PrivacyClass,
+        QuestionDisposition,
+        ResolutionAction,
+        ResolutionCandidate,
+        ResolutionEvidenceKind,
+        RiskClass,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.decision_graph import (
+        DecisionGraphController,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
+        AutonomousMetaController,
+        AutonomyRuntime,
+        AutonomyWakeEvent,
+        AutonomyWakeKind,
+    )
+
+    action = ResolutionAction(
+        action=MetaAction.RUN_LOCAL_STATIC_ANALYSIS,
+        precondition_ids=("tree-current",),
+        expected_evidence_kind=ResolutionEvidenceKind.STATIC_ANALYSIS,
+        expected_uncertainty_reduction_bp=8_000,
+        token_cost=0,
+        latency_cost_ms=100,
+        provider_cost_micros=0,
+        resource_cost_units=1,
+        invalidation_cost_units=0,
+        privacy_cost_units=0,
+        privacy_class=PrivacyClass.LOCAL_ONLY,
+        risk_class=RiskClass.R1_READ_ONLY,
+        cancellation_behavior=CancellationBehavior.COOPERATIVE,
+        cacheable=True,
+        authority_class=AuthorityClass.VERIFIED,
+        accepted_as_authority=True,
+    )
+    question = DecisionQuestion(
+        objective_id="APMC-G000",
+        acceptance_criterion_ids=("AC-1",),
+        question_type=DecisionQuestionType.WHICH_PROOF_OBLIGATION_APPLIES,
+        current_alternatives=("obl-1",),
+        required_evidence_ids=(),
+        known_evidence_ids=(),
+        contradictory_evidence_ids=(),
+        residual_uncertainty_bp=5_000,
+        decision_deadline_ms=1_000,
+        risk_if_incorrect=RiskClass.R1_READ_ONLY,
+        risk_if_left_unresolved=RiskClass.R1_READ_ONLY,
+        possible_resolution_action_ids=(action.action_id,),
+        dependency_question_ids=(),
+        terminal_decision_rule="select only from current alternatives",
+        mandatory=True,
+        disposition=QuestionDisposition.UNRESOLVED,
+        terminal_answer="",
+    )
+    controller = DecisionGraphController.compile(
+        repository_id="repo:ipfs-accelerate",
+        tree_id="tree:one",
+        objective_id="APMC-G000",
+        objective_revision="revision:one",
+        questions=(question,),
+    )
+    compiled = controller.graph.questions[0]
+    meta = AutonomousMetaController(
+        decision_graph=controller,
+        budget_controller=ObjectiveCognitiveBudgetLedger(
+            CognitiveBudget(
+                max_total_model_calls=4,
+                max_strong_model_calls=2,
+                max_input_tokens=8_000,
+                max_output_tokens=2_000,
+                max_provider_spend_micros=20_000,
+                max_proof_time_ms=10_000,
+                max_validation_time_ms=10_000,
+                max_human_questions=1,
+                max_repair_rounds=1,
+                max_plan_branches=1,
+                max_context_expansions=2,
+                max_wall_time_ms=30_000,
+                validation_reserve_ms=1_000,
+            ),
+            epoch=1,
+        ),
+    )
+    runtime = AutonomyRuntime(controller=meta)
+    result = runtime.handle_wake(
+        AutonomyWakeEvent(kind=AutonomyWakeKind.PROOF, cursor_id="cursor:d1", sequence=1),
+        candidates=(
+            ResolutionCandidate(
+                question_id=compiled.question_id,
+                resolution_action=action,
+                expected_decision_value=100,
+                admissible=True,
+                policy_id="policy:one",
+            ),
+        ),
+        context=CognitiveSchedulingContext(
+            policy_id="policy:one",
+            satisfied_precondition_ids=frozenset({"tree-current"}),
+            local_small_model_available=True,
+            remote_standard_model_available=True,
+            remote_strong_model_available=True,
+            remote_disclosure_permitted=True,
+            required_authority_class=AuthorityClass.DERIVED,
+        ),
+    )
+    assert result.model_called is False
+    assert result.authorizes_effect is False

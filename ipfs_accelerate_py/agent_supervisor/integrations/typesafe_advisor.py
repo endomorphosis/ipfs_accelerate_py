@@ -787,7 +787,24 @@ def maybe_verify_leanstral_draft(
         return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
     if advice.action == KernelSpend.SKIP.value:
         raise TypesafeKernelSkip(advice)
-    return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
+    result = verify_leanstral_draft(draft, theorem, **kernel_kwargs)
+    if advice.action != KernelSpend.UNAVAILABLE.value and advice.claim_status:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+                record_sample,
+            )
+
+            kernel = getattr(result, "kernel_verification", None)
+            accepted = bool(getattr(kernel, "accepted", False))
+            record_sample(
+                family=str(goal_id or "proof")[:64],
+                predicted=str(advice.claim_status),
+                actual="unsat" if accepted else "sat",
+                confidence=float(advice.confidence or 0.0),
+            )
+        except Exception:
+            pass
+    return result
 
 
 class TypesafeKernelSkip(RuntimeError):

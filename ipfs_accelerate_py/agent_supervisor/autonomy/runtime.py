@@ -1277,11 +1277,16 @@ class AutonomyRuntime:
         cancelled: bool = False,
         now_ms: int | None = None,
         deadline_milliseconds: int | None = None,
+        typesafe_prepare: bool = True,
+        typesafe_state: Mapping[str, Any] | None = None,
     ) -> AutonomyCycleResult:
-        """Process one wake without executing an effect or calling a model.
+        """Process one wake without executing an effect.
 
-        Embeddings that may use TypeSafe must call
-        ``dispatch_autonomy_wake`` first. This method stays provider-free.
+        When ``typesafe_prepare`` is true, unresolved WHETHER/WHICH questions
+        may be nominated first. Without a key that is a no-op. ``model_called``
+        stays false. Prefer ``dispatch_autonomy_wake`` when the embedding
+        already has TypeSafe state; pass ``typesafe_prepare=False`` to avoid a
+        second prepare.
         """
 
         bound = (
@@ -1404,8 +1409,27 @@ class AutonomyRuntime:
                 suffix_receipt=suffix_receipt,
             )
 
+        wake_candidates = tuple(candidates)
+        if typesafe_prepare and wake_candidates:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision import (
+                    prepare_step_candidates,
+                )
+
+                question = self._controller.next_unresolved_question()
+                if question is not None:
+                    remote = bool(getattr(context, "remote_disclosure_permitted", False))
+                    wake_candidates, _, _ = prepare_step_candidates(
+                        self._controller.decision_graph,
+                        question,
+                        wake_candidates,
+                        state=dict(typesafe_state or {}),
+                        remote_disclosure_permitted=remote,
+                    )
+            except Exception:
+                wake_candidates = tuple(candidates)
         step = self._controller.step(
-            candidates=candidates,
+            candidates=wake_candidates,
             context=context,
             meaningful_change=True,
         )

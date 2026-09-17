@@ -190,6 +190,7 @@ class TypesafeSupervisorAdapter:
             event,
             candidates=tuple(prepared),
             context=context,
+            typesafe_prepare=False,
             **wake_kwargs,
         )
         if getattr(result, "model_called", False):

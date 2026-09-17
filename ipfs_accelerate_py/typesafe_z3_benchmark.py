@@ -681,6 +681,23 @@ def compare_case(
     faster = ""
     if ts.status not in {"skipped", "error"} and z3.status not in {"error"}:
         faster = "typesafe" if ts.seconds < z3.seconds else "z3"
+    if ts.status in {"sat", "unsat"} and z3.status in {"sat", "unsat", "timeout"}:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_calibration import (
+                record_sample,
+            )
+
+            record_sample(
+                family=case.case_id,
+                predicted=ts.status,
+                actual=z3.status if z3.status in {"sat", "unsat"} else case.expected,
+                confidence=float(ts.confidence or 0.0),
+                trap_family=case.complexity == "trap",
+                case_id=case.case_id,
+                smtlib=case.smtlib,
+            )
+        except Exception:
+            pass
     return {
         "case_id": case.case_id,
         "complexity": case.complexity,
