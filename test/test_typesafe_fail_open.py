@@ -244,6 +244,7 @@ def test_new_helpers_do_not_call_http_without_key(
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         lint_producer_consumer,
+        observe_merge_conflict_paths,
         observe_parser_failure_clusters,
         observe_refactor_scope,
         rank_allowlisted_artifacts,
@@ -278,6 +279,12 @@ def test_new_helpers_do_not_call_http_without_key(
     assert producer_lint["replaces_consumer_fence"] is False
     ranked = rank_allowlisted_artifacts(("node-b", "node-a"), obligation_id="obl")
     assert ranked == ("node-b", "node-a")
+    merge_lint = observe_merge_conflict_paths(
+        declared_paths=("src/",),
+        conflict_paths=("src/a.py",),
+    )
+    assert merge_lint["replaces_consumer_fence"] is False
+    assert merge_lint["writes_merge"] is False
     parser_view = observe_parser_failure_clusters(
         ({"cluster_id": "cl-1", "path_family": "src/", "protected": True},)
     )

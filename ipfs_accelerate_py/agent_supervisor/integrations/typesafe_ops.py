@@ -11,6 +11,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         last_artifact_rank,
         last_artifact_view,
+        last_merge_conflict,
         last_parser_triage,
         last_producer_consumer,
         last_refactor_scope,
@@ -48,6 +49,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "artifact_view": last_artifact_view(),
         "artifact_rank": last_artifact_rank(),
         "parser_triage": last_parser_triage(),
+        "merge_conflict": last_merge_conflict(),
         "hammer_timeout_hint": last_hammer_hint(),
         "unstall": last_unstall_nomination(),
         "watchdog": last_watchdog_classification(),

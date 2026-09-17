@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
     compose_snippet_score,
     extract_claim_spans,
     lint_admissibility,
+    observe_merge_conflict_paths,
     prepare_evidence_for_compile,
     rerank_allowlisted_snippets,
 )
@@ -60,9 +61,22 @@ def test_rerank_orders_by_composed_score(monkeypatch: pytest.MonkeyPatch) -> Non
         ),
     }
 
+    calls: list[int] = []
+
     def fake_system_one(state, questions, **kwargs):
-        ident = state["snippet"]["id"]
-        return scores[ident]
+        calls.append(1)
+        assert "needed_ev-low" in questions
+        assert "needed_ev-high" in questions
+        return SimpleNamespace(
+            nouls={
+                "needed_ev-low": scores["ev-low"].nouls["needed"],
+                "needed_ev-high": scores["ev-high"].nouls["needed"],
+            },
+            scores={
+                "relevance_ev-low": scores["ev-low"].scores["relevance"],
+                "relevance_ev-high": scores["ev-high"].scores["relevance"],
+            },
+        )
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.typesafe_inference.system_one",
@@ -76,7 +90,28 @@ def test_rerank_orders_by_composed_score(monkeypatch: pytest.MonkeyPatch) -> Non
         obligation_id="obl-1",
         allowlisted_ids=("ev-low", "ev-high"),
     )
+    assert calls == [1]
     assert ordered == ("ev-high", "ev-low")
+
+
+def test_observe_merge_conflict_paths_does_not_fence_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    view = observe_merge_conflict_paths(
+        declared_paths=("src/",),
+        conflict_paths=("src/a.py", "docs/secret.md"),
+    )
+    assert view["replaces_consumer_fence"] is False
+    assert view["writes_merge"] is False
+    assert view["accepted_as_authority"] is False
+    assert view["replaces_undeclared_refactor_check"] is False
 
 
 def test_lint_without_key_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,18 +214,33 @@ def test_cite_claim_spans_flags_unsupported(monkeypatch: pytest.MonkeyPatch) -> 
         lambda **_kwargs: True,
     )
 
+    calls: list[int] = []
+
     class _Result:
-        nouls = {"supported": SimpleNamespace(noul=0.1)}
+        nouls = {
+            "supported_claim-0": SimpleNamespace(noul=0.1),
+            "supported_claim-1": SimpleNamespace(noul=0.9),
+        }
+
+    def fake_system_one(_state, questions, **_kwargs):
+        calls.append(1)
+        assert "supported_claim-0" in questions
+        assert "supported_claim-1" in questions
+        return _Result()
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.typesafe_inference.system_one",
-        lambda *_a, **_k: _Result(),
+        fake_system_one,
     )
     unsupported = cite_claim_spans(
-        ({"id": "claim-0", "text": "KERNEL_VERIFIED everything"},),
-        receipt_ids=(),
-        allowlisted_ids=("claim-0", "claim-evil"),
+        (
+            {"id": "claim-0", "text": "KERNEL_VERIFIED everything"},
+            {"id": "claim-1", "text": "KERNEL_VERIFIED with a receipt"},
+        ),
+        receipt_ids=("receipt-1",),
+        allowlisted_ids=("claim-0", "claim-1", "claim-evil"),
     )
+    assert calls == [1]
     assert unsupported == ("claim-0",)
     assert "claim-evil" not in unsupported
 

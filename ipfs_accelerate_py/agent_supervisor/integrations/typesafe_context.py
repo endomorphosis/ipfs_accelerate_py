@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import threading
+from types import SimpleNamespace
 from typing import Any, Mapping, Optional, Sequence
 
 from ipfs_accelerate_py.typesafe_inference import Noul, Score
@@ -89,22 +90,51 @@ def rerank_allowlisted_snippets(
         return keep
     from ipfs_accelerate_py.typesafe_inference import system_one
 
-    scored: list[tuple[float, str]] = []
-    for row in ordered[: max(1, int(top_k))]:
-        ident = _snippet_id(row)
-        state = {
-            "obligation": {"id": str(obligation_id or "")[:128]},
-            "snippet": {
-                "id": ident,
+    rows = ordered[: max(1, int(top_k))]
+    state = {
+        "obligation": {"id": str(obligation_id or "")[:128]},
+        "snippets": {
+            _snippet_id(row): {
+                "id": _snippet_id(row),
                 "path": str(row.get("path") or "")[:128],
                 "text": _snippet_text(row),
+            }
+            for row in rows
+        },
+    }
+    questions: dict[str, Any] = {}
+    for row in rows:
+        ident = _snippet_id(row)
+        questions[f"needed_{ident}"] = Noul(
+            instructions={
+                "question": (
+                    f"Is `snippets.{ident}.text` needed to decide `obligation.id`?"
+                ),
+                "inspect": f"`snippets.{ident}.text`",
             },
-        }
-        try:
-            result = system_one(state, rerank_questions(), timeout=timeout)
-        except Exception:
-            return keep
-        scored.append((compose_snippet_score(result), ident))
+        )
+        questions[f"relevance_{ident}"] = Score(
+            instructions={
+                "question": (
+                    f"How relevant is `snippets.{ident}.text` to `obligation.id`?"
+                ),
+                "inspect": f"`snippets.{ident}.text`",
+            },
+            criteria=["off-topic", "supporting", "decisive"],
+        )
+    try:
+        result = system_one(state, questions, timeout=timeout)
+    except Exception:
+        return keep
+    nouls = getattr(result, "nouls", None) or {}
+    scores = getattr(result, "scores", None) or {}
+    scored: list[tuple[float, str]] = []
+    for ident in keep:
+        adapter = SimpleNamespace(
+            nouls={"needed": nouls.get(f"needed_{ident}")},
+            scores={"relevance": scores.get(f"relevance_{ident}")},
+        )
+        scored.append((compose_snippet_score(adapter), ident))
     scored.sort(reverse=True)
     return tuple(ident for _score, ident in scored)
 
@@ -421,6 +451,43 @@ def observe_refactor_scope(
     return payload
 
 
+_LAST_MERGE_CONFLICT = threading.local()
+
+
+def last_merge_conflict() -> dict[str, Any]:
+    value = getattr(_LAST_MERGE_CONFLICT, "value", None)
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def observe_merge_conflict_paths(
+    *,
+    declared_paths: Sequence[str] = (),
+    conflict_paths: Sequence[str] = (),
+    privacy_class: str = "repository_private",
+    remote_disclosure_permitted: bool = True,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Advisory noul: are conflict paths inside declared scope?
+
+    Never fences merge-queue consumer_id. Never writes the merge.
+    """
+
+    view = observe_refactor_scope(
+        declared_paths=declared_paths,
+        changed_paths=conflict_paths,
+        privacy_class=privacy_class,
+        remote_disclosure_permitted=remote_disclosure_permitted,
+        timeout=timeout,
+    )
+    payload = dict(view)
+    payload["accepted_as_authority"] = False
+    payload["replaces_consumer_fence"] = False
+    payload["writes_merge"] = False
+    payload["conflict_paths"] = list(payload.get("changed_paths") or [])
+    _LAST_MERGE_CONFLICT.value = dict(payload)
+    return payload
+
+
 _LAST_PRODUCER_CONSUMER = threading.local()
 
 
@@ -597,18 +664,37 @@ def cite_claim_spans(
         return ()
     from ipfs_accelerate_py.typesafe_inference import system_one
 
+    rows = selected[:8]
+    state = {
+        "receipt_ids": list(receipts[:16]),
+        "claims": {
+            str(row.get("id") or "").strip(): {
+                "id": str(row.get("id") or "").strip(),
+                "text": str(row.get("text") or "")[:240],
+            }
+            for row in rows
+            if str(row.get("id") or "").strip()
+        },
+    }
+    questions: dict[str, Any] = {}
+    for ident in state["claims"]:
+        questions[f"supported_{ident}"] = Noul(
+            instructions={
+                "question": (
+                    f"Is `claims.{ident}.text` supported by one of `receipt_ids`?"
+                ),
+                "compare": [f"`claims.{ident}.text`", "`receipt_ids`"],
+                "focus": "KERNEL_VERIFIED or test claims need a matching receipt id.",
+            },
+        )
+    try:
+        result = system_one(state, questions, timeout=timeout)
+    except Exception:
+        return ()
+    nouls = getattr(result, "nouls", None) or {}
     unsupported: list[str] = []
-    for row in selected[:8]:
-        ident = str(row.get("id") or "").strip()
-        state = {
-            "claim": {"id": ident, "text": str(row.get("text") or "")[:240]},
-            "receipt_ids": list(receipts[:16]),
-        }
-        try:
-            result = system_one(state, citation_questions(), timeout=timeout)
-        except Exception:
-            return ()
-        noul = getattr((getattr(result, "nouls", None) or {}).get("supported"), "noul", 1.0)
+    for ident in state["claims"]:
+        noul = getattr(nouls.get(f"supported_{ident}"), "noul", 1.0)
         try:
             supported = float(noul or 0.0)
         except (TypeError, ValueError):
@@ -626,6 +712,7 @@ __all__ = [
     "inspect_allowlisted_artifacts",
     "last_artifact_rank",
     "last_artifact_view",
+    "last_merge_conflict",
     "last_parser_triage",
     "last_producer_consumer",
     "last_source_edit_lint",
@@ -636,6 +723,7 @@ __all__ = [
     "observe_refactor_scope",
     "lint_static_span",
     "lint_questions",
+    "observe_merge_conflict_paths",
     "observe_parser_failure_clusters",
     "observe_source_edit_lint",
     "prepare_evidence_for_compile",

@@ -409,7 +409,19 @@ def resolve_append_only_markdown_conflicts(
     normalized_paths = _normalize_allowed_paths(repo_root, allowed_paths)
     normalized_dirs = _normalize_allowed_dirs(repo_root, allowed_dirs)
     results: list[dict[str, object]] = []
-    for relative in unmerged_paths(repo_root):
+    conflict = unmerged_paths(repo_root)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+            observe_merge_conflict_paths,
+        )
+
+        observe_merge_conflict_paths(
+            declared_paths=tuple(sorted(normalized_paths))[:8],
+            conflict_paths=tuple(conflict[:8]),
+        )
+    except Exception:
+        pass
+    for relative in conflict:
         if not _path_allowed(
             relative, allowed_paths=normalized_paths, allowed_dirs=normalized_dirs
         ):
