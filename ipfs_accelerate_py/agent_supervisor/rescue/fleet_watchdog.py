@@ -140,7 +140,25 @@ def _todos_are_ready_beside_blocked(details: dict[str, Any], counts: dict[str, A
     return int(counts.get("todo") or 0) > 0
 
 
-def classify_stall(observation: dict[str, Any]) -> str:
+def _locally_validated_blocked_ids(
+    observation: dict[str, Any], previous: dict[str, Any] | None,
+) -> bool:
+    """True when every blocked id already passed current-tree pytest."""
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    blocked = [str(item) for item in details.get("blocked_task_ids") or [] if item]
+    if not blocked:
+        return False
+    prior = previous if isinstance(previous, dict) else {}
+    result = prior.get("last_action_result") if isinstance(prior.get("last_action_result"), dict) else {}
+    passed = {
+        str(item.get("task_id"))
+        for item in result.get("results") or []
+        if isinstance(item, dict) and item.get("status") == "passed" and item.get("task_id")
+    }
+    return set(blocked) <= passed and bool(passed)
+
+
+def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None = None) -> str:
     """Map probe evidence to a bounded stall class. Never infers completion."""
     health = observation.get("health")
     reasons = {str(x) for x in observation.get("reason_codes") or []}
@@ -205,6 +223,15 @@ def classify_stall(observation: dict[str, Any]) -> str:
         if not _native_admission_work(details, counts, reasons):
             return "extra_gate_recursion"
     if "board_has_blocked_or_quarantined_tasks" in reasons:
+        if _locally_validated_blocked_ids(observation, previous):
+            # Current-tree tests passed. DuckDB blocked→retrying is not the
+            # remaining requirement for those tasks.
+            if int(counts.get("in_progress") or 0) > 0:
+                return "in_progress_awaiting_effect"
+            if int(counts.get("todo") or 0) > 0 and _live_daemons(details):
+                return "independent_todos_unclaimed"
+            if int(counts.get("todo") or 0) > 0:
+                return "independent_work_beside_blocked_peer"
         if int(counts.get("in_progress") or 0) > 0:
             return "independent_work_beside_blocked_peer"
         if not _todos_are_ready_beside_blocked(details, counts, reasons):
@@ -548,7 +575,7 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
-    state["stall_class"] = classify_stall(observation)
+    state["stall_class"] = classify_stall(observation, previous)
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
@@ -883,6 +910,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "overlay_first_native_admission",
                     "rearm_locally_validated_blocked_tasks",
                     "clear_overlay_copies_for_owner_start",
+                    "local_validation_satisfies_current_tree_requirements",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

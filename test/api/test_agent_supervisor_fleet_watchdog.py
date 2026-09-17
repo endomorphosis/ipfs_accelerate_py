@@ -311,6 +311,29 @@ def test_sawm_in_progress_sealed_package_selects_supervisor_heal(tmp_path):
     assert fleet.select_action(state, _board(tmp_path, id="sawm"), 100) == "supervisor_heal"
 
 
+def test_locally_validated_blocked_tasks_do_not_freeze_the_board(tmp_path):
+    observation = _observation(
+        health="blocked",
+        reason_codes=["board_has_blocked_or_quarantined_tasks", "no_ready_independent_tasks"],
+        details={
+            "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+            "task_counts": {"blocked": 2, "todo": 23, "completed": 60},
+            "owner_ready": True,
+        },
+    )
+    previous = {
+        "last_action_result": {
+            "recipe": "local_validation_pending_native_admission",
+            "results": [
+                {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+                {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+            ],
+        },
+    }
+    assert fleet.classify_stall(observation) == "blocked_without_independent_work"
+    assert fleet.classify_stall(observation, previous) == "independent_work_beside_blocked_peer"
+
+
 def test_reset_failed_ensure_unit_targets_configured_service(tmp_path, monkeypatch):
     board = _board(tmp_path)
     board["ensure"] = {

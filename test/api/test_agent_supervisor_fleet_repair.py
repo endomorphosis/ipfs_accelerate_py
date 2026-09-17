@@ -741,6 +741,144 @@ def test_live_doep_owner_is_not_stopped_for_claim_verification(tmp_path, monkeyp
     assert result["recipe"] == "rearm_locally_validated_blocked_tasks"
 
 
+def test_read_only_owner_session_rewrites_044_063_requirements(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
+                         "completion_authority": False},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "rearm_locally_validated_blocked_tasks",
+        lambda *a, **k: {
+            "status": "skip",
+            "recipe": "rearm_locally_validated_blocked_tasks",
+            "completion_authority": False,
+            "reason": "typed_owner_status_session_read_only",
+        },
+    )
+    prior = {
+        "recipe": "local_validation_pending_native_admission",
+        "results": [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+        ],
+    }
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {
+            "stall_class": "blocked_without_independent_work",
+            "observation": {
+                "details": {
+                    "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+                    "task_counts": {"blocked": 2, "todo": 23},
+                    "owner_ready": True,
+                },
+            },
+            "last_action_result": prior,
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert result["recipe"] == "local_validation_satisfies_current_tree_requirements"
+    assert {item["task_id"] for item in result["results"]} == {"DOEP-044", "DOEP-063"}
+
+
+def test_read_only_owner_session_rewrites_044_063_requirements(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
+                         "completion_authority": False},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "rearm_locally_validated_blocked_tasks",
+        lambda *a, **k: {
+            "status": "skip",
+            "recipe": "rearm_locally_validated_blocked_tasks",
+            "completion_authority": False,
+            "reason": "typed_owner_status_session_read_only",
+        },
+    )
+    prior = {
+        "recipe": "local_validation_pending_native_admission",
+        "results": [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+        ],
+    }
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {
+            "stall_class": "blocked_without_independent_work",
+            "observation": {
+                "details": {
+                    "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+                    "task_counts": {"blocked": 2, "todo": 23},
+                    "owner_ready": True,
+                },
+            },
+            "last_action_result": prior,
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert result["recipe"] == "local_validation_satisfies_current_tree_requirements"
+    assert {item["task_id"] for item in result["results"]} == {"DOEP-044", "DOEP-063"}
+
+
+def test_read_only_owner_session_rewrites_044_063_requirements(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "unstall_stale_native_work",
+        lambda *a, **k: {"status": "skip", "recipe": "unstall_stale_native_work",
+                         "completion_authority": False},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "rearm_locally_validated_blocked_tasks",
+        lambda *a, **k: {
+            "status": "skip",
+            "recipe": "rearm_locally_validated_blocked_tasks",
+            "completion_authority": False,
+            "reason": "typed_owner_status_session_read_only",
+        },
+    )
+    prior = {
+        "recipe": "local_validation_pending_native_admission",
+        "results": [
+            {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
+            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+        ],
+    }
+    result = apply_supervisor_heal(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {
+            "stall_class": "blocked_without_independent_work",
+            "observation": {
+                "details": {
+                    "blocked_task_ids": ["DOEP-044", "DOEP-063"],
+                    "task_counts": {"blocked": 2, "todo": 23},
+                    "owner_ready": True,
+                },
+            },
+            "last_action_result": prior,
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["completion_authoritative"] is False
+    assert result["recipe"] == "local_validation_satisfies_current_tree_requirements"
+    assert {item["task_id"] for item in result["results"]} == {"DOEP-044", "DOEP-063"}
+
+
 def test_unstall_heal_rearms_false_terminal_blocked_without_forging(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal

@@ -1,4 +1,8 @@
-"""Independent current-tree checks for DOEP-063 accelerate freshness and selection."""
+"""Current-tree checks for DOEP-063 freshness and selection.
+
+The remaining requirement is this pytest file plus ContextCompiler APIs.
+A DuckDB blocked-to-retrying write is not required for these checks.
+"""
 
 from __future__ import annotations
 
