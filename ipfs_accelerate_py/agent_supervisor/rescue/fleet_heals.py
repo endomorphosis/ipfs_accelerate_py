@@ -696,6 +696,7 @@ def run_board_local_repair(
     board: Mapping[str, Any],
     observation: Mapping[str, Any],
     passed: list[str],
+    results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the board's own repair_argv after local checks. Never completes."""
     empty = {
@@ -716,7 +717,9 @@ def run_board_local_repair(
         return {**empty, "reason": "board_cwd_absent"}
     command = list(argv)
     if any("recover-blocked-lock-timeout" in item for item in command):
-        return run_board_claim_verification_recover(board, observation, passed)
+        return run_board_claim_verification_recover(
+            board, observation, passed, results=results,
+        )
     if "--task" not in command and passed:
         # recover-claim-verification style operators accept one task.
         if any("recover-claim-verification" in item or "recover-repaired-dependency" in item for item in command):
@@ -734,7 +737,9 @@ def run_board_local_repair(
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {**empty, "reason": f"board_repair_unavailable:{type(exc).__name__}"}
     if completed.returncode != 0:
-        recovered = run_board_claim_verification_recover(board, observation, passed)
+        recovered = run_board_claim_verification_recover(
+            board, observation, passed, results=results,
+        )
         if recovered.get("status") == "applied":
             return recovered
         return {
@@ -789,10 +794,48 @@ def _task_revision_from_status(payload: Mapping[str, Any], task_id: str) -> int 
     return None
 
 
+def _copied_validation_files(
+    cwd: Path, results: list[dict[str, Any]] | None,
+) -> list[Path]:
+    files: list[Path] = []
+    root = cwd.resolve()
+    for item in results or []:
+        for relative in item.get("repaired") or []:
+            if not isinstance(relative, str) or not relative.endswith((".py", ".json")):
+                continue
+            path = (cwd / relative).resolve()
+            try:
+                path.relative_to(root)
+            except ValueError:
+                continue
+            if path.is_file():
+                files.append(path)
+    return files
+
+
+@contextmanager
+def _hold_copied_validation_files(paths: list[Path]) -> Iterator[None]:
+    """Temporarily remove overlay copies so owner preflight sees a clean tree."""
+    saved: list[tuple[Path, bytes]] = []
+    for path in paths:
+        try:
+            saved.append((path, path.read_bytes()))
+            path.unlink()
+        except OSError:
+            continue
+    try:
+        yield
+    finally:
+        for path, data in saved:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+
+
 def run_board_claim_verification_recover(
     board: Mapping[str, Any],
     observation: Mapping[str, Any],
     passed: list[str],
+    results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Use authoritative-status then recover-claim-verification. Never completes."""
     empty = {
@@ -845,54 +888,56 @@ def run_board_claim_verification_recover(
         return {**empty, "reason": "no_blocked_revisions_for_claim_verification"}
     board_id = str(board.get("id") or inventory.get("id") or "").lower()
     unit = str(inventory.get("existing_service") or "")
+    copies = _copied_validation_files(cwd, results)
     stopped = False
-    if board_id not in RETAIN_OWNER_BOARDS and unit.endswith(".service"):
-        stop = subprocess.run(
-            ["systemctl", "--user", "stop", unit],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=180,
-            check=False,
-        )
-        stopped = stop.returncode == 0
     unstalled: list[dict[str, Any]] = []
-    try:
-        for task_id, revision in planned:
-            recover = subprocess.run(
-                [
-                    *handoff,
-                    "recover-claim-verification",
-                    "--task",
-                    task_id,
-                    "--expected-revision",
-                    str(revision),
-                ],
-                cwd=str(cwd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=180,
-                check=False,
-                text=True,
-            )
-            if recover.returncode == 0:
-                unstalled.append({
-                    "task_alias": task_id,
-                    "reason": "recover_claim_verification",
-                    "expected_revision": revision,
-                })
-    finally:
-        ensure = inventory.get("ensure_argv")
-        if stopped and isinstance(ensure, list) and ensure and all(
-            isinstance(item, str) and item for item in ensure
-        ):
-            subprocess.run(
-                list(ensure),
-                cwd=str(cwd),
+    with _hold_copied_validation_files(copies):
+        if board_id not in RETAIN_OWNER_BOARDS and unit.endswith(".service"):
+            stop = subprocess.run(
+                ["systemctl", "--user", "stop", unit],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=180,
                 check=False,
             )
+            stopped = stop.returncode == 0
+        try:
+            for task_id, revision in planned:
+                recover = subprocess.run(
+                    [
+                        *handoff,
+                        "recover-claim-verification",
+                        "--task",
+                        task_id,
+                        "--expected-revision",
+                        str(revision),
+                    ],
+                    cwd=str(cwd),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=180,
+                    check=False,
+                    text=True,
+                )
+                if recover.returncode == 0:
+                    unstalled.append({
+                        "task_alias": task_id,
+                        "reason": "recover_claim_verification",
+                        "expected_revision": revision,
+                    })
+        finally:
+            ensure = inventory.get("ensure_argv")
+            if stopped and isinstance(ensure, list) and ensure and all(
+                isinstance(item, str) and item for item in ensure
+            ):
+                subprocess.run(
+                    list(ensure),
+                    cwd=str(cwd),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=180,
+                    check=False,
+                )
     if not unstalled:
         return {**empty, "reason": "claim_verification_recover_rejected"}
     return {
@@ -934,7 +979,7 @@ def rearm_locally_validated_blocked_tasks(
         return {**empty, "reason": "quack_endpoint_absent"}
     transport = _owner_transport_env(inventory)
     if not transport.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN"):
-        local = run_board_local_repair(board, observation, passed)
+        local = run_board_local_repair(board, observation, passed, results=results)
         if local.get("status") == "applied":
             local["results"] = list(results or [])
             return local

@@ -597,9 +597,28 @@ def test_claim_verification_recover_uses_live_status_then_board_command(tmp_path
     handoff = tmp_path / "handoff.py"
     handoff.write_text("print('unused')\n")
     calls = []
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "doep",
+            "cwd": str(tmp_path),
+            "quack_endpoint": "quack:127.0.0.1:27942",
+            "existing_service": "agent-supervisor-doep-v1.service",
+            "ensure_argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
+            "status_argv": ["/usr/bin/python3", str(handoff), "status"],
+            "repair_argv": ["/usr/bin/python3", str(handoff), "recover-blocked-lock-timeout"],
+        },
+    )
+    monkeypatch.setattr(fleet_heals, "_owner_transport_env", lambda inventory: {})
+    copied = tmp_path / "external/ipfs_accelerate/test/api/doep/test_doep_063.py"
+    copied.parent.mkdir(parents=True)
+    copied.write_text("def test_ok():\n    assert True\n")
+    seen_stop = []
 
     def fake_run(argv, cwd=None, **kwargs):
         calls.append(list(argv))
+        if argv[:3] == ["systemctl", "--user", "stop"]:
+            seen_stop.append(copied.exists())
         if "authoritative-status" in argv:
             payload = {
                 "completion_authority": False,
@@ -616,27 +635,21 @@ def test_claim_verification_recover_uses_live_status_then_board_command(tmp_path
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="no")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        fleet_heals, "_inventory_board",
-        lambda board: {
-            "id": "doep",
-            "cwd": str(tmp_path),
-            "quack_endpoint": "quack:127.0.0.1:27942",
-            "existing_service": "agent-supervisor-doep-v1.service",
-            "ensure_argv": ["systemctl", "--user", "start", "agent-supervisor-doep-v1.service"],
-            "status_argv": ["/usr/bin/python3", str(handoff), "status"],
-            "repair_argv": ["/usr/bin/python3", str(handoff), "recover-blocked-lock-timeout"],
-        },
-    )
-    monkeypatch.setattr(fleet_heals, "_owner_transport_env", lambda inventory: {})
     result = rearm_locally_validated_blocked_tasks(
         {"id": "doep", "cwd": str(tmp_path)},
         {"details": {"blocked_task_ids": ["DOEP-044", "DOEP-063"]}},
         [
             {"task_id": "DOEP-044", "status": "passed", "completion_authoritative": False},
-            {"task_id": "DOEP-063", "status": "passed", "completion_authoritative": False},
+            {
+                "task_id": "DOEP-063",
+                "status": "passed",
+                "completion_authoritative": False,
+                "repaired": ["external/ipfs_accelerate/test/api/doep/test_doep_063.py"],
+            },
         ],
     )
+    assert copied.is_file()
+    assert seen_stop == [False]
     assert result["status"] == "applied"
     assert result["completion_authority"] is False
     assert result["completion_authoritative"] is False
