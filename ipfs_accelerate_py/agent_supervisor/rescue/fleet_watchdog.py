@@ -1024,6 +1024,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         # Keep command output in private action evidence, not the shared status.
         write_json(directory / "last_action.json", {"at": now, "action": action, "result": action_result})
         state.pop("pending_action", None)
+        if action == "supervisor_heal":
+            recipe = str((action_result or {}).get("recipe") or "")
+            if recipe == "clear_overlay_copies_for_owner_start":
+                state["next_action_at"] = now
+            else:
+                state["next_action_at"] = now + float(board.get("cooldown_seconds", 180))
         state.update(last_action=action, last_action_result={
             k: v for k, v in action_result.items() if k not in {"stdout", "stderr"}})
         write_json(path, state)
