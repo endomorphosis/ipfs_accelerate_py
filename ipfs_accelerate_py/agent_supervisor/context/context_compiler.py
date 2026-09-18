@@ -15,16 +15,25 @@ Prefix-stable contexts retain that base contract while rendering an ordered
 policy/objective prefix, task core, and evidence delta.  Their cache identities
 bind provider/model, authority, target, and every semantic prefix dependency;
 warm receipts distinguish provider-native reuse from conservative estimates.
+
+Accelerate freshness and selection (DOEP-063) is a binding of this compiler,
+not a second ContextPack builder, store, planner, or completion owner.
+Datasets retains canonical semantic identity; Kit retains exact durable bytes
+and current-root CAS; this module admits only current tree, policy, plan-epoch,
+lease, fence, and root bindings and selects the smallest adequate specialist
+ContextPack.  Stale packs, worker assertions, and model claims cannot skip
+these controls or complete a task.  This path never writes DuckDB.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
 from .context_contracts import (
@@ -195,6 +204,106 @@ VALUE_OF_INFORMATION_EVIDENCE_SCHEMA = (
 EVIDENCE_VALUE_FIXTURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/evidence-value-paired-fixture@1"
 )
+ACCELERATE_FRESHNESS_AND_SELECTION_BINDING: Final = (
+    "AccelerateContextPackFreshnessAndSelection@1"
+)
+ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE: Final = (
+    ACCELERATE_FRESHNESS_AND_SELECTION_BINDING
+)
+ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "accelerate-context-pack-freshness-and-selection@1"
+)
+ACCELERATE_FRESHNESS_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "accelerate-context-pack-freshness-decision@1"
+)
+ACCELERATE_SELECTION_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "accelerate-context-pack-selection-decision@1"
+)
+SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA: Final = (
+    "ipfs_datasets_py/proof-context/supervisor-context-pack@1"
+)
+SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA_VERSION: Final = (
+    "supervisor-context-pack/v1"
+)
+DATASETS_SEMANTIC_CONTEXT_BUILDER_INTERFACE: Final = (
+    "DatasetsSemanticContextBuilder@1"
+)
+KIT_CURRENT_ROOT_CAS_OPERATION: Final = "compare_and_swap_state_root"
+ACCELERATE_CONTEXT_PACK_OWNERSHIP: Final = MappingProxyType(
+    {
+        "canonical_semantic_identity": "ipfs_datasets_py",
+        "exact_bytes_cid_storage": "ipfs_kit_py",
+        "operational_admission": "ipfs_accelerate_py",
+    }
+)
+ACCELERATE_CONTEXT_PACK_CONSUMES: Final[tuple[str, ...]] = (
+    SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA,
+    DATASETS_SEMANTIC_CONTEXT_BUILDER_INTERFACE,
+    KIT_CURRENT_ROOT_CAS_OPERATION,
+)
+ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS: Final = frozenset(
+    {
+        "authorization",
+        "authorization_decision",
+        "completion_authoritative",
+        "duckdb",
+        "ducklake",
+        "lease_id",
+        "policy",
+        "receipt_bytes",
+        "storage_bytes",
+        "terminal_status",
+    }
+)
+SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS: Final = frozenset(
+    {
+        "capsule_cids",
+        "expansion_required",
+        "pack_cid",
+        "producer",
+        "repository_state_cid",
+        "required_source_cids",
+        "scanned_tree_oid",
+        "schema",
+        "schema_version",
+        "sufficiency_state",
+        "task_id",
+    }
+)
+CONTEXT_PACK_OPERATIONAL_FIELDS: Final = frozenset(
+    {
+        "durable_cid",
+        "fence_expired",
+        "fence_id",
+        "freshness",
+        "lease_expired",
+        "lease_id",
+        "model_assertion",
+        "pack",
+        "plan_epoch",
+        "policy_id",
+        "policy_revision",
+        "required",
+        "token_cost",
+        "unresolved_questions",
+        "worker_assertion",
+    }
+)
+LEGAL_CONTEXT_PACK_FRESHNESS_STATES: Final[tuple[str, ...]] = (
+    "fresh",
+    "stale_tree",
+    "stale_policy",
+    "stale_plan_epoch",
+    "stale_current_root",
+    "stale_pack",
+    "stale_lease",
+    "stale_fence",
+    "unavailable",
+    "malformed",
+)
 CONTEXT_COMPILER_VERSION = 1
 MAX_DECISIONS = 4_096
 MAX_CALIBRATION_SAMPLES = 128
@@ -241,6 +350,18 @@ class MissingContextReferenceError(ContextExpansionError):
 
 class ChangedTreeContextError(ContextExpansionError):
     """A parent capsule belongs to a repository tree that is no longer current."""
+
+
+class StaleContextPackError(ChangedTreeContextError):
+    """A ContextPack is stale relative to current tree, policy, epoch, or root."""
+
+
+class ContextPackSelectionError(ContextCompilationError):
+    """No smallest adequate fresh ContextPack could be selected."""
+
+
+class ContextPackAdmissionError(ContextCompilationError):
+    """Operational admission refused; this is not completion authority."""
 
 
 class ContextExpansionCancelled(ContextExpansionError):
@@ -4025,8 +4146,824 @@ class ContextDeltaResult:
             self.verifier.verify_delta_result(self)
 
 
+class ContextPackFreshnessState(str, Enum):
+    """Operational freshness of one supervisor ContextPack candidate."""
+
+    FRESH = "fresh"
+    STALE_TREE = "stale_tree"
+    STALE_POLICY = "stale_policy"
+    STALE_PLAN_EPOCH = "stale_plan_epoch"
+    STALE_CURRENT_ROOT = "stale_current_root"
+    STALE_PACK = "stale_pack"
+    STALE_LEASE = "stale_lease"
+    STALE_FENCE = "stale_fence"
+    UNAVAILABLE = "unavailable"
+    MALFORMED = "malformed"
+
+
+class ContextPackSelectionDisposition(str, Enum):
+    """Why a ContextPack was selected or omitted.  Never completion."""
+
+    SELECTED = "selected"
+    REQUIRED = "required"
+    OMITTED_NOT_FRESH = "omitted_not_fresh"
+    OMITTED_INSUFFICIENT = "omitted_insufficient"
+    OMITTED_EXPANSION_REQUIRED = "omitted_expansion_required"
+    OMITTED_LARGER = "omitted_larger"
+    OMITTED_NOT_REQUIRED = "omitted_not_required"
+
+
+def _assert_context_reference_freshness(
+    item: ContextReference,
+    *,
+    repository_id: str,
+    tree_id: str,
+) -> None:
+    """Reject evidence bound to a stale repository, tree, or freshness flag."""
+
+    if item.repository_id and item.repository_id != repository_id:
+        raise ChangedTreeContextError(
+            f"evidence {item.reference_id!r} repository identity is no longer current"
+        )
+    if item.tree_id and item.tree_id != tree_id:
+        raise ChangedTreeContextError(
+            f"evidence {item.reference_id!r} belongs to a repository tree "
+            "that is no longer current"
+        )
+    freshness = str(item.metadata.get("freshness", "fresh")).strip().casefold()
+    if freshness in {"stale", "expired", "invalidated"}:
+        raise StaleContextPackError(
+            f"evidence {item.reference_id!r} is stale and cannot be selected"
+        )
+
+
+def _as_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    raise ContextPackSelectionError(f"{name} must be an object")
+
+
+def _optional_text(value: Any, name: str) -> str:
+    if value in (None, ""):
+        return ""
+    return _text(value, name, required=False)
+
+
+def _split_context_pack_candidate(
+    candidate: Mapping[str, Any] | Any,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """Separate the datasets wire pack from Accelerate operational bindings."""
+
+    payload = _as_mapping(candidate, "context pack candidate")
+    nested = payload.get("pack")
+    if nested is not None:
+        pack = dict(_as_mapping(nested, "pack"))
+        operational = {
+            key: value
+            for key, value in payload.items()
+            if key != "pack"
+        }
+    else:
+        pack = {
+            key: value
+            for key, value in payload.items()
+            if key not in CONTEXT_PACK_OPERATIONAL_FIELDS
+        }
+        operational = {
+            key: value
+            for key, value in payload.items()
+            if key in CONTEXT_PACK_OPERATIONAL_FIELDS
+        }
+    return pack, operational
+
+
+def _normalize_supervisor_context_pack(
+    pack: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed supervisor wire view without rebuilding identity."""
+
+    if set(pack).intersection(ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS):
+        raise ContextPackSelectionError(
+            "supervisor ContextPack carries forbidden authority-bearing fields"
+        )
+    unknown = set(pack).difference(SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS)
+    if unknown:
+        raise ContextPackSelectionError(
+            "supervisor ContextPack contains unsupported fields; "
+            "rebuild its canonical payload"
+        )
+    missing = SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS.difference(pack)
+    if missing:
+        raise ContextPackSelectionError(
+            "supervisor ContextPack is missing required semantic fields: "
+            + ", ".join(sorted(missing))
+        )
+    schema = _text(pack.get("schema", ""), "schema")
+    version = _text(pack.get("schema_version", ""), "schema_version")
+    if schema != SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA:
+        raise ContextPackSelectionError(
+            "unsupported supervisor ContextPack schema"
+        )
+    if version != SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA_VERSION:
+        raise ContextPackSelectionError(
+            "unsupported supervisor ContextPack schema version"
+        )
+    sources = pack.get("required_source_cids")
+    if not isinstance(sources, Mapping):
+        raise ContextPackSelectionError(
+            "required_source_cids must retain the exact datasets source map"
+        )
+    required_keys = {"target_source", "surrounding_source", "test_source"}
+    if set(sources) != required_keys or any(
+        not isinstance(cid, str) or not cid.strip() for cid in sources.values()
+    ):
+        raise ContextPackSelectionError(
+            "supervisor ContextPack must retain the exact required source CIDs"
+        )
+    capsules = pack.get("capsule_cids")
+    if isinstance(capsules, (str, bytes, bytearray)) or not isinstance(
+        capsules, Sequence
+    ):
+        raise ContextPackSelectionError("capsule_cids must be a sequence")
+    normalized_capsules = tuple(
+        _text(item, "capsule_cids") for item in capsules
+    )
+    expansion_required = pack.get("expansion_required")
+    if not isinstance(expansion_required, bool):
+        raise ContextPackSelectionError("expansion_required must be a bool")
+    return {
+        "capsule_cids": list(normalized_capsules),
+        "expansion_required": expansion_required,
+        "pack_cid": _text(pack.get("pack_cid", ""), "pack_cid"),
+        "producer": _text(pack.get("producer", ""), "producer"),
+        "repository_state_cid": _text(
+            pack.get("repository_state_cid", ""), "repository_state_cid"
+        ),
+        "required_source_cids": {
+            key: _text(sources[key], key) for key in sorted(required_keys)
+        },
+        "scanned_tree_oid": _text(
+            pack.get("scanned_tree_oid", ""), "scanned_tree_oid"
+        ),
+        "schema": schema,
+        "schema_version": version,
+        "sufficiency_state": _text(
+            pack.get("sufficiency_state", ""), "sufficiency_state"
+        ),
+        "task_id": _text(pack.get("task_id", ""), "task_id"),
+    }
+
+
+def _current_root_cid(current_root: Any) -> str | None:
+    if current_root in (None, ""):
+        return None
+    payload = _as_mapping(current_root, "current_root")
+    root_cid = payload.get("root_cid")
+    if root_cid in (None, ""):
+        return ""
+    return _text(root_cid, "current_root.root_cid")
+
+
+def _candidate_token_cost(
+    pack: Mapping[str, Any],
+    operational: Mapping[str, Any],
+) -> int:
+    if "token_cost" in operational:
+        return _integer(operational["token_cost"], "token_cost")
+    capsules = pack.get("capsule_cids") or ()
+    base = max(1, len(tuple(capsules))) * 100
+    if pack.get("expansion_required"):
+        return base + 1_000
+    return base
+
+
+def _candidate_required(operational: Mapping[str, Any]) -> bool:
+    required = operational.get("required", False)
+    if not isinstance(required, bool):
+        raise ContextPackSelectionError("required must be a boolean")
+    return required
+
+
+@dataclass(frozen=True)
+class ContextPackFreshnessDecision:
+    """Model-free freshness audit for one supervisor ContextPack."""
+
+    pack_cid: str
+    task_id: str
+    scanned_tree_oid: str
+    state: ContextPackFreshnessState
+    reason: str
+    durable_cid: str = ""
+    sufficient: bool = False
+    expansion_required: bool = False
+    required: bool = False
+    token_cost: int = 0
+    pack: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pack_cid", _text(self.pack_cid, "pack_cid"))
+        object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
+        object.__setattr__(
+            self,
+            "scanned_tree_oid",
+            _text(self.scanned_tree_oid, "scanned_tree_oid"),
+        )
+        state = (
+            self.state
+            if isinstance(self.state, ContextPackFreshnessState)
+            else ContextPackFreshnessState(str(self.state))
+        )
+        object.__setattr__(self, "state", state)
+        object.__setattr__(self, "reason", _text(self.reason, "reason"))
+        object.__setattr__(
+            self,
+            "durable_cid",
+            _text(self.durable_cid, "durable_cid", required=False),
+        )
+        if not isinstance(self.sufficient, bool):
+            raise ContextPackSelectionError("sufficient must be a boolean")
+        if not isinstance(self.expansion_required, bool):
+            raise ContextPackSelectionError(
+                "expansion_required must be a boolean"
+            )
+        if not isinstance(self.required, bool):
+            raise ContextPackSelectionError("required must be a boolean")
+        object.__setattr__(
+            self, "token_cost", _integer(self.token_cost, "token_cost")
+        )
+        object.__setattr__(self, "pack", MappingProxyType(dict(self.pack)))
+
+    @property
+    def fresh(self) -> bool:
+        return self.state is ContextPackFreshnessState.FRESH
+
+    @property
+    def adequate(self) -> bool:
+        return (
+            self.fresh
+            and self.sufficient
+            and not self.expansion_required
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": ACCELERATE_FRESHNESS_DECISION_SCHEMA,
+            "binding": ACCELERATE_FRESHNESS_AND_SELECTION_BINDING,
+            "pack_cid": self.pack_cid,
+            "task_id": self.task_id,
+            "scanned_tree_oid": self.scanned_tree_oid,
+            "state": self.state.value,
+            "reason": self.reason,
+            "durable_cid": self.durable_cid,
+            "fresh": self.fresh,
+            "sufficient": self.sufficient,
+            "expansion_required": self.expansion_required,
+            "adequate": self.adequate,
+            "required": self.required,
+            "token_cost": self.token_cost,
+            "pack": dict(self.pack),
+            "completion_authoritative": False,
+        }
+
+
+@dataclass(frozen=True)
+class ContextPackSelectionDecision:
+    """One candidate's selection outcome.  Never completion authority."""
+
+    pack_cid: str
+    included: bool
+    disposition: ContextPackSelectionDisposition
+    freshness: ContextPackFreshnessDecision
+    reason: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pack_cid", _text(self.pack_cid, "pack_cid"))
+        if not isinstance(self.included, bool):
+            raise ContextPackSelectionError("included must be a boolean")
+        disposition = (
+            self.disposition
+            if isinstance(self.disposition, ContextPackSelectionDisposition)
+            else ContextPackSelectionDisposition(str(self.disposition))
+        )
+        object.__setattr__(self, "disposition", disposition)
+        if not isinstance(self.freshness, ContextPackFreshnessDecision):
+            raise ContextPackSelectionError(
+                "freshness must be a ContextPackFreshnessDecision"
+            )
+        object.__setattr__(
+            self, "reason", _text(self.reason, "reason", required=False)
+        )
+        if self.included and not self.freshness.fresh:
+            raise ContextPackSelectionError(
+                "stale ContextPacks cannot be selected"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": ACCELERATE_SELECTION_DECISION_SCHEMA,
+            "pack_cid": self.pack_cid,
+            "included": self.included,
+            "disposition": self.disposition.value,
+            "reason": self.reason or self.disposition.value,
+            "freshness": self.freshness.to_dict(),
+            "completion_authoritative": False,
+        }
+
+
+@dataclass(frozen=True)
+class AccelerateContextPackAdmission:
+    """Operational admission of the smallest adequate current ContextPack.
+
+    This result never writes DuckDB, never terminalizes a task, and is not
+    completion authority.  A worker or model assertion cannot skip these
+    controls.
+    """
+
+    selected_pack_cid: str
+    admitted: bool
+    expansion_required: bool
+    freshness: tuple[ContextPackFreshnessDecision, ...]
+    decisions: tuple[ContextPackSelectionDecision, ...]
+    unresolved_questions: tuple[str, ...] = ()
+    reason: str = ""
+    schema: str = ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA
+    binding: str = ACCELERATE_FRESHNESS_AND_SELECTION_BINDING
+    carrier: str = "ContextCompiler"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "selected_pack_cid",
+            _text(
+                self.selected_pack_cid,
+                "selected_pack_cid",
+                required=False,
+            ),
+        )
+        if not isinstance(self.admitted, bool):
+            raise ContextPackAdmissionError("admitted must be a boolean")
+        if not isinstance(self.expansion_required, bool):
+            raise ContextPackAdmissionError(
+                "expansion_required must be a boolean"
+            )
+        object.__setattr__(self, "freshness", tuple(self.freshness))
+        object.__setattr__(self, "decisions", tuple(self.decisions))
+        object.__setattr__(
+            self,
+            "unresolved_questions",
+            _strings(
+                self.unresolved_questions,
+                "unresolved_questions",
+                maximum=64,
+            ),
+        )
+        object.__setattr__(
+            self, "reason", _text(self.reason, "reason", required=False)
+        )
+        object.__setattr__(
+            self,
+            "schema",
+            self.schema or ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA,
+        )
+        if self.schema != ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA:
+            raise ContextPackAdmissionError(
+                "unsupported accelerate freshness-and-selection schema"
+            )
+        object.__setattr__(
+            self,
+            "binding",
+            self.binding or ACCELERATE_FRESHNESS_AND_SELECTION_BINDING,
+        )
+        object.__setattr__(self, "carrier", self.carrier or "ContextCompiler")
+        if self.admitted and not self.selected_pack_cid:
+            raise ContextPackAdmissionError(
+                "admitted ContextPack selection must name a pack CID"
+            )
+        if self.admitted and self.expansion_required:
+            raise ContextPackAdmissionError(
+                "expansion-required packs are not yet adequate for admission"
+            )
+
+    @property
+    def selected(self) -> ContextPackSelectionDecision | None:
+        for decision in self.decisions:
+            if decision.included:
+                return decision
+        return None
+
+    @property
+    def model_free(self) -> bool:
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "binding": self.binding,
+            "interface": ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE,
+            "carrier": self.carrier,
+            "consumes": list(ACCELERATE_CONTEXT_PACK_CONSUMES),
+            "ownership": dict(ACCELERATE_CONTEXT_PACK_OWNERSHIP),
+            "selected_pack_cid": self.selected_pack_cid,
+            "admitted": self.admitted,
+            "execution_admitted": self.admitted,
+            "expansion_required": self.expansion_required,
+            "unresolved_questions": list(self.unresolved_questions),
+            "freshness": [item.to_dict() for item in self.freshness],
+            "decisions": [item.to_dict() for item in self.decisions],
+            "reason": self.reason,
+            "model_free": True,
+            "database_write": False,
+            "authorizes_completion": False,
+            "completion_authoritative": False,
+            "worker_assertion_is_authority": False,
+            "empty_queue_is_completion": False,
+        }
+
+
+def evaluate_context_pack_freshness(
+    candidate: Mapping[str, Any] | Any,
+    *,
+    current_tree_id: str = "",
+    current_policy_id: str = "",
+    current_policy_revision: str = "",
+    current_plan_epoch: int | None = None,
+    current_root: Mapping[str, Any] | None = None,
+    current_lease_id: str = "",
+    current_fence_id: str = "",
+) -> ContextPackFreshnessDecision:
+    """Fail-closed freshness of one datasets-owned supervisor ContextPack.
+
+    This function does not mint semantic identity, store durable bytes, write
+    DuckDB, or complete a task.  A worker or model assertion cannot skip
+    these controls.
+    """
+
+    try:
+        pack, operational = _split_context_pack_candidate(candidate)
+        normalized = _normalize_supervisor_context_pack(pack)
+    except ContextCompilationError as exc:
+        pack_cid = ""
+        task_id = "unknown"
+        tree_oid = ""
+        if isinstance(candidate, Mapping):
+            nested = candidate.get("pack")
+            source = nested if isinstance(nested, Mapping) else candidate
+            pack_cid = str(source.get("pack_cid", "") or "malformed")
+            task_id = str(source.get("task_id", "") or "unknown")
+            tree_oid = str(source.get("scanned_tree_oid", "") or "unknown")
+        return ContextPackFreshnessDecision(
+            pack_cid=pack_cid or "malformed",
+            task_id=task_id,
+            scanned_tree_oid=tree_oid or "unknown",
+            state=ContextPackFreshnessState.MALFORMED,
+            reason=str(exc),
+        )
+    durable_cid = _optional_text(
+        operational.get("durable_cid") or normalized["pack_cid"],
+        "durable_cid",
+    )
+    required = _candidate_required(operational)
+    token_cost = _candidate_token_cost(normalized, operational)
+    sufficient = normalized["sufficiency_state"] == "sufficient"
+    declared_freshness = str(
+        operational.get("freshness", "fresh")
+    ).strip().casefold()
+    if declared_freshness in {"stale", "expired", "invalidated"}:
+        state = ContextPackFreshnessState.STALE_PACK
+        reason = "declared ContextPack freshness is stale"
+    elif operational.get("worker_assertion") or operational.get(
+        "model_assertion"
+    ):
+        # Assertions are recorded on the envelope only; they never mint
+        # freshness.  Continue evaluating the remaining current-world binds.
+        state = ContextPackFreshnessState.FRESH
+        reason = "fresh"
+    else:
+        state = ContextPackFreshnessState.FRESH
+        reason = "fresh"
+    tree_id = _optional_text(current_tree_id, "current_tree_id")
+    if state is ContextPackFreshnessState.FRESH and tree_id:
+        if normalized["scanned_tree_oid"] != tree_id:
+            state = ContextPackFreshnessState.STALE_TREE
+            reason = "ContextPack scanned tree is no longer current"
+    policy_revision = _optional_text(
+        current_policy_revision, "current_policy_revision"
+    )
+    claimed_policy_revision = _optional_text(
+        operational.get("policy_revision"), "policy_revision"
+    )
+    if (
+        state is ContextPackFreshnessState.FRESH
+        and policy_revision
+        and claimed_policy_revision
+        and claimed_policy_revision != policy_revision
+    ):
+        state = ContextPackFreshnessState.STALE_POLICY
+        reason = "ContextPack policy revision is no longer current"
+    claimed_policy_id = _optional_text(operational.get("policy_id"), "policy_id")
+    current_policy = _optional_text(current_policy_id, "current_policy_id")
+    if (
+        state is ContextPackFreshnessState.FRESH
+        and current_policy
+        and claimed_policy_id
+        and claimed_policy_id != current_policy
+    ):
+        state = ContextPackFreshnessState.STALE_POLICY
+        reason = "ContextPack policy identity is no longer current"
+    if state is ContextPackFreshnessState.FRESH and current_plan_epoch is not None:
+        claimed_epoch = operational.get("plan_epoch")
+        if claimed_epoch not in (None, ""):
+            epoch = _integer(claimed_epoch, "plan_epoch")
+            expected_epoch = _integer(current_plan_epoch, "current_plan_epoch")
+            if epoch != expected_epoch:
+                state = ContextPackFreshnessState.STALE_PLAN_EPOCH
+                reason = "ContextPack plan epoch is no longer current"
+    if state is ContextPackFreshnessState.FRESH and current_root is not None:
+        root_cid = _current_root_cid(current_root)
+        if root_cid in (None, ""):
+            state = ContextPackFreshnessState.STALE_CURRENT_ROOT
+            reason = "Kit current-root CAS has no current ContextPack root"
+        elif durable_cid != root_cid:
+            state = ContextPackFreshnessState.STALE_CURRENT_ROOT
+            reason = "ContextPack durable CID is not the current Kit root"
+    if state is ContextPackFreshnessState.FRESH:
+        if operational.get("lease_expired") is True:
+            state = ContextPackFreshnessState.STALE_LEASE
+            reason = "ContextPack lease is expired"
+        elif operational.get("fence_expired") is True:
+            state = ContextPackFreshnessState.STALE_FENCE
+            reason = "ContextPack fence is expired"
+        else:
+            lease_id = _optional_text(operational.get("lease_id"), "lease_id")
+            fence_id = _optional_text(operational.get("fence_id"), "fence_id")
+            expected_lease = _optional_text(current_lease_id, "current_lease_id")
+            expected_fence = _optional_text(current_fence_id, "current_fence_id")
+            if expected_lease and lease_id and lease_id != expected_lease:
+                state = ContextPackFreshnessState.STALE_LEASE
+                reason = "ContextPack lease is no longer current"
+            elif expected_fence and fence_id and fence_id != expected_fence:
+                state = ContextPackFreshnessState.STALE_FENCE
+                reason = "ContextPack fence is no longer current"
+    if state is ContextPackFreshnessState.FRESH and declared_freshness in {
+        "unavailable",
+        "missing",
+    }:
+        state = ContextPackFreshnessState.UNAVAILABLE
+        reason = "ContextPack durable bytes are unavailable"
+    return ContextPackFreshnessDecision(
+        pack_cid=normalized["pack_cid"],
+        task_id=normalized["task_id"],
+        scanned_tree_oid=normalized["scanned_tree_oid"],
+        state=state,
+        reason=reason,
+        durable_cid=durable_cid,
+        sufficient=sufficient,
+        expansion_required=bool(normalized["expansion_required"]),
+        required=required,
+        token_cost=token_cost,
+        pack=normalized,
+    )
+
+
+def _selection_rank(decision: ContextPackFreshnessDecision) -> tuple[Any, ...]:
+    return (
+        decision.token_cost,
+        len(tuple(decision.pack.get("capsule_cids") or ())),
+        decision.pack_cid,
+        decision.task_id,
+    )
+
+
+def select_smallest_adequate_context_pack(
+    candidates: Iterable[Mapping[str, Any] | Any],
+    *,
+    current_tree_id: str,
+    current_policy_id: str = "",
+    current_policy_revision: str = "",
+    current_plan_epoch: int | None = None,
+    current_root: Mapping[str, Any] | None = None,
+    current_lease_id: str = "",
+    current_fence_id: str = "",
+    unresolved_questions: Iterable[str] = (),
+    worker_assertion: bool = False,
+    model_assertion: bool = False,
+    fail_closed: bool = True,
+) -> AccelerateContextPackAdmission:
+    """Select the smallest adequate current ContextPack.
+
+    Required fresh packs cannot be auctioned away.  Stale packs are omitted
+    and, when ``fail_closed``, block admission rather than falling back to a
+    larger or stale alternative.  Worker and model assertions are not
+    authority and cannot skip these controls.
+    """
+
+    del worker_assertion, model_assertion
+    questions = _strings(
+        unresolved_questions, "unresolved_questions", maximum=64
+    )
+    evaluated: list[ContextPackFreshnessDecision] = []
+    seen: set[str] = set()
+    for index, candidate in enumerate(candidates):
+        if index >= MAX_DECISIONS:
+            raise ContextPackSelectionError(
+                "context pack candidates exceed their reference-count limit"
+            )
+        freshness = evaluate_context_pack_freshness(
+            candidate,
+            current_tree_id=current_tree_id,
+            current_policy_id=current_policy_id,
+            current_policy_revision=current_policy_revision,
+            current_plan_epoch=current_plan_epoch,
+            current_root=current_root,
+            current_lease_id=current_lease_id,
+            current_fence_id=current_fence_id,
+        )
+        if freshness.pack_cid in seen:
+            raise ContextPackSelectionError(
+                "context pack candidates contain duplicate pack CIDs"
+            )
+        seen.add(freshness.pack_cid)
+        evaluated.append(freshness)
+    if not evaluated:
+        if fail_closed:
+            raise ContextPackSelectionError(
+                "at least one ContextPack candidate is required"
+            )
+        return AccelerateContextPackAdmission(
+            selected_pack_cid="",
+            admitted=False,
+            expansion_required=False,
+            freshness=(),
+            decisions=(),
+            unresolved_questions=questions,
+            reason="no_candidates",
+        )
+    required = tuple(item for item in evaluated if item.required)
+    pool = required or evaluated
+    adequate = tuple(item for item in pool if item.adequate)
+    selected: ContextPackFreshnessDecision | None = None
+    expansion_only = False
+    if adequate:
+        selected = min(adequate, key=_selection_rank)
+    else:
+        expandable = tuple(
+            item
+            for item in pool
+            if item.fresh and item.expansion_required
+        )
+        if expandable:
+            selected = min(expandable, key=_selection_rank)
+            expansion_only = True
+        elif fail_closed:
+            if any(not item.fresh for item in pool):
+                raise StaleContextPackError(
+                    "stale ContextPacks cannot be selected or admitted"
+                )
+            raise ContextPackSelectionError(
+                "no smallest adequate current ContextPack is available"
+            )
+    decisions: list[ContextPackSelectionDecision] = []
+    for item in evaluated:
+        if selected is not None and item.pack_cid == selected.pack_cid:
+            disposition = (
+                ContextPackSelectionDisposition.REQUIRED
+                if item.required
+                else ContextPackSelectionDisposition.SELECTED
+            )
+            if expansion_only:
+                disposition = (
+                    ContextPackSelectionDisposition.OMITTED_EXPANSION_REQUIRED
+                )
+            decisions.append(
+                ContextPackSelectionDecision(
+                    pack_cid=item.pack_cid,
+                    included=not expansion_only,
+                    disposition=disposition,
+                    freshness=item,
+                    reason=(
+                        "smallest_adequate"
+                        if not expansion_only
+                        else "expansion_required"
+                    ),
+                )
+            )
+            continue
+        if not item.fresh:
+            disposition = ContextPackSelectionDisposition.OMITTED_NOT_FRESH
+            reason = item.reason
+        elif item.expansion_required:
+            disposition = (
+                ContextPackSelectionDisposition.OMITTED_EXPANSION_REQUIRED
+            )
+            reason = "expansion_required"
+        elif not item.sufficient:
+            disposition = ContextPackSelectionDisposition.OMITTED_INSUFFICIENT
+            reason = "insufficient"
+        elif required and not item.required:
+            disposition = ContextPackSelectionDisposition.OMITTED_NOT_REQUIRED
+            reason = "required_pack_selected"
+        else:
+            disposition = ContextPackSelectionDisposition.OMITTED_LARGER
+            reason = "larger_than_smallest_adequate"
+        decisions.append(
+            ContextPackSelectionDecision(
+                pack_cid=item.pack_cid,
+                included=False,
+                disposition=disposition,
+                freshness=item,
+                reason=reason,
+            )
+        )
+    admitted = bool(selected is not None and selected.adequate)
+    return AccelerateContextPackAdmission(
+        selected_pack_cid=selected.pack_cid if selected is not None else "",
+        admitted=admitted,
+        expansion_required=expansion_only,
+        freshness=tuple(evaluated),
+        decisions=tuple(decisions),
+        unresolved_questions=questions,
+        reason=(
+            "admitted"
+            if admitted
+            else "expansion_required"
+            if expansion_only
+            else "not_admitted"
+        ),
+    )
+
+
+def admit_accelerate_context_pack(
+    candidates: Iterable[Mapping[str, Any] | Any],
+    *,
+    current_tree_id: str,
+    current_policy_id: str = "",
+    current_policy_revision: str = "",
+    current_plan_epoch: int | None = None,
+    current_root: Mapping[str, Any] | None = None,
+    current_lease_id: str = "",
+    current_fence_id: str = "",
+    unresolved_questions: Iterable[str] = (),
+    worker_assertion: bool = False,
+    model_assertion: bool = False,
+) -> AccelerateContextPackAdmission:
+    """Admit the smallest adequate current ContextPack for execution.
+
+    Admission is operational only.  It is not completion, does not write
+    DuckDB, and a worker or model assertion cannot skip these controls.
+    """
+
+    if worker_assertion or model_assertion:
+        # Recompute independently; caller claims never mint freshness.
+        pass
+    return select_smallest_adequate_context_pack(
+        candidates,
+        current_tree_id=current_tree_id,
+        current_policy_id=current_policy_id,
+        current_policy_revision=current_policy_revision,
+        current_plan_epoch=current_plan_epoch,
+        current_root=current_root,
+        current_lease_id=current_lease_id,
+        current_fence_id=current_fence_id,
+        unresolved_questions=unresolved_questions,
+        worker_assertion=worker_assertion,
+        model_assertion=model_assertion,
+        fail_closed=True,
+    )
+
+
+def accelerate_freshness_and_selection_are_armed() -> bool:
+    """Return whether the canonical compiler binding is present."""
+
+    return (
+        ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE
+        == ACCELERATE_FRESHNESS_AND_SELECTION_BINDING
+        and ContextCompiler.FRESHNESS_INTERFACE
+        == ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE
+        and admit_accelerate_context_pack.__module__
+        == "ipfs_accelerate_py.agent_supervisor.context.context_compiler"
+        and select_smallest_adequate_context_pack.__module__
+        == "ipfs_accelerate_py.agent_supervisor.context.context_compiler"
+        and evaluate_context_pack_freshness.__module__
+        == "ipfs_accelerate_py.agent_supervisor.context.context_compiler"
+    )
+
+
 class ContextCompiler:
     """Compile base and retry contexts under one provider-aware budget."""
+
+    FRESHNESS_BINDING: ClassVar[str] = (
+        ACCELERATE_FRESHNESS_AND_SELECTION_BINDING
+    )
+    FRESHNESS_INTERFACE: ClassVar[str] = (
+        ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE
+    )
+    FRESHNESS_SCHEMA: ClassVar[str] = ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA
+    FRESHNESS_CONSUMES: ClassVar[tuple[str, ...]] = (
+        ACCELERATE_CONTEXT_PACK_CONSUMES
+    )
+    FRESHNESS_OWNERSHIP: ClassVar[Mapping[str, str]] = (
+        ACCELERATE_CONTEXT_PACK_OWNERSHIP
+    )
 
     def __init__(
         self,
@@ -4705,6 +5642,12 @@ class ContextCompiler:
         evidence: Iterable[ContextReference | Mapping[str, Any]] = (),
     ) -> ContextCompileResult:
         references = _coerce_references(evidence)
+        for item in references:
+            _assert_context_reference_freshness(
+                item,
+                repository_id=repository_id,
+                tree_id=tree_id,
+            )
         required = tuple(item for item in references if item.required)
         optional = tuple(item for item in references if not item.required)
         normalized = ContextCapsule(
@@ -5007,6 +5950,12 @@ class ContextCompiler:
                 "delta chaining requires reconstruction of the prior delta"
             )
         candidates = _coerce_references(evidence)
+        for item in candidates:
+            _assert_context_reference_freshness(
+                item,
+                repository_id=parent.repository_id,
+                tree_id=parent.tree_id,
+            )
         candidate_by_id = {item.reference_id: item for item in candidates}
         parent_by_id = {item.reference_id: item for item in parent.evidence}
         requested = set(
@@ -5235,6 +6184,33 @@ class ContextCompiler:
             retrieval_receipt,
             **kwargs,
         )
+
+    def evaluate_context_pack_freshness(
+        self,
+        candidate: Mapping[str, Any] | Any,
+        **kwargs: Any,
+    ) -> ContextPackFreshnessDecision:
+        """Delegate freshness to the module binding; no second owner."""
+
+        return evaluate_context_pack_freshness(candidate, **kwargs)
+
+    def select_smallest_adequate_context_pack(
+        self,
+        candidates: Iterable[Mapping[str, Any] | Any],
+        **kwargs: Any,
+    ) -> AccelerateContextPackAdmission:
+        """Delegate selection to the module binding; no second selector."""
+
+        return select_smallest_adequate_context_pack(candidates, **kwargs)
+
+    def admit_context_pack(
+        self,
+        candidates: Iterable[Mapping[str, Any] | Any],
+        **kwargs: Any,
+    ) -> AccelerateContextPackAdmission:
+        """Delegate operational admission to the module binding."""
+
+        return admit_accelerate_context_pack(candidates, **kwargs)
 
 
 def reconstruct_context(
@@ -7256,6 +8232,14 @@ render_prefix_stable_context = render_prefix_context
 
 
 __all__ = [
+    "ACCELERATE_CONTEXT_PACK_CONSUMES",
+    "ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS",
+    "ACCELERATE_CONTEXT_PACK_OWNERSHIP",
+    "ACCELERATE_FRESHNESS_AND_SELECTION_BINDING",
+    "ACCELERATE_FRESHNESS_AND_SELECTION_INTERFACE",
+    "ACCELERATE_FRESHNESS_AND_SELECTION_SCHEMA",
+    "ACCELERATE_FRESHNESS_DECISION_SCHEMA",
+    "ACCELERATE_SELECTION_DECISION_SCHEMA",
     "CONTEXT_COMPILATION_RECEIPT_SCHEMA",
     "CONTEXT_COMPILER_VERSION",
     "CONTEXT_DELTA_RECEIPT_SCHEMA",
@@ -7263,6 +8247,10 @@ __all__ = [
     "CONSERVATIVE_PREFIX_REUSE_BPS",
     "DEFAULT_DIVERSITY_PENALTY_BPS",
     "EVIDENCE_VALUE_FIXTURE_SCHEMA",
+    "KIT_CURRENT_ROOT_CAS_OPERATION",
+    "LEGAL_CONTEXT_PACK_FRESHNESS_STATES",
+    "SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA",
+    "SUPERVISOR_CONTEXT_PACK_WIRE_SCHEMA_VERSION",
     "RETRY_CONTEXT_CAPSULE_SCHEMA",
     "DELTA_RETRY_ACCEPTANCE_CRITERIA",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
@@ -7285,12 +8273,20 @@ __all__ = [
     "VALUE_OF_INFORMATION_ACCEPTANCE_CRITERIA",
     "VALUE_OF_INFORMATION_OBJECTIVE_ID",
     "VALUE_OF_INFORMATION_REQUIREMENT_ID",
+    "AccelerateContextPackAdmission",
     "CalibratedTokenEstimator",
     "ContextCompilationError",
     "ContextCompilationReceipt",
     "ContextCompilationResult",
     "ContextCompileResult",
     "ContextCompiler",
+    "ContextPackAdmissionError",
+    "ContextPackFreshnessDecision",
+    "ContextPackFreshnessState",
+    "ContextPackSelectionDecision",
+    "ContextPackSelectionDisposition",
+    "ContextPackSelectionError",
+    "StaleContextPackError",
     "DecisionContextCompiler",
     "DecisionContextRetryResult",
     "ContextDeltaBudgetError",
@@ -7328,6 +8324,8 @@ __all__ = [
     "RetryContextResult",
     "ValueOfInformationEvidence",
     "ValueOfInformationPolicy",
+    "accelerate_freshness_and_selection_are_armed",
+    "admit_accelerate_context_pack",
     "build_text_context_references",
     "build_context_capsule",
     "build_context_delta",
@@ -7342,11 +8340,13 @@ __all__ = [
     "compile_prefix_context_capsule",
     "compile_retry_context",
     "context_provider_input_payload",
+    "evaluate_context_pack_freshness",
     "expand_context",
     "expand_decision_context",
     "expand_context_for_question",
     "expand_context_references",
     "evaluate_evidence_value_fixtures",
+    "select_smallest_adequate_context_pack",
     "render_context_capsule",
     "render_prefix_context",
     "render_prefix_stable_context",
