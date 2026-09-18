@@ -55,6 +55,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
     SupervisorLoopConfig,
+    clear_dead_child_pass_heartbeat,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -852,6 +853,11 @@ def test_watchdog_does_not_restart_typed_fail_closed_exit(
 
     state_dir = tmp_path / "lane-state"
     state_dir.mkdir()
+    live_supervisor = os.getpid()
+    (state_dir / "lane_1_supervisor.pid").write_text(
+        f"{live_supervisor}\n",
+        encoding="utf-8",
+    )
     (state_dir / "lane_1_status.json").write_text(
         json.dumps(
             {
@@ -890,7 +896,11 @@ def test_watchdog_does_not_restart_typed_fail_closed_exit(
         restart_calls += 1
         return {"restarted": True, "new_pid": 123}
 
-    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: False)
+    monkeypatch.setattr(
+        watchdog_module,
+        "pid_alive",
+        lambda pid: pid == live_supervisor,
+    )
     report = SupervisorWatchdog(
         manifest_path=manifest_path,
         repo_root=tmp_path,
@@ -902,6 +912,240 @@ def test_watchdog_does_not_restart_typed_fail_closed_exit(
     assert lane_report["action"] == "typed_child_blocker"
     assert lane_report["reason"] == "typed_fail_closed_exit"
     assert lane_report["heartbeat_check"].get("last_exit_code") == 78
+
+
+def test_watchdog_restarts_dead_supervisor_with_leftover_exit78(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead supervisor with leftover exit 78 must unstall under a live master."""
+
+    state_dir = tmp_path / "lane-state"
+    state_dir.mkdir()
+    (state_dir / "lane_1_supervisor.pid").write_text("1500001\n", encoding="utf-8")
+    (state_dir / "lane_1_status.json").write_text(
+        json.dumps(
+            {
+                "state": "typed_child_blocker",
+                "last_exit_code": 78,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_status = tmp_path / "quack-state-server.status.json"
+    owner_status.write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {
+                    "generation": 48,
+                    "status": "ready",
+                    "process_birth": {"pid": 1_440_304},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    master_pid_path = tmp_path / "configured-board-master.pid"
+    master_pid_path.write_text("1658636\n", encoding="utf-8")
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "owner_status_path": str(owner_status),
+                "master_pid_path": str(master_pid_path),
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": [
+                    {
+                        "bundle_key": "lane-1",
+                        "state_dir": str(state_dir),
+                        "state_prefix": "lane_1",
+                    }
+                ],
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls: list[dict[str, Any]] = []
+
+    def restart(lane: dict[str, Any]) -> dict[str, Any]:
+        restart_calls.append(dict(lane))
+        assert lane.get("unstall_class") == "lane_supervisor_dead"
+        (state_dir / "lane_1_supervisor.pid").write_text("123\n", encoding="utf-8")
+        (state_dir / "lane_1_status.json").write_text(
+            json.dumps({"state": "running"}),
+            encoding="utf-8",
+        )
+        return {
+            "restarted": True,
+            "new_pid": 123,
+            "receipt_id": "dead-supervisor-leftover-exit78",
+        }
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "pid_alive",
+        lambda pid: pid in {123, 1_440_304, 1_658_636},
+    )
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    lane_report = report["reports"][0]
+    assert len(restart_calls) == 1
+    assert lane_report["action"] == "autonomous_unstall_recovered"
+    assert lane_report["autonomous_unstall"]["recovered"]
+
+
+def test_watchdog_unstalls_all_dead_lanes_under_live_master(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All four dead supervisors under a live master are lane unstalls, not recycle."""
+
+    owner_status = tmp_path / "quack-state-server.status.json"
+    owner_status.write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {
+                    "generation": 48,
+                    "status": "ready",
+                    "process_birth": {"pid": 1_440_304},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    master_pid_path = tmp_path / "configured-board-master.pid"
+    master_pid_path.write_text("1658636\n", encoding="utf-8")
+    lanes = []
+    for index in range(4):
+        state_dir = tmp_path / f"lane-{index}"
+        state_dir.mkdir()
+        (state_dir / f"lane_{index}_supervisor.pid").write_text(
+            f"{1_500_000 + index}\n",
+            encoding="utf-8",
+        )
+        status = {
+            "state": "running",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if index == 1:
+            status["state"] = "typed_child_blocker"
+            status["last_exit_code"] = 78
+        (state_dir / f"lane_{index}_status.json").write_text(
+            json.dumps(status),
+            encoding="utf-8",
+        )
+        lanes.append(
+            {
+                "bundle_key": f"lane-{index}",
+                "state_dir": str(state_dir),
+                "state_prefix": f"lane_{index}",
+            }
+        )
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "owner_status_path": str(owner_status),
+                "master_pid_path": str(master_pid_path),
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": lanes,
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls: list[dict[str, Any]] = []
+
+    def restart(lane: dict[str, Any]) -> dict[str, Any]:
+        restart_calls.append(dict(lane))
+        assert lane.get("unstall_class") == "lane_supervisor_dead"
+        state_dir = Path(str(lane.get("state_dir") or tmp_path / "lane-0"))
+        prefix = str(lane.get("state_prefix") or "lane_0")
+        (state_dir / f"{prefix}_supervisor.pid").write_text(
+            "123\n",
+            encoding="utf-8",
+        )
+        (state_dir / f"{prefix}_status.json").write_text(
+            json.dumps({"state": "running"}),
+            encoding="utf-8",
+        )
+        return {
+            "restarted": True,
+            "new_pid": 123,
+            "receipt_id": "all-lanes-dead-live-master",
+        }
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "pid_alive",
+        lambda pid: pid in {123, 1_440_304, 1_658_636},
+    )
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    assert len(restart_calls) == 4
+    assert {item.get("unstall_class") for item in restart_calls} == {
+        "lane_supervisor_dead"
+    }
+    assert [item["action"] for item in report["reports"]] == [
+        "autonomous_unstall_recovered"
+    ] * 4
+
+
+def test_supervisor_loop_clears_dead_child_pass_heartbeat(tmp_path: Path) -> None:
+    """A dead prior-child heartbeat must drop its leftover active_task_id."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    path = state_dir / "sawm_lane_0_database_daemon_pass_heartbeat.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-daemon-pass-heartbeat@1"
+                ),
+                "active_task_id": "SAWM-017",
+                "claimed_task_cid": "sha256:dead",
+                "selection_idle_reason": "",
+                "process_birth": {
+                    "pid": 3177857,
+                    "start_time_ticks": 1,
+                    "boot_id": "boot",
+                    "parent_pid": 3170499,
+                },
+                "sequence": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = clear_dead_child_pass_heartbeat(state_dir)
+    assert result["cleared"] is True
+    assert result["reason"] == "dead_child_leftover"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["active_task_id"] == ""
+    assert payload["claimed_task_cid"] == ""
+    assert payload["selection_idle_reason"] == "dead_child_leftover"
+    assert payload["process_birth"]["pid"] == 3177857
 
 
 def test_watchdog_restarts_dead_lane_when_owner_ready(

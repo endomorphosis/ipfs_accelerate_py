@@ -2095,13 +2095,16 @@ class SupervisorWatchdog:
                 and not (alive and heartbeat_stale)
             )
             typed_fail_closed = heartbeat_check.get("last_exit_code") == 78
+            # Leftover exit-78 after coordinator recycle is a dead-child
+            # blocker, not a dead-supervisor fence. Restart the supervisor.
+            typed_fail_closed_live_supervisor = typed_fail_closed and alive
             needs_restart = (
                 not in_startup_grace
                 and not suppressed_state
-                and not typed_fail_closed
+                and not typed_fail_closed_live_supervisor
                 and (not alive or heartbeat_stale or inconsistent)
             )
-            if typed_fail_closed:
+            if typed_fail_closed_live_supervisor:
                 report["action"] = "typed_child_blocker"
                 report["reason"] = "typed_fail_closed_exit"
 

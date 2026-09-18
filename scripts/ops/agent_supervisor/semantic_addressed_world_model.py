@@ -18078,6 +18078,7 @@ def _admit_isolated_lane_supervisor_recycle(
             "in_wave_relaunch_required": True,
             "action": "lane_only_sealed_relaunch",
             "reason": "lane_only_sealed_relaunch",
+            "all_lanes_dead": dead_lane_count >= 4,
         }
     if master_alive:
         return {
@@ -18085,6 +18086,8 @@ def _admit_isolated_lane_supervisor_recycle(
             "kill_coordinator": False,
             "in_wave_relaunch_required": True,
             "reason": "healthy_coordinator_owns_in_wave_relaunch",
+            "all_lanes_dead": dead_lane_count >= 4,
+            "leftover_heartbeat_is_not_master_down": dead_lane_count >= 4,
         }
     if peer_capsule_fds_live:
         return {

@@ -2286,6 +2286,28 @@ def test_operator_does_not_kill_coordinator_for_isolated_dead_lane() -> None:
     assert live_master["kill_coordinator"] is False
     assert live_master["in_wave_relaunch_required"] is True
     assert live_master["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    all_dead = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        dead_lane_count=4,
+    )
+    all_dead_fds = operator._admit_isolated_lane_supervisor_recycle(
+        owner_ready=True,
+        owner_alive=True,
+        master_alive=True,
+        dead_lane_count=4,
+        master_capsule_fds_live=True,
+    )
+    assert all_dead["admitted"] is False
+    assert all_dead["kill_coordinator"] is False
+    assert all_dead["all_lanes_dead"] is True
+    assert all_dead["leftover_heartbeat_is_not_master_down"] is True
+    assert all_dead["reason"] == "healthy_coordinator_owns_in_wave_relaunch"
+    assert all_dead_fds["admitted"] is True
+    assert all_dead_fds["kill_coordinator"] is False
+    assert all_dead_fds["action"] == "lane_only_sealed_relaunch"
+    assert all_dead_fds["all_lanes_dead"] is True
     assert live_fds["admitted"] is True
     assert live_fds["kill_coordinator"] is False
     assert live_fds["action"] == "lane_only_sealed_relaunch"

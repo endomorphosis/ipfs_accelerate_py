@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
-from .core import ManagedDaemonSpec, pid_alive, read_json
+from .core import ManagedDaemonSpec, pid_alive, read_json, write_json_atomic
 from .specs import env_float, env_int, env_value
 from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
 from .supervisor_runtime import (
@@ -102,6 +102,81 @@ SupervisorLoopConfigFactory = Callable[[argparse.Namespace], SupervisorLoopConfi
 
 def _env(name: str, default: str) -> str:
     return env_value(name, default)
+
+
+_PASS_HEARTBEAT_SUFFIX = "_database_daemon_pass_heartbeat.json"
+_PASS_HEARTBEAT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1"
+)
+
+
+def clear_dead_child_pass_heartbeat(directory: Path) -> dict[str, Any]:
+    """Drop leftover active_task_id when the heartbeat process is gone.
+
+    Coordinator recycle leaves the previous child's pass-heartbeat on disk.
+    A dead process_birth must not look like a frozen live worker.
+    """
+
+    result: dict[str, Any] = {
+        "cleared": False,
+        "path": "",
+        "reason": "heartbeat_missing",
+    }
+    try:
+        paths = sorted(Path(directory).glob(f"*{_PASS_HEARTBEAT_SUFFIX}"))
+    except OSError:
+        return result
+    for path in paths:
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("schema") != _PASS_HEARTBEAT_SCHEMA:
+            continue
+        result = {
+            "cleared": False,
+            "path": str(path),
+            "reason": "no_active_claim",
+        }
+        if not payload.get("active_task_id") and not payload.get("claimed_task_cid"):
+            continue
+        birth = payload.get("process_birth")
+        pid = 0
+        if isinstance(birth, dict):
+            try:
+                pid = int(birth.get("pid") or 0)
+            except (TypeError, ValueError):
+                pid = 0
+        if pid > 1 and pid_alive(pid):
+            result = {
+                "cleared": False,
+                "path": str(path),
+                "reason": "heartbeat_process_alive",
+            }
+            continue
+        payload["active_task_id"] = ""
+        payload["claimed_task_cid"] = ""
+        if not str(payload.get("selection_idle_reason") or ""):
+            payload["selection_idle_reason"] = "dead_child_leftover"
+        try:
+            write_json_atomic(path, payload)
+        except OSError:
+            result = {
+                "cleared": False,
+                "path": str(path),
+                "reason": "write_failed",
+            }
+            continue
+        return {
+            "cleared": True,
+            "path": str(path),
+            "reason": "dead_child_leftover",
+        }
+    return result
 
 
 def _poll_child_exit(child: SupervisedChild) -> Optional[int]:
@@ -527,6 +602,7 @@ class SupervisorLoop:
 
     def run(self) -> SupervisorLoopResult:
         final_status = "stopped"
+        clear_dead_child_pass_heartbeat(self.config.spec.daemon_dir)
         while True:
             run_id = supervisor_run_id()
             child_spec = self._child_spec(run_id)
@@ -585,6 +661,7 @@ class SupervisorLoop:
                 exit_code = _poll_child_exit(child)
                 if exit_code is not None:
                     self.last_exit_code = exit_code
+                    clear_dead_child_pass_heartbeat(self.config.spec.daemon_dir)
                     break
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:

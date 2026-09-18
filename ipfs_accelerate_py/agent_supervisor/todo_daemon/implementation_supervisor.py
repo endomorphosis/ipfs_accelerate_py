@@ -159,7 +159,12 @@ from .supervisor import (
     descendant_processes,
     worktree_phase_worker_status,
 )
-from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
+from .supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
+    SupervisorLoopDecision,
+    clear_dead_child_pass_heartbeat,
+)
 from .supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
@@ -7946,6 +7951,8 @@ class PortalImplementationSupervisor:
         if expected_birth is None:
             return {**base, "reason": "child_process_birth_unavailable"}
         if not self._process_birth_matches(observed_birth, expected_birth):
+            if not pid_is_alive(int(observed_birth.pid)):
+                clear_dead_child_pass_heartbeat(self.config.state_dir)
             return {
                 **base,
                 "reason": "heartbeat_belongs_to_prior_child",
@@ -10679,6 +10686,7 @@ class PortalImplementationSupervisor:
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
+            clear_dead_child_pass_heartbeat(self.config.state_dir)
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
