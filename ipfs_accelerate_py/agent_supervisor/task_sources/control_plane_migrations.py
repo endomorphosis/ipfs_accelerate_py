@@ -673,12 +673,14 @@ class MigrationCatalog:
                     "bundled control-plane SQL is missing required migrations: "
                     + ", ".join(missing)
                 )
-            for entry in sql_entries:
+            # Load the sealed contiguous versions only. Extra 0002_*.sql
+            # files in the same directory are not a second v2 catalog.
+            for name in REQUIRED_PACKAGE_SQL_FILENAMES:
                 append_migration(
-                    filename=entry.name,
-                    sql_text=read_bundled_sql_text(entry.name),
+                    filename=name,
+                    sql_text=read_bundled_sql_text(name),
                     source_path=(
-                        f"package:{__package__}/{SQL_DIRECTORY_NAME}/{entry.name}"
+                        f"package:{__package__}/{SQL_DIRECTORY_NAME}/{name}"
                     ),
                 )
         else:

@@ -1873,6 +1873,52 @@ def test_generation_specific_recovery_receipt_preserves_history_and_replays(
     assert historical_path.read_bytes() == historical_bytes
 
 
+def test_same_generation_successor_death_keeps_historical_recovery_receipt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        STALE_OWNER_RECOVERY_SCHEMA,
+        _published_generation_recovery_receipt_is_reusable,
+    )
+
+    historical = {
+        "schema": STALE_OWNER_RECOVERY_SCHEMA,
+        "server_id": "server:same-generation",
+        "store_id": "control.duckdb",
+        "database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "generation": 48,
+        "process_birth_id": "birth:a960dfa4c08f6fa1b7e2ef5577d2f6ef",
+        "resulting_status": "stopped",
+        "stopped_at": "2026-09-15T01:11:02Z",
+        "task_completion_authority": False,
+    }
+    successor = {
+        **historical,
+        "server_id": "server:same-generation-restart",
+        "process_birth_id": "birth:dead-same-generation-restart",
+        "stopped_at": "2026-09-17T23:53:45Z",
+    }
+    assert _published_generation_recovery_receipt_is_reusable(
+        historical, successor
+    )
+    foreign = {**successor, "generation": 49}
+    assert not _published_generation_recovery_receipt_is_reusable(
+        historical, foreign
+    )
+
+
+def test_older_generation_recovery_receipt_writes_beside_history(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        STALE_OWNER_RECOVERY_RECEIPT_FILENAME,
+        _generation_scoped_recovery_receipt_path,
+    )
+
+    scoped = _generation_scoped_recovery_receipt_path(
+        tmp_path, STALE_OWNER_RECOVERY_RECEIPT_FILENAME, 48
+    )
+    assert scoped.parent == tmp_path
+    assert scoped.name == "quack-stale-owner-recovery-receipt.generation-48.json"
+    assert scoped.name != STALE_OWNER_RECOVERY_RECEIPT_FILENAME
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 @pytest.mark.parametrize("failure_boundary", ("status", "receipt"))
 def test_dead_owner_recovery_replays_after_publication_crash_boundaries(

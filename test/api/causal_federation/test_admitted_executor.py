@@ -3725,11 +3725,13 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
         assert adapter._legacy_unstall_claim_candidate(forged) is None
         if historic_liveness is not OwnerLiveness.DEAD:
             generation_before = client.load_generation()
-            with pytest.raises(
-                TaskSourceIntegrityError,
-                match="retrying task has no typed cooldown receipt",
-            ):
-                adapter.ready_tasks(limit=10)
+            page = adapter.ready_tasks(limit=10)
+            leftover = {
+                poisoned[alias].task_cid
+                for alias in poisoned
+                if not alias.endswith("OLDER-COOLDOWN")
+            }
+            assert leftover.isdisjoint({task.task_cid for task in page.tasks})
             assert client.load_generation().revision == (
                 generation_before.revision
             )

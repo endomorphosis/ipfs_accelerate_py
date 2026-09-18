@@ -349,6 +349,33 @@ def _validate_recovery_receipt_filename(value: str) -> str:
     return value
 
 
+def _published_generation_recovery_receipt_is_reusable(
+    published: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+) -> bool:
+    """True when a later same-generation death may keep the historical receipt."""
+
+    return (
+        published.get("schema") == receipt.get("schema")
+        and published.get("generation") == receipt.get("generation")
+        and published.get("store_id") == receipt.get("store_id")
+        and published.get("database_uuid") == receipt.get("database_uuid")
+        and published.get("resulting_status") == ServerLifecycle.STOPPED.value
+        and published.get("task_completion_authority") is False
+    )
+
+
+def _generation_scoped_recovery_receipt_path(
+    runtime: Path,
+    receipt_basename: str,
+    generation: object,
+) -> Path:
+    stem = Path(receipt_basename).stem
+    suffix = Path(receipt_basename).suffix or ".json"
+    name = _validate_recovery_receipt_filename(f"{stem}.generation-{generation}{suffix}")
+    return Path(runtime) / name
+
+
 def _is_loopback_host(host: str) -> bool:
     text = str(host or "").strip().lower()
     if not text:
@@ -4511,7 +4538,9 @@ class QuackStateServer:
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
         return open_duckdb_connection(
-            self.config.database_path, prefer_quack=False
+            self.config.database_path,
+            prefer_quack=False,
+            owner_extension_load=True,
         )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
@@ -5926,11 +5955,45 @@ def recover_stale_state_server(
                 receipt_path,
                 noun="stale-owner recovery receipt",
             )
-            if published != receipt:
-                raise QuackStateServerControlError(
-                    "stale-owner recovery receipt conflicts"
+            if published == receipt:
+                return receipt
+            # A later same-generation restart can die after the historical
+            # generation receipt was published. Keep that receipt; this
+            # process's stop is already settled above.
+            if isinstance(published, Mapping) and (
+                _published_generation_recovery_receipt_is_reusable(
+                    published, receipt
                 )
-            return receipt
+            ):
+                return dict(published)
+            if isinstance(published, Mapping) and (
+                published.get("schema") == receipt.get("schema")
+                and published.get("generation") != receipt.get("generation")
+                and published.get("task_completion_authority") is False
+            ):
+                # Keep the older generation's receipt. This generation writes
+                # beside it instead of conflicting or rewriting history.
+                receipt_path = _generation_scoped_recovery_receipt_path(
+                    runtime, receipt_basename, receipt.get("generation")
+                )
+                if receipt_path.exists():
+                    scoped = _read_stable_regular_json(
+                        receipt_path,
+                        noun="stale-owner recovery receipt",
+                    )
+                    if scoped == receipt:
+                        return receipt
+                    if isinstance(scoped, Mapping) and (
+                        _published_generation_recovery_receipt_is_reusable(
+                            scoped, receipt
+                        )
+                    ):
+                        return dict(scoped)
+                _atomic_write_json(receipt_path, receipt, mode=0o600)
+                return receipt
+            raise QuackStateServerControlError(
+                "stale-owner recovery receipt conflicts"
+            )
         _atomic_write_json(receipt_path, receipt, mode=0o600)
         return receipt
     finally:

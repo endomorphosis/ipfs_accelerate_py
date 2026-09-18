@@ -177,6 +177,31 @@ SUPERVISOR_HEAL_OVERLAY_MODULES = (
         "ipfs_accelerate_py.agent_supervisor.task_sources",
     ),
     (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.expired_attempt_custody",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/expired_attempt_custody.py",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/retained_attempt_fairness.py",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+    ),
+    (
         "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
         "ipfs_accelerate_py.agent_supervisor.runtime",
@@ -184,7 +209,19 @@ SUPERVISOR_HEAL_OVERLAY_MODULES = (
 )
 
 
-def install_supervisor_heal_overlay(overlay: str) -> None:
+PIN_ONLY_EXTRA_GATE_MODULES = (
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+)
+
+
+def install_supervisor_heal_overlay(
+    overlay: str,
+    modules: tuple[tuple[str, str, str], ...] | None = None,
+) -> None:
     """Pin supervisor heals into the sealed extra-gate package.
 
     Board scripts insert their own ``ipfs_accelerate_py`` first. Surgical
@@ -193,7 +230,8 @@ def install_supervisor_heal_overlay(overlay: str) -> None:
     """
 
     overlay_root = Path(_abspath(overlay))
-    for qualname, relative, package in SUPERVISOR_HEAL_OVERLAY_MODULES:
+    selected = modules if modules is not None else SUPERVISOR_HEAL_OVERLAY_MODULES
+    for qualname, relative, package in selected:
         overlay_module(qualname, str(overlay_root / relative), package=package)
 
 
@@ -206,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     overlay = os.environ.get("IPFS_ACCELERATE_SUPERVISOR_OVERLAY", "")
     source_root = os.environ.get("IPFS_ACCELERATE_SEALED_SOURCE_ROOT", "")
+    pin_only = False
     while args:
         if args[0] == "--overlay":
             overlay = args[1]
@@ -215,6 +254,10 @@ def main(argv: list[str] | None = None) -> int:
             source_root = args[1]
             args = args[2:]
             continue
+        if args[0] == "--pin-only":
+            pin_only = True
+            args = args[1:]
+            continue
         if args[0] == "--":
             args = args[1:]
             break
@@ -222,11 +265,33 @@ def main(argv: list[str] | None = None) -> int:
     if not overlay or not source_root or not args:
         raise SystemExit(
             "usage: sealed_board_supervisor_launch.py "
-            "--overlay DIR --source-root DIR -- script.py [args...]"
+            "--overlay DIR --source-root DIR [--pin-only] -- script.py [args...]"
         )
     os.chdir(source_root)
-    install_overlay(overlay, source_root)
     nested = Path(source_root) / "external" / "ipfs_accelerate"
+    if pin_only:
+        if nested.is_dir():
+            sys.path.insert(0, str(nested.resolve()))
+        if source_root not in sys.path:
+            sys.path.insert(0, source_root)
+        install_supervisor_heal_overlay(overlay, PIN_ONLY_EXTRA_GATE_MODULES)
+        script = Path(args[0])
+        if not script.is_absolute():
+            script = Path(source_root) / script
+        sys.argv = [str(script), *args[1:]]
+        compiled = compile(script.read_text(encoding="utf-8"), str(script), "exec")
+        namespace = {"__name__": "__main__", "__file__": str(script), "__package__": None}
+        try:
+            exec(compiled, namespace)
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                code = 0
+            elif not isinstance(code, int):
+                raise
+            return overlay_supervise_exit_code(source_root, args, code)
+        return overlay_supervise_exit_code(source_root, args, 0)
+    install_overlay(overlay, source_root)
     if nested.is_dir():
         sys.path.insert(0, str(nested.resolve()))
     if source_root not in sys.path:

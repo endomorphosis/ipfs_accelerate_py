@@ -91,6 +91,36 @@ _DUCKDB_MEMORY_MULTIPLIERS = {
 _THREAD_LOCKS: dict[str, threading.RLock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 
+_DEAD_NATIVE_HANDLE_TYPES = frozenset(
+    {
+        "FatalException",
+        "InternalException",
+        "ConnectionException",
+        "InterruptException",
+    }
+)
+_ART_INDEX_DELETE_FATAL = "failed to delete all rows from index"
+_TASK_STATUS_INDEX_DDL = (
+    ("tasks_status_idx", "CREATE INDEX tasks_status_idx ON tasks(status, ordinal)"),
+    ("tasks_goal_idx", "CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)"),
+)
+_LEASE_STATE_INDEX_DDL = (
+    (
+        "leases_scheduler_state_idx",
+        "CREATE INDEX leases_scheduler_state_idx ON leases(state, expires_at_ms, retry_not_before_ms)",
+    ),
+    (
+        "leases_claimant_idx",
+        "CREATE INDEX leases_claimant_idx ON leases(claimant_did, state)",
+    ),
+)
+
+
+def native_handle_is_dead(exc: BaseException) -> bool:
+    """Return whether a native DuckDB error destroyed the live handle."""
+
+    return type(exc).__name__ in _DEAD_NATIVE_HANDLE_TYPES
+
 
 class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
@@ -157,7 +187,11 @@ def _connection_tuning(
     return tuning
 
 
-def _verify_duckdb_connection_policy(connection: Any) -> None:
+def _verify_duckdb_connection_policy(
+    connection: Any,
+    *,
+    owner_extension_load: bool = False,
+) -> None:
     setting_names = tuple(
         name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
     )
@@ -171,7 +205,10 @@ def _verify_duckdb_connection_policy(connection: Any) -> None:
             "could not verify DuckDB supervisor connection policy"
         ) from exc
     expected = tuple(
-        value for _name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
+        True
+        if owner_extension_load and name == "enable_external_access"
+        else value
+        for name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
     )
     if (
         not isinstance(row, tuple)
@@ -190,6 +227,7 @@ def connect_duckdb_with_policy(
     *,
     read_only: bool = False,
     configuration: Mapping[str, Any] | None = None,
+    owner_extension_load: bool = False,
 ) -> Any:
     """Open and verify one configuration-locked supervisor connection.
 
@@ -213,6 +251,10 @@ def connect_duckdb_with_policy(
         if name != "lock_configuration"
     }
     connect_config.update(tuning)
+    if owner_extension_load:
+        # Extra-gate owner must LOAD the pinned Quack extension. Lane file
+        # connections keep external access denied.
+        connect_config["enable_external_access"] = "true"
     # Keep the lock last in insertion order so DuckDB applies every selected
     # tuning and denial before sealing the connection configuration.
     connect_config["lock_configuration"] = "true"
@@ -222,7 +264,10 @@ def connect_duckdb_with_policy(
         config=connect_config,
     )
     try:
-        _verify_duckdb_connection_policy(connection)
+        _verify_duckdb_connection_policy(
+            connection,
+            owner_extension_load=owner_extension_load,
+        )
     except BaseException:
         connection.close()
         raise
@@ -394,6 +439,7 @@ class DuckDBConnection:
         memory_limit: str = DEFAULT_MEMORY_LIMIT,
         threads: int = 1,
         transaction_on_context: bool = False,
+        owner_extension_load: bool = False,
     ) -> None:
         if is_quack_transport_target(path):
             raise DuckDBConnectionPolicyError(
@@ -430,6 +476,7 @@ class DuckDBConnection:
                     "threads": threads,
                     "memory_limit": memory_limit,
                 },
+                owner_extension_load=owner_extension_load,
             )
         except BaseException:
             self._lock_context.__exit__(None, None, None)
@@ -982,12 +1029,14 @@ def _open_file_duckdb_connection(
     timeout_seconds: float,
     memory_limit: str,
     threads: int,
+    owner_extension_load: bool = False,
 ) -> DuckDBConnection:
     connection = DuckDBConnection(
         path,
         timeout_seconds=timeout_seconds,
         memory_limit=memory_limit,
         threads=threads,
+        owner_extension_load=owner_extension_load,
     )
     connection._transport_mode = "file"
     return connection
@@ -1318,6 +1367,7 @@ def open_duckdb_connection(
     memory_limit: str = DEFAULT_MEMORY_LIMIT,
     threads: int = 1,
     prefer_quack: bool | None = None,
+    owner_extension_load: bool = False,
 ) -> DuckDBConnection:
     if is_quack_transport_target(path):
         connection = open_quack_transport_connection(path)
@@ -1331,6 +1381,7 @@ def open_duckdb_connection(
             timeout_seconds=timeout_seconds,
             memory_limit=memory_limit,
             threads=threads,
+            owner_extension_load=owner_extension_load,
         )
     discovery = discover_live_quack_endpoint(path)
     require = _env_flag(QUACK_REQUIRE_ENV, default=False)
@@ -1367,6 +1418,7 @@ def open_duckdb_connection(
                     timeout_seconds=fallback_timeout,
                     memory_limit=memory_limit,
                     threads=threads,
+                    owner_extension_load=owner_extension_load,
                 )
             except Exception as fallback_exc:
                 _LOGGER.error(
@@ -1405,6 +1457,7 @@ def open_duckdb_connection(
             timeout_seconds=timeout_seconds,
             memory_limit=memory_limit,
             threads=threads,
+            owner_extension_load=owner_extension_load,
         )
     except Exception as fallback_exc:
         _LOGGER.error(
@@ -1533,6 +1586,106 @@ def initialize_duckdb_database(
         os.chmod(target, 0o600)
     except OSError:
         pass
+
+
+def _row_tuple(row: Any) -> tuple[Any, ...]:
+    values = getattr(row, "_values", None)
+    if values is not None:
+        return tuple(values)
+    if isinstance(row, Mapping):
+        return tuple(row.values())
+    try:
+        return tuple(row)
+    except TypeError:
+        return (row,)
+
+
+def _quote_duckdb_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def is_art_index_delete_fatal(exc: BaseException) -> bool:
+    """Return whether DuckDB poisoned the handle on a status-index UPDATE."""
+
+    return native_handle_is_dead(exc) and _ART_INDEX_DELETE_FATAL in str(exc).casefold()
+
+
+def _drop_task_status_indexes(connection: Any) -> list[str]:
+    """Drop status-bearing task indexes that can fatal status UPDATEs."""
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "status" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
+def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> None:
+    for sql in statements:
+        text = str(sql or "").strip()
+        if not text:
+            continue
+        connection.execute(text)
+
+
+def _drop_lease_state_indexes(connection: Any) -> list[str]:
+    """Drop lease-state ART indexes that can fatal cooldown / retry CAS."""
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'leases'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "state" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
+def rebuild_task_status_indexes(connection: Any) -> list[str]:
+    """Recreate status-bearing ART indexes after a fatal status or cooldown CAS."""
+
+    statements = _drop_task_status_indexes(connection)
+    statements.extend(_drop_lease_state_indexes(connection))
+    if not statements:
+        for name, sql in (*_TASK_STATUS_INDEX_DDL, *_LEASE_STATE_INDEX_DDL):
+            try:
+                connection.execute(
+                    "DROP INDEX IF EXISTS " + _quote_duckdb_ident(name)
+                )
+            except Exception:
+                continue
+            statements.append(sql)
+    _restore_task_status_indexes(connection, statements)
+    try:
+        connection.execute("CHECKPOINT")
+    except Exception:
+        pass
+    return list(statements)
 
 
 from .quack_owner_command import (  # noqa: E402

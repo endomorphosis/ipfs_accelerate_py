@@ -532,11 +532,27 @@ def test_default_package_catalog_loads() -> None:
     assert isinstance(catalog, MigrationCatalog)
     # Domain SQL may still be empty in this foundation task; loading must work.
     assert catalog.latest_version >= 0
+    versions = [int(item.version) for item in catalog.migrations]
+    assert versions == sorted(set(versions))
+    assert catalog.get(2).migration_id == "0002_causal_event_federation_core"
 
 
 def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
     duckdb = pytest.importorskip("duckdb")
-    catalog = load_default_catalog()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+        MigrationCatalog,
+        read_bundled_sql_text,
+    )
+
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "0001_control_plane.sql").write_text(
+        read_bundled_sql_text("0001_control_plane.sql"), encoding="utf-8"
+    )
+    (sql_dir / "0002_tasks_index_repair.sql").write_text(
+        read_bundled_sql_text("0002_tasks_index_repair.sql"), encoding="utf-8"
+    )
+    catalog = MigrationCatalog.from_sql_directory(sql_dir)
     assert catalog.get(2).migration_id == "0002_tasks_index_repair"
     db = tmp_path / "control.duckdb"
     runner = ControlPlaneMigrationRunner.for_database(

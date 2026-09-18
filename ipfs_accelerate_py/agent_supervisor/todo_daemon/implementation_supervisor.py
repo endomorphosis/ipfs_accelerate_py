@@ -1454,6 +1454,51 @@ def expand_supervisor_scheduler_config_args(
     return [*defaults, *remaining], Path(str(profile["_config_path"]))
 
 
+def _pin_fleet_overlay_sys_path() -> None:
+    """Keep leftover-cooldown and leftover-attempt heals ahead of nested inserts."""
+
+    overlay = ""
+    for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+        if entry and (Path(entry) / "ipfs_accelerate_py" / "agent_supervisor").is_dir():
+            overlay = str(Path(entry).resolve())
+            break
+    if not overlay:
+        return
+    try:
+        helper = (
+            Path(overlay)
+            / "ipfs_accelerate_py"
+            / "agent_supervisor"
+            / "rescue"
+            / "overlay_sys_path.py"
+        )
+        if not helper.is_file():
+            while overlay in sys.path:
+                sys.path.remove(overlay)
+            sys.path.insert(0, overlay)
+            return
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_ipfs_accelerate_overlay_sys_path_heal",
+            helper,
+        )
+        if spec is None or spec.loader is None:
+            return
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        pin = getattr(module, "pin_overlay_sys_path", None)
+        if callable(pin):
+            pin(overlay)
+    except Exception:
+        while overlay in sys.path:
+            sys.path.remove(overlay)
+        sys.path.insert(0, overlay)
+
+
+_pin_fleet_overlay_sys_path()
+
+
 def _managed_daemon_child_environment(
     *,
     database_program: DatabaseProgramConfig | None = None,
@@ -1465,6 +1510,7 @@ def _managed_daemon_child_environment(
     state credentials are never synthesized here.
     """
 
+    _pin_fleet_overlay_sys_path()
     entries: list[str] = []
     # Fleet overlay PYTHONPATH must win so leftover-attempt fairness and
     # retrying-without-cooldown skips load in managed daemons.
