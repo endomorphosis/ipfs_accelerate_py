@@ -3777,12 +3777,114 @@ _M57_M56_RECEIPT_CID = (
     "sha256:292b2018c01f1712062415198105a570e6f60ce45cac0911ed21414c0db3af09"
 )
 _M57_M56_FINAL_CONTROL_COMMIT = (
+    "2a5d6be7617066d33088afdf8694b430e0d6c276"
+)
+_M57_M56_FINAL_CONTROL_TREE = (
+    "016bd0e45ef37a0094811b3da7cd8fefbdfc1e69"
+)
+_M57_ABSENT_WORKTREE_REPAIR_COMMIT = (
+    "bf6d9101031b9fdef387ef2a92222748a46e936b"
+)
+_M57_ABSENT_WORKTREE_REPAIR_TREE = (
+    "ee157455084242ee18ee51187e8728921f61f1c8"
+)
+_M57_ABSENT_WORKTREE_REPAIR_DIFF_SHA256 = (
+    "7a6e7b78ed7a04c1f5238aa0f5ee8099f2184564ace1529edfde9d55711ea346"
+)
+_M57_RESTART_RECOVERY_COMMIT = (
+    "7d2b482cbafd8de2768618c877f099fb84500c2b"
+)
+_M57_RESTART_RECOVERY_TREE = (
+    "69b5908aee1619d43f510b89068f0cf83ef70b68"
+)
+_M57_RESTART_RECOVERY_DIFF_SHA256 = (
+    "ee121a496b90c5272c976c11ece333f10c118f02a5abc9f830bb005de7005b1c"
+)
+_M57_RESTART_RACE_REPAIR_COMMIT = (
+    "5f8edfd035b66b23d69c6f89770b2e9114a9b84e"
+)
+_M57_RESTART_RACE_REPAIR_TREE = (
+    "ef3b186999780476d11f668842597ce0ec64f088"
+)
+_M57_RESTART_RACE_REPAIR_DIFF_SHA256 = (
+    "76022e0a9e96d154456d80dd7d27625fc35ea86c3a01ab8ce7e1596d982d2f0c"
+)
+_M57_PARALLEL_LANE_REPAIR_COMMIT = (
     "2dbb5f93cfa71de408e7cb36a059e2216c23ae90"
+)
+_M57_PARALLEL_LANE_REPAIR_TREE = (
+    "bc73731dfe82564f814f33a3da6598deee48bdf9"
+)
+_M57_PARALLEL_LANE_REPAIR_DIFF_SHA256 = (
+    "c9dda64e4b887b6dccb5e51c10c48450154fc9163f42ddea1913e93e5715884f"
+)
+_M57_RECONCILIATION_COMMIT = (
+    "871bcf15f3f568b079763c4d0bfd8a38143dd184"
+)
+_M57_RECONCILIATION_TREE = (
+    "f7a48a161c3a4a7b997bf5dd89c51cc00d83bf7e"
+)
+_M57_RECONCILIATION_DIFF_SHA256 = (
+    "7d7523b3b7bcd94c323168f12cb08c2c226a4c6def843efd0c85ce13c999cd61"
+)
+_M57_OVERLAY_PRESERVATION_COMMIT = (
+    "47585fbe51288b8b6164077da7e207089533ef99"
+)
+_M57_OVERLAY_PRESERVATION_TREE = (
+    "dc930f40d9fc10c4f33241745e7697b6cddbe748"
+)
+_M57_OVERLAY_PRESERVATION_DIFF_SHA256 = (
+    "4ea475bb61b56b1cb257978cbc4418bf258744e8baeb7c1dbc134eadb48b995a"
+)
+_M57_INITIAL_CONTROL_COMMIT = (
+    "865f0486adb1dca2ec3bcf0f032bd359aaa05e01"
+)
+_M57_INITIAL_CONTROL_TREE = (
+    "dbd16cc7582ad9cf94e6eee39a37cc69b8e8f873"
+)
+_M57_INITIAL_CONTROL_DIFF_SHA256 = (
+    "8b4f13219d386c0115e4d80fb76b0fdccfb83ced2bc1785fdcd03e707556feb5"
+)
+_M57_RECONCILED_SOURCE_BLOBS = MappingProxyType(
+    {
+        ".gitignore": "3b7c8308efcd8583abe28ef384fa6f799ba52fb6",
+        "requirements.txt": "abc367db3ab67b10bdf9e3d8b66a6cbcccdb10bd",
+        "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "multi_supervisor_runner.py": (
+            "e7fd88dc6c01d68381914a43e302882833927c45"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": (
+            "9ee928a677f73aadf4e3a7789628c7fac1953a77"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+        "database_portal_bridge.py": (
+            "4561e669da39770f25e6b2e6f2dab40e40a60acf"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py": (
+            "d65bdad31e88078bec9d9d6f031d045934f2ff4a"
+        ),
+        "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+            "e07ea393d17a315336372aa362254c3f6ac77db8"
+        ),
+        "test/api/test_agent_supervisor_database_portal_bridge.py": (
+            "16b6e0452d142cb120b5ced6e1742a7539ec3d37"
+        ),
+        "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": (
+            "0230fb8bf6c3399051c3075002387a158173861d"
+        ),
+    }
 )
 _M57_OPERATOR_CONTROL_PATHS = frozenset(
     set(_M56_OPERATOR_CONTROL_PATHS)
     | {
+        ".gitignore",
+        "requirements.txt",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
         "test/api/test_agent_supervisor_multi_supervisor_runner_health.py",
     }
 )
