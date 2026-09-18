@@ -243,6 +243,30 @@ _M52_PRIOR_PROJECTION_CID = _M51_PRIOR_PROJECTION_CID
 _M52_TARGET_PROJECTION_CID = _M51_TARGET_PROJECTION_CID
 _M52_TARGET_QUACK_PORT = _M51_TARGET_QUACK_PORT
 
+_M53_SUCCESSOR_KEY = (
+    "post_reboot_stale_ready_generation_37_restart_successor_materialization"
+)
+_M53_MIGRATION_REVISION = "SAWM-R2-M53"
+_M53_AUTHORITY_CID = (
+    "sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8"
+)
+_M53_AUTHORITY_SIZE = 30_561
+_M53_STORE_ID = _M52_STORE_ID
+_M53_COORDINATION_STORE_ID = _M52_COORDINATION_STORE_ID
+_M53_WORKTREE_ROOT = _M52_WORKTREE_ROOT
+_M53_PRIOR_GENERATION = 37
+_M53_GENERATION = 38
+_M53_TARGET_PLAN_REVISION = _M52_TARGET_PLAN_REVISION
+_M53_PRIOR_EVENT_WATERMARK = 315
+_M53_TARGET_EVENT_WATERMARK = 316
+_M53_PRIOR_PROJECTION_CID = (
+    "baguqeeraukz4kjw3oszuxm7mvupnlmlo6celvjivkxmabxmpkklctsjb6oga"
+)
+_M53_TARGET_PROJECTION_CID = (
+    "baguqeerayh3goxbqiclzj3lzaxzgmqlqaopjmcsbuhastfmtti2xyfd5qxwa"
+)
+_M53_TARGET_QUACK_PORT = _M52_TARGET_QUACK_PORT
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1503,6 +1527,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m53_key = _M53_SUCCESSOR_KEY
     m52_key = _M52_SUCCESSOR_KEY
     m51_key = _M51_SUCCESSOR_KEY
     m50_key = _M50_SUCCESSOR_KEY
@@ -1549,6 +1574,46 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m53_key in config:
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m53_post_reboot_stale_ready_restart_authority()
+            )
+            reference = materializer._m53_authority_reference()
+            contract = materializer._validated_m53_live_preflight_contract(
+                expected
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M53 post-reboot restart authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        stopped = expected.get("stopped_owner")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        if (
+            config.get(m53_key) != reference
+            or materializer._identity(expected) != _M53_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M53_AUTHORITY_SIZE
+            or not all(
+                isinstance(item, Mapping)
+                for item in (runtime, stopped, program, owner, contract)
+            )
+            or expected.get("migration_revision") != _M53_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M53_SUCCESSOR_KEY
+            or runtime.get("store_generation") != _M53_GENERATION
+            or runtime.get("target_event_watermark")
+            != _M53_TARGET_EVENT_WATERMARK
+            or stopped.get("generation") != _M53_PRIOR_GENERATION
+            or stopped.get("process_dead_after_reboot") is not True
+            or program.get("store_generation") != str(_M53_GENERATION)
+            or owner.get("store_id") != _M53_STORE_ID
+            or contract.get("target_generation") != _M53_GENERATION
+        ):
+            raise OperatorError("active M53 post-reboot restart authority is invalid")
+        return expected
     if m52_key in config:
         try:
             materializer = _materializer()
@@ -5220,6 +5285,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M53_SUCCESSOR_KEY,
             _M52_SUCCESSOR_KEY,
             _M51_SUCCESSOR_KEY,
             _M50_SUCCESSOR_KEY,
@@ -14024,6 +14090,11 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
+    if active.get("migration_revision") == _M53_MIGRATION_REVISION:
+        raise OperatorError(
+            "M53 binds a process-dead generation-37 owner; use the sealed "
+            "generation-38 quack-start path instead of stale-owner recovery"
+        )
     if active.get("migration_revision") == _M52_MIGRATION_REVISION:
         raise OperatorError(
             "M52 binds a cleanly stopped generation-36 owner; use the sealed "
@@ -15048,6 +15119,35 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M53_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m53_prestart_admission(REPO_ROOT, config)
+        except Exception as exc:
+            raise OperatorError(
+                "M53 stale-ready generation-37 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action")
+            != "admitted_stale_ready_generation_37_restart_to_generation_38"
+            or admitted.get("prior_generation") != _M53_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M53_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M53_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M53_PRIOR_PROJECTION_CID
+            or admitted.get("m52_receipt_preserved_exactly") is not True
+            or admitted.get("prior_process_birth_verified_dead") is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M53 prestart admission report differs")
+        return MappingProxyType({
+            "dependency_valid": True,
+            "board_valid": True,
+            "prior_authority": active_materialization,
+            "store": admitted,
+        })
     if _M52_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -18408,6 +18508,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M53_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m53_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M53 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M52_MIGRATION_REVISION:
         try:
             return materializer._validated_m52_live_preflight_contract(
@@ -18741,6 +18853,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m53_active = active_revision == _M53_MIGRATION_REVISION
     m52_active = active_revision == _M52_MIGRATION_REVISION
     m51_active = active_revision == _M51_MIGRATION_REVISION
     m50_active = active_revision == _M50_MIGRATION_REVISION
@@ -18778,6 +18891,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m53_active,
             m52_active,
             m51_active,
             m50_active,
@@ -18807,6 +18921,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m53_active,
             m52_active,
             m51_active,
             m50_active,
@@ -18855,6 +18970,11 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m53_active:
+            raise OperatorError(
+                "M53 exact live generation-38 owner is unavailable; run the "
+                "sealed offline quack-start admission first"
+            )
         if m52_active:
             raise OperatorError(
                 "M52 exact live generation-37 owner is unavailable; run the "
@@ -18955,6 +19075,8 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m53_active:
+            raise OperatorError("M53 exact live generation-38 owner binding differs")
         if m52_active:
             raise OperatorError("M52 exact live generation-37 owner binding differs")
         if m51_active:

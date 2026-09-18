@@ -211,6 +211,15 @@ _M52_AUTHORITY_SIZE = 30_930
 _M52_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M52_FINAL_CONTROL_AUTHORITY_CID"
 _M52_SUCCESSOR_KEY = "test_compatibility_and_control_hash_successor_materialization"
 _M52_MIGRATION_REVISION = "SAWM-R2-M52"
+_M53_AUTHORITY_CID = (
+    "sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8"
+)
+_M53_AUTHORITY_SIZE = 30_561
+_M53_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M53_FINAL_CONTROL_AUTHORITY_CID"
+_M53_SUCCESSOR_KEY = (
+    "post_reboot_stale_ready_generation_37_restart_successor_materialization"
+)
+_M53_MIGRATION_REVISION = "SAWM-R2-M53"
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3442,6 +3451,62 @@ def _m18_portal_completion_persistence_errors(
             "M18 portal-completion authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
+
+
+def _m53_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M53_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m53_post_reboot_stale_ready_restart_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M53's exact post-reboot generation-38 restart authority."""
+
+    errors: list[str] = []
+    key = _M53_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m53_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M53 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m53_post_reboot_stale_ready_restart_authority()
+        )
+        reference = dict(materializer._m53_authority_reference())
+        if (
+            not all(presence)
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M53_AUTHORITY_CID
+            or materializer._identity(expected) != _M53_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M53_AUTHORITY_SIZE
+            or materializer._M53_AUTHORITY_CID == _M53_UNSEALED_AUTHORITY_CID
+            or materializer._M53_AUTHORITY_CID != _M53_AUTHORITY_CID
+            or expected.get("migration_revision") != _M53_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 38
+            or expected.get("target_event_watermark") != 316
+        ):
+            errors.append("M53 post-reboot restart authority differs")
+    except Exception as exc:
+        errors.append(
+            f"M53 post-reboot restart authority unavailable: {type(exc).__name__}: {exc}"
+        )
+    return errors
 
 
 def _m52_successor_declared(
@@ -14640,6 +14705,44 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m53_key = _M53_SUCCESSOR_KEY
+    m53_presence = (
+        m53_key in scheduler,
+        m53_key in migration,
+        f"{m53_key}_cid" in seal,
+    )
+    if any(m53_presence):
+        if not all(m53_presence):
+            return effective, ["active M53 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m53_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M53 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m53_post_reboot_stale_ready_restart_authority()
+            )
+            materializer._validated_m53_live_preflight_contract(authority)
+            reference = dict(materializer._m53_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M53 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m53_key) != reference
+            or migration.get(m53_key) != reference
+            or seal.get(f"{m53_key}_cid") != _M53_AUTHORITY_CID
+            or materializer._identity(authority) != _M53_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M53_AUTHORITY_SIZE
+        ):
+            return effective, ["active M53 nested-source authority differs"]
+        return effective, []
     m52_key = _M52_SUCCESSOR_KEY
     m52_presence = (
         m52_key in scheduler,
