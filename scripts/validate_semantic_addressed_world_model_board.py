@@ -113,6 +113,15 @@ _M53_SUCCESSOR_KEY = (
 _M53_TARGET_PROJECTION_CID = (
     "baguqeerayh3goxbqiclzj3lzaxzgmqlqaopjmcsbuhastfmtti2xyfd5qxwa"
 )
+_M54_AUTHORITY_CID = (
+    "sha256:57d7e653524651d95bb94dedb5779799044e74860d0fc61db98fd0ed3a6eb575"
+)
+_M54_AUTHORITY_SIZE = 43_605
+_M54_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M54_FINAL_CONTROL_AUTHORITY_CID"
+_M54_SUCCESSOR_KEY = (
+    "typed_stale_owner_recovery_and_attempt_ordinal_successor_materialization"
+)
+_M54_TARGET_PROJECTION_CID = _M53_TARGET_PROJECTION_CID
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -521,6 +530,24 @@ def _m39_migration_errors(
         )
     except Exception as exc:
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m54_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M54's typed recovery and bounded unavailability terminal."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m54_typed_stale_owner_recovery_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M54 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m53_migration_errors(
@@ -1373,12 +1400,57 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M52 before every historical successor. Consequently
+    Key presence selects M54 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m54_key = _M54_SUCCESSOR_KEY
+    m54_presence = (
+        m54_key in scheduler,
+        m54_key in migration,
+        f"{m54_key}_cid" in seal,
+    )
+    if any(m54_presence):
+        errors = _m54_migration_errors(scheduler, seal, migration)
+        if not all(m54_presence):
+            errors.append("M54 successor authority is only partially declared")
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m53_key = _M53_SUCCESSOR_KEY
     m53_presence = (
@@ -4646,18 +4718,26 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m54_key = _M54_SUCCESSOR_KEY
+    m54_selected = any(
+        (
+            m54_key in config,
+            m54_key in migration,
+            f"{m54_key}_cid" in seal,
+        )
+    )
     m53_key = _M53_SUCCESSOR_KEY
     m53_selected = any((
         m53_key in config,
         m53_key in migration,
         f"{m53_key}_cid" in seal,
-    ))
+    )) and not m54_selected
     m52_key = _M52_SUCCESSOR_KEY
     m52_selected = any((
         m52_key in config,
         m52_key in migration,
         f"{m52_key}_cid" in seal,
-    )) and not m53_selected
+    )) and not m53_selected and not m54_selected
     m51_key = _M51_SUCCESSOR_KEY
     m51_selected = any((
         m51_key in config,
@@ -4917,7 +4997,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m53_selected
+        m54_selected
+        or m53_selected
         or m52_selected
         or m51_selected
         or m48_selected
@@ -5135,6 +5216,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m54_selected
+        else "run-r2-m27"
         if m53_selected
         else "run-r2-m27"
         if m52_selected
@@ -5227,6 +5310,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "38"
+        if m54_selected
+        else "38"
         if m53_selected
         else "37"
         if m52_selected
@@ -5319,6 +5404,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m54_selected
+        else 24070
         if m53_selected
         else 24070
         if m52_selected
@@ -5424,6 +5511,47 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
+    if m54_selected:
+        successor = config.get(m54_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer._expected_m54_typed_stale_owner_recovery_authority()
+            )
+            reference = dict(materializer._m54_authority_reference())
+            contract = materializer._validated_m54_live_preflight_contract(
+                expected
+            )
+            recovery = expected.get("stale_owner_recovery", {})
+            watchdog = expected.get("accepted_quack_watchdog_repair", {})
+            m54_errors = module._m54_typed_stale_owner_recovery_errors(
+                config, seal, migration, root=root
+            )
+            if (
+                successor != reference
+                or migration.get(m54_key) != reference
+                or seal.get(f"{m54_key}_cid") != _M54_AUTHORITY_CID
+                or materializer._identity(expected) != _M54_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M54_AUTHORITY_SIZE
+                or materializer._M54_AUTHORITY_CID
+                == _M54_UNSEALED_AUTHORITY_CID
+                or expected.get("migration_revision") != "SAWM-R2-M54"
+                or expected.get("migration_kind") != m54_key
+                or contract.get("target_generation") != 38
+                or contract.get("target_event_watermark") != 316
+                or contract.get("target_projection_cid")
+                != _M54_TARGET_PROJECTION_CID
+                or recovery.get("typed_recovery_precedes_generation_38_start")
+                is not True
+                or watchdog.get("generation_restart_authorized") is not False
+                or watchdog.get("typed_terminal_required") is not True
+            ):
+                m54_errors.append("M54 successor authority binding differs")
+            config_errors.extend(m54_errors)
+        except Exception as exc:
+            config_errors.append(
+                f"M54 successor authority unavailable: {type(exc).__name__}: {exc}"
+            )
     if m53_selected:
         successor = config.get(m53_key)
         try:
@@ -5552,7 +5680,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             config_errors.append(
                 f"M52 authority validation unavailable: {type(exc).__name__}: {exc}"
             )
-    if m51_selected and not m52_selected and not m53_selected:
+    if (
+        m51_selected
+        and not m52_selected
+        and not m53_selected
+        and not m54_selected
+    ):
         successor = config.get(m51_key)
         try:
             module, materializer = _m26_validation_modules(root)

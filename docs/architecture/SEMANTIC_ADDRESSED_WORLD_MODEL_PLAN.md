@@ -1,6 +1,6 @@
 # Semantic-Addressed Neuro-Symbolic Program World Model
 
-Status: operator-owned R2 program control. M53 admits one post-reboot restart of the process-dead generation-37 owner at event 315 to generation 38 / event 316 without changing SAWM-006/SAWM-008 in-progress heads.
+Status: operator-owned R2 program control. M53 is preserved as an unmaterialized historical attempt. M54 admits one typed recovery of the process-dead generation-37 owner, exact attempt-ordinal isolation, and bounded existing-loop detection that emits a typed whole-wave terminal on persistent authenticated Quack unavailability. The detector does not authorize recovery or restart. M54 then admits generation 38 / event 316 without changing the SAWM-006 or SAWM-008 in-progress task heads.
 
 Plan revision: `SAWM-PLAN-R2`
 
@@ -2957,7 +2957,61 @@ deny-only, and cannot authorize launch or completion without a new full live
 verification. The 30,930-byte canonical M52 authority has CID
 `sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d`.
 
-## 61. Current limitations at seal time
+## 61. M53 preserved historical, unmaterialized attempt
+
+`SAWM-R2-M53` is preserved at commit
+`023a980905c41d0afaf63d13c19f1781ea3ef113` as historical control input. It
+was never materialized: event 316, evidence node 57, its prestart receipt, and
+its final receipt are absent. Its prestart implementation could remove an OS
+owner marker without first settling generation 37's canonical `state_servers`
+and `server_epochs` rows. Starting generation 38 after that partial action
+would have falsified the durable lifecycle history. M54 therefore does not
+execute, amend, or erase M53. It binds M53's exact commit, tree, nine blobs,
+binary diff, canonical authority CID, and absence of runtime effects, then
+supersedes it append-only.
+
+## 62. M54 typed recovery, attempt isolation, and bounded stall terminal
+
+`SAWM-R2-M54` admits one exact recovery path from the process-dead,
+stale-ready generation-37 owner at event 315 to generation 38 and event 316.
+The prestart verifier is pure. Only after every source, receipt, byte, mode,
+process-birth, task-head, event-prefix, projection, and zero-authority check
+passes may it publish a non-authoritative mode-`0600` prestart receipt. It then
+calls the landed typed stale-owner recovery with fixed stop time
+`2026-09-02T02:05:00Z` and generation-specific receipt
+`quack-stale-owner-recovery-generation-37-receipt.json`. The historical
+generation-29 receipt remains byte-for-byte unchanged. A canonical offline
+postcheck must prove the generation-37 state and epoch stopped, event 316
+absent, all generation-38 rows absent, and every task head unchanged before
+one generation-38 owner may start. Any partial generation-38 row consumes the
+start authority and fails closed.
+
+M54 also seals the bounded attempt-ordinal repair at
+`440b04749070fd6d9a80d0a5788395431ce5de46` and generation-specific recovery
+receipt API repair at `30a7ffa32b88cd46d32fe48a156239a5a12617f7`.
+Database attempt identity remains canonical; Portal retry ordinals are local
+to a database attempt and cannot collide with preserved prior quarantine.
+
+The third bounded repair remains inside the landed supervisor loop. It detects
+persistent authenticated Quack unavailability after at least three probes over
+a bounded observation window at the existing fixed maintenance cadence, drains
+the whole wave to a typed terminal, and fences only already-exited peer process
+trees after coordinator verification. It does not recover or restart Quack,
+does not authorize a new generation, and does not create another agent
+framework. This converts silent indefinite waiting into explicit evidence;
+the exact N-to-N+1 unattended recovery ladder remains implementation work
+owned by the existing SAWM-014 and SAWM-032 authorities.
+
+M54's final evidence receipt remains non-authoritative and deny-only. Every
+check, readiness query, preflight, and launch must freshly authenticate the
+live generation-38 transport and verify its canonical owner identity, exact
+task heads, event 316, projection, recovery receipt chain, and safety-zero
+tables. Status JSON alone is never live-readiness evidence. No implementation
+task, goal, provider, merge, or completion authority changes in M54.
+The 43,605-byte canonical M54 authority has CID
+`sha256:57d7e653524651d95bb94dedb5779799044e74860d0fc61db98fd0ed3a6eb575`.
+
+## 63. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

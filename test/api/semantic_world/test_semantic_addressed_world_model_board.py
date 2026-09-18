@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "typed_stale_owner_recovery_and_attempt_ordinal_successor_materialization",
     "post_reboot_stale_ready_generation_37_restart_successor_materialization",
     "test_compatibility_and_control_hash_successor_materialization",
     "live_quack_catalog_compatibility_successor_materialization",
@@ -429,6 +430,33 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert historical_migration is not None and m49_key not in historical_migration
     assert historical_seal is not None
     assert f"{m49_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m54_before_m53() -> None:
+    m54_key = (
+        "typed_stale_owner_recovery_and_attempt_ordinal_"
+        "successor_materialization"
+    )
+    m53_key = (
+        "post_reboot_stale_ready_generation_37_restart_"
+        "successor_materialization"
+    )
+    scheduler = {m54_key: {"revision": "M54"}, m53_key: {"revision": "M53"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m54_key}_cid": "sha256:" + "2" * 64,
+        f"{m53_key}_cid": "sha256:" + "0" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m54_key, scheduler, migration, seal
+    )
+    assert m54_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m53_key, scheduler, migration, seal)
+    )
+    assert m54_key not in historical
+    assert historical_migration is not None and m54_key not in historical_migration
+    assert historical_seal is not None and f"{m54_key}_cid" not in historical_seal
 
 
 def test_historical_successor_controls_include_m53_before_m52() -> None:
@@ -4994,6 +5022,107 @@ def test_m11_pair_receipt_last_rehearsal_is_idempotent_and_tamper_closed(
     )
 
 
+def test_m54_recovery_and_watchdog_authority_is_fail_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_test_m54_materializer",
+    )
+    authority = materializer._expected_m54_typed_stale_owner_recovery_authority()
+    historical = authority["historical_m53_attempt"]
+    recovery = authority["stale_owner_recovery"]
+    watchdog = authority["accepted_quack_watchdog_repair"]
+
+    assert authority["migration_revision"] == "SAWM-R2-M54"
+    assert materializer._identity(authority) == (
+        "sha256:57d7e653524651d95bb94dedb5779799044e74860d0fc61db98fd0ed3a6eb575"
+    )
+    assert len(materializer._canonical(authority)) == 43_605
+    assert historical["source_commit"] == (
+        "023a980905c41d0afaf63d13c19f1781ea3ef113"
+    )
+    assert historical["final_receipt_created"] is False
+    assert historical["canonical_owner_recovery_performed"] is False
+    assert recovery["expected_generation"] == 37
+    assert recovery["typed_recovery_precedes_generation_38_start"] is True
+    assert recovery["post_recovery_canonical_verification_required"] is True
+    assert recovery["receipt_filename"] == (
+        "quack-stale-owner-recovery-generation-37-receipt.json"
+    )
+    assert authority["live_preflight_contract"][
+        "prior_control_store_sha256"
+    ] == materializer._M54_PRIOR_CONTROL_SHA256
+    assert "corrected_control_store_sha256" not in authority[
+        "live_preflight_contract"
+    ]
+    assert watchdog["generation_restart_authorized"] is False
+    assert watchdog["stale_owner_recovery_performed"] is False
+    assert watchdog["typed_terminal_required"] is True
+    assert watchdog["whole_wave_terminal_required"] is True
+    assert watchdog["process_bound_safe_terminal_required"] is True
+    assert watchdog["active_peer_fencing_authorized"] is False
+    assert watchdog["second_agent_framework_created"] is False
+    assert watchdog["bounded_observation_window_required"] is True
+    assert watchdog["fixed_maintenance_cadence"] is True
+    assert watchdog["minimum_unavailable_probes"] == 3
+    assert watchdog["repair_commit"] == (
+        "6678cd8b974a1c4861c92b84a6e65d21f4b16f29"
+    )
+    assert watchdog["repair_parent"] == (
+        "30a7ffa32b88cd46d32fe48a156239a5a12617f7"
+    )
+    assert watchdog["repair_tree"] == (
+        "76ec90ea379e8a8da18caf950df03c260ccd5814"
+    )
+    assert watchdog["binary_diff_sha256"] == (
+        "759d7cbe5b4a741d45d3605e0cd669a2abadf1f7cf8558211241f271557567a1"
+    )
+    assert len(watchdog["blob_oids"]) == 4
+
+
+def test_m54_quack_start_orders_receipt_recovery_postcheck_before_start() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_test_m54_operator",
+    )
+    source = inspect.getsource(operator._validate_offline_quack_start)
+    precheck = source.index("_check_m54_prestart_admission")
+    receipt = source.index("_m52_write_receipt_last", precheck)
+    recovery = source.index("recover_stale_state_server", receipt)
+    postcheck = source.index("_check_m54_post_recovery_admission", recovery)
+    assert precheck < receipt < recovery < postcheck
+
+    run_source = inspect.getsource(operator._run_quack_start)
+    assert run_source.index("_validate_offline_quack_start") < run_source.index(
+        "_start_quack"
+    )
+
+
+def test_m54_quack_ready_uses_authenticated_live_preflight() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_test_m54_ready_operator",
+    )
+    main_source = inspect.getsource(operator.main)
+    branch = main_source.index(
+        'args.command == "quack-ready" and _M54_SUCCESSOR_KEY in config'
+    )
+    authenticated = main_source.index("_live_preflight", branch)
+    generic = main_source.index(
+        'args.command in {"quack-status", "quack-ready", "quack-stop"}',
+        authenticated,
+    )
+    assert branch < authenticated < generic
+
+    preflight_source = inspect.getsource(operator._live_preflight)
+    m54_projection = preflight_source.index(
+        "_verify_m54_live_head_task_projection"
+    )
+    historical_m52_projection = preflight_source.index(
+        "_verify_m52_live_head_task_projection", m54_projection
+    )
+    assert m54_projection < historical_m52_projection
+
+
 class _M39OneRowResult:
     def __init__(self, row: object | None) -> None:
         self._row = row
@@ -5265,12 +5394,17 @@ def test_m52_current_stale_owner_recovery_requires_generation_37_successor() -> 
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m52_stale_recovery_test",
     )
-    config = json.loads(
+    current_config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
+    config, _, _ = _historical_successor_controls_at(
+        "test_compatibility_and_control_hash_successor_materialization",
+        current_config,
+    )
+    config["database_program"]["store_generation"] = "37"
 
     with pytest.raises(
         operator.OperatorError,
@@ -15158,9 +15292,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M31 remains immutable history while M51 is the current generation-37
-    # restart authority.
-    assert scheduler["database_program"]["store_generation"] == "37"
+    # M31 remains immutable history while M54 is the current generation-38
+    # typed-recovery authority.
+    assert scheduler["database_program"]["store_generation"] == "38"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -15336,8 +15470,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M51 owner is generation 37.
-    assert scheduler["database_program"]["store_generation"] == "37"
+    # M30 remains immutable history while the current M54 owner is generation 38.
+    assert scheduler["database_program"]["store_generation"] == "38"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -16572,7 +16706,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "37"
+    assert config["database_program"]["store_generation"] == "38"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -18822,9 +18956,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M51 advances the owner to generation 37 without changing the M27
+    # M54 advances the owner to generation 38 without changing the M27
     # runtime namespace.
-    assert config["database_program"]["store_generation"] == "37"
+    assert config["database_program"]["store_generation"] == "38"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -21884,9 +22018,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M51 owns generation 37 in the
+    # The M17 authority remains historical while M54 owns generation 38 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "37"
+    assert config["database_program"]["store_generation"] == "38"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -23006,9 +23140,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M51 owns generation 37 in the
+    # The M15 authority remains historical while M54 owns generation 38 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "37"
+    assert config["database_program"]["store_generation"] == "38"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 

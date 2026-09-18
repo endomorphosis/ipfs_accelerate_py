@@ -267,6 +267,26 @@ _M53_TARGET_PROJECTION_CID = (
 )
 _M53_TARGET_QUACK_PORT = _M52_TARGET_QUACK_PORT
 
+_M54_SUCCESSOR_KEY = (
+    "typed_stale_owner_recovery_and_attempt_ordinal_successor_materialization"
+)
+_M54_MIGRATION_REVISION = "SAWM-R2-M54"
+_M54_AUTHORITY_CID = (
+    "sha256:57d7e653524651d95bb94dedb5779799044e74860d0fc61db98fd0ed3a6eb575"
+)
+_M54_AUTHORITY_SIZE = 43_605
+_M54_STORE_ID = _M53_STORE_ID
+_M54_COORDINATION_STORE_ID = _M53_COORDINATION_STORE_ID
+_M54_WORKTREE_ROOT = _M53_WORKTREE_ROOT
+_M54_PRIOR_GENERATION = 37
+_M54_GENERATION = 38
+_M54_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
+_M54_PRIOR_EVENT_WATERMARK = 315
+_M54_TARGET_EVENT_WATERMARK = 316
+_M54_PRIOR_PROJECTION_CID = _M53_PRIOR_PROJECTION_CID
+_M54_TARGET_PROJECTION_CID = _M53_TARGET_PROJECTION_CID
+_M54_TARGET_QUACK_PORT = _M53_TARGET_QUACK_PORT
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1527,6 +1547,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m54_key = _M54_SUCCESSOR_KEY
     m53_key = _M53_SUCCESSOR_KEY
     m52_key = _M52_SUCCESSOR_KEY
     m51_key = _M51_SUCCESSOR_KEY
@@ -1574,6 +1595,67 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m54_key in config:
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer._expected_m54_typed_stale_owner_recovery_authority()
+            )
+            reference = materializer._m54_authority_reference()
+            contract = materializer._validated_m54_live_preflight_contract(
+                expected
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M54 typed stale-owner recovery authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        stopped = expected.get("stopped_owner")
+        recovery = expected.get("stale_owner_recovery")
+        watchdog = expected.get("accepted_quack_watchdog_repair")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        if (
+            config.get(m54_key) != reference
+            or materializer._identity(expected) != _M54_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M54_AUTHORITY_SIZE
+            or not all(
+                isinstance(item, Mapping)
+                for item in (
+                    runtime,
+                    stopped,
+                    recovery,
+                    watchdog,
+                    program,
+                    owner,
+                    contract,
+                )
+            )
+            or expected.get("migration_revision") != _M54_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M54_SUCCESSOR_KEY
+            or runtime.get("store_generation") != _M54_GENERATION
+            or runtime.get("target_event_watermark")
+            != _M54_TARGET_EVENT_WATERMARK
+            or stopped.get("generation") != _M54_PRIOR_GENERATION
+            or recovery.get("typed_recovery_precedes_generation_38_start")
+            is not True
+            or watchdog.get("second_agent_framework_created") is not False
+            or watchdog.get("generation_restart_authorized") is not False
+            or watchdog.get("stale_owner_recovery_performed") is not False
+            or watchdog.get("typed_terminal_required") is not True
+            or watchdog.get("whole_wave_terminal_required") is not True
+            or watchdog.get("process_bound_safe_terminal_required") is not True
+            or watchdog.get("active_peer_fencing_authorized") is not False
+            or watchdog.get("unknown_liveness_fails_closed") is not True
+            or watchdog.get("bounded_observation_window_required") is not True
+            or watchdog.get("fixed_maintenance_cadence") is not True
+            or watchdog.get("minimum_unavailable_probes") != 3
+            or program.get("store_generation") != str(_M54_GENERATION)
+            or owner.get("store_id") != _M54_STORE_ID
+            or contract.get("target_generation") != _M54_GENERATION
+        ):
+            raise OperatorError("active M54 typed recovery authority is invalid")
+        return expected
     if m53_key in config:
         try:
             materializer = _materializer()
@@ -5285,6 +5367,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M54_SUCCESSOR_KEY,
             _M53_SUCCESSOR_KEY,
             _M52_SUCCESSOR_KEY,
             _M51_SUCCESSOR_KEY,
@@ -7686,6 +7769,111 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m54_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M54's deny-only receipt plus fresh authenticated verification."""
+
+    key = _M54_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = materializer._expected_m54_typed_stale_owner_recovery_authority()
+    reference = materializer._m54_authority_reference()
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or materializer._identity(expected) != _M54_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M54_AUTHORITY_SIZE
+    ):
+        raise OperatorError("M54 typed stale-owner recovery authority differs")
+    runtime = (REPO_ROOT / _M54_STORE_ID).resolve().parent
+    final_path = runtime / materializer._M54_FINAL_RECEIPT_NAME
+    prestart_path = runtime / materializer._M54_PRESTART_RECEIPT_NAME
+    recovery_path = (
+        runtime / "quack-owner" / materializer._M54_RECOVERY_RECEIPT_NAME
+    )
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M54 source successor receipt"
+        )
+        prestart, _ = materializer._load_nofollow_json(
+            prestart_path, root=REPO_ROOT, noun="M54 prestart recovery receipt"
+        )
+        recovery, _ = materializer._load_nofollow_json(
+            recovery_path,
+            root=REPO_ROOT,
+            noun="M54 generation-37 recovery receipt",
+        )
+        checked = materializer._check_m54_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M54 receipt requires fresh authenticated verification after read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    prestart_unhashed = dict(prestart)
+    prestart_claimed = str(prestart_unhashed.pop("receipt_cid", ""))
+    recovery_claimed = str(recovery.get("receipt_cid") or "")
+    reported = checked.get("m54_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or prestart_claimed != materializer._identity(prestart_unhashed)
+        or recovery != materializer._expected_m54_recovery_receipt()
+        or dict(reported or {}) != observed
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M54_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M54_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M54_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M54_AUTHORITY_CID
+        or observed.get("prestart_recovery_receipt_cid") != prestart_claimed
+        or observed.get("typed_recovery_receipt_cid") != recovery_claimed
+        or observed.get("generation_37_38_restart_rows_verified") is not True
+        or observed.get("historical_m53_attempt_materialized") is not False
+        or observed.get("m53_prestart_receipt_absent") is not True
+        or observed.get("m53_final_receipt_absent") is not True
+        or observed.get("generation_29_recovery_receipt_preserved_exactly")
+        is not True
+        or observed.get("accepted_attempt_ordinal_repair")
+        != expected["accepted_attempt_ordinal_repair"]
+        or observed.get("accepted_recovery_receipt_api_repair")
+        != expected["accepted_recovery_receipt_api_repair"]
+        or observed.get("accepted_quack_watchdog_repair")
+        != expected["accepted_quack_watchdog_repair"]
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("deny_only_without_fresh_live_revalidation") is not True
+        or observed.get("claimed_zero_authority_counts")
+        != dict(materializer._M54_ZERO_ROW_AUTHORITY_COUNTS)
+        or any(
+            observed.get(field) != 0
+            for field in (
+                "task_revision_changes",
+                "task_status_changes",
+                "goal_revision_changes",
+                "goal_status_changes",
+                "provider_call_changes",
+                "provider_invocation_changes",
+                "provider_response_changes",
+                "effect_claim_changes",
+                "merge_attempt_changes",
+                "merge_base_changes",
+                "merge_queue_entry_changes",
+                "accepted_completion_changes",
+            )
+        )
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M54 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
 def _require_m52_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -8113,6 +8301,54 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m54_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M54's unchanged heads at event 316/generation 38."""
+
+    materializer._validated_m54_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M54_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M54_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M54_TARGET_PROJECTION_CID
+    ):
+        raise materializer.MigrationRequired("M54 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M54 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M54 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m52_live_head_task_projection(
@@ -13865,6 +14101,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M54_SUCCESSOR_KEY in config:
+        return _require_m54_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M52_SUCCESSOR_KEY in config:
         return _require_m52_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -14090,6 +14330,12 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
+    if active.get("migration_revision") == _M54_MIGRATION_REVISION:
+        raise OperatorError(
+            "M54 requires its sealed prestart receipt, typed generation-37 "
+            "recovery, canonical post-recovery verification, and generation-38 "
+            "start as one ordered quack-start path"
+        )
     if active.get("migration_revision") == _M53_MIGRATION_REVISION:
         raise OperatorError(
             "M53 binds a process-dead generation-37 owner; use the sealed "
@@ -15119,6 +15365,106 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M54_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m54_prestart_admission(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "M54 stale-ready generation-37 recovery is not admissible"
+            ) from exc
+        allowed_actions = {
+            "admitted_stale_ready_generation_37_typed_recovery",
+            "admitted_replayed_generation_37_recovery_before_generation_38",
+        }
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action") not in allowed_actions
+            or admitted.get("prior_generation") != _M54_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M54_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M54_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M54_PRIOR_PROJECTION_CID
+            or admitted.get("generation_29_recovery_receipt_preserved_exactly")
+            is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M54 prestart recovery report differs")
+        if admitted.get("recovery_required") is True:
+            receipt = admitted.get("prestart_recovery_receipt")
+            receipt_path = Path(
+                str(admitted.get("prestart_recovery_receipt_path") or "")
+            )
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("completion_authority") is not False
+                or receipt.get("launch_authority_without_typed_recovery")
+                is not False
+                or not receipt_path.is_absolute()
+                or receipt_path.parent
+                != (
+                    REPO_ROOT
+                    / str(config["runtime_paths"]["root"])
+                ).resolve()
+            ):
+                raise OperatorError("M54 prestart receipt authority differs")
+            materializer._m52_write_receipt_last(
+                REPO_ROOT,
+                receipt_path,
+                receipt,
+                noun="M54 prestart recovery receipt",
+            )
+            from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+                recover_stale_state_server,
+            )
+
+            recovered = recover_stale_state_server(
+                database_path=(REPO_ROOT / _M54_STORE_ID),
+                state_dir=(REPO_ROOT / str(config["quack_owner"]["state_dir"])),
+                expected_store_id=_M54_STORE_ID,
+                expected_generation=_M54_PRIOR_GENERATION,
+                expected_database_uuid=str(
+                    active_materialization["runtime_binding"]["database_uuid"]
+                ),
+                stopped_at=materializer._M54_RECOVERY_STOPPED_AT,
+                receipt_filename=materializer._M54_RECOVERY_RECEIPT_NAME,
+            )
+            if recovered != materializer._expected_m54_recovery_receipt():
+                raise OperatorError("M54 typed stale-owner recovery differs")
+        elif admitted.get("recovery_replay_required") is not True:
+            raise OperatorError("M54 recovery state is neither fresh nor replayable")
+        try:
+            post = materializer._check_m54_post_recovery_admission(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "M54 canonical post-recovery verification failed"
+            ) from exc
+        if (
+            post.get("valid") is not True
+            or post.get("action")
+            != "verified_typed_generation_37_recovery_before_generation_38"
+            or post.get("generation_37_status") != "stopped"
+            or post.get("generation_37_recovery_stopped_at")
+            != materializer._M54_RECOVERY_STOPPED_AT
+            or post.get("generation_38_rows_absent") is not True
+            or post.get("event_316_absent") is not True
+            or post.get("canonical_post_recovery_projection_verified") is not True
+            or post.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M54 post-recovery admission report differs")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": post,
+            }
+        )
     if _M53_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -18508,6 +18854,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M54_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m54_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M54 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M53_MIGRATION_REVISION:
         try:
             return materializer._validated_m53_live_preflight_contract(
@@ -18853,6 +19211,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m54_active = active_revision == _M54_MIGRATION_REVISION
     m53_active = active_revision == _M53_MIGRATION_REVISION
     m52_active = active_revision == _M52_MIGRATION_REVISION
     m51_active = active_revision == _M51_MIGRATION_REVISION
@@ -18891,6 +19250,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m54_active,
             m53_active,
             m52_active,
             m51_active,
@@ -18921,6 +19281,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m54_active,
             m53_active,
             m52_active,
             m51_active,
@@ -18970,6 +19331,11 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m54_active:
+            raise OperatorError(
+                "M54 exact live generation-38 owner is unavailable; run the "
+                "sealed typed-recovery quack-start path first"
+            )
         if m53_active:
             raise OperatorError(
                 "M53 exact live generation-38 owner is unavailable; run the "
@@ -19075,6 +19441,8 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m54_active:
+            raise OperatorError("M54 exact live generation-38 owner binding differs")
         if m53_active:
             raise OperatorError("M53 exact live generation-38 owner binding differs")
         if m52_active:
@@ -19160,7 +19528,55 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m52_active:
+        if m54_active:
+            try:
+                control = (REPO_ROOT / _M54_STORE_ID).resolve()
+                prestart, recovery = materializer._load_m54_recovery_evidence(
+                    REPO_ROOT,
+                    control,
+                    population,
+                    active_source_repair,
+                    validation_digest,
+                )
+                m54_verified = materializer._verify_m54_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                    prestart,
+                    recovery,
+                )
+                expected_m54_receipt = (
+                    materializer._expected_m54_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m54_verified,
+                        prestart,
+                        recovery,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m54_receipt,
+                        "m54_source_successor_receipt": expected_m54_receipt,
+                        **m54_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M54 exact typed-recovery verification failed: {exc}"
+                ) from exc
+        elif m52_active:
             try:
                 control = (REPO_ROOT / _M52_STORE_ID).resolve()
                 prestart = materializer._load_m52_prestart_schema_receipt(
@@ -20078,7 +20494,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M52_SUCCESSOR_KEY in config:
+            if _M54_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m54_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M52_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m52_live_head_task_projection(
                         live,
@@ -20753,7 +21179,43 @@ def _live_preflight(
         "direct_authoritative_file_opened": False,
         "statuses": statuses,
     }
-    if m52_active and final_pair_marker:
+    if m54_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M54_COORDINATION_STORE_ID).resolve()
+                ),
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": True,
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m54_authority_cid": _M54_AUTHORITY_CID,
+                "m54_event_id": str(
+                    final_pair_marker.get("migration_evidence_event_id") or ""
+                ),
+                "m54_evidence_id": str(
+                    final_pair_marker.get("migration_evidence_id") or ""
+                ),
+                "m54_source_successor_receipt": dict(final_pair_marker),
+                "prestart_recovery_receipt_cid": str(
+                    final_pair_marker.get("prestart_recovery_receipt_cid") or ""
+                ),
+                "typed_recovery_receipt_cid": str(
+                    final_pair_marker.get("typed_recovery_receipt_cid") or ""
+                ),
+                "historical_m53_attempt_materialized": False,
+                "generation_29_recovery_receipt_preserved_exactly": True,
+                "claimed_zero_operational_authorities_verified_at_observation": True,
+                "source_successor_receipt_completion_authority": False,
+                "source_successor_receipt_launch_authority": False,
+                "fresh_live_revalidation_performed_after_receipt_read": True,
+            }
+        )
+    elif m52_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(
@@ -21296,6 +21758,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
+        if args.command == "quack-ready" and _M54_SUCCESSOR_KEY in config:
+            return _emit(
+                {
+                    "action": "ready_authenticated",
+                    **_live_preflight(config, probe_provider=False),
+                }
+            )
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")
             return int(ops.main(_quack_args(config, args.command.removeprefix("quack-"))))

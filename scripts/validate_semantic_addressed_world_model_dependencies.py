@@ -220,6 +220,15 @@ _M53_SUCCESSOR_KEY = (
     "post_reboot_stale_ready_generation_37_restart_successor_materialization"
 )
 _M53_MIGRATION_REVISION = "SAWM-R2-M53"
+_M54_AUTHORITY_CID = (
+    "sha256:57d7e653524651d95bb94dedb5779799044e74860d0fc61db98fd0ed3a6eb575"
+)
+_M54_AUTHORITY_SIZE = 43_605
+_M54_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M54_FINAL_CONTROL_AUTHORITY_CID"
+_M54_SUCCESSOR_KEY = (
+    "typed_stale_owner_recovery_and_attempt_ordinal_successor_materialization"
+)
+_M54_MIGRATION_REVISION = "SAWM-R2-M54"
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3451,6 +3460,103 @@ def _m18_portal_completion_persistence_errors(
             "M18 portal-completion authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
+
+
+def _m54_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M54_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m54_typed_stale_owner_recovery_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M54's exact recovery, watchdog, and generation-38 seal."""
+
+    errors: list[str] = []
+    key = _M54_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m54_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M54 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m54_typed_stale_owner_recovery_authority()
+        )
+        contract = materializer._validated_m54_live_preflight_contract(expected)
+        reference = dict(materializer._m54_authority_reference())
+        recovery = expected.get("stale_owner_recovery", {})
+        historical = expected.get("historical_m53_attempt", {})
+        watchdog = expected.get("accepted_quack_watchdog_repair", {})
+        if not all(presence):
+            errors.append("M54 successor authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M54 successor reference differs")
+        if seal.get(f"{key}_cid") != materializer._M54_AUTHORITY_CID:
+            errors.append("M54 successor CID differs")
+        if (
+            materializer._M54_AUTHORITY_CID == _M54_UNSEALED_AUTHORITY_CID
+            or materializer._M54_AUTHORITY_CID != _M54_AUTHORITY_CID
+            or materializer._identity(expected) != _M54_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M54_AUTHORITY_SIZE
+        ):
+            errors.append("M54 authority body/CID/size differs")
+        materializer._assert_m54_historical_m53_controls(
+            scheduler, migration, seal
+        )
+        population = materializer.build_population(root)
+        materializer._assert_m54_source_delta(root, population, expected)
+        if (
+            expected.get("migration_revision") != _M54_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 38
+            or expected.get("target_event_watermark") != 316
+            or contract.get("prior_generation") != 37
+            or contract.get("target_generation") != 38
+            or contract.get("prior_event_watermark") != 315
+            or contract.get("target_event_watermark") != 316
+            or contract.get("prior_control_store_sha256")
+            != materializer._M54_PRIOR_CONTROL_SHA256
+            or "corrected_control_hash_only"
+            in expected.get("preservation", {})
+            or recovery.get("receipt_filename")
+            != "quack-stale-owner-recovery-generation-37-receipt.json"
+            or recovery.get("typed_recovery_precedes_generation_38_start")
+            is not True
+            or recovery.get(
+                "post_recovery_canonical_verification_required"
+            )
+            is not True
+            or historical.get("final_receipt_created") is not False
+            or historical.get("canonical_owner_recovery_performed") is not False
+            or watchdog.get("second_agent_framework_created") is not False
+            or watchdog.get("unknown_liveness_fails_closed") is not True
+            or watchdog.get("generation_restart_authorized") is not False
+            or watchdog.get("stale_owner_recovery_performed") is not False
+            or watchdog.get("typed_terminal_required") is not True
+            or watchdog.get("whole_wave_terminal_required") is not True
+            or watchdog.get("process_bound_safe_terminal_required") is not True
+            or watchdog.get("active_peer_fencing_authorized") is not False
+            or watchdog.get("bounded_observation_window_required") is not True
+            or watchdog.get("fixed_maintenance_cadence") is not True
+            or watchdog.get("minimum_unavailable_probes") != 3
+        ):
+            errors.append("M54 typed recovery/watchdog authority contract differs")
+    except Exception as exc:
+        errors.append(f"M54 authority is unavailable: {type(exc).__name__}: {exc}")
+    return errors
 
 
 def _m53_successor_declared(
@@ -14705,6 +14811,43 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m54_key = _M54_SUCCESSOR_KEY
+    m54_presence = (
+        m54_key in scheduler,
+        m54_key in migration,
+        f"{m54_key}_cid" in seal,
+    )
+    if any(m54_presence):
+        if not all(m54_presence):
+            return effective, ["active M54 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m54_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M54 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer._expected_m54_typed_stale_owner_recovery_authority()
+            )
+            materializer._validated_m54_live_preflight_contract(authority)
+            reference = dict(materializer._m54_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M54 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m54_key) != reference
+            or migration.get(m54_key) != reference
+            or seal.get(f"{m54_key}_cid") != _M54_AUTHORITY_CID
+            or materializer._identity(authority) != _M54_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M54_AUTHORITY_SIZE
+        ):
+            return effective, ["active M54 nested-source authority differs"]
+        return effective, []
     m53_key = _M53_SUCCESSOR_KEY
     m53_presence = (
         m53_key in scheduler,
@@ -16576,6 +16719,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m54_key = _M54_SUCCESSOR_KEY
+        m54_presence = (
+            m54_key in scheduler_probe,
+            m54_key in migration_probe,
+            f"{m54_key}_cid" in seal,
+        )
         m52_key = _M52_SUCCESSOR_KEY
         m52_presence = (
             m52_key in scheduler_probe,
@@ -16788,7 +16937,55 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m52_presence):
+        if any(m54_presence):
+            scheduled = scheduler_probe.get(m54_key)
+            migrated = migration_probe.get(m54_key)
+            if not all(m54_presence) or scheduled != migrated:
+                unexpected = ["M54 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m54_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M54 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m54_typed_stale_owner_recovery_authority()
+                    )
+                    materializer._validated_m54_live_preflight_contract(expected)
+                    reference = dict(materializer._m54_authority_reference())
+                    try:
+                        materializer._assert_m54_historical_m53_controls(
+                            scheduler_probe, migration_probe, seal
+                        )
+                        population = materializer.build_population(root)
+                        materializer._assert_m54_source_delta(
+                            root, population, expected
+                        )
+                    except Exception as exc:
+                        unexpected = [
+                            f"M54 source controls differ: {type(exc).__name__}: {exc}"
+                        ]
+                    else:
+                        if (
+                            scheduled != reference
+                            or seal.get(f"{m54_key}_cid") != _M54_AUTHORITY_CID
+                            or materializer._identity(expected)
+                            != _M54_AUTHORITY_CID
+                            or len(materializer._canonical(expected))
+                            != _M54_AUTHORITY_SIZE
+                        ):
+                            unexpected = [
+                                "M54 authority/CID differs across controls"
+                            ]
+                        else:
+                            unexpected = []
+        elif any(m52_presence):
             scheduled = scheduler_probe.get(m52_key)
             migrated = migration_probe.get(m52_key)
             if not all(m52_presence) or scheduled != migrated:
@@ -18431,6 +18628,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m54_declared = _m54_successor_declared(scheduler, seal, migration)
+        m53_declared = _m53_successor_declared(scheduler, seal, migration)
         m52_declared = _m52_successor_declared(scheduler, seal, migration)
         m51_declared = _m51_successor_declared(scheduler, seal, migration)
         m50_declared = _m50_successor_declared(scheduler, seal, migration)
@@ -18459,7 +18658,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m52_declared
+            m54_declared
+            or m53_declared
+            or m52_declared
             or m51_declared
             or m50_declared
             or m49_declared
@@ -18488,13 +18689,30 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m52_declared:
+            if m54_declared:
+                protocol_errors.extend(
+                    _m54_typed_stale_owner_recovery_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m53_declared and not m54_declared:
+                protocol_errors.extend(
+                    _m53_post_reboot_stale_ready_restart_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m52_declared and not m53_declared and not m54_declared:
                 protocol_errors.extend(
                     _m52_test_compatibility_and_control_hash_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m51_declared and not m52_declared:
+            if (
+                m51_declared
+                and not m52_declared
+                and not m53_declared
+                and not m54_declared
+            ):
                 protocol_errors.extend(
                     _m51_live_quack_catalog_compatibility_errors(
                         scheduler, seal, migration, root=root
