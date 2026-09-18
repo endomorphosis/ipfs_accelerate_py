@@ -77,6 +77,61 @@ _ATTEMPTS_AVAILABLE_SQL = (
 )
 
 
+def _claim_exprs() -> tuple[str, str, str]:
+    """SQL fragments for claim eligibility shared by the Quack claim paths."""
+    required_expr = (
+        "coalesce("
+        "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+        "nullif(json_extract_string(payload_json, '$.session'), ''), "
+        "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+        ")"
+    )
+    sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+    priority_expr = "coalesce(priority, 5)"
+    return required_expr, sticky_expr, priority_expr
+
+
+def _eligibility_where(
+    *,
+    task_types: Iterable[str],
+    worker_id: str,
+    session: str,
+    max_priority: Optional[int],
+    now: float,
+) -> tuple[str, list[Any], str]:
+    """Build ``(where_sql, params, priority_expr)`` for claim eligibility."""
+    required_expr, sticky_expr, priority_expr = _claim_exprs()
+    types = [str(t) for t in (task_types or []) if isinstance(t, str) and t.strip()]
+    where: list[str] = [
+        "status='queued'",
+        "coalesce(next_attempt_at, 0) <= ?",
+        _ATTEMPTS_AVAILABLE_SQL,
+    ]
+    params: list[Any] = [now]
+    if types:
+        where.append(f"task_type IN ({','.join(['?'] * len(types))})")
+        params.extend(types)
+    where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+    params.append(str(worker_id))
+    if session:
+        where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+        params.append(str(session))
+    if max_priority is not None:
+        cap = max(1, min(10, int(max_priority)))
+        where.append(f"({priority_expr} <= ?)")
+        params.append(cap)
+    return " AND ".join(where), params, priority_expr
+
+
+def _transient_conflict(exc: Exception) -> bool:
+    low = str(exc or "").lower()
+    return (
+        "conflict on tuple" in low
+        or "transactioncontext" in low
+        or ("transaction" in low and "conflict" in low)
+    )
+
+
 def _queued_task_from_row(row: Any) -> QueuedTask:
     try:
         payload = json.loads(row[3])
@@ -111,6 +166,74 @@ def default_queue_path() -> str:
     )
 
 
+def is_quack_path(path: Optional[str]) -> bool:
+    """True when *path* is a Quack endpoint URI (``quack:host:port``)."""
+    return str(path or "").strip().lower().startswith("quack:")
+
+
+def quack_token() -> str:
+    """Auth token for Quack queue endpoints.
+
+    Read from ``TASK_QUEUE_QUACK_TOKEN`` directly, or from the file named by
+    ``TASK_QUEUE_QUACK_TOKEN_FILE``. The file indirection exists for isolated
+    subprocesses (e.g. the agent supervisor's LLM provider children) whose
+    environment is scrubbed of ``*_QUACK_TOKEN`` variables but which are
+    allowed to read a token *file path*: the path grants no authority by
+    itself, and only the loopback queue token — never supervisor state
+    authority — lives in that file.
+    """
+    tok = os.environ.get("TASK_QUEUE_QUACK_TOKEN", "").strip()
+    if tok:
+        return tok
+    token_file = os.environ.get("TASK_QUEUE_QUACK_TOKEN_FILE", "").strip()
+    if token_file:
+        try:
+            with open(token_file, "r", encoding="utf-8") as fh:
+                tok = fh.read().strip()
+            if tok:
+                return tok
+        except OSError:
+            pass
+    return ""
+
+
+def _sql_literal(value: Any) -> str:
+    """Render a Python value as a DuckDB SQL literal.
+
+    Used to interpolate parameters into statements executed owner-side via
+    ``quack_query_by_name`` (which takes the whole statement as one string).
+    Strings are single-quoted with embedded quotes doubled; every other type
+    is generated, never parsed, so there is no injection vector.
+    """
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError("non-finite float cannot be a SQL literal")
+        return repr(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _interpolate_params(sql: str, params: Iterable[Any]) -> str:
+    """Replace each ``?`` placeholder in *sql* with a SQL literal."""
+    parts = sql.split("?")
+    values = list(params)
+    if len(parts) - 1 != len(values):
+        raise ValueError(
+            f"placeholder/parameter mismatch: {len(parts) - 1} placeholders, "
+            f"{len(values)} parameters"
+        )
+    out = [parts[0]]
+    for value, rest in zip(values, parts[1:]):
+        out.append(_sql_literal(value))
+        out.append(rest)
+    return "".join(out)
+
+
 class TaskQueue:
     """DuckDB-backed task queue with persisted attempt/backoff/lease state.
 
@@ -119,11 +242,30 @@ class TaskQueue:
     - claiming uses an atomic UPDATE guarded by a transaction
     - owner heartbeats renew ``lease_until`` only for the assigned worker
     - expired-lease recovery requeues or fails without double-claiming
+
+    Transport:
+    - a filesystem path opens the DuckDB file directly (multi-process use is
+      limited by the DuckDB file lock);
+    - a ``quack:host:port`` URI connects as a Quack client to a queue owner
+      serving the database (``CALL quack_serve(...)``), which is the intended
+      mode for shared multi-process / multi-peer queues. The token comes from
+      the ``TASK_QUEUE_QUACK_TOKEN`` environment variable (or the file named
+      by ``TASK_QUEUE_QUACK_TOKEN_FILE``).
+
+    Quack execution model: reads (SELECT) run over the attached catalog, but
+    every mutation (INSERT/UPDATE/DELETE) is executed *owner-side* via
+    ``quack_query_by_name`` — remote attachments reject UPDATE/DELETE with
+    "Can only update base table", while owner-side execution runs against the
+    real base tables. Each mutation is a single statement, hence atomic;
+    multi-statement transactions are therefore unnecessary (and unavailable)
+    in Quack mode.
     """
 
     def __init__(self, path: Optional[str] = None, *, default_lease_seconds: float = 300.0):
         self.path = path or default_queue_path()
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self._quack = is_quack_path(self.path)
+        if not self._quack:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
         self.default_lease_seconds = max(1.0, float(default_lease_seconds))
 
         # DuckDB connection management:
@@ -142,6 +284,16 @@ class TaskQueue:
             import duckdb  # type: ignore
         except Exception as exc:
             raise RuntimeError("duckdb is required for TaskQueue") from exc
+
+        if self._quack:
+            # Quack client mode: one persistent client connection per TaskQueue
+            # instance. All SQL (schema init, claim, complete, polls) is
+            # executed by the queue owner; no DuckDB file lock is ever taken
+            # by clients.
+            with self._conn_lock:
+                if self._conn is None:
+                    self._conn = self._connect_quack(duckdb)
+                return self._conn
 
         # Best-effort retries to handle transient connection races.
         last_exc: Exception | None = None
@@ -166,6 +318,237 @@ class TaskQueue:
             raise last_exc
         raise RuntimeError("duckdb.connect failed")
 
+    def _connect_quack(self, duckdb):
+        """Open a DuckDB client connection to the Quack queue owner."""
+        import re
+
+        uri = str(self.path).strip()
+        # Strict allowlist: loopback or explicit hostnames only, no quotes or
+        # statement separators — the URI is interpolated into ATTACH below.
+        # Normalize quack://host:port to the quack:host:port form the
+        # extension's ATTACH handler accepts.
+        if not re.fullmatch(
+            r"quack:(?://)?[A-Za-z0-9._-]+(?::\d{1,5})?", uri
+        ):
+            raise ValueError(f"invalid quack endpoint URI: {uri!r}")
+        uri = re.sub(r"^quack://", "quack:", uri)
+        token = quack_token()
+        if token and not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+            raise ValueError("TASK_QUEUE_QUACK_TOKEN contains unsafe characters")
+        conn = duckdb.connect()
+        try:
+            conn.execute("LOAD quack")
+            if token:
+                conn.execute(f"CREATE SECRET (TYPE quack, TOKEN '{token}')")
+            # Attach the owner's session as catalog ``taskqueue`` and make it
+            # the default so all existing unqualified queue SQL works as-is.
+            conn.execute(f"ATTACH '{uri}' AS taskqueue")
+            conn.execute("USE taskqueue")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            raise
+
+    def _quack_write(self, sql: str, params: Iterable[Any] = ()) -> list[tuple]:
+        """Execute one mutation statement owner-side via Quack.
+
+        The statement (with ``?`` placeholders interpolated as SQL literals)
+        runs in the queue owner's session through ``quack_query_by_name``,
+        where the queue tables are base tables and UPDATE/DELETE/INSERT work.
+        Returns the rows produced by the statement (e.g. ``RETURNING``).
+        """
+        if not self._quack:
+            raise RuntimeError("_quack_write is only valid in Quack client mode")
+        stmt = _interpolate_params(sql, params)
+        with self._conn_lock:
+            conn = self._get_conn()
+            return conn.execute(
+                "SELECT * FROM quack_query_by_name('taskqueue', ?)", (stmt,)
+            ).fetchall()
+
+    def _quack_recover_expired(self, now: float, limit: int = 1000) -> int:
+        """Owner-side expired-lease recovery for Quack client mode.
+
+        Mirrors :meth:`_recover_expired_in_transaction` but as separate
+        single statements: one read plus up to two guarded UPDATEs. The
+        UPDATEs re-check ``status='running'`` and the lease deadline, so two
+        racing recovery loops cannot double-assign the same claim.
+        """
+        bounded_limit = max(1, min(int(limit or 1000), 10000))
+        with self._conn_lock:
+            conn = self._get_conn()
+            rows = conn.execute(
+                """
+                SELECT task_id, attempt, max_attempts
+                FROM tasks
+                WHERE status='running' AND lease_until IS NOT NULL AND lease_until <= ?
+                ORDER BY lease_until ASC, created_at ASC
+                LIMIT ?
+                """,
+                (float(now), bounded_limit),
+            ).fetchall()
+        retry_ids = [
+            str(row[0])
+            for row in rows
+            if int(row[2] if row[2] is not None else 3) == 0
+            or int(row[1] or 0) < int(row[2] if row[2] is not None else 3)
+        ]
+        exhausted_ids = [
+            str(row[0])
+            for row in rows
+            if int(row[2] if row[2] is not None else 3) > 0
+            and int(row[1] or 0) >= int(row[2] if row[2] is not None else 3)
+        ]
+        deadline = float(now)
+        if retry_ids:
+            id_list = ", ".join(_sql_literal(i) for i in retry_ids)
+            self._quack_write(
+                "UPDATE tasks SET status='queued', assigned_worker=NULL, "
+                "lease_until=NULL, heartbeat_at=NULL, updated_at=? "
+                f"WHERE task_id IN ({id_list}) AND status='running' "
+                "AND lease_until IS NOT NULL AND lease_until <= ?",
+                (deadline, deadline),
+            )
+        if exhausted_ids:
+            id_list = ", ".join(_sql_literal(i) for i in exhausted_ids)
+            self._quack_write(
+                "UPDATE tasks SET status='failed', assigned_worker=NULL, "
+                "lease_until=NULL, heartbeat_at=NULL, updated_at=?, "
+                "error=CASE "
+                "WHEN error IS NULL OR error='' "
+                "THEN 'claim lease expired after maximum attempts' "
+                "ELSE error || '; claim lease expired after maximum attempts' END "
+                f"WHERE task_id IN ({id_list}) AND status='running' "
+                "AND lease_until IS NOT NULL AND lease_until <= ?",
+                (deadline, deadline),
+            )
+        return len(retry_ids) + len(exhausted_ids)
+
+    def _claim_next_quack(
+        self,
+        *,
+        worker_id: str,
+        task_types: list,
+        session: str,
+        max_priority: Optional[int],
+        now: float,
+        lease_duration: float,
+    ) -> Optional[QueuedTask]:
+        """Quack client mode single claim: one atomic UPDATE...RETURNING."""
+        wid = str(worker_id)
+        self._quack_recover_expired(now)
+        inner_where, inner_params, priority_expr = _eligibility_where(
+            task_types=task_types,
+            worker_id=wid,
+            session=session,
+            max_priority=max_priority,
+            now=now,
+        )
+        # The outer guard re-checks the single chosen row; no type filter is
+        # needed there since the candidate came from the filtered subselect.
+        outer_where, outer_params, _ = _eligibility_where(
+            task_types=[],
+            worker_id=wid,
+            session=session,
+            max_priority=max_priority,
+            now=now,
+        )
+        sql = (
+            "UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+            "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
+            "WHERE task_id = ("
+            f"SELECT task_id FROM tasks WHERE {inner_where} "
+            f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC LIMIT 1"
+            ") "
+            f"AND {outer_where} "
+            f"RETURNING {_TASK_SELECT_COLUMNS}"
+        )
+        params = [wid, now, now, now + lease_duration] + inner_params + outer_params
+        for _ in range(6):
+            try:
+                rows = self._quack_write(sql, params)
+            except Exception as exc:
+                if _transient_conflict(exc):
+                    time.sleep(0.005 + random.random() * 0.02)
+                    continue
+                raise
+            if rows:
+                return _queued_task_from_row(rows[0])
+            return None
+        return None
+
+    def _claim_next_many_quack(
+        self,
+        *,
+        worker_id: str,
+        task_types: list,
+        limit: int,
+        same_task_type: bool,
+        session: str,
+        max_priority: Optional[int],
+        now: float,
+        lease_duration: float,
+    ) -> list[QueuedTask]:
+        """Quack client mode batch claim: select ids, then guarded UPDATE."""
+        wid = str(worker_id)
+        self._quack_recover_expired(now)
+        effective_types = list(task_types)
+        with self._conn_lock:
+            conn = self._get_conn()
+            if same_task_type:
+                where, params, priority_expr = _eligibility_where(
+                    task_types=effective_types,
+                    worker_id=wid,
+                    session=session,
+                    max_priority=max_priority,
+                    now=now,
+                )
+                row0 = conn.execute(
+                    f"SELECT task_type FROM tasks WHERE {where} "
+                    f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC LIMIT 1",
+                    tuple(params),
+                ).fetchone()
+                if row0 is None:
+                    return []
+                effective_types = [str(row0[0])]
+            where, params, priority_expr = _eligibility_where(
+                task_types=effective_types,
+                worker_id=wid,
+                session=session,
+                max_priority=max_priority,
+                now=now,
+            )
+            rows = conn.execute(
+                f"SELECT task_id FROM tasks WHERE {where} "
+                f"ORDER BY {priority_expr} DESC, created_at ASC, task_id ASC "
+                f"LIMIT {int(limit)}",
+                tuple(params),
+            ).fetchall()
+            ids = [str(r[0]) for r in (rows or []) if r and r[0]]
+            if not ids:
+                return []
+        guard_where, guard_params, _ = _eligibility_where(
+            task_types=effective_types,
+            worker_id=wid,
+            session=session,
+            max_priority=max_priority,
+            now=now,
+        )
+        id_list = ", ".join(_sql_literal(i) for i in ids)
+        upd = (
+            "UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+            "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
+            f"WHERE task_id IN ({id_list}) AND {guard_where} "
+            f"RETURNING {_TASK_SELECT_COLUMNS}"
+        )
+        got = self._quack_write(upd, [wid, now, now, now + lease_duration] + guard_params)
+        out = [_queued_task_from_row(r) for r in got]
+        out.sort(key=lambda t: (-t.priority, t.created_at, t.task_id))
+        return out
+
     def _get_conn(self):
         with self._conn_lock:
             if self._conn is None:
@@ -183,6 +566,11 @@ class TaskQueue:
                 pass
 
     def _init_db(self) -> None:
+        # Quack client mode: the queue owner already owns the schema and runs
+        # the DDL itself. DDL (ALTER/CREATE INDEX) is not implemented over a
+        # quack attachment, so skip schema init entirely for clients.
+        if self._quack:
+            return
         # DuckDB can throw transient write-write conflicts if multiple processes
         # (or threads) try to create the schema at the same time.
         last_exc: Exception | None = None
@@ -343,6 +731,19 @@ class TaskQueue:
             eligible_at = 0.0
         eligible_at = max(0.0, eligible_at)
 
+        if self._quack:
+            return self._submit_quack(
+                task_type=str(task_type),
+                model_name=str(model_name),
+                payload_json=payload_json,
+                tid=tid,
+                identity=identity,
+                task_priority=task_priority,
+                attempts_limit=attempts_limit,
+                eligible_at=eligible_at,
+                now=now,
+            )
+
         with self._conn_lock:
             conn = self._get_conn()
             conn.execute("BEGIN TRANSACTION")
@@ -425,6 +826,126 @@ class TaskQueue:
                     # A second process may have committed the same identity
                     # after our initial read. Observe that winner and apply the
                     # same exact-work check as the uncontended path.
+                    for retry_index in range(8):
+                        try:
+                            if identity is not None:
+                                existing = conn.execute(
+                                    "SELECT task_id, task_type, model_name, payload_json "
+                                    "FROM tasks WHERE idempotency_key=?",
+                                    (identity,),
+                                ).fetchone()
+                            else:
+                                existing = conn.execute(
+                                    "SELECT task_id, task_type, model_name, payload_json "
+                                    "FROM tasks WHERE task_id=?",
+                                    (tid,),
+                                ).fetchone()
+                            if existing is not None:
+                                if (
+                                    str(existing[1]) == str(task_type)
+                                    and str(existing[2]) == str(model_name)
+                                    and str(existing[3]) == payload_json
+                                ):
+                                    return str(existing[0]), True
+                                raise ValueError(
+                                    "idempotency key or task_id already identifies different work"
+                                ) from exc
+                        except ValueError:
+                            raise
+                        except Exception:
+                            pass
+                        time.sleep(0.002 * (retry_index + 1))
+                raise
+        return tid, False
+
+    def _submit_quack(
+        self,
+        *,
+        task_type: str,
+        model_name: str,
+        payload_json: str,
+        tid: str,
+        identity: Optional[str],
+        task_priority: int,
+        attempts_limit: int,
+        eligible_at: float,
+        now: float,
+    ) -> tuple[str, bool]:
+        """Quack client mode submit: reads over ATTACH, INSERT owner-side.
+
+        The idempotency read-then-insert race is handled the same way as the
+        file mode: a duplicate-key error from the owner triggers a re-read
+        and the exact-work check.
+        """
+        with self._conn_lock:
+            conn = self._get_conn()
+            existing = None
+            if identity is not None:
+                existing = conn.execute(
+                    "SELECT task_id, task_type, model_name, payload_json "
+                    "FROM tasks WHERE idempotency_key=?",
+                    (identity,),
+                ).fetchone()
+            if existing is None and tid:
+                existing = conn.execute(
+                    "SELECT task_id, task_type, model_name, payload_json "
+                    "FROM tasks WHERE task_id=?",
+                    (tid,),
+                ).fetchone()
+            if existing is not None:
+                same_work = (
+                    str(existing[1]) == str(task_type)
+                    and str(existing[2]) == str(model_name)
+                    and str(existing[3]) == payload_json
+                )
+                if not same_work:
+                    raise ValueError(
+                        "idempotency key or task_id already identifies different work"
+                    )
+                return str(existing[0]), True
+            try:
+                self._quack_write(
+                    """
+                    INSERT INTO tasks(
+                        task_id,
+                        task_type,
+                        model_name,
+                        payload_json,
+                        status,
+                        assigned_worker,
+                        created_at,
+                        updated_at,
+                        priority,
+                        attempt,
+                        max_attempts,
+                        next_attempt_at,
+                        lease_until,
+                        heartbeat_at,
+                        idempotency_key
+                    )
+                    VALUES(?, ?, ?, ?, 'queued', NULL, ?, ?, ?, 0, ?, ?, NULL, NULL, ?)
+                    """,
+                    (
+                        tid,
+                        str(task_type),
+                        str(model_name),
+                        payload_json,
+                        now,
+                        now,
+                        task_priority,
+                        attempts_limit,
+                        eligible_at,
+                        identity,
+                    ),
+                )
+            except Exception as exc:
+                low = str(exc).lower()
+                duplicate_or_race = (
+                    "duplicate key" in low
+                    or "unique constraint" in low
+                    or "conflict on tuple" in low
+                )
+                if duplicate_or_race and (identity is not None or tid):
                     for retry_index in range(8):
                         try:
                             if identity is not None:
@@ -545,18 +1066,26 @@ class TaskQueue:
 
         # Use a fresh connection so readers reliably observe updates from other
         # TaskQueue instances (e.g. worker heartbeats) across threads/processes.
+        # In Quack client mode the shared attached connection is reused instead
+        # (every query round-trips to the owner) and must NOT be closed here.
         with self._conn_lock:
-            conn = self._connect()
-            try:
-                row = conn.execute(
+            if self._quack:
+                row = self._get_conn().execute(
                     f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks WHERE task_id = ?",
                     (task_id,),
                 ).fetchone()
-            finally:
+            else:
+                conn = self._connect()
                 try:
-                    conn.close()
-                except Exception:
-                    pass
+                    row = conn.execute(
+                        f"SELECT {_TASK_SELECT_COLUMNS} FROM tasks WHERE task_id = ?",
+                        (task_id,),
+                    ).fetchone()
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
         if row is None:
             return None
 
@@ -742,16 +1271,20 @@ class TaskQueue:
         sql += " GROUP BY task_type"
 
         # Use a fresh connection so readers reliably observe updates from other
-        # TaskQueue instances across threads/processes.
+        # TaskQueue instances across threads/processes. In Quack client mode
+        # the shared attached connection is reused and must NOT be closed.
         with self._conn_lock:
-            conn = self._connect()
-            try:
-                rows = conn.execute(sql, params).fetchall()
-            finally:
+            if self._quack:
+                rows = self._get_conn().execute(sql, params).fetchall()
+            else:
+                conn = self._connect()
                 try:
-                    conn.close()
-                except Exception:
-                    pass
+                    rows = conn.execute(sql, params).fetchall()
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
 
         out: Dict[str, int] = {}
         for row in rows or []:
@@ -841,6 +1374,8 @@ class TaskQueue:
 
         recovered_at = time.time() if now is None else float(now)
         bounded_limit = max(1, min(int(limit or 1000), 10000))
+        if self._quack:
+            return self._quack_recover_expired(recovered_at, bounded_limit)
         with self._conn_lock:
             conn = self._get_conn()
             conn.execute("BEGIN TRANSACTION")
@@ -873,6 +1408,23 @@ class TaskQueue:
         duration = (
             self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
+        if self._quack:
+            rows = self._quack_write(
+                """
+                UPDATE tasks
+                SET heartbeat_at=?, lease_until=?, updated_at=?
+                WHERE task_id=? AND status='running' AND assigned_worker=?
+                RETURNING task_id
+                """,
+                (
+                    heartbeat_at,
+                    heartbeat_at + duration,
+                    heartbeat_at,
+                    tid,
+                    wid,
+                ),
+            )
+            return len(rows) > 0
         with self._conn_lock:
             conn = self._get_conn()
             row = conn.execute(
@@ -909,6 +1461,33 @@ class TaskQueue:
             return False
         retry_at = time.time() if now is None else float(now)
         retry_at += max(0.0, float(delay_seconds))
+        if self._quack:
+            rows = self._quack_write(
+                """
+                UPDATE tasks
+                SET status=CASE
+                        WHEN max_attempts = 0 OR attempt < max_attempts
+                        THEN 'queued'
+                        ELSE 'failed'
+                    END,
+                    assigned_worker=NULL,
+                    next_attempt_at=?,
+                    lease_until=NULL,
+                    heartbeat_at=NULL,
+                    updated_at=?,
+                    error=?
+                WHERE task_id=? AND status='running' AND assigned_worker=?
+                RETURNING task_id
+                """,
+                (
+                    retry_at,
+                    time.time() if now is None else float(now),
+                    str(error) if error else None,
+                    tid,
+                    wid,
+                ),
+            )
+            return len(rows) > 0
         with self._conn_lock:
             conn = self._get_conn()
             row = conn.execute(
@@ -972,6 +1551,16 @@ class TaskQueue:
         lease_duration = (
             self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
+
+        if self._quack:
+            return self._claim_next_quack(
+                worker_id=worker_id,
+                task_types=task_types,
+                session=session,
+                max_priority=max_priority,
+                now=now,
+                lease_duration=lease_duration,
+            )
 
         required_expr = (
             "coalesce("
@@ -1137,6 +1726,18 @@ class TaskQueue:
         lease_duration = (
             self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
+
+        if self._quack:
+            return self._claim_next_many_quack(
+                worker_id=worker_id,
+                task_types=task_types,
+                limit=limit,
+                same_task_type=same_task_type,
+                session=session,
+                max_priority=max_priority,
+                now=now,
+                lease_duration=lease_duration,
+            )
 
         required_expr = (
             "coalesce("
@@ -1348,6 +1949,29 @@ class TaskQueue:
             self.default_lease_seconds if lease_seconds is None else max(1.0, float(lease_seconds))
         )
         session = str(session_id or "").strip()
+
+        if self._quack:
+            wid = str(worker_id)
+            self._quack_recover_expired(now)
+            required_expr_q, sticky_expr_q, _ = _claim_exprs()
+            sql = (
+                "UPDATE tasks SET status='running', assigned_worker=?, updated_at=?, "
+                "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
+                "WHERE task_id=? AND status='queued' "
+                "AND coalesce(next_attempt_at, 0) <= ? "
+                f"AND {_ATTEMPTS_AVAILABLE_SQL} "
+                f"AND ({sticky_expr_q} IS NULL OR {sticky_expr_q} = ?)"
+            )
+            params: list = [wid, now, now, now + lease_duration, str(task_id), now, wid]
+            if session:
+                sql += f" AND ({required_expr_q} IS NULL OR {required_expr_q} = ?)"
+                params.append(session)
+            sql += f" RETURNING {_TASK_SELECT_COLUMNS}"
+            rows = self._quack_write(sql, params)
+            if not rows:
+                return None
+            return _queued_task_from_row(rows[0])
+
         required_expr = (
             "coalesce("
             "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
@@ -1460,6 +2084,73 @@ class TaskQueue:
 
         # Merge any existing progress/logs with the final result so peers can
         # keep observing stdout/stderr after completion.
+        if self._quack:
+            with self._conn_lock:
+                conn = self._get_conn()
+                existing_row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=?",
+                    (str(task_id),),
+                ).fetchone()
+                existing = _json_dict(existing_row[0]) if existing_row else {}
+                incoming = result if isinstance(result, dict) else {}
+                merged: Dict[str, Any] = {}
+                if isinstance(existing, dict):
+                    merged.update(existing)
+                if isinstance(incoming, dict):
+                    merged.update(incoming)
+                if "logs" in existing and "logs" not in incoming:
+                    merged["logs"] = existing.get("logs")
+                if "progress" in existing and "progress" not in incoming:
+                    merged["progress"] = existing.get("progress")
+                result_json = json.dumps(merged, sort_keys=True) if merged else None
+                owner = str(worker_id or "").strip()
+                try:
+                    if owner:
+                        rows = self._quack_write(
+                            """
+                            UPDATE tasks
+                            SET status=?, updated_at=?, result_json=?,
+                                error=?, lease_until=NULL, heartbeat_at=NULL
+                            WHERE task_id=? AND status='running' AND assigned_worker=?
+                            RETURNING task_id
+                            """,
+                            (
+                                status_norm,
+                                now,
+                                result_json,
+                                str(error) if error else None,
+                                str(task_id),
+                                owner,
+                            ),
+                        )
+                    else:
+                        rows = self._quack_write(
+                            """
+                            UPDATE tasks
+                            SET status=?, updated_at=?, result_json=?,
+                                error=?, lease_until=NULL, heartbeat_at=NULL
+                            WHERE task_id=?
+                            RETURNING task_id
+                            """,
+                            (
+                                status_norm,
+                                now,
+                                result_json,
+                                str(error) if error else None,
+                                str(task_id),
+                            ),
+                        )
+                    return len(rows) > 0
+                except Exception as exc:
+                    msg = str(exc).lower()
+                    if (
+                        "write-write conflict" in msg
+                        or "conflict on tuple" in msg
+                        or "transactioncontext error" in msg
+                        or ("catalog" in msg and "conflict" in msg)
+                    ):
+                        return False
+                    raise
         with self._conn_lock:
             conn = self._get_conn()
             try:
@@ -1557,6 +2248,31 @@ class TaskQueue:
             base["progress"] = progress
             return base
 
+        if self._quack:
+            with self._conn_lock:
+                conn = self._get_conn()
+                row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=? AND status='queued'",
+                    (str(task_id),),
+                ).fetchone()
+                if row is None:
+                    return False
+                try:
+                    existing = json.loads(row[0]) if row[0] else {}
+                except Exception:
+                    existing = {}
+                result_obj = _merge_progress(existing)
+                result_obj["progress"]["cancelled_at"] = now
+                if isinstance(reason, str) and reason.strip():
+                    result_obj["progress"]["cancel_reason"] = reason.strip()
+                rows = self._quack_write(
+                    "UPDATE tasks SET status='cancelled', assigned_worker=NULL, "
+                    "lease_until=NULL, heartbeat_at=NULL, result_json=?, updated_at=? "
+                    "WHERE task_id=? AND status='queued' RETURNING task_id",
+                    (json.dumps(result_obj, sort_keys=True), now, str(task_id)),
+                )
+                return len(rows) > 0
+
         with self._conn_lock:
             conn = self._connect()
             try:
@@ -1611,6 +2327,16 @@ class TaskQueue:
         if not task_id:
             return False
 
+        if self._quack:
+            try:
+                self._quack_write(
+                    "DELETE FROM tasks WHERE task_id=? RETURNING task_id",
+                    (str(task_id),),
+                )
+                return True
+            except Exception:
+                return False
+
         with self._conn_lock:
             conn = self._get_conn()
             try:
@@ -1641,6 +2367,22 @@ class TaskQueue:
 
         cutoff = time.time() - keep_s
         placeholders = ",".join(["?"] * len(st_in))
+
+        if self._quack:
+            quack_sql = (
+                "DELETE FROM tasks WHERE task_id IN ("
+                "  SELECT task_id FROM tasks"
+                f"  WHERE status IN ({placeholders}) AND updated_at < ?"
+                "  ORDER BY updated_at ASC"
+                "  LIMIT ?"
+                ") RETURNING task_id"
+            )
+            prune_params: list = [*st_in, float(cutoff), int(lim)]
+            try:
+                rows = self._quack_write(quack_sql, tuple(prune_params))
+                return len(rows)
+            except Exception:
+                return 0
 
         # Delete in small batches to avoid long write locks.
         sql = (
@@ -1721,6 +2463,19 @@ class TaskQueue:
                 merged["progress"] = progress
 
                 result_json = json.dumps(merged, sort_keys=True) if merged else None
+
+                if self._quack:
+                    rows = self._quack_write(
+                        """
+                        UPDATE tasks
+                        SET status='queued', assigned_worker=NULL, updated_at=?, result_json=?,
+                            next_attempt_at=?, lease_until=NULL, heartbeat_at=NULL
+                        WHERE task_id=? AND status='running' AND assigned_worker=?
+                        RETURNING task_id
+                        """,
+                        (float(now), result_json, float(now), tid, wid),
+                    )
+                    return len(rows) > 0
 
                 updated = conn.execute(
                     """
@@ -1825,6 +2580,23 @@ class TaskQueue:
 
                 result_json = json.dumps(current, sort_keys=True) if current else None
                 new_status = status_norm or current_status
+
+                if self._quack:
+                    self._quack_write(
+                        """
+                        UPDATE tasks
+                        SET status=?, updated_at=?, result_json=?, error=?
+                        WHERE task_id=?
+                        """,
+                        (
+                            new_status,
+                            now,
+                            result_json,
+                            str(error) if error else None,
+                            str(task_id),
+                        ),
+                    )
+                    return True
 
                 conn.execute(
                     """

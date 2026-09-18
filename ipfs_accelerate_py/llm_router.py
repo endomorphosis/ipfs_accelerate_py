@@ -9446,7 +9446,11 @@ def _get_p2p_task_queue_provider() -> LLMProvider:
                 or 60.0
             )
             task_type = (
-                str(call_options.pop("task_type", None) or "text-generation").strip()
+                str(
+                    call_options.pop("task_type", None)
+                    or _coalesce_env("IPFS_ACCELERATE_PY_TASK_QUEUE_TASK_TYPE")
+                    or "text-generation"
+                ).strip()
                 or "text-generation"
             )
             task_id = submit_task(
