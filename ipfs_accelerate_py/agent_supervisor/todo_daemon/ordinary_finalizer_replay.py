@@ -2,7 +2,9 @@
 
 This pure classifier grants neither retry nor completion authority. Callers must
 retain native claim, phase, callback, receipt and source validation. In particular
-its result cannot excuse an inconsistent historical terminal phase.
+its result cannot excuse an inconsistent historical terminal phase; a later
+intended superseded_attempt_revoked must use terminal_phase_reconciliation to
+preserve a proven consumed retry actual without rewriting it.
 """
 from collections.abc import Mapping
 from typing import Any

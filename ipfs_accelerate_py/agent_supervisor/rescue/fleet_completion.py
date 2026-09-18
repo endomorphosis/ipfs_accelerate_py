@@ -12,7 +12,11 @@ Repositories contain ``id``, ``root``, ``source_ref``, nonempty ``validation``
 (objects with argv and optional repository-relative cwd), and ``dependencies``
 (objects with repository id and gitlink path). Only those refs are considered.
 The publisher holds on conflicts or unverifiable completion and never force
-pushes, resets a live checkout, or marks a task complete.
+pushes, resets a live checkout, or marks a task complete. GitHub publication
+pushes an isolated branch, opens or updates a pull request, and merges only
+after GitHub reports that exact head mergeable, required checks successful,
+and required reviews satisfied. A successful branch push is not publication.
+Admin, ruleset, and branch-protection bypasses are forbidden.
 """
 
 from __future__ import annotations
@@ -33,23 +37,29 @@ from urllib.parse import urlparse
 SCHEMA = "agent-supervisor/fleet-publication@1"
 GATE_SCHEMA = "agent-supervisor/fleet-completion-gate@1"
 _OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
+_GITHUB_SLUG = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+_BILLING_MARKERS = ("billing issue", "account is locked", "quota", "actions is disabled")
+_FORBIDDEN_GITHUB_FLAGS = frozenset({
+    "--admin", "--bypass-rules", "--bypass-policy", "--bypass-ruleset",
+    "--disable-rules",
+})
 
 
 class PublicationHold(RuntimeError):
     """Publication requires additional accepted evidence or a conflict repair."""
 
 
-def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
+def _communicate(argv: list[str], cwd: Path, timeout: float = 300) -> tuple[int, str, str]:
     if not argv or not all(isinstance(arg, str) for arg in argv):
         raise PublicationHold("command argv must be a nonempty string list")
     try:
         process = subprocess.Popen(
             argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, start_new_session=True,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GH_PROMPT_DISABLED": "1"},
         )
         try:
-            stdout, _stderr = process.communicate(timeout=timeout)
+            stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             # Keep the leader unreaped until the whole group has been killed:
             # a child can ignore TERM and redirect both output streams, letting
@@ -67,14 +77,188 @@ def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
             raise PublicationHold(f"command timed out after {timeout:g}s") from None
     except OSError as exc:
         raise PublicationHold(f"command could not start: {type(exc).__name__}") from None
-    if process.returncode:
+    return process.returncode, (stdout or "").strip(), (stderr or "").strip()
+
+
+def _run(argv: list[str], cwd: Path, timeout: float = 300) -> str:
+    code, stdout, _stderr = _communicate(argv, cwd, timeout)
+    if code:
         # Do not copy output or argv containing credentials into fleet receipts.
-        raise PublicationHold(f"command failed with exit code {process.returncode}")
-    return stdout.strip()
+        raise PublicationHold(f"command failed with exit code {code}")
+    return stdout
+
+
+def _reject_direct_main_push(args: tuple[str, ...]) -> None:
+    """A normal push to main can bypass required checks when the account may."""
+    if not args or args[0] != "push":
+        return
+    for arg in args[1:]:
+        if arg.startswith("-"):
+            continue
+        dest = arg.split(":", 1)[1] if ":" in arg else arg
+        if dest in {"main", "master", "refs/heads/main", "refs/heads/master"}:
+            raise PublicationHold("publication must not push directly to GitHub main")
 
 
 def _git(root: Path, *args: str, timeout: float = 300) -> str:
+    _reject_direct_main_push(args)
     return _run(["git", *args], root, timeout)
+
+
+def _github_repository_slug(origin: str) -> str:
+    """Map a GitHub origin URL to owner/name without mutating remotes."""
+    ssh = re.fullmatch(
+        r"git@github\.com:([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?", origin,
+    )
+    if ssh:
+        return f"{ssh.group(1)}/{ssh.group(2)}"
+    parsed = urlparse(origin)
+    if parsed.scheme in {"https", "ssh"} and parsed.hostname == "github.com":
+        parts = parsed.path.strip("/").removesuffix(".git").split("/")
+        if len(parts) == 2 and all(parts):
+            return f"{parts[0]}/{parts[1]}"
+    raise PublicationHold("GitHub origin is not a parseable owner/repository")
+
+
+def _publication_branch(board_id: str, ident: str, candidate: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", board_id) or not re.fullmatch(r"[A-Za-z0-9_-]+", ident):
+        raise PublicationHold("publication branch requires safe board and repository ids")
+    if not _OID.fullmatch(candidate):
+        raise PublicationHold("publication branch requires an exact candidate commit")
+    return f"fleet-publication/{board_id}/{ident}/{candidate[:12]}"
+
+
+def _push_isolated_branch(root: Path, remote: str, candidate: str, branch: str) -> None:
+    if branch in {"main", "master"} or branch.startswith("refs/heads/main"):
+        raise PublicationHold("publication must not push to GitHub main")
+    dest = f"refs/heads/{branch}"
+    if dest in {"refs/heads/main", "refs/heads/master"}:
+        raise PublicationHold("publication must not push to GitHub main")
+    _git(root, "push", remote, f"{candidate}:{dest}")
+
+
+def _github_cli(*args: str, timeout: float = 120) -> str:
+    """Run gh. Bypass flags are rejected before the process starts."""
+    if not args or not all(isinstance(arg, str) and arg for arg in args):
+        raise PublicationHold("GitHub CLI argv must be a nonempty string list")
+    if _FORBIDDEN_GITHUB_FLAGS & set(args):
+        raise PublicationHold("publication must not use a GitHub admin or ruleset bypass")
+    code, stdout, stderr = _communicate(["gh", *args], Path.cwd(), timeout)
+    combined = f"{stdout}\n{stderr}".lower()
+    if any(marker in combined for marker in _BILLING_MARKERS):
+        raise PublicationHold(
+            "GitHub required checks cannot start: account billing, quota, or Actions outage"
+        )
+    if code:
+        raise PublicationHold(f"GitHub CLI failed with exit code {code}")
+    return stdout
+
+
+def _load_json_payload(raw: str, *, noun: str) -> Any:
+    try:
+        return json.loads(raw or "null")
+    except ValueError as exc:
+        raise PublicationHold(f"{noun} is not JSON") from exc
+
+
+def _observe_pull_request(repo: str, head: str, candidate: str) -> dict[str, Any]:
+    if not _GITHUB_SLUG.fullmatch(repo):
+        raise PublicationHold("GitHub repository slug is malformed")
+    payload = _load_json_payload(
+        _github_cli(
+            "pr", "view", head, "--repo", repo,
+            "--json", "number,url,isDraft,mergeable,reviewDecision,headRefOid,state",
+        ),
+        noun="pull request observation",
+    )
+    if not isinstance(payload, dict):
+        raise PublicationHold("pull request observation is not an object")
+    number, url, head_oid = payload.get("number"), payload.get("url"), payload.get("headRefOid")
+    if type(number) is not int or number < 1 or not isinstance(url, str) or not url:
+        raise PublicationHold("pull request observation is missing identity")
+    if payload.get("state") != "OPEN":
+        raise PublicationHold("pull request is not open")
+    if payload.get("isDraft") is True:
+        raise PublicationHold("pull request is draft; required review/check success is not established")
+    if payload.get("mergeable") != "MERGEABLE":
+        raise PublicationHold("pull request is not MERGEABLE at the exact publication head")
+    review = payload.get("reviewDecision") or ""
+    if review in {"REVIEW_REQUIRED", "CHANGES_REQUESTED"}:
+        raise PublicationHold("required review is not satisfied")
+    if review not in {"", "APPROVED"}:
+        raise PublicationHold("pull request review decision is unknown")
+    if head_oid != candidate:
+        raise PublicationHold("pull request head does not match the exact candidate commit")
+    return {"number": number, "url": url, "head": head_oid}
+
+
+def _required_checks_passed(repo: str, pr_number: int) -> None:
+    raw = _github_cli(
+        "pr", "checks", str(pr_number), "--repo", repo, "--required",
+        "--json", "name,state,bucket",
+    )
+    checks = _load_json_payload(raw, noun="required check observation")
+    if not isinstance(checks, list) or not checks:
+        raise PublicationHold("required hosted checks have not started or are not reported")
+    for check in checks:
+        if not isinstance(check, dict):
+            raise PublicationHold("required check observation is malformed")
+        state = str(check.get("state") or "")
+        bucket = str(check.get("bucket") or "")
+        if state != "SUCCESS" or bucket != "pass":
+            raise PublicationHold(
+                f"required hosted check {check.get('name')!r} has not succeeded"
+            )
+
+
+def _ensure_pull_request(repo: str, head: str, *, title: str, body: str) -> None:
+    listed = _load_json_payload(
+        _github_cli(
+            "pr", "list", "--repo", repo, "--head", head, "--base", "main",
+            "--state", "open", "--json", "number,url,headRefOid,isDraft",
+        ),
+        noun="pull request list",
+    )
+    if isinstance(listed, list) and listed:
+        return
+    _github_cli(
+        "pr", "create", "--repo", repo, "--base", "main", "--head", head,
+        "--title", title, "--body", body,
+    )
+
+
+def _publish_through_required_pull_request(
+    integration: Path, *, remote: str, ident: str, candidate: str, main: str,
+    board_id: str,
+) -> dict[str, str]:
+    """Push an isolated branch and merge only through a qualified GitHub PR."""
+    if candidate == main:
+        raise PublicationHold(f"{ident}: candidate commit is already GitHub main")
+    branch = _publication_branch(board_id, ident, candidate)
+    _push_isolated_branch(integration, remote, candidate, branch)
+    repo = _github_repository_slug(remote)
+    title = f"Complete {board_id}: integrate accepted {ident} work"
+    body = (
+        f"Fleet publication of accepted `{ident}` commit `{candidate}` onto GitHub main.\n"
+        "Merge only after required checks and reviews succeed for this exact head."
+    )
+    _ensure_pull_request(repo, branch, title=title, body=body)
+    observation = _observe_pull_request(repo, branch, candidate)
+    _required_checks_passed(repo, observation["number"])
+    # Recheck the exact head immediately before merge; stale observations cannot merge.
+    observation = _observe_pull_request(repo, branch, candidate)
+    _github_cli(
+        "pr", "merge", str(observation["number"]), "--repo", repo, "--merge",
+        "--match-head-commit", candidate,
+    )
+    observed = _fetch_main(integration, remote, ident)
+    if not _ancestor(integration, candidate, observed):
+        raise PublicationHold(f"{ident}: merged pull request is not reachable from GitHub main")
+    return {
+        "published_head": observed,
+        "publication_branch": branch,
+        "pull_request": observation["url"],
+    }
 
 
 def _github_origin(root: Path) -> str:
@@ -328,16 +512,25 @@ def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) 
                 if _source_heads(repositories) != heads:
                     raise PublicationHold("accepted source changed during publication")
                 _completion_gate(manifest, heads)
-                # Fetch again to detect movement during validation. The subsequent
-                # normal push provides Git's final server-side concurrency check.
+                # Fetch again to detect movement during validation. Publication
+                # then goes through an isolated branch and a qualified PR merge.
                 if _fetch_main(root, remote, ident) != main:
                     raise PublicationHold(f"{ident}: GitHub main advanced during validation; retry required")
-                _git(integration, "push", remote, f"{candidate}:refs/heads/main")
+                publication = _publish_through_required_pull_request(
+                    integration, remote=remote, ident=ident, candidate=candidate,
+                    main=main, board_id=str(manifest["board_id"]),
+                )
                 observed = _fetch_main(root, remote, ident)
+                if observed != publication["published_head"]:
+                    raise PublicationHold(f"{ident}: GitHub main moved after the qualified pull request merge")
                 if not _ancestor(root, candidate, observed):
                     raise PublicationHold(f"{ident}: published commit is not reachable from GitHub main")
-                row.update(status="published", published_head=candidate)
-                published[ident] = candidate
+                row.update(
+                    status="published", published_head=observed,
+                    publication_branch=publication["publication_branch"],
+                    pull_request=publication["pull_request"],
+                )
+                published[ident] = observed
                 _atomic_json(state / "publication.json", receipt)
             receipt["status"] = "published"
         except (PublicationHold, OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as exc:

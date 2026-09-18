@@ -38,10 +38,20 @@ else:
     _custody_spec.loader.exec_module(writer_custody)
 
 SCHEMA = "ipfs_accelerate_py/taskboard-fleet-live-probe@1"
+STORAGE_SCHEMA = "agent-supervisor/storage-diagnostics@1"
+NATIVE_STATUS_FAILURE_SCHEMA = "ipfs_accelerate_py/native-status-failure-evidence@1"
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_INDEX_BYTES = 2 * 1024 * 1024
+DEFAULT_MIN_AVAILABLE_BYTES = 10 * 1024 * 1024 * 1024
+DEFAULT_MIN_AVAILABLE_PERCENT = 2
 COMPLETED = frozenset({"complete", "completed", "done", "accepted", "succeeded"})
 BLOCKED = frozenset({"blocked", "quarantined", "failed", "error"})
+# Kernel writeback/wait channels. Coding repair cannot unstick these; the
+# watchdog observes until they clear or persist past the stall deadline.
+_IO_WAIT_CHANNELS = frozenset({
+    "__flush_work", "flush_work", "bit_wait_io", "filemap_fdatawait",
+    "folio_wait_bit_common", "io_schedule", "wait_on_page_bit",
+})
 PROVIDER_MODULES = frozenset({
     "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
     "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner",
@@ -176,14 +186,133 @@ def _public_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
     ) if key in identity}
 
 
+def _io_wait_channel(channel: Any) -> bool:
+    name = str(channel or "").strip()
+    if not name:
+        return False
+    lowered = name.casefold()
+    return (
+        lowered in _IO_WAIT_CHANNELS
+        or lowered.endswith("flush_work")
+        or lowered.startswith("blk_")
+        or "io_schedule" in lowered
+        or "wait_on_page" in lowered
+        or "folio_wait" in lowered
+    )
+
+
 def _process_condition(identity: Mapping[str, Any]) -> str:
     """Report a kernel observation, never infer death or permission to signal."""
     state = identity.get("process_state")
     if state in {"T", "t"}:
         return "stopped"
     if state == "D":
+        if _io_wait_channel(identity.get("wait_channel")):
+            return "uninterruptible_io_wait"
         return "uninterruptible"
     return ""
+
+
+def _storage_floor(board: Mapping[str, Any]) -> tuple[int, float]:
+    raw_bytes = board.get("min_available_bytes", DEFAULT_MIN_AVAILABLE_BYTES)
+    raw_percent = board.get("min_available_percent", DEFAULT_MIN_AVAILABLE_PERCENT)
+    if type(raw_bytes) is not int or raw_bytes < 0:
+        raw_bytes = DEFAULT_MIN_AVAILABLE_BYTES
+    if type(raw_percent) not in (int, float) or isinstance(raw_percent, bool) or raw_percent < 0:
+        raw_percent = DEFAULT_MIN_AVAILABLE_PERCENT
+    return raw_bytes, float(raw_percent)
+
+
+def _filesystem_observation(path: Path, *, min_bytes: int, min_percent: float) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": str(path), "min_available_bytes": min_bytes,
+        "min_available_percent": min_percent, "reason_codes": [],
+    }
+    try:
+        usage = os.statvfs(path)
+    except OSError:
+        result.update(status="unavailable", reason_codes=["statvfs_failed"])
+        return result
+    capacity = int(usage.f_frsize) * int(usage.f_blocks)
+    available = int(usage.f_frsize) * int(usage.f_bavail)
+    percent = (100.0 * available / capacity) if capacity > 0 else 0.0
+    reasons = []
+    if available < min_bytes:
+        reasons.append("below_min_available_bytes")
+    if percent < min_percent:
+        reasons.append("below_min_available_percent")
+    result.update(
+        available_bytes=available, available_percent=percent, capacity_bytes=capacity,
+        reason_codes=reasons, status="healthy" if not reasons else "below_floor",
+    )
+    return result
+
+
+def _git_worktree_observation(worktree: Path) -> dict[str, Any]:
+    marker = worktree / ".git"
+    result: dict[str, Any] = {
+        "worktree": str(worktree), "git_marker": str(marker),
+        "reason_codes": [], "status": "healthy",
+    }
+    try:
+        if marker.is_symlink() or not marker.exists():
+            result.update(status="unavailable", reason_codes=["git_marker_unavailable"])
+            return result
+        if marker.is_dir():
+            result.update(git_dir=str(marker), common_dir=str(marker))
+            return result
+        text = marker.read_text(encoding="utf-8", errors="replace")[:4096]
+        if not text.startswith("gitdir:"):
+            result.update(status="unavailable", reason_codes=["git_marker_unavailable"])
+            return result
+        git_dir = Path(text.split(":", 1)[1].strip())
+        if not git_dir.is_absolute():
+            git_dir = (worktree / git_dir)
+        git_dir = git_dir.resolve(strict=False)
+        result["git_dir"] = str(git_dir)
+        common = git_dir / "commondir"
+        if common.is_file() and not common.is_symlink():
+            relative = common.read_text(encoding="utf-8", errors="replace").strip()
+            common_dir = Path(relative) if Path(relative).is_absolute() else git_dir / relative
+            result["common_dir"] = str(common_dir.resolve(strict=False))
+        else:
+            result["common_dir"] = str(git_dir)
+        return result
+    except OSError:
+        result.update(status="unavailable", reason_codes=["git_marker_unreadable"])
+        return result
+
+
+def observe_storage(board: Mapping[str, Any]) -> dict[str, Any]:
+    """Bound filesystem/worktree headroom. This is diagnostic, not completion."""
+    min_bytes, min_percent = _storage_floor(board)
+    paths: list[Path] = []
+    for key in ("cwd", "state_root"):
+        value = board.get(key)
+        if type(value) is str and value:
+            path = Path(value)
+            if path not in paths:
+                paths.append(path)
+    filesystems = [_filesystem_observation(path, min_bytes=min_bytes, min_percent=min_percent)
+                   for path in paths]
+    worktrees = []
+    cwd = board.get("cwd")
+    if type(cwd) is str and cwd:
+        worktrees.append(_git_worktree_observation(Path(cwd)))
+    reasons = [code for item in (*filesystems, *worktrees) for code in item.get("reason_codes", [])]
+    if any(item.get("status") == "unavailable" for item in filesystems):
+        status = "unavailable"
+    elif any(item.get("status") == "below_floor" for item in filesystems):
+        status = "below_floor"
+    elif reasons:
+        status = "degraded"
+    else:
+        status = "healthy"
+    return {
+        "schema": STORAGE_SCHEMA, "handling": "diagnostic_only", "status": status,
+        "reason_codes": sorted(set(str(code) for code in reasons)),
+        "filesystems": filesystems, "git_worktrees": worktrees,
+    }
 
 
 def _flag(argv: list[str], flag: str) -> str:
@@ -201,6 +330,42 @@ def _lane_process(pid: Any, lane_dir: Path, prefix: str, expected_cwd: str) -> d
             or _flag(argv, "--state-prefix") != prefix):
         return {}
     return identity
+
+
+def _parse_status_json(raw: bytes) -> dict[str, Any]:
+    """Closed JSON objects only. Operator error text is never inferred from fragments."""
+    if not raw:
+        return {}
+    try:
+        return _object(json.loads(raw))
+    except (ValueError, RecursionError, UnicodeDecodeError):
+        return {}
+
+
+def _native_status_stream_evidence(raw: bytes) -> dict[str, Any]:
+    """Hash the exact stream. The bytes themselves stay out of probe output."""
+    return {
+        "available": True,
+        "observed_bytes": len(raw),
+        "sample_complete": True,
+        "sample_sha256": hashlib.sha256(raw).hexdigest(),
+        "sampled_bytes": len(raw),
+    }
+
+
+def _native_status_failure_evidence(
+    code: int, stdout: bytes, stderr: bytes,
+) -> dict[str, Any]:
+    return {
+        "schema": NATIVE_STATUS_FAILURE_SCHEMA,
+        "completion_authority": False,
+        "diagnostic_only": True,
+        "retry_authority": False,
+        "reason": "native_status_nonzero",
+        "returncode": code,
+        "stdout": _native_status_stream_evidence(stdout),
+        "stderr": _native_status_stream_evidence(stderr),
+    }
 
 
 def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
@@ -243,12 +408,23 @@ def _status_command(board: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
                     return {}, "native_status_cleanup_timeout"
                 return {}, "native_status_timeout"
             stdout.seek(0)
-            raw = stdout.read(MAX_JSON_BYTES + 1)
-            if len(raw) > MAX_JSON_BYTES:
+            stderr.seek(0)
+            raw_out = stdout.read(MAX_JSON_BYTES + 1)
+            raw_err = stderr.read(MAX_JSON_BYTES + 1)
+            if len(raw_out) > MAX_JSON_BYTES or len(raw_err) > MAX_JSON_BYTES:
                 return {}, "native_status_output_too_large"
-            result = _object(json.loads(raw))
+            result = _parse_status_json(raw_out)
+            if not result and code != 0:
+                # SPAR OperatorError envelopes are published on stderr.
+                result = _parse_status_json(raw_err)
             if not result:
-                return {}, "native_status_invalid_json"
+                return {}, "native_status_invalid_json" if (raw_out or raw_err) else "native_status_failed"
+            if code != 0:
+                result = {
+                    **result,
+                    "native_status_failure": _native_status_failure_evidence(
+                        code, raw_out, raw_err),
+                }
             return result, "" if code == 0 else "native_status_nonzero"
         except (OSError, ValueError, TypeError):
             return {}, "native_status_failed"
@@ -262,6 +438,7 @@ def _status_with_receipt_retry(
     Slow authenticated queries can leave a gap between receipt expiry and the
     next publication. Only the native reader may admit the replacement. Never
     reuse a rejected sample, extend its TTL, or retry a blocked/stuck decision.
+    A closed unavailable envelope remains retryable when the operator exits 2.
     Recheck the exact owner around every invocation: some native commands open
     offline authority if called after the owner exits.
     """
@@ -273,12 +450,19 @@ def _status_with_receipt_retry(
                     and birth_matches(process_identity(expected_birth.get("pid")), expected_birth))
 
     def unavailable(native: Mapping[str, Any], error: str) -> bool:
-        return bool(not error and native.get("healthy") is False
-                    and native.get("owner_ready") is True
-                    and native.get("broker_authenticated_receipt") is False
-                    and native.get("receipt") == {}
-                    and not native.get("blocked") and not native.get("stuck")
-                    and _object(native.get("receipt_error")).get("reason")
+        # Some native operators exit 2 with the same closed unavailable
+        # envelope they publish on a zero-exit publication gap. Retry only
+        # that exact envelope; blocked/stuck/other nonzero decisions stay.
+        if error not in {"", "native_status_nonzero"}:
+            return False
+        payload = {key: value for key, value in native.items()
+                   if key != "native_status_failure"}
+        return bool(payload.get("healthy") is False
+                    and payload.get("owner_ready") is True
+                    and payload.get("broker_authenticated_receipt") is False
+                    and payload.get("receipt") == {}
+                    and not payload.get("blocked") and not payload.get("stuck")
+                    and _object(payload.get("receipt_error")).get("reason")
                     == "live_status_receipt_unavailable_or_invalid")
 
     attempts = 0
@@ -634,10 +818,13 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             fresh_projections.append(projection)
     native, command_error = ({}, "")
     native_status_attempts = 0
+    native_status_failure: dict[str, Any] | None = None
     # Several legacy status commands open the authoritative DB directly when no
     # owner is present. Never execute them during an outage.
     if source_integrity["valid"] and owner_ready and board.get("status_argv"):
         native, command_error, native_status_attempts = _status_with_receipt_retry(board, expected_birth)
+        if isinstance(native, dict) and "native_status_failure" in native:
+            native_status_failure = native.pop("native_status_failure")
         if command_error:
             reasons.append(command_error)
         if any(native.get(key) is False for key in ("ready", "healthy", "operational_ready")):
@@ -718,6 +905,18 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append(owner_writer_custody.get("reason") or "canonical_writer_lock_observation_unavailable")
         elif owner_writer_custody.get("held") is not True:
             reasons.append("canonical_writer_lock_missing")
+    try:
+        storage_diagnostics = observe_storage(board)
+    except Exception:
+        storage_diagnostics = {
+            "schema": STORAGE_SCHEMA, "handling": "diagnostic_only",
+            "status": "unavailable", "reason_codes": ["storage_observation_failed"],
+            "filesystems": [], "git_worktrees": [],
+        }
+    if storage_diagnostics.get("status") == "below_floor":
+        reasons.append("storage_below_floor")
+    elif storage_diagnostics.get("status") == "unavailable":
+        reasons.append("storage_observation_unavailable")
     if not source_integrity["valid"]:
         reasons.append("source_integrity_not_verified")
         health = "degraded"
@@ -757,7 +956,13 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "source_heads": _source_heads(board),
             "source_integrity": source_integrity,
             "completion_gate": "separate_authoritative_closeout_verification_required"},
+        "storage_diagnostics": storage_diagnostics,
     }
+    if native_status_failure:
+        result["details"]["native_status_failure"] = native_status_failure
+        result["details"]["native_status_diagnostic"] = {
+            "kind": "unavailable", "stage": "sample_not_due",
+        }
     if health == "stopped" and board.get("ensure_argv"):
         result["recovery_action"] = "ensure"
     return result

@@ -234,6 +234,112 @@ def test_transient_kernel_wait_does_not_trigger_repair_but_persistent_wait_does(
     assert not any(call["argv"][0] == "ensure" for call in runner.calls)
 
 
+def test_io_wait_uses_stall_grace_instead_of_coding_repair(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(health="degraded", busy=True,
+        reason_codes=["lane_1_daemon_process_uninterruptible_io_wait",
+                      "lane_2_daemon_process_uninterruptible_io_wait"]))
+    root = tmp_path / "watch"
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["planned_action"] == ""
+    still_flushing = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert still_flushing["planned_action"] == ""
+    assert "last_action" not in still_flushing
+    after_stall = fleet.tick_board(board, root, apply=True, runner=runner, now=161)
+    assert after_stall["last_action"] == "repair"
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+    assert not any(call["argv"][0] == "ensure" for call in runner.calls)
+
+
+def test_storage_below_floor_holds_coding_repair_without_ensure(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(
+        health="degraded", busy=False,
+        reason_codes=["storage_below_floor"],
+        storage_diagnostics={"schema": "agent-supervisor/storage-diagnostics@1",
+                             "handling": "diagnostic_only", "status": "below_floor",
+                             "reason_codes": ["below_min_available_percent"]}))
+    root = tmp_path / "watch"
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["planned_action"] == ""
+    held = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert held["planned_action"] == ""
+    assert "last_action" not in held
+    assert not any(call["argv"][0] in {"repair", "ensure"} for call in runner.calls)
+
+
+def test_mixed_uninterruptible_keeps_blocked_grace(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(health="degraded", busy=True,
+        reason_codes=["lane_0_daemon_process_uninterruptible",
+                      "lane_1_daemon_process_uninterruptible_io_wait"]))
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    mixed = fleet.tick_board(board, root, apply=True, runner=runner, now=121)
+    assert mixed["last_action"] == "repair"
+
+
+def test_storage_recovery_allows_persistent_non_io_repair(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(
+        health="degraded", busy=True,
+        reason_codes=["lane_0_daemon_process_uninterruptible", "storage_below_floor"],
+        storage_diagnostics={"status": "below_floor"}))
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert not any(call["argv"][0] == "repair" for call in runner.calls)
+    runner.observation = _observation(health="degraded", busy=True,
+        reason_codes=["lane_0_daemon_process_uninterruptible"],
+        storage_diagnostics={"status": "healthy"})
+    recovered = fleet.tick_board(board, root, apply=True, runner=runner, now=132)
+    assert recovered["last_action"] == "repair"
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+
+
+def test_native_status_reader_gap_uses_stall_grace_instead_of_coding_repair(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(
+        health="degraded", busy=False,
+        reason_codes=["native_status_nonzero"],
+        details={"owner_ready": True, "authenticated_task_observation": False}))
+    root = tmp_path / "watch"
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["planned_action"] == ""
+    still_waiting = fleet.tick_board(board, root, apply=True, runner=runner, now=121)
+    assert still_waiting["planned_action"] == ""
+    assert "last_action" not in still_waiting
+    after_stall = fleet.tick_board(board, root, apply=True, runner=runner, now=161)
+    assert after_stall["last_action"] == "repair"
+    assert [call["argv"][0] for call in runner.calls].count("repair") == 1
+    assert not any(call["argv"][0] == "ensure" for call in runner.calls)
+
+
+def test_native_status_nonzero_without_ready_owner_keeps_blocked_grace(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(
+        health="degraded", busy=False,
+        reason_codes=["native_status_nonzero"],
+        details={"owner_ready": False}))
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    persistent = fleet.tick_board(board, root, apply=True, runner=runner, now=121)
+    assert persistent["last_action"] == "repair"
+    assert not any(call["argv"][0] == "ensure" for call in runner.calls)
+
+
+def test_native_status_nonzero_with_other_faults_keeps_blocked_grace(tmp_path):
+    board = _board(tmp_path)
+    runner = Runner(_observation(
+        health="degraded", busy=True,
+        reason_codes=["native_status_nonzero", "lane_0_daemon_process_uninterruptible"],
+        details={"owner_ready": True}))
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    mixed = fleet.tick_board(board, root, apply=True, runner=runner, now=121)
+    assert mixed["last_action"] == "repair"
+
+
 def test_stopped_board_uses_ensure_only_after_grace(tmp_path):
     board = _board(tmp_path)
     runner = Runner(_observation(health="stopped", recovery_action="ensure"))

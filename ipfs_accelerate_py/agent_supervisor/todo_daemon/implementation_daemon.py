@@ -39178,6 +39178,43 @@ class PortalImplementationDaemon:
             }
         return receipts, {}
 
+    @staticmethod
+    def _queued_source_merge_reconciliation_effect_admitted(
+        event: Mapping[str, Any],
+        source: Mapping[str, Any],
+        *,
+        alias: str,
+        task_cid: str,
+        task_key: str,
+        artifacts_match: bool,
+    ) -> bool:
+        """Admit a queued-source merge_reconciled event by exact callback effect.
+
+        This is not an alternate event-name check.  The source must remain the
+        exact synchronous queued projection, the recorded reconciliation must
+        bind that source, and the caller must already have proved the recorded
+        commit artifacts.
+        """
+
+        if (
+            not artifacts_match
+            or str(source.get("type") or "")
+            != "worktree_reconciliation_candidate_queued"
+            or str(event.get("type") or "") != "merge_reconciled"
+        ):
+            return False
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+
+        return (
+            DatabasePortalExecutionBridge._exact_callback_reconciliation_for_completion_source(
+                event,
+                source,
+                alias=alias,
+                task_cid=task_cid,
+                task_key=task_key,
+            )
+        )
+
     def _record_merge_queue_callback_reconciliation(
         self,
         *,
@@ -40336,10 +40373,53 @@ class PortalImplementationDaemon:
             expected = reconciliation_payload(recorded_commit, *artifacts)
             return exact_recorded_reconciliation(event, expected)
 
+        def queued_source_effect_admitted(event: Mapping[str, Any]) -> bool:
+            """Admit one recorded queued-source reconciliation by exact effect.
+
+            The ordinary append verifier reconstructs the JSON field set.  A
+            synchronous ``worktree_reconciliation_candidate_queued`` source can
+            retain a durable ``merge_reconciled`` event whose callback binding
+            and commit artifacts still match after identity enrichment makes
+            that field-set check fail.  Changing only the accepted event name
+            would not prove this owner/queue effect.
+            """
+
+            recorded_commit = str(event.get("merge_commit") or "")
+            recorded_proof = event.get("integration_commit_proof")
+            recorded_invariant = event.get(
+                "post_merge_declared_output_invariant"
+            )
+            artifacts_match = bool(
+                re.fullmatch(r"[0-9a-f]{40}", recorded_commit) is not None
+                and isinstance(recorded_proof, Mapping)
+                and isinstance(recorded_invariant, Mapping)
+                and exact_commit_artifacts(
+                    recorded_commit,
+                    recorded_proof,
+                    recorded_invariant,
+                )
+                is not None
+            )
+            return self._queued_source_merge_reconciliation_effect_admitted(
+                event,
+                source,
+                alias=task.task_id,
+                task_cid=task_cid,
+                task_key=str(
+                    getattr(request, "canonical_task_key", "") or ""
+                ),
+                artifacts_match=artifacts_match,
+            )
+
         if related_reconciliations:
             if (
                 len(related_reconciliations) == 1
-                and admitted_reconciliation(related_reconciliations[0])
+                and (
+                    admitted_reconciliation(related_reconciliations[0])
+                    or queued_source_effect_admitted(
+                        related_reconciliations[0]
+                    )
+                )
             ):
                 return {
                     "recorded": True,
@@ -40383,7 +40463,10 @@ class PortalImplementationDaemon:
             and str(event.get("completion_source_event_id") or "")
             == source_event_id
         ]
-        if len(recorded) != 1 or not admitted_reconciliation(recorded[0]):
+        if len(recorded) != 1 or not (
+            admitted_reconciliation(recorded[0])
+            or queued_source_effect_admitted(recorded[0])
+        ):
             return {
                 "recorded": False,
                 "reason": "merge_queue_reconciliation_append_unverified",

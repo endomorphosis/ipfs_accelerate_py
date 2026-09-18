@@ -133,6 +133,9 @@ def board(tmp_path, monkeypatch):
     monkeypatch.setattr(probe, "_lane_process", lambda *args: {"pid": args[0]} if args[0] else {})
     monkeypatch.setattr(probe, "_source_heads", lambda _: {".": "a" * 40})
     monkeypatch.setattr(probe, "_provider_busy", lambda *_: [])
+    monkeypatch.setattr(probe, "observe_storage", lambda _board: {
+        "schema": probe.STORAGE_SCHEMA, "handling": "diagnostic_only",
+        "status": "healthy", "reason_codes": [], "filesystems": [], "git_worktrees": []})
 
     class Connected:
         def __enter__(self): return self
@@ -276,6 +279,101 @@ def test_process_condition_uses_same_birth_final_sample(
     assert public["wait_channel"] == "kernel_clone"
     assert public["start_time_ticks"] == 42
     assert "argv" not in public
+
+
+@pytest.mark.parametrize("channel,condition", [
+    ("kernel_clone", "uninterruptible"),
+    ("__flush_work", "uninterruptible_io_wait"),
+    ("blk_mq_halt", "uninterruptible_io_wait"),
+])
+def test_uninterruptible_io_wait_is_distinct_from_other_d_state(
+    board, monkeypatch, channel, condition,
+):
+    config, identities, _ = board
+    identities[50]["process_state"] = "S"
+    monkeypatch.setattr(probe, "_lane_process", lambda pid, *_: {
+        "pid": pid, "process_state": "D" if pid == 61 else "S",
+        "start_time_ticks": 42, "boot_id": "known-boot", "wait_channel": channel})
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"todo": 1}, "task_count": 1, "authenticated_query": True}}, ""))
+    result = probe.observe_board(config, now=1000)
+    assert f"lane_0_daemon_process_{condition}" in result["reason_codes"]
+    assert result["health"] == "degraded"
+    assert "recovery_action" not in result
+    assert result["details"]["lanes"][0]["daemon"]["wait_channel"] == channel
+
+
+def test_storage_below_floor_is_diagnostic_and_degrades_health(board, monkeypatch):
+    config, _, _ = board
+    monkeypatch.setattr(probe, "_status_command", lambda _: ({"task_authority": {
+        "status_counts": {"todo": 1}, "task_count": 1, "authenticated_query": True}}, ""))
+    monkeypatch.setattr(probe, "observe_storage", lambda _board: {
+        "schema": probe.STORAGE_SCHEMA, "handling": "diagnostic_only",
+        "status": "below_floor", "reason_codes": ["below_min_available_percent"],
+        "filesystems": [{"path": config["cwd"], "status": "below_floor",
+                         "reason_codes": ["below_min_available_percent"]}],
+        "git_worktrees": []})
+    result = probe.observe_board(config, now=1000)
+    assert result["health"] == "degraded"
+    assert "storage_below_floor" in result["reason_codes"]
+    assert result["storage_diagnostics"]["status"] == "below_floor"
+    assert result["storage_diagnostics"]["handling"] == "diagnostic_only"
+    assert result["complete"] is False
+
+
+def test_observe_storage_reports_statvfs_and_gitdir_without_scanning(tmp_path):
+    worktree = tmp_path / "board"
+    worktree.mkdir()
+    git_dir = tmp_path / "git" / "worktrees" / "board"
+    git_dir.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {git_dir}\n")
+    (git_dir / "commondir").write_text("../..\n")
+    state = tmp_path / "state"
+    state.mkdir()
+    class Usage:
+        f_frsize = 4096
+        f_blocks = 1000
+        f_bavail = 500
+    original = probe.os.statvfs
+    def fake_statvfs(path):
+        del path
+        return Usage()
+    probe.os.statvfs = fake_statvfs
+    try:
+        observed = probe.observe_storage({
+            "cwd": str(worktree), "state_root": str(state),
+            "min_available_bytes": 1024, "min_available_percent": 2,
+        })
+    finally:
+        probe.os.statvfs = original
+    assert observed["schema"] == probe.STORAGE_SCHEMA
+    assert observed["status"] == "healthy"
+    assert observed["handling"] == "diagnostic_only"
+    assert [item["path"] for item in observed["filesystems"]] == [str(worktree), str(state)]
+    assert observed["git_worktrees"][0]["git_dir"] == str(git_dir)
+    assert observed["git_worktrees"][0]["common_dir"] == str((git_dir / "../..").resolve())
+
+
+def test_observe_storage_marks_below_floor(tmp_path):
+    worktree = tmp_path / "board"
+    worktree.mkdir()
+    class Usage:
+        f_frsize = 4096
+        f_blocks = 1000
+        f_bavail = 1
+    original = probe.os.statvfs
+    probe.os.statvfs = lambda path: Usage()
+    try:
+        observed = probe.observe_storage({
+            "cwd": str(worktree),
+            "min_available_bytes": 10 * 1024 * 1024,
+            "min_available_percent": 2,
+        })
+    finally:
+        probe.os.statvfs = original
+    assert observed["status"] == "below_floor"
+    assert "below_min_available_bytes" in observed["reason_codes"]
+    assert "below_min_available_percent" in observed["reason_codes"]
 
 
 @pytest.mark.parametrize("role", ["owner", "supervisor", "daemon"])
@@ -539,6 +637,7 @@ def test_native_receipt_retry_refuses_changed_owner_birth(board, monkeypatch, re
     ({"healthy": True}, ""), ({"blocked": True}, ""), ({"stuck": True}, ""),
     ({"owner_ready": False}, ""), ({"receipt_error": {}}, ""),
     ({"receipt": {"samples": []}}, ""), ({}, "native_status_timeout"),
+    ({"blocked": True}, "native_status_nonzero"),
 ])
 def test_native_receipt_retry_does_not_mask_other_health_decisions(board, monkeypatch, receipt_clock, change, error):
     config, identities, _ = board
@@ -578,6 +677,101 @@ def test_native_receipt_retry_preserves_new_stuck_decision(board, monkeypatch, r
     assert result["health"] == "stalled"
     assert result["details"]["native_status_attempts"] == 2
     assert result["complete"] is False
+
+
+def test_native_receipt_retry_nonzero_unavailable_envelope_is_publication_gap(
+    board, monkeypatch, receipt_clock,
+):
+    config, _, _ = board
+    config = {**config, "board_id": "aseh"}
+    failure = probe._native_status_failure_evidence(2, b'{"healthy":false}', b"")
+    replies = iter([
+        ({**_unavailable_native_receipt(), "native_status_failure": failure},
+         "native_status_nonzero"),
+        (_aseh_native_receipt(cursor=6653), ""),
+    ])
+    calls = []
+    def status(config):
+        calls.append(config)
+        return next(replies)
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board(config, now=1000)
+    assert result["details"]["event_cursor"] == 6653
+    assert result["details"]["authenticated_task_observation"] is True
+    assert result["details"]["native_status_attempts"] == 2
+    assert "native_status_nonzero" not in result["reason_codes"]
+    assert result["details"].get("native_status_failure") is None
+    assert len(calls) == 2
+
+
+def test_native_status_nonzero_operator_error_is_not_receipt_retry(
+    board, monkeypatch, receipt_clock,
+):
+    config, _, _ = board
+    calls = []
+    def status(config):
+        calls.append(config)
+        return {"ok": False, "error_class": "OperatorError",
+                "error": "native closeout status requires a live owner"}, "native_status_nonzero"
+    monkeypatch.setattr(probe, "_status_command", status)
+    result = probe.observe_board(config, now=1000)
+    assert len(calls) == 1
+    assert receipt_clock[0] == 0
+    assert "native_status_nonzero" in result["reason_codes"]
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["complete"] is False
+
+
+def test_native_status_parses_stderr_operator_envelope_when_stdout_empty(monkeypatch, tmp_path):
+    payload = {"ok": False, "command": "authoritative-status",
+               "error_class": "OperatorError",
+               "error": "native closeout status requires a live owner"}
+    raw = json.dumps(payload, sort_keys=True).encode()
+    class Child:
+        def wait(self, timeout):
+            return 2
+    def start(argv, **kwargs):
+        kwargs["stderr"].write(raw)
+        return Child()
+    monkeypatch.setattr(probe.subprocess, "Popen", start)
+    result, error = probe._status_command(
+        {"status_argv": ["native-status"], "cwd": str(tmp_path)})
+    assert error == "native_status_nonzero"
+    assert result["ok"] is False
+    assert result["error_class"] == "OperatorError"
+    evidence = result["native_status_failure"]
+    assert evidence["schema"] == probe.NATIVE_STATUS_FAILURE_SCHEMA
+    assert evidence["returncode"] == 2
+    assert evidence["completion_authority"] is False
+    assert evidence["stdout"]["observed_bytes"] == 0
+    assert evidence["stdout"]["sample_sha256"] == probe.hashlib.sha256(b"").hexdigest()
+    assert evidence["stderr"]["observed_bytes"] == len(raw)
+    assert evidence["stderr"]["sample_sha256"] == probe.hashlib.sha256(raw).hexdigest()
+    assert payload["error"] not in json.dumps(evidence)
+
+
+def test_native_status_failure_evidence_is_copied_into_probe_details(
+    board, monkeypatch,
+):
+    config, _, _ = board
+    raw_out = b'{"ok":false,"error_class":"OperatorError"}'
+    failure = probe._native_status_failure_evidence(2, raw_out, b"")
+    monkeypatch.setattr(probe, "_status_command", lambda _: (
+        {"ok": False, "error_class": "OperatorError",
+         "native_status_failure": failure},
+        "native_status_nonzero"))
+    result = probe.observe_board(config, now=1000)
+    evidence = result["details"]["native_status_failure"]
+    assert evidence["returncode"] == 2
+    assert evidence["stdout"]["observed_bytes"] == len(raw_out)
+    assert evidence["stdout"]["sample_sha256"] == probe.hashlib.sha256(raw_out).hexdigest()
+    assert result["details"]["native_status_diagnostic"] == {
+        "kind": "unavailable", "stage": "sample_not_due",
+    }
+    assert raw_out.decode() not in json.dumps(result["details"]["native_status_failure"])
+    assert "native_status_nonzero" in result["reason_codes"]
+    assert result["details"]["native_status_attempts"] == 1
+    assert result["details"]["authenticated_task_observation"] is False
 
 
 @pytest.mark.parametrize("log_age,provider_parent,log_lane,expected,scan_seconds", [

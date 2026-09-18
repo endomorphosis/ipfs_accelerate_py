@@ -22,10 +22,20 @@ Process observations include the Linux state and, when readable, the kernel
 wait channel. A stopped (`T`/`t`) or uninterruptible (`D`) owner, supervisor or
 daemon degrades health even when supervisor heartbeats remain fresh. Its exact
 live birth stays visible; the probe does not treat it as a missing process.
-Persistent conditions enter the existing repair queue after the configured
-grace period, while transient kernel waits can clear before repair. Holds and
-native recovery admission still apply, and providers in other lanes remain
-visible. These diagnostics do not authorize signalling or callback replay.
+Kernel writeback waits such as `__flush_work` are reported as
+`uninterruptible_io_wait`. Those recover by completing I/O, so the watchdog
+uses the stall deadline instead of the shorter blocked grace and still does
+not signal the process. Other persistent `D` states keep the blocked grace.
+Storage diagnostics are observational: a below-floor or unavailable filesystem
+holds coding repair until headroom returns, and never authorizes deleting
+workspaces. Transient kernel waits can still clear before repair. A live owner
+whose only probe reason is `native_status_nonzero` or
+`native_receipt_unavailable_after_retry` is a status-reader publication gap:
+the probe retries the closed unavailable envelope even when the operator exits
+2, and the watchdog uses the stall deadline instead of the shorter blocked
+grace. That does not authorize ensure, a replacement owner, or completion.
+Holds and native recovery admission still apply, and providers in other lanes
+remain visible. These diagnostics do not authorize signalling or callback replay.
 
 ## Operation
 

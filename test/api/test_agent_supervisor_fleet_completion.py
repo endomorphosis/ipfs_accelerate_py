@@ -69,8 +69,111 @@ def isolated_git_environment(monkeypatch):
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
 
 
-def local_publication(monkeypatch):
+class FakeGitHub:
+    """Local GitHub stand-in: required checks/reviews, never a production main push."""
+
+    def __init__(self):
+        self.commands: list[tuple[str, ...]] = []
+        self.slugs: dict[str, Path] = {}
+        self.prs: dict[tuple[str, str], dict] = {}
+        self.next_number = 1
+        self.required_checks = [{"name": "ci", "state": "SUCCESS", "bucket": "pass"}]
+        self.review_decision = ""
+        self.mergeable = "MERGEABLE"
+        self.draft = False
+        self.billing = False
+        self.head_override = None
+        self.state = "OPEN"
+
+    def bind(self, slug: str, origin: str | Path) -> None:
+        self.slugs[slug] = Path(origin)
+
+    def _flag(self, args: tuple[str, ...], name: str) -> str:
+        return args[args.index(name) + 1] if name in args else ""
+
+    def _pr(self, repo: str, head: str) -> dict:
+        pr = self.prs.get((repo, head))
+        if pr is None:
+            raise fleet.PublicationHold("pull request is absent")
+        head_oid = self.head_override or pr["headRefOid"]
+        return {
+            **pr,
+            "isDraft": self.draft,
+            "mergeable": self.mergeable,
+            "reviewDecision": self.review_decision,
+            "headRefOid": head_oid,
+            "state": self.state,
+        }
+
+    def _git_dir(self, origin: Path) -> Path:
+        if (origin / "HEAD").exists() and (origin / "refs").exists():
+            return origin
+        if (origin / ".git").exists():
+            return origin / ".git"
+        return origin
+
+    def cli(self, *args: str, timeout: float = 120) -> str:
+        self.commands.append(args)
+        if fleet._FORBIDDEN_GITHUB_FLAGS & set(args):
+            raise fleet.PublicationHold("publication must not use a GitHub admin or ruleset bypass")
+        if self.billing:
+            raise fleet.PublicationHold(
+                "GitHub required checks cannot start: account billing, quota, or Actions outage"
+            )
+        repo = self._flag(args, "--repo")
+        if args[:2] == ("pr", "list"):
+            head = self._flag(args, "--head")
+            pr = self.prs.get((repo, head))
+            return json.dumps([] if pr is None else [self._pr(repo, head)])
+        if args[:2] == ("pr", "create"):
+            head = self._flag(args, "--head")
+            number = self.next_number
+            self.next_number += 1
+            url = f"https://github.com/{repo}/pull/{number}"
+            # The isolated branch was already pushed; read its tip from the bound origin.
+            origin = self.slugs[repo]
+            head_oid = subprocess.check_output(
+                ["git", "--git-dir", str(self._git_dir(origin)), "rev-parse", f"refs/heads/{head}"],
+                text=True, stderr=subprocess.DEVNULL,
+            ).strip()
+            self.prs[(repo, head)] = {
+                "number": number, "url": url, "headRefOid": head_oid, "head": head,
+            }
+            return url
+        if args[:2] == ("pr", "view"):
+            return json.dumps(self._pr(repo, args[2]))
+        if args[:2] == ("pr", "checks"):
+            return json.dumps(self.required_checks)
+        if args[:2] == ("pr", "merge"):
+            if "--merge" not in args or "--match-head-commit" not in args:
+                raise fleet.PublicationHold("merge requires --merge --match-head-commit")
+            sha = self._flag(args, "--match-head-commit")
+            number = int(args[2])
+            match = next(pr for pr in self.prs.values() if pr["number"] == number)
+            observed = self._pr(repo, match["head"])
+            if observed["headRefOid"] != sha:
+                raise fleet.PublicationHold("pull request head does not match the exact candidate commit")
+            subprocess.check_call(
+                ["git", "--git-dir", str(self._git_dir(self.slugs[repo])),
+                 "update-ref", "refs/heads/main", sha],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            return ""
+        raise fleet.PublicationHold(f"unsupported GitHub CLI argv {args!r}")
+
+
+def local_publication(monkeypatch, github: FakeGitHub | None = None) -> FakeGitHub:
+    github = github or FakeGitHub()
     monkeypatch.setattr(fleet, "_github_origin", lambda root: git(root, "remote", "get-url", "origin"))
+
+    def slug(origin: str) -> str:
+        ident = f"endomorphosis/{Path(origin).name.replace('.git', '') or 'repo'}"
+        github.bind(ident, origin)
+        return ident
+
+    monkeypatch.setattr(fleet, "_github_repository_slug", slug)
+    monkeypatch.setattr(fleet, "_github_cli", github.cli)
+    return github
 
 
 def test_publishes_accepted_source_and_retries_without_duplicate_commit(tmp_path, monkeypatch):
@@ -280,3 +383,120 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
         time.sleep(.02)
     else:
         pytest.fail("timed-out command left a live descendant")
+
+
+def test_successful_publish_pushes_isolated_branch_not_main(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    github = local_publication(monkeypatch)
+    git_calls = []
+    real_git = fleet._git
+
+    def spy(path, *args, timeout=300):
+        git_calls.append(args)
+        return real_git(path, *args, timeout=timeout)
+
+    monkeypatch.setattr(fleet, "_git", spy)
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "published", result
+    pushes = [args for args in git_calls if args and args[0] == "push"]
+    assert pushes
+    assert any("refs/heads/fleet-publication/" in arg for args in pushes for arg in args)
+    assert all(
+        "refs/heads/main" not in arg and arg not in {"main", "HEAD:main"}
+        for args in pushes for arg in args
+    )
+    assert any("--match-head-commit" in command for command in github.commands)
+    assert any(command[:2] == ("pr", "merge") for command in github.commands)
+    assert all("--admin" not in command for command in github.commands)
+    row = result["repositories"][0]
+    assert row["pull_request"].startswith("https://github.com/")
+    assert row["publication_branch"].startswith("fleet-publication/BOARD/repo/")
+    assert git(remote, "show", "main:feature.txt") == "accepted feature"
+
+
+def test_github_cli_rejects_admin_bypass_before_starting_gh(monkeypatch):
+    monkeypatch.setattr(fleet, "_communicate", lambda *args, **kwargs: pytest.fail("gh must not start"))
+    with pytest.raises(fleet.PublicationHold, match="admin or ruleset bypass"):
+        fleet._github_cli("pr", "merge", "1", "--admin", "--merge")
+
+
+def test_billing_lock_holds_without_merging(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    baseline = git(remote, "rev-parse", "main")
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    github = local_publication(monkeypatch)
+    github.billing = True
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "held"
+    assert "billing" in result["reason"]
+    assert git(remote, "rev-parse", "main") == baseline
+    assert not any(command[:2] == ("pr", "merge") for command in github.commands)
+
+
+@pytest.mark.parametrize("field,value,expected", [
+    ("draft", True, "draft"),
+    ("mergeable", "CONFLICTING", "MERGEABLE"),
+    ("review_decision", "REVIEW_REQUIRED", "required review"),
+    ("review_decision", "CHANGES_REQUESTED", "required review"),
+    ("required_checks", [], "have not started"),
+    ("required_checks", [{"name": "ci", "state": "PENDING", "bucket": "pending"}], "has not succeeded"),
+    ("required_checks", [{"name": "ci", "state": "FAILURE", "bucket": "fail"}], "has not succeeded"),
+])
+def test_unqualified_pull_request_never_merges(tmp_path, monkeypatch, field, value, expected):
+    root, remote = repository(tmp_path)
+    baseline = git(remote, "rev-parse", "main")
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    github = local_publication(monkeypatch)
+    setattr(github, field if field != "draft" else "draft", value)
+    if field == "draft":
+        github.draft = True
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "held", result
+    assert expected in result["reason"]
+    assert git(remote, "rev-parse", "main") == baseline
+    assert not any(command[:2] == ("pr", "merge") for command in github.commands)
+
+
+def test_head_changed_before_merge_is_held(tmp_path, monkeypatch):
+    root, remote = repository(tmp_path)
+    baseline = git(remote, "rev-parse", "main")
+    commit(root, "accepted feature")
+    config, _ = manifest(tmp_path, {"repo": root})
+    github = local_publication(monkeypatch)
+    github.head_override = "0" * 40
+    result = fleet.publish_completed_board(config, tmp_path / "state")
+    assert result["status"] == "held"
+    assert "head does not match" in result["reason"]
+    assert git(remote, "rev-parse", "main") == baseline
+    assert not any(command[:2] == ("pr", "merge") for command in github.commands)
+
+
+def test_direct_main_push_guard_rejects_refspecs():
+    with pytest.raises(fleet.PublicationHold, match="must not push directly"):
+        fleet._reject_direct_main_push(("push", "origin", "abc:refs/heads/main"))
+    with pytest.raises(fleet.PublicationHold, match="must not push directly"):
+        fleet._reject_direct_main_push(("push", "origin", "main"))
+    fleet._reject_direct_main_push(("push", "origin", "abc:refs/heads/fleet-publication/x"))
+    fleet._reject_direct_main_push(("fetch", "origin", "refs/heads/main:refs/remotes/x/main"))
+
+
+@pytest.mark.parametrize("origin,slug", [
+    ("git@github.com:endomorphosis/ipfs_accelerate_py", "endomorphosis/ipfs_accelerate_py"),
+    ("https://github.com/endomorphosis/lift_coding", "endomorphosis/lift_coding"),
+    ("https://github.com/endomorphosis/ipfs_accelerate_py.git", "endomorphosis/ipfs_accelerate_py"),
+])
+def test_github_repository_slug_parses_supported_origins(origin, slug):
+    assert fleet._github_repository_slug(origin) == slug
+
+
+def test_github_cli_classifies_billing_stderr(monkeypatch):
+    monkeypatch.setattr(
+        fleet, "_communicate",
+        lambda argv, cwd, timeout: (1, "", "The job was not started because your account is locked due to a billing issue."),
+    )
+    with pytest.raises(fleet.PublicationHold, match="billing, quota, or Actions outage"):
+        fleet._github_cli("pr", "checks", "1", "--repo", "owner/repo", "--required")

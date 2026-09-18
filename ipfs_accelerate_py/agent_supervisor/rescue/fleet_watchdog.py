@@ -229,6 +229,54 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     return state
 
 
+def _storage_diagnostics(observation: dict[str, Any]) -> dict[str, Any]:
+    storage = observation.get("storage_diagnostics")
+    if isinstance(storage, dict):
+        return storage
+    details = observation.get("details")
+    if isinstance(details, dict) and isinstance(details.get("storage_diagnostics"), dict):
+        return details["storage_diagnostics"]
+    return {}
+
+
+def storage_blocks_repair(observation: dict[str, Any]) -> bool:
+    """Coding repair cannot allocate when the probe reports a storage floor."""
+    status = _storage_diagnostics(observation).get("status")
+    return status in {"below_floor", "unavailable"}
+
+
+def io_wait_only(observation: dict[str, Any]) -> bool:
+    """Kernel writeback waits recover by completing I/O, not by coding repair."""
+    reasons = [str(reason) for reason in observation.get("reason_codes") or []]
+    return bool(reasons) and all(
+        reason.endswith("_process_uninterruptible_io_wait") for reason in reasons
+    )
+
+
+NATIVE_STATUS_READER_GAPS = frozenset({
+    "native_status_nonzero",
+    "native_receipt_unavailable_after_retry",
+})
+
+
+def native_status_reader_gap(observation: dict[str, Any]) -> bool:
+    """A live owner with only a status-reader gap is not a coding defect.
+
+    The probe retries a closed unavailable receipt envelope, including when
+    the operator exits 2. Coding repair cannot admit that reader, so the
+    stall deadline is used until a later probe recovers or another fault
+    appears. Owner readiness alone never authorizes ensure or completion.
+    """
+    reasons = [str(reason) for reason in observation.get("reason_codes") or []]
+    details = observation.get("details")
+    details = details if isinstance(details, dict) else {}
+    return bool(
+        reasons
+        and details.get("owner_ready") is True
+        and all(reason in NATIVE_STATUS_READER_GAPS for reason in reasons)
+    )
+
+
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
     if now < state.get("next_action_at", 0):
@@ -237,7 +285,12 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         return "publish" if board.get("publication") else "completion_review"
     if health == "healthy":
         return ""
-    grace = board.get("failure_grace_seconds", 60) if health in {"stopped", "unknown"} else board.get("blocked_grace_seconds", 300)
+    if io_wait_only(state["observation"]) or native_status_reader_gap(state["observation"]):
+        grace = board.get("stall_seconds", 900)
+    elif health in {"stopped", "unknown"}:
+        grace = board.get("failure_grace_seconds", 60)
+    else:
+        grace = board.get("blocked_grace_seconds", 300)
     if now - state.get("incident_since", now) < grace:
         return ""
     # An inconclusive probe cannot authorize relaunching an already-live owner.
@@ -245,6 +298,8 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if (recovery == "ensure" and board.get("ensure") and not hold_paths(board)
             and state.get("attempts", 0) < board.get("max_ensure_attempts", 2)):
         return "ensure"
+    if storage_blocks_repair(state["observation"]):
+        return ""
     return "repair"
 
 
