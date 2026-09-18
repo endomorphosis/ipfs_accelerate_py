@@ -355,270 +355,270 @@
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "formalization and domain IR adapters",
+      "owner_role": "semantic_and_formal_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
         }
       ],
-      "name": "formalization and domain IR adapters",
-      "owner_role": "semantic_and_formal_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_datasets_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "Availability differs by domain and logic family; adapters must return typed unavailability instead of claiming universal coverage."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "ir_core canonicalization/provenance/evidence",
+      "owner_role": "semantic_and_formal_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/evidence.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/provenance.py"
         }
       ],
-      "name": "ir_core canonicalization/provenance/evidence",
-      "owner_role": "semantic_and_formal_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_datasets_py",
-      "status": "available",
-      "verified_gap": ""
+      "status": "missing",
+      "verified_gap": "No current-tree implementation evidence for this named surface."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "software verification, Tactician, Hammer and proof obligations",
+      "owner_role": "semantic_and_formal_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/hammers"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician"
         }
       ],
-      "name": "software verification, Tactician, Hammer and proof obligations",
-      "owner_role": "semantic_and_formal_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_datasets_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "Contracts and backends are present; each external prover/backend remains capability-probed and requires native reconstruction or deterministic replay."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "software-contract semantic index and semantic state",
+      "owner_role": "semantic_and_formal_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
         }
       ],
-      "name": "software-contract semantic index and semantic state",
-      "owner_role": "semantic_and_formal_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_datasets_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "Current repository/symbol/test semantics are reusable, but the complete SAWM static/dynamic contract family is not present."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "CID, IPLD and CAR",
+      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/ipfs_multiformats.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/ipld/car.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/ipld/dag_pb.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/ipld/unixfs.py"
         }
       ],
-      "name": "CID, IPLD and CAR",
-      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_kit_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "SAWM must compose exact verified-store behavior and may not infer all desired codec/profile guarantees from general handlers."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "GraphRAG projection and hybrid retrieval",
+      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/graphrag/projections.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/graphrag/retrieval.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py"
         }
       ],
-      "name": "GraphRAG projection and hybrid retrieval",
-      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_kit_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "Existing results require SAWM exact resolution, immutable model/profile bindings, limitations and explicit authoritative=false semantics."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "VFS, WAL, recovery and concurrency",
+      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/core/vfs"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/core/wal"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/kernel_vfs/durable_mutation.py"
         }
       ],
-      "name": "VFS, WAL, recovery and concurrency",
-      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_kit_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "A durable SAWM semantic outbox surface was not located by exact name and must be reconciled before adding an adapter."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "durable coordination and state roots",
+      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store"
         }
       ],
-      "name": "durable coordination and state roots",
-      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_kit_py",
-      "status": "available_with_caveats",
+      "status": "missing",
       "verified_gap": "Program-world root manifests and full SAWM store-before-reference/recovery qualification are missing."
     },
     {
       "historical_or_duplicate": [],
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "name": "generic state transition receipts",
+      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/core/vfs/contracts.py"
         }
       ],
-      "name": "generic state transition receipts",
-      "owner_role": "verified_storage_retrieval_and_durable_graph_authority",
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "repository": "ipfs_kit_py",
-      "status": "partial",
+      "status": "missing",
       "verified_gap": "Generic operational/VFS transitions do not by themselves provide program-transition query, prediction, observation, calibration or admission semantics."
     }
   ],
@@ -658,8 +658,8 @@
           "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py"
         },
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
         }
       ],
@@ -822,29 +822,29 @@
       "capability_id": "SAWM-002",
       "feature": "semantic identity and canonicalization profiles",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "No complete closed SAWM identity/profile family or compatibility proof for all required state, trace, projection, relation, transition and root identities."
     },
@@ -853,29 +853,29 @@
       "capability_id": "SAWM-003",
       "feature": "scoped relation and equivalence claims",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "No unified versioned SAWM relation lifecycle retaining scope, authority, evidence, invalidators and freshness while excluding neural similarity."
     },
@@ -884,34 +884,34 @@
       "capability_id": "SAWM-004",
       "feature": "domain adapters without domain-identity changes",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "available_with_caveats",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "available_with_caveats",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "Domain coverage and current adapter contracts vary; typed unavailability and identity-preservation tests are missing for SAWM consumption."
     },
@@ -920,29 +920,29 @@
       "capability_id": "SAWM-005",
       "feature": "static program-graph contracts",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "Current symbol/dependency/proof graphs do not expose the complete typed node/edge/snapshot/delta/successor/dynamic-frontier family."
     },
@@ -956,22 +956,23 @@
           "in_sealed_tree": true,
           "kind": "implementation_source",
           "path": "ipfs_accelerate_py/agent_supervisor/analysis/symbolic_contract_graph.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py"
         }
       ],
       "owner": "ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/index.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py"
+        }
+      ],
       "related_landed_surfaces": [],
       "status": "partial",
       "test_evidence": [],
@@ -1044,22 +1045,23 @@
           "in_sealed_tree": true,
           "kind": "implementation_source",
           "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py"
         }
       ],
       "owner": "ipfs_datasets_py_semantics_and_ipfs_accelerate_py_admission",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/transitions.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py"
+        }
+      ],
       "related_landed_surfaces": [],
       "status": "partial",
       "test_evidence": [],
@@ -1070,29 +1072,29 @@
       "capability_id": "SAWM-011",
       "feature": "verified semantic-object and model-pinned projection storage",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_kit_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "A SAWM verified-store facade and all projection serialization/profile validation guarantees are not yet integrated."
     },
@@ -1101,24 +1103,24 @@
       "capability_id": "SAWM-012",
       "feature": "projection indexes with exact non-authoritative resolver",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/retrieval.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_kit_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/retrieval.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/graphrag/vector_index.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "All results must bind immutable manifest/projection/model/state identities, limitations and authoritative=false, then resolve current objects before use."
     },
@@ -1127,24 +1129,24 @@
       "capability_id": "SAWM-013",
       "feature": "logical graph snapshots, transition log and world-root manifests",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/history.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_kit_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/history.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "No complete immutable program graph/trace/prediction/admission/world snapshot persistence with SAWM store-before-reference."
     },
@@ -1153,34 +1155,34 @@
       "capability_id": "SAWM-014",
       "feature": "generation root CAS, recovery, replication and VFS semantic outbox",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/core/replication"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/core/vfs"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/core/wal"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_kit_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/core/replication"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/core/vfs"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/core/wal"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "SAWM-specific ABA-safe root, corruption/restart/concurrency qualification and a reconciled durable post-commit semantic outbox are missing."
     },
@@ -1261,17 +1263,18 @@
           "in_sealed_tree": true,
           "kind": "implementation_source",
           "path": "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
         }
       ],
       "owner": "ipfs_datasets_py_semantics_and_ipfs_accelerate_py_orchestration",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
+        }
+      ],
       "related_landed_surfaces": [],
       "status": "partial",
       "test_evidence": [],
@@ -1292,17 +1295,18 @@
           "in_sealed_tree": true,
           "kind": "implementation_source",
           "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/hammers"
         }
       ],
       "owner": "ipfs_accelerate_py_consuming_ipfs_datasets_py",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "available_with_caveats",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/hammers"
+        }
+      ],
       "related_landed_surfaces": [],
       "status": "available_with_caveats",
       "test_evidence": [],
@@ -1702,29 +1706,29 @@
       "capability_id": "SAWM-038",
       "feature": "multi-view and cross-domain projections",
       "historical_or_duplicate": [],
-      "implementation_evidence": [
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_kit_py/ipfs_kit_py/graphrag"
-        }
-      ],
+      "implementation_evidence": [],
       "owner": "ipfs_datasets_py_semantics_and_ipfs_kit_py_storage",
       "planning_status_is_implementation_evidence": false,
       "planning_status_observation": "partial",
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/views.py"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts"
+        },
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_kit_py/ipfs_kit_py/graphrag"
+        }
+      ],
       "related_landed_surfaces": [],
-      "status": "partial",
+      "status": "missing",
       "test_evidence": [],
       "verified_gap": "No complete explicit-profile view set across AST/CFG/calls/data flow/proofs/traces/failures/domains/procedures."
     },
@@ -2125,15 +2129,16 @@
           "in_sealed_tree": true,
           "kind": "implementation_source",
           "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py"
-        },
-        {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
-          "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
         }
       ],
       "planning_runtime_status_is_current_authority": false,
-      "rejected_claimed_evidence": [],
+      "rejected_claimed_evidence": [
+        {
+          "in_sealed_tree": false,
+          "kind": "missing",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake"
+        }
+      ],
       "related_landed_surfaces": [],
       "required_gate": "optional projection probe only",
       "runtime_status": "not_probed_by_this_receipt",
@@ -2278,15 +2283,15 @@
     {
       "authoritative": true,
       "capability": "datasets semantic index and program analysis",
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "planning_runtime_status_is_current_authority": false,
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index"
         }
       ],
-      "planning_runtime_status_is_current_authority": false,
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "required_gate": "coverage/frontier/invalidation and deterministic snapshot tests",
       "runtime_status": "not_probed_by_this_receipt",
@@ -2308,15 +2313,15 @@
     {
       "authoritative": true,
       "capability": "verified CID/IPLD/CAR block persistence",
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "planning_runtime_status_is_current_authority": false,
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/ipfs_multiformats.py"
         }
       ],
-      "planning_runtime_status_is_current_authority": false,
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "required_gate": "claimed CID rehash, corruption and store-before-reference tests",
       "runtime_status": "not_probed_by_this_receipt",
@@ -2326,15 +2331,15 @@
     {
       "authoritative": true,
       "capability": "GraphRAG and vector retrieval",
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "planning_runtime_status_is_current_authority": false,
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/graphrag"
         }
       ],
-      "planning_runtime_status_is_current_authority": false,
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "required_gate": "immutable projection/manifest resolution and advisory-only response tests",
       "runtime_status": "not_probed_by_this_receipt",
@@ -2362,15 +2367,15 @@
     {
       "authoritative": true,
       "capability": "VFS, WAL, crash recovery and replication",
-      "implementation_evidence": [
+      "implementation_evidence": [],
+      "planning_runtime_status_is_current_authority": false,
+      "rejected_claimed_evidence": [
         {
-          "in_sealed_tree": true,
-          "kind": "implementation_source",
+          "in_sealed_tree": false,
+          "kind": "missing",
           "path": "ipfs_kit_py/ipfs_kit_py/core/vfs"
         }
       ],
-      "planning_runtime_status_is_current_authority": false,
-      "rejected_claimed_evidence": [],
       "related_landed_surfaces": [],
       "required_gate": "post-commit outbox, cancellation, corruption, restart and idempotence tests",
       "runtime_status": "not_probed_by_this_receipt",
@@ -2538,13 +2543,13 @@
   ],
   "summary": {
     "available": 1,
-    "available_with_caveats": 5,
+    "available_with_caveats": 4,
     "duplicate_non_authoritative": 0,
     "feature_count": 45,
     "historical_only": 3,
     "incompatible": 0,
-    "missing": 19,
-    "partial": 17,
+    "missing": 28,
+    "partial": 9,
     "stale": 0,
     "summary_is_computed_for_desired_capabilities_only": true,
     "summary_is_not_task_completion": true
