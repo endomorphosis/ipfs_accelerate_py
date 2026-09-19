@@ -1,6 +1,7 @@
 """SAWM-039 typed program-world service.
 
-Deterministic JSON operations. Never writes DuckDB or completes tasks.
+Deterministic JSON operations over landed remaining-task modules.
+Never writes DuckDB or completes tasks.
 """
 
 from __future__ import annotations
@@ -26,6 +27,29 @@ class SemanticWorldResolveResult:
     resolved: bool
     reason_code: str
     completion_authority: bool = False
+
+
+def _cid(label: str) -> str:
+    from ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid import cid_for_bytes
+
+    return cid_for_bytes(str(label).encode("utf-8"))
+
+
+def _reuse_key(payload: Mapping[str, Any]):
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_reuse import (
+        ProgramWorldReuseKey,
+    )
+
+    return ProgramWorldReuseKey(
+        state_cid=str(payload.get("state_cid") or _cid("sawm-svc-state")),
+        goal_cid=str(payload.get("goal_cid") or _cid("sawm-svc-goal")),
+        policy_cid=str(payload.get("policy_cid") or _cid("sawm-svc-policy")),
+        environment_cid=str(payload.get("environment_cid") or _cid("sawm-svc-env")),
+        toolchain_cid=str(payload.get("toolchain_cid") or _cid("sawm-svc-toolchain")),
+        procedure_revision_cid=str(
+            payload.get("procedure_revision_cid") or _cid("sawm-svc-procedure")
+        ),
+    )
 
 
 class ProgramWorldService:
@@ -63,9 +87,165 @@ class ProgramWorldService:
         }
         if name not in allowed:
             raise ProgramWorldServiceError(f"unknown operation {name}")
+        body = dict(payload or {})
+        handlers = {
+            "reuse": self._reuse,
+            "call-target": self._rank,
+            "projection": self._project,
+            "repair": self._repair,
+            "graph": self._graph,
+            "trace": self._trace,
+            "procedure": self._procedure,
+            "benchmark": self._benchmark,
+        }
+        result = handlers.get(name, self._probe)(body)
+        result.setdefault("operation", name)
+        result.setdefault("proposal_only", True)
+        result.setdefault("completion_authority", False)
+        result.setdefault("admitted", False)
+        result.setdefault("cas_completed", False)
+        return result
+
+    def _probe(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return {"reason_code": "typed_surface_probe", "payload": dict(payload)}
+
+    def _reuse(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_reuse import (
+            evaluate_program_world_reuse,
+        )
+
+        decision = evaluate_program_world_reuse(
+            _reuse_key(payload),
+            similarity_candidates=tuple(payload.get("similarity_candidates") or ()),
+            typed_available=payload.get("typed_available", True),
+        )
         return {
-            "operation": name,
-            "payload": dict(payload or {}),
+            "verdict": str(decision.verdict),
+            "reason_code": decision.reason_code,
+            "proposal_only": True,
+            "admitted": False,
+            "ann_authoritative": bool(decision.ann_authoritative),
+        }
+
+    def _rank(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.analysis.program_call_ranker import (
+            rank_program_call_targets,
+        )
+
+        ranked = rank_program_call_targets(
+            {
+                "current_symbol": payload.get("current_symbol") or "main",
+                "static_candidates": payload.get("static_candidates") or ("helper",),
+                "ood": bool(payload.get("ood")),
+                "stale": bool(payload.get("stale")),
+            }
+        )
+        return {
+            "ranked": list(ranked.ranked),
+            "abstained": ranked.abstained,
+            "reason_code": ranked.reason_code,
+            "proposal_only": True,
+        }
+
+    def _project(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_datasets_py.logic.software_contracts.semantic_state.program_views import (
+            ProgramViewError,
+            build_program_world_view,
+        )
+
+        try:
+            view = build_program_world_view(
+                {
+                    "view": payload.get("view") or "ast",
+                    "source_cid": payload.get("source_cid") or _cid("sawm-svc-source"),
+                    "privacy_admitted": payload.get("privacy_admitted", True),
+                    "freshness": payload.get("freshness") or "fresh",
+                }
+            )
+        except ProgramViewError as exc:
+            return {"ok": False, "reason_code": str(exc), "proposal_only": True}
+        return {
+            "ok": True,
+            "view": view.view,
+            "privacy_admitted": view.privacy_admitted,
+            "proposal_only": True,
+        }
+
+    def _repair(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.autonomous_repair.program_delta_predictor import (
+            RepairPredictionError,
+            predict_program_graph_delta,
+        )
+
+        try:
+            delta = predict_program_graph_delta(
+                {
+                    "operators": payload.get("operators") or ("rewrite",),
+                    "sketch": payload.get("sketch") or {"path": "src/app.py", "operator": "rewrite"},
+                }
+            )
+        except RepairPredictionError as exc:
+            return {"ok": False, "reason_code": str(exc), "proposal_only": True}
+        return {"ok": True, "delta": dict(delta), "proposal_only": True}
+
+    def _graph(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.analysis.program_event_predictor import (
+            predict_next_program_event,
+        )
+
+        predicted = predict_next_program_event(
+            {
+                "event_type": payload.get("event_type") or "call",
+                "current_state": payload.get("current_state") or "state",
+            }
+        )
+        return {"ok": True, "prediction": dict(predicted), "proposal_only": True}
+
+    def _trace(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.analysis.inverse_trace_predictor import (
+            rank_inverse_trace_predecessors,
+        )
+
+        ranked = rank_inverse_trace_predecessors(
+            {
+                "predecessor_states": payload.get("predecessor_states")
+                or ({"state_id": "s0", "score": 1.0},),
+                "predecessor_events": payload.get("predecessor_events")
+                or ({"event_id": "e0", "score": 1.0},),
+                "stale": bool(payload.get("stale")),
+                "ood": bool(payload.get("ood")),
+            }
+        )
+        return {"ok": True, "predecessors": dict(ranked), "proposal_only": True}
+
+    def _procedure(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_guarded import (
+            evaluate_guarded_program_world_influence,
+        )
+
+        decision = evaluate_guarded_program_world_influence(
+            {
+                "kind": payload.get("kind") or "verified_procedure",
+                "verified": payload.get("verified", True),
+            }
+        )
+        return {
+            "allowed": decision.allowed,
+            "reason_code": decision.reason_code,
+            "influences_planning": decision.influences_planning,
+            "proposal_only": True,
+        }
+
+    def _benchmark(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from benchmarks.agent_supervisor.semantic_addressed_world_model.ablation import (
+            run_semantic_world_ablation,
+        )
+
+        result = run_semantic_world_ablation(
+            payload.get("rungs") or ({"rung": "A", "model_calls": 0, "tokens": 0},)
+        )
+        return {
+            "rungs": list(result["rungs"]),
             "proposal_only": True,
             "completion_authority": False,
         }
