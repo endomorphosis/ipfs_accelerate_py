@@ -209,6 +209,34 @@ def test_whether_question_maps_noul_to_yes_no(monkeypatch: pytest.MonkeyPatch) -
     assert receipt.accepted_as_authority is False
 
 
+def test_whether_mid_band_noul_abstains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        nouls = {"answer": SimpleNamespace(noul=0.5)}
+        choices = {}
+        scores = {}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_args, **_kwargs: _Result(),
+    )
+    receipt = evaluate_closed_question(
+        question_id="q-uncertain",
+        question_type="whether_replan_is_required",
+        state={"failed_step": "tests"},
+    )
+    assert receipt.action == "abstain"
+    assert receipt.choice == ""
+    assert "uncertain_band" in receipt.reason_codes
+    assert receipt.accepted_as_authority is False
+
+
 def test_whether_with_alternatives_uses_allowlist_choice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

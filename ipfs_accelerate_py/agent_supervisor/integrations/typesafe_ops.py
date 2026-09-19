@@ -5,18 +5,41 @@ from __future__ import annotations
 from typing import Any
 
 
+_TEXT_KEYS = (
+    "line_text",
+    "text",
+    "original",
+    "parts",
+    "ranked",
+    "candidates",
+)
+
+
+def _advisory(view: Any) -> dict[str, Any]:
+    payload = dict(view) if isinstance(view, dict) else {}
+    payload["accepted_as_authority"] = False
+    for key in _TEXT_KEYS:
+        payload.pop(key, None)
+    return payload
+
+
 def typesafe_ops_snapshot() -> dict[str, Any]:
     """Combine last guardrail, audit reduce, and source-edit lint receipts."""
 
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
         last_artifact_rank,
         last_artifact_view,
+        last_claim_citation,
+        last_clause_date,
+        last_extracted_span,
+        last_line_stitch,
         last_merge_conflict,
         last_parser_triage,
         last_producer_consumer,
         last_refactor_scope,
         last_source_edit_lint,
         last_static_lint,
+        last_supporting_line,
     )
     from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_trace_guard import (
         last_trace_guardrail,
@@ -40,21 +63,38 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
 
     return {
         "accepted_as_authority": False,
-        "trace_guardrail": last_trace_guardrail(),
-        "audit_reduce": last_audit_reduce(),
-        "source_edit_lint": last_source_edit_lint(),
-        "static_lint": last_static_lint(),
-        "refactor_scope": last_refactor_scope(),
-        "producer_consumer": last_producer_consumer(),
-        "artifact_view": last_artifact_view(),
-        "artifact_rank": last_artifact_rank(),
-        "parser_triage": last_parser_triage(),
-        "merge_conflict": last_merge_conflict(),
-        "hammer_timeout_hint": last_hammer_hint(),
-        "unstall": last_unstall_nomination(),
-        "watchdog": last_watchdog_classification(),
+        "trace_guardrail": _advisory(last_trace_guardrail()),
+        "audit_reduce": _advisory(last_audit_reduce()),
+        "source_edit_lint": _advisory(last_source_edit_lint()),
+        "static_lint": _advisory(last_static_lint()),
+        "refactor_scope": _advisory(last_refactor_scope()),
+        "producer_consumer": _advisory(last_producer_consumer()),
+        "artifact_view": _advisory(last_artifact_view()),
+        "artifact_rank": _advisory(last_artifact_rank()),
+        "parser_triage": _advisory(last_parser_triage()),
+        "merge_conflict": _advisory(last_merge_conflict()),
+        "claim_citation": _advisory(last_claim_citation()),
+        "extracted_span": _advisory(last_extracted_span()),
+        "clause_date": _advisory(last_clause_date()),
+        "supporting_line": _advisory(last_supporting_line()),
+        "line_stitch": _advisory(last_line_stitch()),
+        "hammer_timeout_hint": _advisory(last_hammer_hint()),
+        "unstall": _advisory(last_unstall_nomination()),
+        "watchdog": _advisory(last_watchdog_classification()),
         "calibration": recommend_skip_policy(),
+        "autoresearch": _advisory(_last_autoresearch()),
     }
+
+
+def _last_autoresearch() -> dict[str, Any]:
+    try:
+        from ipfs_datasets_py.logic.integrations.typesafe_autoresearch import (
+            last_autoresearch,
+        )
+
+        return last_autoresearch()
+    except Exception:
+        return {}
 
 
 def typesafe_ops_snapshot_json() -> str:
