@@ -1778,8 +1778,16 @@ def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypat
 
     overlay = tmp_path / "overlay"
     (overlay / "test/api/doep").mkdir(parents=True)
+    (overlay / "test/api/semantic_world").mkdir(parents=True)
+    (overlay / "test/api/semantic_refactoring").mkdir(parents=True)
+    (overlay / "test/api/agent_supervisor/efficiency_state_hardening").mkdir(parents=True)
     (overlay / "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py").write_text("def test_ok():\n    assert True\n")
-    (overlay / "test/api/test_sawm_graceful_recovery.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/doep/test_remaining_overlay_artifacts_are_not_completion.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/semantic_world/test_program_world_controls.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/semantic_world/test_end_to_end_acceptance.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/semantic_world/test_release_evidence.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/semantic_refactoring/test_release_gate.py").write_text("def test_ok():\n    assert True\n")
+    (overlay / "test/api/agent_supervisor/efficiency_state_hardening/test_promotion_decision.py").write_text("def test_ok():\n    assert True\n")
     monkeypatch.setattr(fleet_heals, "supervisor_overlay_root", lambda: str(overlay))
     calls = []
 
@@ -1790,12 +1798,23 @@ def test_overlay_current_tree_smoke_runs_sawm_and_doep_tests(tmp_path, monkeypat
     monkeypatch.setattr(subprocess, "run", fake_run)
     doep = run_overlay_current_tree_smoke({"id": "doep"})
     sawm = run_overlay_current_tree_smoke({"id": "sawm"})
+    spar = run_overlay_current_tree_smoke({"id": "spar"})
+    aseh = run_overlay_current_tree_smoke({"id": "aseh"})
+    pctdd = run_overlay_current_tree_smoke({"id": "pctdd"})
     assert doep["status"] == "applied"
     assert sawm["status"] == "applied"
+    assert spar["status"] == "applied"
+    assert aseh["status"] == "applied"
+    assert pctdd["status"] == "skip"
     assert doep["completion_authoritative"] is False
     assert sawm["completion_authoritative"] is False
+    assert spar["completion_authoritative"] is False
+    assert aseh["completion_authoritative"] is False
     assert any("test_doep_063" in item for call, _ in calls for item in call)
-    assert any("test_sawm_graceful_recovery.py" in item for call, _ in calls for item in call)
+    assert any("test_program_world_controls.py" in item for call, _ in calls for item in call)
+    assert any("test_release_gate.py" in item for call, _ in calls for item in call)
+    assert any("test_promotion_decision.py" in item for call, _ in calls for item in call)
+    assert not any("test_sawm_graceful_recovery.py" in item for call, _ in calls for item in call)
     assert not any("test_sawm_native_dispatch_drain.py" in item for call, _ in calls for item in call)
     again = run_overlay_current_tree_smoke({"id": "doep"}, {"last_action_result": doep})
     assert again["status"] == "skip"

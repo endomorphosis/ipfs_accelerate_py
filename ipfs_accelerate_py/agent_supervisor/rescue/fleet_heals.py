@@ -724,10 +724,20 @@ def unstall_stale_native_work(
 _OVERLAY_CURRENT_TREE_SMOKE = {
     "doep": (
         "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+        "test/api/doep/test_remaining_overlay_artifacts_are_not_completion.py",
     ),
     "sawm": (
-        "test/api/test_sawm_graceful_recovery.py",
+        "test/api/semantic_world/test_program_world_controls.py",
+        "test/api/semantic_world/test_end_to_end_acceptance.py",
+        "test/api/semantic_world/test_release_evidence.py",
     ),
+    "spar": (
+        "test/api/semantic_refactoring/test_release_gate.py",
+    ),
+    "aseh": (
+        "test/api/agent_supervisor/efficiency_state_hardening/test_promotion_decision.py",
+    ),
+    "pctdd": (),
 }
 
 
@@ -3510,8 +3520,9 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                 "completion_authority": False,
                 "results": prior_results,
                 "reason": (
-                    "current-tree tests passed for DOEP-044/DOEP-063; "
-                    "remaining todos are not stalled on a DuckDB write"
+                    "current-tree remaining-task tests passed; "
+                    "remaining todos are not stalled on a DuckDB write "
+                    "and overlay pytest is not extra-gate completion"
                 ),
             }
         details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
