@@ -32,6 +32,9 @@ class SemanticWorldReleaseReport:
     generation_published: bool = False
     completion_authority: bool = False
     cas_completed: bool = False
+    released: bool = False
+    safety_floor_violations: int = 0
+    blockers: tuple[str, ...] = ()
     rollback: SemanticWorldRollbackTarget | None = None
     migration: SemanticWorldMigrationReceipt | None = None
 
@@ -43,6 +46,9 @@ class SemanticWorldReleaseReport:
             "generation_published": self.generation_published,
             "completion_authority": self.completion_authority,
             "cas_completed": self.cas_completed,
+            "released": self.released,
+            "safety_floor_violations": self.safety_floor_violations,
+            "blockers": list(self.blockers),
             "rollback_target": None
             if self.rollback is None
             else {
@@ -62,7 +68,47 @@ class SemanticWorldReleaseReport:
 
 
 def build_current_tree_release_report() -> SemanticWorldReleaseReport:
+    from benchmarks.agent_supervisor.semantic_addressed_world_model.ablation import (
+        run_frozen_semantic_world_ablation,
+    )
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_reuse import (
+        evaluate_program_world_reuse,
+    )
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_service import (
+        ProgramWorldService,
+        _reuse_key,
+    )
+
+    ablation = run_frozen_semantic_world_ablation()
+    safety = ablation["safety"]
+    violations = int(safety.test_weakening) + int(safety.protected_path_hits)
+    similarity = evaluate_program_world_reuse(
+        _reuse_key({}),
+        similarity_candidates=({"score": 0.99},),
+    )
+    index = ProgramWorldService().operation("index")
+    blockers = [
+        "live extra-gate cannot admit remaining todos",
+        "overlay tests are not DuckDB completion evidence",
+        "generation root was not published",
+    ]
+    if ablation.get("vector_backend") == "vector_backend_unavailable":
+        blockers.append("vector_backend_unavailable")
+    if index.get("reason_code") == "ann_index_unavailable":
+        blockers.append("ann_index_unavailable")
+    if similarity.ann_authoritative or similarity.admitted:
+        blockers.append("similarity_reuse_was_not_closed")
+    if violations:
+        blockers.append("safety_floor_violations")
+    released = (
+        violations == 0
+        and not similarity.admitted
+        and False  # remaining todos and unpublished generation forbid release
+    )
     return SemanticWorldReleaseReport(
+        released=released,
+        safety_floor_violations=violations,
+        blockers=tuple(blockers),
         rollback=SemanticWorldRollbackTarget(
             extra_gate_generation=48,
             store="semantic-addressed-world-model-v1/run-r2-m27",

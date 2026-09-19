@@ -41,3 +41,8 @@ def test_service_cli_and_mcp_are_proposal_only() -> None:
     mcp_reuse = semantic_world_mcp_tools("reuse")
     assert mcp_reuse["subprocess"] is False
     assert mcp_reuse["completion_authority"] is False
+    unresolved = service.resolve({"query": "anything"})
+    assert unresolved.resolved is False
+    assert unresolved.reason_code == "identity_evidence_required"
+    cited = service.resolve({"query": "object", "object_cid": "cidv1-sha256-forged"})
+    assert cited.resolved is False

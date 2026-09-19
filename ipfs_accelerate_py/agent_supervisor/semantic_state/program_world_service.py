@@ -64,8 +64,29 @@ class ProgramWorldService:
             return SemanticWorldResolveResult(
                 query=q, resolved=False, reason_code="empty_query"
             )
+        cid = str(query.get("object_cid") or query.get("cid") or "")
+        if not cid:
+            return SemanticWorldResolveResult(
+                query=q,
+                resolved=False,
+                reason_code="identity_evidence_required",
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.semantic_state.contracts import (
+                validate_opaque_cid,
+            )
+
+            validate_opaque_cid(cid, "object_cid")
+        except Exception:
+            return SemanticWorldResolveResult(
+                query=q,
+                resolved=False,
+                reason_code="identity_cid_rejected",
+            )
         return SemanticWorldResolveResult(
-            query=q, resolved=True, reason_code="proposal_only"
+            query=q,
+            resolved=False,
+            reason_code="proposal_only_citation",
         )
 
     def operation(self, name: str, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -104,16 +125,13 @@ class ProgramWorldService:
             "dogfood": self._dogfood,
             "index": self._index,
         }
-        result = handlers.get(name, self._probe)(body)
+        result = handlers[name](body)
         result.setdefault("operation", name)
         result.setdefault("proposal_only", True)
         result.setdefault("completion_authority", False)
         result.setdefault("admitted", False)
         result.setdefault("cas_completed", False)
         return result
-
-    def _probe(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return {"reason_code": "typed_surface_probe", "payload": dict(payload)}
 
     def _reuse(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_reuse import (

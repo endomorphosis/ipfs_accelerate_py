@@ -44,5 +44,8 @@ def test_release_report_does_not_claim_board_completion() -> None:
     assert isinstance(report.rollback, SemanticWorldRollbackTarget)
     assert isinstance(report.migration, SemanticWorldMigrationReceipt)
     assert report.completion_authority is False
+    assert report.released is False
+    assert report.safety_floor_violations == 0
+    assert "overlay tests are not DuckDB completion evidence" in report.blockers
     assert report.migration.migrated is False
     assert report.rollback.extra_gate_generation == 48
