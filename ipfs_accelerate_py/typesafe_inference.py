@@ -92,6 +92,21 @@ class Noul:
         return payload
 
 
+def noul_yes_no(
+    *,
+    true_what: str,
+    false_what: str,
+    true_examples: Sequence[str] = (),
+    false_examples: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Structured true/false Noul criteria (Advanced: structure)."""
+
+    return {
+        "true": {"what": true_what, "examples": list(true_examples)},
+        "false": {"what": false_what, "examples": list(false_examples)},
+    }
+
+
 @dataclass
 class Choice:
     """Pick one labeled option. Answer includes the winner and probabilities."""
@@ -581,6 +596,7 @@ __all__ = [
     "DEFAULT_MODEL",
     "Noul",
     "NoulAnswer",
+    "noul_yes_no",
     "PROVIDER_NAME",
     "RetryPolicy",
     "Score",

@@ -1,18 +1,33 @@
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+    assemble_date_parts,
+    check_claim_citation,
     cite_claim_spans,
     compose_pairwise_order,
     compose_snippet_score,
     extract_claim_spans,
+    extract_clause_date,
+    find_supporting_line,
+    last_claim_citation,
+    last_clause_date,
+    last_extracted_span,
+    last_line_stitch,
+    last_supporting_line,
     lint_admissibility,
+    observe_claim_citation,
+    observe_clause_date,
+    pick_extracted_span,
+    stitch_hard_wrapped_lines,
     observe_merge_conflict_paths,
     pairwise_questions,
     prepare_evidence_for_compile,
+    producer_consumer_questions,
     rerank_allowlisted_snippets,
 )
 
@@ -120,6 +135,22 @@ def test_compose_pairwise_order_allowlisted_only() -> None:
     )
     assert "better_a_than_b" in questions
     assert "better_a_than_invented" not in questions
+
+
+def test_producer_and_citation_nouls_have_structured_criteria() -> None:
+    producer = producer_consumer_questions()["producer_matches"].to_dict()
+    assert producer["criteria"]["true"]["what"]
+    assert producer["criteria"]["false"]["examples"]
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        citation_questions,
+    )
+
+    citation = citation_questions()["supported"].to_dict()
+    assert citation["criteria"]["true"]["what"]
+    assert "KERNEL_VERIFIED" in citation["criteria"]["false"]["examples"][0]
+    field = producer["instructions"]["field"]
+    assert field["name"] == "producer"
+    assert field["type"] == "string"
 
 
 def test_observe_merge_conflict_paths_does_not_fence_or_write(
@@ -412,6 +443,8 @@ def test_rank_allowlisted_artifacts_fail_open_keeps_existing_ids(
     assert view["replaces_undeclared_refactor_check"] is False
     assert view["replaces_boundary_cost_ranking"] is False
     assert view["accepted_as_authority"] is False
+    assert view.get("suggested") == ""
+    assert view.get("admits_candidate") is False
     assert "node-invented" not in view["ranked_ids"]
 
 
@@ -637,3 +670,682 @@ def test_observe_source_edit_lint_does_not_block_without_key(
     assert receipt.action == "skipped"
     assert receipt.accepted_as_authority is False
     assert last_source_edit_lint()["accepted_as_authority"] is False
+
+
+def _clear_typesafe_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_claim_citation_without_key_skips_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    called: list[int] = []
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: called.append(1),
+    )
+    view = check_claim_citation(
+        "All humans are mortal. Socrates is a human.",
+        "All humans are mortal",
+        quote="All humans are mortal.",
+    )
+    assert called == []
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert view["verdict"] == ""
+    assert view["status"] == "found"
+    assert last_claim_citation()["accepted_as_authority"] is False
+
+
+def test_claim_citation_missing_quote_fabricated_without_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    called: list[int] = []
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: called.append(1) or (_ for _ in ()).throw(
+            AssertionError("missing quote must not call system_one")
+        ),
+    )
+    view = check_claim_citation(
+        "All humans are mortal.",
+        "Validators must reject future iat claims.",
+        quote="iat claims in the future MUST be rejected.",
+    )
+    assert called == []
+    assert view["verdict"] == "fabricated"
+    assert view["status"] == "missing"
+    assert view["auto"] is True
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert last_claim_citation()["verdict"] == "fabricated"
+
+
+def test_claim_citation_supports_high_conf_still_not_kernel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {
+            "relation": SimpleNamespace(choice="supports", confidence=0.93),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = check_claim_citation(
+        "All humans are mortal. Socrates is a human.",
+        "All humans are mortal",
+        quote="All humans are mortal.",
+    )
+    assert view["verdict"] == "supports"
+    assert view["verdict"] != "verified"
+    assert view["auto"] is True
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+
+
+def test_observe_claim_citation_does_not_admit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    view = observe_claim_citation(
+        "The agency shall provide notice.",
+        "obligation(agency, provide_notice)",
+    )
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert view["verdict"] != "verified"
+
+
+def test_pick_extracted_span_fail_open_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    view = pick_extracted_span(
+        "write src/a.py",
+        ("src/a.py", "src/b.py"),
+    )
+    assert view["pick"] == ""
+    assert view["candidates"] == ["src/a.py", "src/b.py"]
+    assert view["invents_span"] is False
+    assert view["accepted_as_authority"] is False
+    assert last_extracted_span()["pick"] == ""
+
+
+def test_pick_extracted_span_empty_candidates_skips_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    called: list[int] = []
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: called.append(1),
+    )
+    view = pick_extracted_span("write src/a.py", ())
+    assert called == []
+    assert view["pick"] == ""
+    assert view["reason_codes"] == ["no_candidates"]
+
+
+def test_pick_extracted_span_copies_allowlisted_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"pick": SimpleNamespace(choice="src/a.py", confidence=0.97)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = pick_extracted_span("write src/a.py", ("src/a.py", "src/b.py"))
+    assert view["pick"] == "src/a.py"
+    assert view["invents_span"] is False
+    assert view["accepted_as_authority"] is False
+
+
+def test_pick_extracted_span_unknown_choice_becomes_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"pick": SimpleNamespace(choice="/etc/passwd", confidence=0.99)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = pick_extracted_span("write src/a.py", ("src/a.py", "src/b.py"))
+    assert view["pick"] == "none"
+    assert view["invents_span"] is False
+    assert "/etc/passwd" not in view["candidates"]
+
+
+def test_merge_conflict_pick_does_not_rewrite_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    view = observe_merge_conflict_paths(
+        declared_paths=("src/",),
+        conflict_paths=("src/a.py", "docs/secret.md"),
+    )
+    assert view["conflict_paths"] == ["src/a.py", "docs/secret.md"]
+    assert view["typesafe_pick"]["invents_span"] is False
+    assert view["typesafe_pick"]["pick"] == ""
+    assert view["writes_merge"] is False
+
+
+_TODAY = date(2026, 7, 30)
+
+
+def _date_parts(**overrides: dict) -> dict:
+    base = {
+        "mode": {"choice": "none", "confidence": 0.9},
+        "month": {"choice": "none", "confidence": 0.9},
+        "day": {"choice": "none", "confidence": 0.9},
+        "year": {"choice": "none", "confidence": 0.9},
+        "day_anchor": {"choice": "none", "confidence": 0.9},
+        "weekday": {"choice": "none", "confidence": 0.9},
+        "week_offset": {"choice": "none", "confidence": 0.9},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_assemble_absolute_date_uses_stated_year() -> None:
+    view = assemble_date_parts(
+        _date_parts(
+            mode={"choice": "absolute", "confidence": 0.97},
+            month={"choice": "January", "confidence": 0.99},
+            day={"choice": "1", "confidence": 0.99},
+            year={"choice": "2025", "confidence": 0.97},
+        ),
+        today=_TODAY,
+    )
+    assert view["date"] == "2025-01-01"
+    assert view["incomplete"] is False
+    assert view["needs_review"] is False
+
+
+def test_assemble_absolute_date_infers_year_in_code() -> None:
+    view = assemble_date_parts(
+        _date_parts(
+            mode={"choice": "absolute", "confidence": 0.95},
+            month={"choice": "August", "confidence": 0.95},
+            day={"choice": "14", "confidence": 0.95},
+            year={"choice": "none", "confidence": 0.9},
+        ),
+        today=_TODAY,
+    )
+    assert view["date"] == "2026-08-14"
+
+
+def test_assemble_relative_tomorrow_in_code() -> None:
+    view = assemble_date_parts(
+        _date_parts(
+            mode={"choice": "relative", "confidence": 0.94},
+            day_anchor={"choice": "tomorrow", "confidence": 0.94},
+        ),
+        today=_TODAY,
+    )
+    assert view["date"] == "2026-07-31"
+
+
+def test_assemble_next_thursday_in_code() -> None:
+    view = assemble_date_parts(
+        _date_parts(
+            mode={"choice": "relative", "confidence": 0.92},
+            day_anchor={"choice": "weekday", "confidence": 0.92},
+            weekday={"choice": "Thursday", "confidence": 0.92},
+            week_offset={"choice": "next", "confidence": 0.92},
+        ),
+        today=_TODAY,
+    )
+    assert view["date"] == "2026-08-06"
+
+
+def test_assemble_incomplete_absolute_flags_review() -> None:
+    view = assemble_date_parts(
+        _date_parts(
+            mode={"choice": "absolute", "confidence": 0.46},
+            month={"choice": "none", "confidence": 0.46},
+            day={"choice": "none", "confidence": 0.4},
+        ),
+        today=_TODAY,
+    )
+    assert view["date"] == ""
+    assert view["incomplete"] is True
+    assert view["needs_review"] is True
+
+
+def test_extract_clause_date_fail_open_skips_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    called: list[int] = []
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: called.append(1),
+    )
+    view = extract_clause_date(
+        "This agreement expires December 31, 2027.",
+        today=_TODAY,
+    )
+    assert called == []
+    assert view["date"] == ""
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert last_clause_date()["date"] == ""
+
+
+def test_extract_clause_date_assembles_stubbed_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {
+            "mode": SimpleNamespace(choice="absolute", confidence=0.97),
+            "month": SimpleNamespace(choice="January", confidence=0.99),
+            "day": SimpleNamespace(choice="1", confidence=0.99),
+            "year": SimpleNamespace(choice="2025", confidence=0.97),
+            "day_anchor": SimpleNamespace(choice="none", confidence=0.9),
+            "weekday": SimpleNamespace(choice="none", confidence=0.9),
+            "week_offset": SimpleNamespace(choice="none", confidence=0.9),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = extract_clause_date(
+        "This agreement is effective January 1, 2025.",
+        today=_TODAY,
+    )
+    assert view["date"] == "2025-01-01"
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert view["incomplete"] is False
+
+
+def test_observe_clause_date_does_not_admit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    view = observe_clause_date(
+        "Please return the signed form by August 14.",
+        today=_TODAY,
+    )
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert view["date"] == ""
+
+
+_SOURCE_LINES = (
+    "You own Your Content.\n"
+    "GitHub may suspend or terminate access.\n"
+    "You must be age 13 or older."
+)
+
+
+def test_find_supporting_line_fail_open_skips_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    called: list[int] = []
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: called.append(1),
+    )
+    view = find_supporting_line(_SOURCE_LINES, "who owns uploaded code?")
+    assert called == []
+    assert view["line_id"] == ""
+    assert view["invents_ids"] is False
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert last_supporting_line()["line_id"] == ""
+
+
+def test_find_supporting_line_copies_source_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {
+            "where": SimpleNamespace(
+                choice="L000",
+                confidence=0.95,
+                probabilities={"L000": 0.95, "L001": 0.03, "L002": 0.02},
+            )
+        }
+        nouls = {"exists": SimpleNamespace(noul=0.98)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = find_supporting_line(_SOURCE_LINES, "who owns uploaded code?")
+    assert view["line_id"] == "L000"
+    assert view["line_text"] == "You own Your Content."
+    assert view["verdict"] == "answered"
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+    assert view["invents_ids"] is False
+    assert view["ranked"][0]["id"] == "L000"
+
+
+def test_find_supporting_line_low_exists_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {
+            "where": SimpleNamespace(
+                choice="L001",
+                confidence=0.86,
+                probabilities={"L001": 0.86, "L000": 0.14},
+            )
+        }
+        nouls = {"exists": SimpleNamespace(noul=0.14)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = find_supporting_line(_SOURCE_LINES, "must disputes go to arbitration?")
+    assert view["verdict"] == "absent"
+    assert view["line_id"] == "L001"
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+
+
+def test_find_supporting_line_drops_unknown_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {
+            "where": SimpleNamespace(
+                choice="L999",
+                confidence=0.99,
+                probabilities={"L999": 1.0},
+            )
+        }
+        nouls = {"exists": SimpleNamespace(noul=0.9)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    view = find_supporting_line(_SOURCE_LINES, "who owns uploaded code?")
+    assert view["line_id"] == ""
+    assert view["line_text"] == ""
+    assert view["invents_ids"] is False
+    assert view["verdict"] == "answered"
+
+
+def _stub_artifact_rank_and_confirm(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    matches: dict[str, float],
+    fits: dict[str, float],
+    winner: str,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.inspect_allowlisted_artifacts",
+        lambda **_kwargs: {"matches": dict(matches), "pair_nouls": {}},
+    )
+
+    class _ConfirmResult:
+        nouls = {
+            f"fits::{ident}": SimpleNamespace(noul=value)
+            for ident, value in fits.items()
+        }
+        choices = {"which": SimpleNamespace(choice=winner, confidence=0.9)}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _ConfirmResult(),
+    )
+
+
+def test_rank_confirm_rejects_all_when_fits_below_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_artifact_rank_and_confirm(
+        monkeypatch,
+        matches={"cand-a": 0.8, "cand-b": 0.2},
+        fits={"cand-a": 0.2, "cand-b": 0.1},
+        winner="cand-a",
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_rank,
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(("cand-a", "cand-b"), obligation_id="obl-1")
+    assert ranked == ("cand-a", "cand-b")
+    view = last_artifact_rank()
+    assert view["suggested"] == ""
+    assert view["fits"]["cand-a"] == pytest.approx(0.2)
+    assert view["invents_ids"] is False
+    assert view["admits_candidate"] is False
+
+
+def test_rank_confirm_suggests_shortlist_winner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_artifact_rank_and_confirm(
+        monkeypatch,
+        matches={"cand-edit": 0.7, "cand-author": 0.3},
+        fits={"cand-edit": 0.73, "cand-author": 0.38},
+        winner="cand-author",
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_rank,
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(
+        ("cand-edit", "cand-author"), obligation_id="obl-1"
+    )
+    assert ranked == ("cand-edit", "cand-author")
+    view = last_artifact_rank()
+    assert view["suggested"] == "cand-author"
+    assert view["suggested"] in ranked
+    assert view["accepted_as_authority"] is False
+    assert view["admits_candidate"] is False
+
+
+def test_rank_confirm_drops_unknown_winner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_artifact_rank_and_confirm(
+        monkeypatch,
+        matches={"cand-a": 0.9, "cand-b": 0.1},
+        fits={"cand-a": 0.8, "cand-b": 0.4},
+        winner="cand-invented",
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
+        last_artifact_rank,
+        rank_allowlisted_artifacts,
+    )
+
+    ranked = rank_allowlisted_artifacts(("cand-a", "cand-b"), obligation_id="obl-1")
+    view = last_artifact_rank()
+    assert ranked == ("cand-a", "cand-b")
+    assert view["suggested"] == ""
+    assert "cand-invented" not in view["shortlist"]
+
+
+def test_stitch_hard_wrapped_lines_fail_open_keeps_original(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_typesafe_keys(monkeypatch)
+    original = "All humans are\nmortal."
+    view = stitch_hard_wrapped_lines(original)
+    assert view["text"] == original
+    assert view["generates_text"] is False
+    assert view["generates_markup"] is False
+    assert view["original"] == original
+    assert view["blocks"] == []
+    assert last_line_stitch()["accepted_as_authority"] is False
+
+
+def test_stitch_merge_uses_only_input_characters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        nouls = {"L001": SimpleNamespace(noul=0.8)}
+        choices = {}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    original = "All humans are\nmortal."
+    view = stitch_hard_wrapped_lines(original)
+    assert view["generates_text"] is False
+    assert view["generates_markup"] is False
+    assert view["text"] == "All humans are mortal."
+    compact = view["text"].replace(" ", "")
+    source = original.replace("\n", "").replace(" ", "")
+    assert compact == source
+
+
+def test_stitch_classify_labels_without_generating_markup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _JoinResult:
+        nouls = {"L001": SimpleNamespace(noul=0.1)}
+        choices = {}
+
+    class _ClassifyResult:
+        nouls = {
+            "step_B000": SimpleNamespace(noul=0.1),
+            "step_B001": SimpleNamespace(noul=0.1),
+        }
+        choices = {
+            "type_B000": SimpleNamespace(choice="heading", confidence=0.99),
+            "hlevel_B000": SimpleNamespace(choice="title", confidence=0.9),
+            "callout_B000": SimpleNamespace(choice="note", confidence=0.2),
+            "type_B001": SimpleNamespace(choice="paragraph", confidence=0.95),
+            "hlevel_B001": SimpleNamespace(choice="section", confidence=0.2),
+            "callout_B001": SimpleNamespace(choice="note", confidence=0.2),
+        }
+
+    def _system_one(_state, questions, **_kwargs):
+        if any(str(key).startswith("type_") for key in questions):
+            return _ClassifyResult()
+        return _JoinResult()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        _system_one,
+    )
+    original = "Migration memo\nHi everyone, the cutover is next week."
+    view = stitch_hard_wrapped_lines(original)
+    assert view["generates_text"] is False
+    assert view["generates_markup"] is False
+    assert "#" not in view["text"]
+    texts = [block["text"] for block in view["blocks"]]
+    compact_out = "".join(texts).replace(" ", "")
+    compact_in = original.replace("\n", "").replace(" ", "")
+    assert compact_out == compact_in
+    assert view["blocks"][0]["type"] == "heading"
+    assert view["blocks"][0]["hlevel"] == "title"
+    assert view["blocks"][1]["type"] == "paragraph"
+    assert view["accepted_as_authority"] is False
+    assert view["kernel_verified"] is False
+
+
+def test_stitch_classify_unknown_type_falls_back_to_paragraph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _JoinResult:
+        nouls = {"L001": SimpleNamespace(noul=0.1)}
+        choices = {}
+
+    class _ClassifyResult:
+        nouls = {
+            "step_B000": SimpleNamespace(noul=0.0),
+            "step_B001": SimpleNamespace(noul=0.0),
+        }
+        choices = {
+            "type_B000": SimpleNamespace(choice="slideshow", confidence=0.99),
+            "type_B001": SimpleNamespace(choice="paragraph", confidence=0.9),
+        }
+
+    def _system_one(_state, questions, **_kwargs):
+        if any(str(key).startswith("type_") for key in questions):
+            return _ClassifyResult()
+        return _JoinResult()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        _system_one,
+    )
+    view = stitch_hard_wrapped_lines("Title line\nBody sentence here.")
+    assert view["blocks"][0]["type"] == "paragraph"
+    assert view["generates_markup"] is False

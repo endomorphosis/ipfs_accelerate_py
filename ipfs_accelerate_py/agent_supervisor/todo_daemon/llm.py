@@ -374,6 +374,11 @@ def maybe_observe_worker_output(
             from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
                 cite_claim_spans,
                 extract_claim_spans,
+                observe_claim_citation,
+                observe_clause_date,
+                observe_extracted_span,
+                observe_line_stitch,
+                observe_supporting_line,
             )
 
             spans = extract_claim_spans(output)
@@ -383,6 +388,14 @@ def maybe_observe_worker_output(
                     receipt_ids=(),
                     allowlisted_ids=tuple(str(row.get("id") or "") for row in spans),
                 )
+            observe_claim_citation(prompt, output)
+            observe_extracted_span(
+                output,
+                tuple(str(row.get("text") or "") for row in spans),
+            )
+            observe_clause_date(output)
+            observe_supporting_line(prompt, output)
+            observe_line_stitch(output)
     except Exception:
         return
 

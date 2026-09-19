@@ -24,6 +24,8 @@ PROVIDER_NAME = "typesafe"
 
 HIGH_CONFIDENCE = 0.85
 LOW_CONFIDENCE = 0.60
+NOUL_UNCERTAIN_LOW = 0.30
+NOUL_UNCERTAIN_HIGH = 0.70
 
 REMOTE_BLOCKED_PRIVACY = frozenset({"local_only", "forbidden_external"})
 TRAP_SMT_MARKERS = (
@@ -137,6 +139,16 @@ def _usage() -> dict[str, int]:
         "input_tokens": int(obs.get("input_tokens") or 0),
         "output_tokens": int(obs.get("output_tokens") or 0),
     }
+
+
+def noul_uncertain(*values: float) -> bool:
+    """True when some noul sits in ``[0.30, 0.70]`` and none fire above 0.70."""
+
+    fired = any(float(value) > NOUL_UNCERTAIN_HIGH for value in values)
+    in_band = any(
+        NOUL_UNCERTAIN_LOW <= float(value) <= NOUL_UNCERTAIN_HIGH for value in values
+    )
+    return bool(in_band and not fired)
 
 
 def _confidence_from_result(result: Any) -> float:
@@ -443,53 +455,76 @@ def compose_planning_nomination(
         failed = _noul_answer(result, "mandatory_check_failed")
         stale = _noul_answer(result, "stale_evidence")
         matches = _noul_answer(result, "suffix_still_matches_tree")
-        if stale >= 0.7:
+        if stale > NOUL_UNCERTAIN_HIGH:
             for name in ("preserve", "not_required", "reuse"):
                 if name in allowed:
                     nominated = name
                     reasons.append("stale_evidence_prefer_preserve")
                     break
-        elif failed >= 0.7 and matches < 0.4:
+        elif failed > NOUL_UNCERTAIN_HIGH and matches < NOUL_UNCERTAIN_LOW:
             for name in ("replan_suffix", "selected", "recompute"):
                 if name in allowed:
                     nominated = name
                     reasons.append("failed_and_suffix_mismatch")
                     break
+        elif noul_uncertain(stale, failed, matches):
+            reasons.append("uncertain_band")
         if not allowed:
             answer_noul = _noul_answer(result, "answer")
-            if failed or answer_noul:
-                nominated = "yes" if max(failed, answer_noul) >= 0.5 else "no"
-                reasons.append("noul_threshold_0_5")
+            signal = max(failed, answer_noul)
+            if signal > NOUL_UNCERTAIN_HIGH:
+                nominated = "yes"
+                reasons.append("noul_above_uncertain_band")
+            elif signal < NOUL_UNCERTAIN_LOW and (failed or answer_noul):
+                nominated = "no"
+                reasons.append("noul_below_uncertain_band")
+            elif noul_uncertain(signal):
+                nominated = ""
+                reasons.append("uncertain_band")
     elif kind == "whether_patch_is_semantically_nonempty":
         edits = _noul_answer(result, "edits_tracked_files")
         behavior = _noul_answer(result, "changes_behavior")
         comments = _noul_answer(result, "only_comments_or_whitespace")
         nonempty = (0.5 * edits + 0.5 * behavior) * (1.0 - comments)
-        if allowed:
-            if nonempty >= 0.5:
+        if noul_uncertain(nonempty, edits, behavior, comments):
+            reasons.append("uncertain_band")
+        elif allowed:
+            if nonempty > NOUL_UNCERTAIN_HIGH:
                 for name in ("nonempty", "selected", "yes"):
                     if name in allowed:
                         nominated = name
                         reasons.append("composite_nonempty")
                         break
-            else:
+            elif nonempty < NOUL_UNCERTAIN_LOW:
                 for name in ("empty", "not_required", "no"):
                     if name in allowed:
                         nominated = name
                         reasons.append("composite_empty")
                         break
         else:
-            nominated = "yes" if nonempty >= 0.5 else "no"
-            reasons.append("composite_nonempty_noul")
+            if nonempty > NOUL_UNCERTAIN_HIGH:
+                nominated = "yes"
+                reasons.append("composite_nonempty_noul")
+            elif nonempty < NOUL_UNCERTAIN_LOW:
+                nominated = "no"
+                reasons.append("composite_empty_noul")
+            else:
+                nominated = ""
+                reasons.append("uncertain_band")
     elif kind == "which_proof_obligation_applies" and allowed:
         scored = []
         for item in allowed[:8]:
             key = "applies_" + "".join(ch if ch.isalnum() else "_" for ch in item)[:48]
             scored.append((_noul_answer(result, key), item))
         scored.sort(reverse=True)
-        if scored and scored[0][0] >= 0.6:
+        if scored and scored[0][0] > NOUL_UNCERTAIN_HIGH:
             nominated = scored[0][1]
             reasons.append("highest_applies_noul")
+        elif scored and noul_uncertain(scored[0][0]):
+            reasons.append("uncertain_band")
+            if model_choice in allowed:
+                nominated = model_choice
+                reasons.append("allowlist_choice")
         elif model_choice in allowed:
             nominated = model_choice
             reasons.append("allowlist_choice")
@@ -898,6 +933,8 @@ __all__ = [
     "HUMAN_QUESTION_TYPE",
     "KernelSpend",
     "LOW_CONFIDENCE",
+    "NOUL_UNCERTAIN_HIGH",
+    "NOUL_UNCERTAIN_LOW",
     "PROOF_QUESTION_TYPES",
     "SmtTriageAction",
     "TypesafeKernelSkip",
@@ -909,6 +946,7 @@ __all__ = [
     "planning_atomic_questions",
     "is_trap_family",
     "maybe_verify_leanstral_draft",
+    "noul_uncertain",
     "residual_uncertainty_bp",
     "score_synthesis_candidate",
     "score_synthesis_candidates_fanout",

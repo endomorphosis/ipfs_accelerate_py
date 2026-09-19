@@ -85,6 +85,9 @@ COMPLETION_EVIDENCE_SCHEMA: Final[str] = (
 PLAN_HEAD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
 )
+TASK_REVISION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
+)
 
 INTENT_STREAM_ID: Final[str] = "stream:intent"
 DEFAULT_OWNER_ID: Final[str] = "intent-repository:local"
@@ -101,6 +104,8 @@ MAX_OUTPUTS: Final[int] = 256
 MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
 MAX_TASK_PROJECTION_BYTES: Final[int] = 1_048_576
+MAX_PROJECTION_RECORDS: Final[int] = 10_000
+MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
 TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"

@@ -315,6 +315,11 @@ def observe_worker_trace(
         from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_context import (
             cite_claim_spans,
             extract_claim_spans,
+            observe_claim_citation,
+            observe_clause_date,
+            observe_extracted_span,
+            observe_line_stitch,
+            observe_supporting_line,
         )
 
         spans = extract_claim_spans(output)
@@ -331,6 +336,62 @@ def observe_worker_trace(
             payload["reason_codes"] = list(payload.get("reason_codes") or []) + [
                 "unsupported_claim_span"
             ]
+        citation = observe_claim_citation(prompt, output)
+        payload["citation"] = {
+            "verdict": citation.get("verdict") or "",
+            "auto": bool(citation.get("auto")),
+            "accepted_as_authority": False,
+            "kernel_verified": False,
+        }
+        if citation.get("verdict") in {"fabricated", "contradicts"}:
+            payload["reason_codes"] = list(payload.get("reason_codes") or []) + [
+                "citation_" + str(citation.get("verdict"))
+            ]
+        extracted: list[str] = []
+        for call in flags.get("tool_calls") or ():
+            for path in call.get("paths") or ():
+                token = str(path or "").strip()
+                if token:
+                    extracted.append(token)
+        if not extracted:
+            for span in spans:
+                token = str(span.get("text") or "").strip()[:80]
+                if token:
+                    extracted.append(token)
+        pick = observe_extracted_span(output, extracted)
+        payload["typesafe_pick"] = {
+            "pick": pick.get("pick") or "",
+            "invents_span": False,
+            "accepted_as_authority": False,
+        }
+        dated = observe_clause_date(output)
+        payload["typesafe_date"] = {
+            "date": dated.get("date") or "",
+            "incomplete": bool(dated.get("incomplete")),
+            "needs_review": bool(dated.get("needs_review")),
+            "accepted_as_authority": False,
+            "kernel_verified": False,
+        }
+        found = observe_supporting_line(prompt, output)
+        payload["typesafe_find"] = {
+            "line_id": found.get("line_id") or "",
+            "exists": float(found.get("exists") or 0.0),
+            "verdict": found.get("verdict") or "",
+            "invents_ids": False,
+            "accepted_as_authority": False,
+            "kernel_verified": False,
+        }
+        stitched = observe_line_stitch(output)
+        payload["typesafe_stitch"] = {
+            "generates_text": False,
+            "generates_markup": False,
+            "block_types": [
+                str(block.get("type") or "")
+                for block in (stitched.get("blocks") or [])
+            ],
+            "accepted_as_authority": False,
+            "kernel_verified": False,
+        }
     except Exception:
         pass
     _LAST_GUARDRAIL.value = payload

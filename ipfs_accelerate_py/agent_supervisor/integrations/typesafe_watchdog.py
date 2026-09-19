@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Mapping
 
-from ipfs_accelerate_py.typesafe_inference import Choice, Noul
+from ipfs_accelerate_py.typesafe_inference import Choice, Noul, noul_yes_no
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     typesafe_permitted,
 )
@@ -85,6 +85,12 @@ def classify_watchdog_symptom(
                 "question": "Is a healthy worker likely misclassified as missing?",
                 "inspect": "`worker_count`",
             },
+            criteria=noul_yes_no(
+                true_what="Argv liveness is a false positive; workers are present",
+                true_examples=["worker_count > 0 in a guarded phase"],
+                false_what="The process is actually missing or stalled",
+                false_examples=["worker_count is 0 and the phase aged out"],
+            ),
         ),
         "label": Choice(
             instructions={
@@ -92,11 +98,36 @@ def classify_watchdog_symptom(
                 "inspect": "`stalled`",
             },
             criteria={
-                "healthy": {"what": "Workers present or not in a guarded phase"},
-                "stalled": {"what": "Guarded phase aged out with no workers"},
-                "provider_down": {"what": "Stall looks like provider outage"},
-                "false_missing": {"what": "Watchdog argv false positive"},
-                "needs_human": {"what": "Human policy needed; do not kill"},
+                "healthy": {
+                    "what": "Workers present or not in a guarded phase",
+                    "kills_process": False,
+                    "nominates": {"preserve": ["NO_OP"]},
+                },
+                "stalled": {
+                    "what": "Guarded phase aged out with no workers",
+                    "kills_process": False,
+                    "nominates": {
+                        "invalidate_stale_evidence": ["NO_OP"],
+                        "replan_suffix": ["REPLAN_AFFECTED_SUFFIX"],
+                    },
+                },
+                "provider_down": {
+                    "what": "Stall looks like provider outage",
+                    "kills_process": False,
+                    "nominates": {"retry_provider": ["NO_OP"]},
+                },
+                "false_missing": {
+                    "what": "Watchdog argv false positive",
+                    "kills_process": False,
+                    "nominates": {"preserve": ["NO_OP"]},
+                },
+                "needs_human": {
+                    "what": "Human policy needed; do not kill",
+                    "kills_process": False,
+                    "nominates": {
+                        "request_human": ["REQUEST_HUMAN_DECISION"],
+                    },
+                },
             },
         ),
     }

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
@@ -140,3 +141,66 @@ def test_install_supervisor_heal_overlay_pins_quack_state_server():
 
     assert callable(getattr(again.QuackStateServer, "_ensure_client_token_handoff"))
     assert callable(getattr(again.QuackStateServer, "_unstall_false_terminal_blocked"))
+    import ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema as schema
+    import ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness as fairness
+
+    assert callable(getattr(schema, "install_datasets_authoritative_operational_schema"))
+    assert hasattr(fairness, "RetainedAttemptFairness")
+
+
+def test_sawm_overlay_supervise_uses_sealed_launch():
+    from ipfs_accelerate_py.agent_supervisor.rescue.overlay_sys_path import overlay_root
+
+    script = (
+        Path(overlay_root())
+        / "ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh"
+    )
+    text = script.read_text(encoding="utf-8")
+    assert "SEALED=" in text
+    assert "--pin-only" in text
+    assert "owner_ready()" in text
+    assert "live_owner_ready.py" in text
+    assert "STATUS_JSON" not in text
+    assert '"${SEALED[@]}" launch &' in text
+    assert '"${LAUNCH[@]}" launch' not in text
+    assert "lanes_attached" in text
+    assert "retrying without stopping extra-gate" in text
+
+
+def test_live_owner_ready_skips_stale_first_run_status(tmp_path):
+    import os
+
+    from ipfs_accelerate_py.agent_supervisor.rescue.live_owner_ready import (
+        find_ready_owner_status,
+        owner_is_ready,
+        state_root_for_ready_owner,
+    )
+
+    def write_status(run: str, *, lifecycle: str, pid: int) -> Path:
+        path = (
+            tmp_path
+            / "data/agent_supervisor/semantic_addressed_world_model"
+            / run
+            / "quack-owner/quack-state-server.status.json"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        (path.parent.parent / "state" / "lane-0").mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "lifecycle": lifecycle,
+            "identity": {
+                "status": lifecycle,
+                "process_birth": {"pid": pid},
+            },
+        }))
+        return path
+
+    stale = write_status("run-r2-m10", lifecycle="stopped", pid=1)
+    live = write_status("run-r2-m27", lifecycle="ready", pid=os.getpid())
+    assert stale.exists()
+    assert find_ready_owner_status(tmp_path) == live.resolve()
+    assert owner_is_ready(tmp_path, os.getpid()) is True
+    assert owner_is_ready(tmp_path, 1) is False
+    assert state_root_for_ready_owner(tmp_path, quack_pid=os.getpid()) == (
+        tmp_path
+        / "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/state"
+    ).resolve()

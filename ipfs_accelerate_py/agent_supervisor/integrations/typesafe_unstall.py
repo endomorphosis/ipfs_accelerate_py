@@ -5,9 +5,11 @@ from __future__ import annotations
 import threading
 from typing import Any, Mapping, Sequence
 
-from ipfs_accelerate_py.typesafe_inference import Choice, Noul
+from ipfs_accelerate_py.typesafe_inference import Choice, Noul, noul_yes_no
 from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_advisor import (
     LOW_CONFIDENCE,
+    NOUL_UNCERTAIN_HIGH,
+    noul_uncertain,
     typesafe_permitted,
 )
 
@@ -24,6 +26,48 @@ _META = {
     "replan_suffix": "REPLAN_AFFECTED_SUFFIX",
     "retry_provider": "NO_OP",
     "request_human": "REQUEST_HUMAN_DECISION",
+}
+UNSTALL_CHOICE_CRITERIA: dict[str, Any] = {
+    "preserve": {
+        "what": "Leave the stall; existing rules apply",
+        "not_for": "Replanning, retrying a provider, or asking a human",
+        "examples": ["Unknown stall", "Low confidence"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "invalidate_stale_evidence": {
+        "what": "Nominate invalidating stale evidence",
+        "not_for": "Completing the task or inventing a MetaAction",
+        "examples": ["reason is stale_evidence"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "replan_suffix": {
+        "what": "Nominate REPLAN_AFFECTED_SUFFIX",
+        "not_for": "A suffix that still matches the tree",
+        "examples": ["Mandatory check failed and the plan suffix is stale"],
+        "maps_to": {
+            "REPLAN_AFFECTED_SUFFIX": [
+                "already declared only",
+                "does not complete a task",
+            ]
+        },
+    },
+    "retry_provider": {
+        "what": "Retry allocation; do not complete",
+        "not_for": "Completing the task or killing a worker",
+        "examples": ["Provider outage or rate limit"],
+        "maps_to": {"NO_OP": ["does not complete a task"]},
+    },
+    "request_human": {
+        "what": "Nominate REQUEST_HUMAN_DECISION",
+        "not_for": "A closed software recovery that already exists",
+        "examples": ["A WHETHER/WHICH question needs a human choice"],
+        "maps_to": {
+            "REQUEST_HUMAN_DECISION": [
+                "already declared only",
+                "does not complete a task",
+            ]
+        },
+    },
 }
 _MAPPED_METAS = frozenset(_META.values())
 _LAST = threading.local()
@@ -86,6 +130,7 @@ def _receipt(
     reason_codes: tuple[str, ...] = (),
     confidence: float = 0.0,
     declared_meta_actions: Sequence[str] = (),
+    uncertain: bool = False,
 ) -> dict[str, Any]:
     chosen = action if action in UNSTALL_ACTIONS else "preserve"
     payload = {
@@ -96,6 +141,7 @@ def _receipt(
         "may_complete_task": False,
         "accepted_as_authority": False,
         "invents_meta_action": False,
+        "uncertain": bool(uncertain),
         "confidence": round(float(confidence), 4),
         "declared_meta_actions": sorted(
             {str(item) for item in declared_meta_actions if str(item)}
@@ -161,50 +207,42 @@ def nominate_unstall_action(
                 "question": "Is the stall explained by stale evidence?",
                 "inspect": "`reason`",
             },
+            criteria=noul_yes_no(
+                true_what="reason is stale_evidence or evidence no longer matches the tree",
+                true_examples=["reason is stale_evidence"],
+                false_what="The stall has another cause",
+                false_examples=["provider_down", "needs_human"],
+            ),
         ),
         "provider_down": Noul(
             instructions={
                 "question": "Is the stall a provider outage or rate limit?",
                 "inspect": "`audit_label`",
             },
+            criteria=noul_yes_no(
+                true_what="Audit label indicates outage or rate limit",
+                true_examples=["rate_limit", "provider_outage"],
+                false_what="Workers or evidence are the issue, not the provider",
+                false_examples=["stale_evidence"],
+            ),
         ),
         "needs_human": Noul(
             instructions={
                 "question": "Is a human choice required to continue?",
             },
+            criteria=noul_yes_no(
+                true_what="A WHETHER/WHICH question needs a human choice",
+                true_examples=["REQUEST_HUMAN_DECISION is already declared"],
+                false_what="A closed software recovery already exists",
+                false_examples=["REPLAN_AFFECTED_SUFFIX is already declared"],
+            ),
         ),
         "answer": Choice(
             instructions={
                 "question": "Which closed recovery should code consider?",
                 "focus": "Select one listed action. Code will not complete a task.",
             },
-            criteria={
-                "preserve": {
-                    "what": "Leave the stall; existing rules apply",
-                    "not_for": "Replanning, retrying a provider, or asking a human",
-                    "examples": ["Unknown stall", "Low confidence"],
-                },
-                "invalidate_stale_evidence": {
-                    "what": "Nominate invalidating stale evidence",
-                    "not_for": "Completing the task or inventing a MetaAction",
-                    "examples": ["reason is stale_evidence"],
-                },
-                "replan_suffix": {
-                    "what": "Nominate REPLAN_AFFECTED_SUFFIX",
-                    "not_for": "A suffix that still matches the tree",
-                    "examples": ["Mandatory check failed and the plan suffix is stale"],
-                },
-                "retry_provider": {
-                    "what": "Retry allocation; do not complete",
-                    "not_for": "Completing the task or killing a worker",
-                    "examples": ["Provider outage or rate limit"],
-                },
-                "request_human": {
-                    "what": "Nominate REQUEST_HUMAN_DECISION",
-                    "not_for": "A closed software recovery that already exists",
-                    "examples": ["A WHETHER/WHICH question needs a human choice"],
-                },
-            },
+            criteria=UNSTALL_CHOICE_CRITERIA,
         ),
     }
     try:
@@ -239,15 +277,23 @@ def nominate_unstall_action(
     elif conf < LOW_CONFIDENCE and action != "preserve":
         reasons.append("low_confidence_preserve")
         action = "preserve"
-    elif noul("stale_evidence") >= 0.7:
+    elif noul("stale_evidence") > NOUL_UNCERTAIN_HIGH:
         action = "invalidate_stale_evidence"
         reasons.append("stale_evidence_noul")
-    elif noul("provider_down") >= 0.7:
+    elif noul("provider_down") > NOUL_UNCERTAIN_HIGH:
         action = "retry_provider"
         reasons.append("provider_down_noul")
-    elif noul("needs_human") >= 0.7:
+    elif noul("needs_human") > NOUL_UNCERTAIN_HIGH:
         action = "request_human"
         reasons.append("needs_human_noul")
+    flags = (
+        noul("stale_evidence"),
+        noul("provider_down"),
+        noul("needs_human"),
+    )
+    uncertain = noul_uncertain(*flags)
+    if uncertain:
+        reasons.append("uncertain_band")
     mapped = _META[action]
     if allowlist_active and mapped != "NO_OP" and mapped not in declared:
         reasons.append("undeclared_meta_preserve")
@@ -259,6 +305,7 @@ def nominate_unstall_action(
         reason_codes=tuple(reasons),
         confidence=conf,
         declared_meta_actions=tuple(declared),
+        uncertain=uncertain,
     )
 
 

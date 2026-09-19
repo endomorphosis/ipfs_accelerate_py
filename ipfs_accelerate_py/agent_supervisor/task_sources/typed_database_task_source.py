@@ -915,12 +915,26 @@ class TypedDatabaseTaskSource:
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
                     return True
+                try:
+                    unchanged = bool(
+                        current is not None
+                        and current.status == record.status
+                        and current.revision == record.revision
+                        and isinstance(current_receipt, Mapping)
+                        and canonical_json_bytes(dict(current_receipt))
+                        == canonical_json_bytes(dict(receipt))
+                    )
+                except (TypeError, ValueError):
+                    unchanged = False
+                if unchanged:
+                    # Live/unknown owner refusal must not poison independent
+                    # ready work. The leftover stays unready without cooldown.
+                    leftover_skipped = True
+                    continue
                 cooldown = cooldowns.get(record.task_cid)
                 if cooldown is None:
-                    self._raise_unrepaired_retrying_integrity_error(
-                        record,
-                        cooldowns,
-                    )
+                    leftover_skipped = True
+                    continue
                 try:
                     self._validate_retrying_cooldown_binding(
                         record,
@@ -937,7 +951,8 @@ class TypedDatabaseTaskSource:
                     cooldowns,
                 )
             if not result.accepted:
-                return True
+                leftover_skipped = True
+                continue
             accepted = True
         if accepted:
             return True
@@ -2046,6 +2061,8 @@ class TypedDatabaseTaskSource:
                     if cooldown is None:
                         continue
                     self._validate_retrying_cooldown_binding(record, cooldown)
+                    if self._execution_route_policy is not None:
+                        self.execution_route_binding_for_task(record)
                 except TaskSourceIntegrityError:
                     continue
             if all(
@@ -3135,8 +3152,16 @@ class TypedDatabaseTaskSource:
             if before.content_id != after.content_id:
                 continue
             if row is None:
-                raise TaskSourceIntegrityError(
-                    "retrying task has no typed cooldown receipt"
+                # Leftover retrying without a typed cooldown must not
+                # fail-close independent ready work (DOEP-044/L0).
+                return QueueEntry(
+                    task_cid=str(task.task_cid),
+                    attempt=int(getattr(task, "revision", 0) or 0),
+                    retry_not_before_ms=(2**31 - 1) * 1000,
+                    selection_penalty=0,
+                    consecutive_failures=0,
+                    state="retrying",
+                    reason="leftover_retrying_without_typed_cooldown",
                 )
             self._validate_retrying_cooldown_binding(task, row)
             task_body = task.body if isinstance(task.body, Mapping) else {}

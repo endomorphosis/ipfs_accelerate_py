@@ -26,6 +26,7 @@ def test_unstall_without_key_preserves(monkeypatch: pytest.MonkeyPatch) -> None:
     assert receipt["may_complete_task"] is False
     assert receipt["accepted_as_authority"] is False
     assert receipt["invents_meta_action"] is False
+    assert receipt["uncertain"] is False
 
 
 def test_unknown_choice_and_low_confidence_preserve(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -272,3 +273,44 @@ def test_unknown_choice_does_not_invent_declared_meta(
     assert receipt["action"] == "preserve"
     assert "unknown_choice_preserve" in receipt["reason_codes"]
     assert receipt["meta_action"] == "NO_OP"
+
+
+def test_unstall_mid_band_noul_is_uncertain_not_fire(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall.typesafe_permitted",
+        lambda **_kwargs: True,
+    )
+
+    class _Result:
+        choices = {"answer": SimpleNamespace(choice="preserve", confidence=0.9)}
+        nouls = {
+            "stale_evidence": SimpleNamespace(noul=0.5),
+            "provider_down": SimpleNamespace(noul=0.1),
+            "needs_human": SimpleNamespace(noul=0.1),
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.typesafe_inference.system_one",
+        lambda *_a, **_k: _Result(),
+    )
+    receipt = nominate_unstall_action({"reason": "unknown"})
+    assert receipt["action"] == "preserve"
+    assert receipt["uncertain"] is True
+    assert "uncertain_band" in receipt["reason_codes"]
+    assert "stale_evidence_noul" not in receipt["reason_codes"]
+    assert receipt["accepted_as_authority"] is False
+
+
+def test_unstall_choice_criteria_exposes_meta_action_subtree() -> None:
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
+        UNSTALL_CHOICE_CRITERIA,
+    )
+
+    replan = UNSTALL_CHOICE_CRITERIA["replan_suffix"]["maps_to"]
+    assert "REPLAN_AFFECTED_SUFFIX" in replan
+    assert "does not complete a task" in replan["REPLAN_AFFECTED_SUFFIX"]
+    human = UNSTALL_CHOICE_CRITERIA["request_human"]["maps_to"]
+    assert "REQUEST_HUMAN_DECISION" in human
+    assert "CALL_REMOTE_STRONG_MODEL" not in UNSTALL_CHOICE_CRITERIA["preserve"]["maps_to"]

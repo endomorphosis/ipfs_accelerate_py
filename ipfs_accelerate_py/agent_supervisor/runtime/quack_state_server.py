@@ -64,6 +64,7 @@ from ..task_sources.control_plane_migrations import (
     META_DATABASE_UUID,
     META_SCHEMA_FINGERPRINT,
     META_SCHEMA_VERSION,
+    MigrationDowngradeError,
     MigrationRunReport,
     compute_schema_fingerprint,
     duckdb_available,
@@ -346,6 +347,33 @@ def _validate_recovery_receipt_filename(value: str) -> str:
             "stale-owner recovery receipt filename is not a confined basename"
         )
     return value
+
+
+def _published_generation_recovery_receipt_is_reusable(
+    published: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+) -> bool:
+    """True when a later same-generation death may keep the historical receipt."""
+
+    return (
+        published.get("schema") == receipt.get("schema")
+        and published.get("generation") == receipt.get("generation")
+        and published.get("store_id") == receipt.get("store_id")
+        and published.get("database_uuid") == receipt.get("database_uuid")
+        and published.get("resulting_status") == ServerLifecycle.STOPPED.value
+        and published.get("task_completion_authority") is False
+    )
+
+
+def _generation_scoped_recovery_receipt_path(
+    runtime: Path,
+    receipt_basename: str,
+    generation: object,
+) -> Path:
+    stem = Path(receipt_basename).stem
+    suffix = Path(receipt_basename).suffix or ".json"
+    name = _validate_recovery_receipt_filename(f"{stem}.generation-{generation}{suffix}")
+    return Path(runtime) / name
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -4473,7 +4501,33 @@ class QuackStateServer:
                 tool_version=self.config.tool_version,
                 owner_id=f"quack-state-server:{os.getpid()}",
             )
+        except MigrationDowngradeError as exc:
+            self._log(
+                "live schema is newer than overlay catalog; "
+                f"serving without downgrade: {exc}"
+            )
+            return MigrationRunReport(
+                from_version=0,
+                to_version=0,
+                receipts=(),
+                schema_fingerprint="overlay-no-downgrade",
+                catalog_fingerprint="overlay-no-downgrade",
+                changed=False,
+            )
         except Exception as exc:
+            if "refusing downgrade" in str(exc):
+                self._log(
+                    "live schema is newer than overlay catalog; "
+                    f"serving without downgrade: {exc}"
+                )
+                return MigrationRunReport(
+                    from_version=0,
+                    to_version=0,
+                    receipts=(),
+                    schema_fingerprint="overlay-no-downgrade",
+                    catalog_fingerprint="overlay-no-downgrade",
+                    changed=False,
+                )
             raise QuackStateServerMigrationError(
                 f"control-plane migration failed: {type(exc).__name__}: {exc}"
             ) from exc
@@ -4484,7 +4538,9 @@ class QuackStateServer:
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
         return open_duckdb_connection(
-            self.config.database_path, prefer_quack=False
+            self.config.database_path,
+            prefer_quack=False,
+            owner_extension_load=True,
         )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
@@ -5370,6 +5426,12 @@ class QuackStateServer:
                     marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
                 ) or candidate_receipt_admits_owner_rearm(str(alias or ""))
             elif status_text == "in_progress":
+                store_id = str(getattr(identity, "store_id", "") or "")
+                if "semantic_addressed_world_model" in store_id:
+                    # Sealed SAWM daemons retain one expired leftover attempt
+                    # only while control stays in_progress. Rearming to
+                    # retrying freezes the whole shard.
+                    continue
                 try:
                     updated_at = datetime.fromisoformat(str(updated or "").replace("Z", "+00:00"))
                     age = (clock - updated_at).total_seconds()
@@ -5893,11 +5955,45 @@ def recover_stale_state_server(
                 receipt_path,
                 noun="stale-owner recovery receipt",
             )
-            if published != receipt:
-                raise QuackStateServerControlError(
-                    "stale-owner recovery receipt conflicts"
+            if published == receipt:
+                return receipt
+            # A later same-generation restart can die after the historical
+            # generation receipt was published. Keep that receipt; this
+            # process's stop is already settled above.
+            if isinstance(published, Mapping) and (
+                _published_generation_recovery_receipt_is_reusable(
+                    published, receipt
                 )
-            return receipt
+            ):
+                return dict(published)
+            if isinstance(published, Mapping) and (
+                published.get("schema") == receipt.get("schema")
+                and published.get("generation") != receipt.get("generation")
+                and published.get("task_completion_authority") is False
+            ):
+                # Keep the older generation's receipt. This generation writes
+                # beside it instead of conflicting or rewriting history.
+                receipt_path = _generation_scoped_recovery_receipt_path(
+                    runtime, receipt_basename, receipt.get("generation")
+                )
+                if receipt_path.exists():
+                    scoped = _read_stable_regular_json(
+                        receipt_path,
+                        noun="stale-owner recovery receipt",
+                    )
+                    if scoped == receipt:
+                        return receipt
+                    if isinstance(scoped, Mapping) and (
+                        _published_generation_recovery_receipt_is_reusable(
+                            scoped, receipt
+                        )
+                    ):
+                        return dict(scoped)
+                _atomic_write_json(receipt_path, receipt, mode=0o600)
+                return receipt
+            raise QuackStateServerControlError(
+                "stale-owner recovery receipt conflicts"
+            )
         _atomic_write_json(receipt_path, receipt, mode=0o600)
         return receipt
     finally:

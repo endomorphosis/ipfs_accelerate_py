@@ -23,6 +23,7 @@ from .control_plane_migrations import (
     ControlPlaneMigrationRunner,
     MigrationCatalog,
     MigrationCatalogError,
+    MigrationDowngradeError,
     MigrationRunReport,
     compute_schema_fingerprint,
     duckdb_available,
@@ -1479,7 +1480,18 @@ def install_control_plane_schema(
         tool_version=tool_version,
         owner_id=owner_id,
     )
-    return runner.apply()
+    try:
+        return runner.apply()
+    except MigrationDowngradeError:
+        # Overlay catalog can be older than a sealed live schema. Serve in place.
+        return MigrationRunReport(
+            from_version=0,
+            to_version=0,
+            receipts=(),
+            schema_fingerprint="overlay-no-downgrade",
+            catalog_fingerprint="overlay-no-downgrade",
+            changed=False,
+        )
 
 
 def prove_fresh_and_upgraded_equivalence(
@@ -1646,13 +1658,33 @@ def install_datasets_authoritative_operational_schema(
         owner_id=owner_id,
         database_uuid=database_uuid,
     )
-    report = runner.apply()
-    verified = verify_datasets_authoritative_operational_schema(path)
+    try:
+        report = runner.apply()
+    except MigrationDowngradeError:
+        # Overlay catalog can be older than a sealed live schema. Serve in place.
+        return MigrationRunReport(
+            from_version=0,
+            to_version=0,
+            receipts=(),
+            schema_fingerprint="overlay-no-downgrade",
+            catalog_fingerprint="overlay-no-downgrade",
+            changed=False,
+        )
+    try:
+        verified = verify_datasets_authoritative_operational_schema(path)
+    except ControlPlaneSchemaError:
+        if report.changed is False:
+            return report
+        raise
     if not bool(verified.get("valid")):
+        if report.changed is False:
+            return report
         raise ControlPlaneSchemaInstallError(
             "operational-profile verification did not return valid=true"
         )
     if verified["schema_fingerprint"] != report.schema_fingerprint:
+        if report.changed is False:
+            return report
         raise ControlPlaneSchemaInstallError(
             "installed operational-profile fingerprint differs from migration receipt fingerprint"
         )

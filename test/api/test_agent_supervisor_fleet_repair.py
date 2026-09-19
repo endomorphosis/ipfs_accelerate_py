@@ -827,6 +827,110 @@ def test_independent_todos_unclaimed_after_044_063_local_pass_does_not_stall(tmp
     assert result["recipe"] == "successors_may_run_on_current_tree_evidence"
 
 
+def test_overlay_duckdb_state_exports_lease_index_helpers():
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+
+    assert callable(duckdb_state._drop_lease_state_indexes)
+    assert callable(duckdb_state._drop_task_status_indexes)
+    assert callable(duckdb_state.rebuild_task_status_indexes)
+    assert callable(duckdb_state.is_art_index_delete_fatal)
+
+
+def test_pin_fleet_overlay_sys_path_repromotes_overlay(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _pin_fleet_overlay_sys_path,
+    )
+
+    overlay = tmp_path / "overlay"
+    nested = tmp_path / "nested" / "ipfs_accelerate_py" / "agent_supervisor"
+    nested.mkdir(parents=True)
+    (overlay / "ipfs_accelerate_py" / "agent_supervisor" / "rescue").mkdir(parents=True)
+    helper = overlay / "ipfs_accelerate_py/agent_supervisor/rescue/overlay_sys_path.py"
+    helper.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "def pin_overlay_sys_path(overlay=None):\n"
+        "    root = str(Path(overlay).resolve())\n"
+        "    while root in sys.path:\n"
+        "        sys.path.remove(root)\n"
+        "    sys.path.insert(0, root)\n"
+        "    return root\n"
+    )
+    monkeypatch.setenv("PYTHONPATH", str(overlay))
+    monkeypatch.setattr("sys.path", [str(tmp_path / "nested"), "/usr/lib/python3"])
+    _pin_fleet_overlay_sys_path()
+    import sys
+
+    assert sys.path[0] == str(overlay.resolve())
+
+
+def test_managed_daemon_pythonpath_keeps_overlay_first(monkeypatch):
+    import os
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        _managed_daemon_child_environment,
+    )
+    monkeypatch.setenv("PYTHONPATH", "/overlay/root:/other")
+    env = _managed_daemon_child_environment()
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == "/overlay/root"
+
+
+def test_retrying_control_row_retains_expired_attempt_as_exclusion():
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.retained_attempt_fairness import (
+        RetainedAttemptFairness,
+    )
+
+    attempt = SimpleNamespace(
+        attempt_id="attempt:1",
+        claim_id="claim:1",
+        task_cid="sha256:016",
+        attempt_number=4,
+        owner_session_id="session:old",
+        lease_id="lease:1",
+        fencing_token=1,
+        fence_epoch=1,
+        to_dict=lambda: {"attempt_id": "attempt:1", "status": "running"},
+    )
+    claim = SimpleNamespace(
+        state="expired",
+        expires_at_ms=1,
+        to_dict=lambda: {
+            "claim_id": "claim:1",
+            "task_cid": "sha256:016",
+            "attempt_id": "attempt:1",
+            "attempt_number": 4,
+            "owner_session_id": "session:old",
+            "lease_id": "lease:1",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+        },
+    )
+    task = SimpleNamespace(
+        status="retrying",
+        body={"completion_receipt": {"operation": "stale_in_progress_unstall"}},
+        to_dict=lambda: {"status": "retrying"},
+    )
+    daemon = SimpleNamespace(
+        get_attempt=lambda _id: SimpleNamespace(
+            status="running",
+            to_dict=lambda: {"attempt_id": "attempt:1", "status": "running"},
+        ),
+        coordinator=SimpleNamespace(
+            get_task_claim=lambda _id: claim,
+            get_prepared_task_completion=lambda _cid: None,
+        ),
+        task_source=SimpleNamespace(get=lambda _cid: task),
+        _now_ms=lambda: 10_000,
+        _task_is_in_lane=lambda _task, task_cid="": True,
+        _task_has_exact_database_claim_receipt=lambda *_: False,
+        _database_claim_receipt=lambda _claim: {"operation": "database_claim"},
+    )
+    fairness = RetainedAttemptFairness(daemon)
+    assert fairness._read(attempt) is not None
+    task.status = "blocked"
+    assert fairness._read(attempt) is None
+
+
 def test_retrying_without_claim_is_not_native_awaiting_effect():
     from ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog import classify_stall
 
@@ -981,6 +1085,447 @@ def test_diagnose_board_repair_problems_from_observation():
     assert problems["blocked_aliases"] == ["DOEP-044"]
     assert problems["in_progress_aliases"] == ["SAWM-016", "SAWM-023"]
     assert "blocked:DOEP-044" in problems["problems"]
+    leftover = diagnose_board_repair_problems({
+        "details": {
+            "owner_ready": True,
+            "task_counts": {"retrying": 2, "todo": 23},
+            "lanes": [
+                {"lane": 0, "supervisor": {}, "daemon": {}},
+                {"lane": 1, "supervisor": {"pid": 1}, "daemon": {}},
+            ],
+            "authenticated_task_observation": {"retrying_task_ids": ["DOEP-044", "DOEP-063"]},
+        },
+    })
+    assert leftover["leftover_retrying"] is True
+    assert leftover["retrying_aliases"] == ["DOEP-044", "DOEP-063"]
+    assert "leftover_retrying_daemons_missing" in leftover["problems"]
+    missing = diagnose_board_repair_problems({
+        "details": {
+            "owner_ready": True,
+            "lanes": [
+                {"lane": 0, "supervisor": {}, "daemon": {}},
+                {"lane": 1, "supervisor": {}, "daemon": {}},
+            ],
+        },
+    })
+    assert missing["missing_lanes"] is True
+    assert "missing_lanes" in missing["problems"]
+
+
+def test_repair_stale_execution_sidecars_clears_old_owner_binding(tmp_path):
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        repair_stale_execution_sidecars,
+    )
+
+    lane = tmp_path / "lane-1"
+    lane.mkdir()
+    db = lane / "doep_lane_1_database_execution.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE daemon_execution_metadata (key VARCHAR, value VARCHAR)")
+    con.execute(
+        "INSERT INTO daemon_execution_metadata VALUES "
+        "('typed_quack_stable_binding_id', 'old'), "
+        "('typed_quack_stable_authority', '{}'), "
+        "('schema', 'keep')"
+    )
+    con.close()
+    lock = lane / ".doep_lane_1_database_execution.duckdb.writer.lock"
+    coord = lane / ".doep_lane_1_database_coordination.duckdb.writer.lock"
+    lock.write_text("stale")
+    coord.write_text("stale")
+    changed = repair_stale_execution_sidecars(tmp_path)
+    assert str(db) in changed
+    assert str(lock) in changed
+    assert str(coord) in changed
+    assert not db.is_file()
+    assert not lock.is_file()
+    assert not coord.is_file()
+
+
+def test_stop_leftover_lane_processes_terminates_recorded_pids(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        stop_leftover_lane_processes,
+    )
+
+    child = subprocess.Popen(["sleep", "30"])
+    lane = tmp_path / "lane-0"
+    lane.mkdir()
+    (lane / "sawm_lane_0_supervisor_status.json").write_text(json.dumps({
+        "supervisor_pid": child.pid,
+        "daemon_pid": None,
+        "status": "running",
+    }))
+    stopped = stop_leftover_lane_processes(tmp_path, sleeper=lambda _s: None)
+    child.wait(timeout=5)
+    assert str(child.pid) in stopped
+    assert child.returncode is not None
+
+
+def test_relocate_foreign_generation_recovery_receipt_keeps_contents(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        relocate_foreign_generation_recovery_receipt,
+    )
+
+    default = tmp_path / "quack-stale-owner-recovery-receipt.json"
+    payload = {
+        "generation": 29,
+        "task_completion_authority": False,
+        "schema": "ipfs_accelerate_py/agent-supervisor/quack-stale-owner-recovery@1",
+    }
+    default.write_text(json.dumps(payload))
+    original = default.read_bytes()
+    changed = relocate_foreign_generation_recovery_receipt(tmp_path, 48)
+    dest = tmp_path / "quack-stale-owner-recovery-receipt.generation-29.json"
+    assert changed == [str(dest)]
+    assert not default.exists()
+    assert dest.read_bytes() == original
+
+
+def test_stop_leftover_owner_process_terminates_status_pid(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        stop_leftover_owner_process,
+    )
+
+    child = subprocess.Popen(["sleep", "30"])
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text(json.dumps({
+        "lifecycle": "ready",
+        "identity": {"status": "ready", "process_birth": {"pid": child.pid}},
+    }))
+    stopped = stop_leftover_owner_process(status, sleeper=lambda _s: None)
+    child.wait(timeout=5)
+    assert str(child.pid) in stopped
+    assert child.returncode is not None
+
+
+def test_repair_stale_lane_projections_clears_dead_pids(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        repair_stale_lane_projections,
+    )
+
+    lane = tmp_path / "lane-0"
+    lane.mkdir()
+    status = lane / "sawm_lane_0_supervisor_status.json"
+    status.write_text(json.dumps({
+        "supervisor_pid": 999999999,
+        "daemon_pid": 999999998,
+        "status": "running",
+    }))
+    changed = repair_stale_lane_projections(tmp_path)
+    assert changed
+    payload = json.loads(status.read_text())
+    assert payload["supervisor_pid"] is None
+    assert payload["daemon_pid"] is None
+    assert payload["status"] == "stopped"
+
+
+def test_dump_stop_already_recorded_retriggers_unrecoverable_after_cooldown():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        dump_stop_repair_import_start_already_recorded,
+    )
+    observation = {
+        "details": {
+            "lanes": [{"lane": 0, "supervisor": {}, "daemon": {}}],
+        },
+    }
+    recent = {
+        "last_dump_stop_repair": {
+            "recipe": "dump_stop_repair_import_start",
+            "status": "applied",
+            "applied_at": time.time(),
+            "unstalled": [],
+        },
+    }
+    assert dump_stop_repair_import_start_already_recorded(recent, observation) is True
+    stale = {
+        "last_dump_stop_repair": {
+            "recipe": "dump_stop_repair_import_start",
+            "status": "applied",
+            "applied_at": 1.0,
+            "unstalled": [],
+        },
+    }
+    assert dump_stop_repair_import_start_already_recorded(stale, observation) is False
+
+
+def test_attach_native_lanes_runs_launch_when_owner_ready(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import attach_native_lanes
+
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text(json.dumps({
+        "lifecycle": "ready",
+        "identity": {"status": "ready", "process_birth": {"pid": os.getpid()}},
+    }))
+    state_root = tmp_path / "state"
+    (state_root / "lane-0").mkdir(parents=True)
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "doep",
+            "cwd": str(tmp_path),
+            "owner_status_path": str(status),
+            "state_root": str(state_root),
+            "launch_argv": ["/usr/bin/python3", "-P", "scripts/ops/agent_supervisor/launch"],
+        },
+    )
+    launches = []
+
+    def fake_run(argv, **kwargs):
+        launches.append(list(argv))
+        (state_root / "lane-0" / "doep_lane_0_supervisor_status.json").write_text(
+            json.dumps({"supervisor_pid": os.getpid(), "daemon_pid": os.getpid(), "status": "running"})
+        )
+        return subprocess.CompletedProcess(argv, 0)
+
+    skipped = attach_native_lanes({"id": "spar"}, {})
+    assert skipped["reason"] == "retain_owner_not_relaunched"
+    result = attach_native_lanes(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {},
+        launch_runner=fake_run,
+        sleeper=lambda _s: None,
+        wait_seconds=2,
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["supervisors"] >= 1
+    assert result["daemons"] >= 1
+    assert launches[0][:3] == ["/usr/bin/python3", "-P", "scripts/ops/agent_supervisor/launch"]
+    assert "supervisors and daemons" in result["reason"]
+    (state_root / "lane-0" / "doep_lane_0_supervisor_status.json").write_text(
+        json.dumps({"supervisor_pid": None, "daemon_pid": None, "status": "stopped"})
+    )
+    delayed = {"n": 0}
+
+    def later_ready(path):
+        delayed["n"] += 1
+        return delayed["n"] > 1
+
+    monkeypatch.setattr(fleet_heals, "_extra_gate_ready", later_ready)
+    status.write_text(json.dumps({"lifecycle": "stopped", "identity": {"status": "stopped"}}))
+    waited = attach_native_lanes(
+        {"id": "doep", "cwd": str(tmp_path)},
+        {},
+        launch_runner=fake_run,
+        sleeper=lambda _s: None,
+        wait_seconds=4,
+        wait_for_owner=True,
+    )
+    assert waited["status"] == "applied"
+    assert waited["daemons"] >= 1
+
+
+def test_attach_does_not_start_a_second_exclusive_owner(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import attach_native_lanes
+
+    status = tmp_path / "quack-state-server.status.json"
+    status.write_text(json.dumps({
+        "lifecycle": "ready",
+        "identity": {"status": "ready", "process_birth": {"pid": os.getpid()}},
+    }))
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {
+            "id": "doep",
+            "cwd": str(tmp_path),
+            "owner_status_path": str(status),
+            "state_root": str(tmp_path / "state"),
+            "launch_argv": [
+                "/usr/bin/python3",
+                "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+                "run",
+                "--enable-legacy-queue-observation",
+            ],
+        },
+    )
+    (tmp_path / "state" / "lane-0").mkdir(parents=True)
+    launches = []
+    result = attach_native_lanes(
+        {"id": "doep"},
+        {},
+        launch_runner=lambda argv, **k: launches.append(list(argv)) or subprocess.CompletedProcess(argv, 0),
+        sleeper=lambda _s: None,
+        wait_seconds=2,
+    )
+    assert launches == []
+    assert result["recipe"] == "attach_native_lanes"
+
+
+def test_restart_native_owner_and_attach_stops_and_starts(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        restart_native_owner_and_attach,
+    )
+
+    monkeypatch.setattr(
+        fleet_heals, "_exclusive_owner_unit",
+        lambda board, observation: "agent-supervisor-doep-v1.service",
+    )
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {"id": "doep", "state_root": str(tmp_path)},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "restore_native_owner_execstart",
+        lambda *a, **k: {"status": "skip"},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "repair_stale_lane_projections",
+        lambda root: ["lane-0"],
+    )
+    monkeypatch.setattr(
+        fleet_heals, "repair_stale_execution_sidecars",
+        lambda root: ["sidecar-0"],
+    )
+    monkeypatch.setattr(
+        fleet_heals, "attach_native_lanes",
+        lambda *a, **k: {
+            "status": "applied",
+            "recipe": "attach_native_lanes",
+            "supervisors": 4,
+            "daemons": 4,
+            "completion_authority": False,
+        },
+    )
+    stops = []
+    starts = []
+    skipped = restart_native_owner_and_attach(
+        {"id": "spar"}, {}, {}, stop_unit=lambda u: stops.append(u),
+    )
+    assert skipped["reason"] == "retain_owner_not_restarted"
+    assert stops == []
+    result = restart_native_owner_and_attach(
+        {"id": "doep", "cooldown_seconds": 180},
+        {"details": {"extra_gate": {"live_owner_unit": "agent-supervisor-doep-v1.service"}}},
+        {},
+        stop_unit=lambda u: stops.append(u),
+        start_unit=lambda u: starts.append(u),
+        sleeper=lambda _s: None,
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["recipe"] == "restart_native_owner_and_attach"
+    assert stops == ["agent-supervisor-doep-v1.service"]
+    assert starts == ["agent-supervisor-doep-v1.service"]
+    assert result["sidecar_repairs"] == ["sidecar-0"]
+    assert result["lanes"]["daemons"] == 4
+
+
+def test_bind_schema_serve_in_place_writes_pin_only_dropin(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        bind_schema_serve_in_place,
+    )
+
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(
+        fleet_heals, "_exclusive_owner_unit",
+        lambda board, observation: "agent-supervisor-doep-v1.service",
+    )
+    monkeypatch.setattr(
+        fleet_heals, "_inventory_board",
+        lambda board: {"id": "doep", "cwd": str(tmp_path / "board")},
+    )
+    reloads = []
+    skipped = bind_schema_serve_in_place(
+        {"id": "spar"}, {}, systemd_user_dir=tmp_path, daemon_reload=lambda: None,
+    )
+    assert skipped["reason"] == "retain_owner_not_rewrapped"
+    result = bind_schema_serve_in_place(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        {},
+        systemd_user_dir=tmp_path,
+        daemon_reload=lambda: reloads.append(True),
+    )
+    assert result["status"] == "applied"
+    dropin = tmp_path / "agent-supervisor-doep-v1.service.d" / "81-schema-serve-in-place.conf"
+    text = dropin.read_text()
+    assert "--pin-only" in text
+    assert "sealed_board_supervisor_launch.py" in text
+    assert str(tmp_path / "board") in text
+    assert reloads == [True]
+    dropin.write_text(
+        "[Service]\nExecStart=\nExecStart='/usr/bin/python3' '-P' 'launch.py' "
+        "'--overlay' 'o' '--source-root'  '--pin-only' -- 'run'\n"
+    )
+    again = bind_schema_serve_in_place(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        {},
+        systemd_user_dir=tmp_path,
+        daemon_reload=lambda: reloads.append(True),
+    )
+    monkeypatch.undo()
+    assert again["status"] == "applied"
+    assert str(tmp_path / "board") in dropin.read_text()
+
+
+def test_restore_native_owner_execstart_unlinks_overlay_wrap(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        restore_native_owner_execstart,
+    )
+
+    dropin = tmp_path / "agent-supervisor-doep-v1.service.d"
+    dropin.mkdir()
+    (dropin / "82-overlay-launcher.conf").write_text("ExecStart=overlay\n")
+    (dropin / "80-overlay-pythonpath.conf").write_text("Environment=PYTHONPATH=overlay\n")
+    reloads = []
+    result = restore_native_owner_execstart(
+        "agent-supervisor-doep-v1.service",
+        systemd_user_dir=tmp_path,
+        daemon_reload=lambda: reloads.append(True),
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert not (dropin / "82-overlay-launcher.conf").exists()
+    assert not (dropin / "80-overlay-pythonpath.conf").exists()
+    assert reloads == [True]
+
+
+def test_should_run_dump_stop_for_stalled_looping_and_unblockable():
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        should_run_dump_stop_repair_import_start,
+    )
+
+    missing = {
+        "details": {
+            "owner_ready": True,
+            "lanes": [{"lane": 0, "supervisor": {}, "daemon": {}}],
+            "task_counts": {"todo": 23, "retrying": 2},
+        },
+    }
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "sawm"}, missing, {}, "ready_owner_missing_lanes",
+    ) is False
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "doep"}, missing, {}, "independent_todos_unclaimed",
+    ) is True
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "doep"},
+        {"details": {"blocked_task_ids": ["DOEP-044"], "task_counts": {"blocked": 1, "todo": 23}}},
+        {},
+        "blocked_without_independent_work",
+    ) is True
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "doep"},
+        missing,
+        {"last_action_result": {"recipe": "overlay_current_tree_smoke"}},
+        "independent_todos_unclaimed",
+    ) is True
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "spar"}, missing, {}, "ready_owner_missing_lanes",
+    ) is False
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "aseh"}, missing, {}, "stalled_no_progress",
+    ) is False
+    assert should_run_dump_stop_repair_import_start(
+        {"id": "doep"},
+        {"details": {"lanes": [{"lane": 0, "daemon": {"pid": 9}, "claimed": "DOEP-010"}]}},
+        {},
+        "in_progress_awaiting_effect",
+    ) is False
 
 
 def test_dump_stop_repair_import_start_skips_spar(tmp_path):
@@ -1099,6 +1644,10 @@ def test_dump_stop_repair_import_start_pipeline(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fleet_heals, "attach_native_lanes",
+        lambda *a, **k: {"status": "skip", "reason": "test", "supervisors": 0, "daemons": 0},
+    )
     result = run_board_dump_stop_repair_import_start(
         {"id": "doep", "cwd": str(tmp_path)},
         {"details": {
@@ -1173,6 +1722,10 @@ def test_dump_stop_sawm_restores_consistent_dump_without_sql(tmp_path, monkeypat
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fleet_heals, "attach_native_lanes",
+        lambda *a, **k: {"status": "skip", "reason": "test", "supervisors": 0, "daemons": 0},
+    )
     result = run_board_dump_stop_repair_import_start(
         {"id": "sawm", "cwd": str(tmp_path)},
         {"details": {
@@ -2330,6 +2883,324 @@ def test_sawm_in_progress_binds_overlay_pythonpath_without_wrapping(tmp_path, mo
     assert result["completion_authority"] is False
     assert result["recipe"] == "collapse_extra_gate_recursion"
     assert result.get("restarted") is False
+
+
+def test_collapse_wraps_sawm_bash_execstart_with_overlay_launcher(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        collapse_extra_gate_recursion,
+        supervisor_overlay_root,
+    )
+
+    user_dir = tmp_path / "systemd"
+    starts = []
+    reloads = []
+    result = collapse_extra_gate_recursion(
+        {"id": "sawm", "cwd": str(tmp_path / "board")},
+        {
+            "board_id": "sawm",
+            "details": {
+                "extra_gate": {
+                    "live_owner_unit": "ipfs-taskboard-sawm-supervisor.service",
+                }
+            },
+        },
+        daemon_reload=lambda: reloads.append(True),
+        show_unit=lambda _unit: [
+            "/bin/bash",
+            "/home/barberb/.local/lib/ipfs-taskboard-watchdog/sawm-supervise.sh",
+        ],
+        start_unit=lambda unit: starts.append(unit),
+        systemd_user_dir=user_dir,
+    )
+    assert result["status"] == "applied"
+    assert result["completion_authority"] is False
+    assert result["restarted"] is True
+    assert starts == ["ipfs-taskboard-sawm-supervisor.service"]
+    text = (
+        user_dir / "ipfs-taskboard-sawm-supervisor.service.d" / "82-overlay-launcher.conf"
+    ).read_text()
+    overlay = supervisor_overlay_root()
+    assert "sawm_supervise_with_heal_overlay.sh" in text
+    assert overlay in text
+    skipped = collapse_extra_gate_recursion(
+        {"id": "spar", "cwd": str(tmp_path)},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}}},
+        systemd_user_dir=user_dir,
+    )
+    assert skipped["reason"] == "retain_owner_not_rewrapped"
+    overlay_script = str(
+        Path(overlay)
+        / "ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh"
+    )
+    already = collapse_extra_gate_recursion(
+        {"id": "sawm", "cwd": str(tmp_path / "board")},
+        {
+            "board_id": "sawm",
+            "details": {
+                "extra_gate": {
+                    "live_owner_unit": "ipfs-taskboard-sawm-supervisor.service",
+                }
+            },
+        },
+        daemon_reload=lambda: None,
+        show_unit=lambda _unit: ["/bin/bash", overlay_script, overlay, str(tmp_path / "board")],
+        start_unit=lambda unit: starts.append(f"again:{unit}"),
+        systemd_user_dir=user_dir,
+    )
+    assert already["reason"] == "heal_overlay_pythonpath_already_bound"
+    assert (
+        user_dir / "ipfs-taskboard-sawm-supervisor.service.d" / "82-overlay-launcher.conf"
+    ).is_file()
+
+
+def test_collapse_wraps_doep_python_execstart_with_overlay_launcher(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        collapse_extra_gate_recursion,
+        supervisor_overlay_root,
+    )
+
+    user_dir = tmp_path / "systemd"
+    starts = []
+    result = collapse_extra_gate_recursion(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        {
+            "board_id": "doep",
+            "details": {
+                "extra_gate": {
+                    "live_owner_unit": "agent-supervisor-doep-v1.service",
+                }
+            },
+        },
+        daemon_reload=lambda: None,
+        show_unit=lambda _unit: [
+            "/usr/bin/python3",
+            "-P",
+            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+        ],
+        start_unit=lambda unit: starts.append(unit),
+        systemd_user_dir=user_dir,
+    )
+    assert result["status"] == "skip"
+    assert result["reason"] == "native_owner_no_overlay_wrap"
+    assert starts == []
+
+
+def test_collapse_recycles_live_doep_extra_gate_onto_overlay_launcher(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import (
+        collapse_extra_gate_recursion,
+        supervisor_overlay_root,
+    )
+
+    overlay = supervisor_overlay_root()
+    user_dir = tmp_path / "systemd"
+    dropin = user_dir / "agent-supervisor-doep-v1.service.d"
+    dropin.mkdir(parents=True)
+    (dropin / "80-overlay-pythonpath.conf").write_text(
+        "[Service]\n"
+        f"Environment=PYTHONPATH={overlay}\n"
+        "TimeoutStopSec=180\n"
+    )
+    launcher = (
+        f"{overlay}/ipfs_accelerate_py/agent_supervisor/rescue/"
+        "sealed_board_supervisor_launch.py"
+    )
+    (dropin / "82-overlay-launcher.conf").write_text(
+        "[Service]\n"
+        "ExecStart=\n"
+        f"ExecStart=/usr/bin/python3 -P {launcher} --overlay {overlay} "
+        f"--source-root {tmp_path / 'board'} -- "
+        "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py\n"
+    )
+    restarts = []
+    result = collapse_extra_gate_recursion(
+        {"id": "doep", "cwd": str(tmp_path / "board")},
+        {
+            "board_id": "doep",
+            "details": {
+                "extra_gate": {
+                    "live_owner_unit": "agent-supervisor-doep-v1.service",
+                }
+            },
+        },
+        daemon_reload=lambda: None,
+        show_unit=lambda _unit: [
+            "/usr/bin/python3",
+            "-P",
+            launcher,
+            "--overlay",
+            overlay,
+            "--source-root",
+            str(tmp_path / "board"),
+            "--",
+            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+        ],
+        live_argv=lambda _unit: [
+            "/usr/bin/python3",
+            "-P",
+            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+            "run",
+        ],
+        restart_unit=lambda unit: restarts.append(unit),
+        systemd_user_dir=user_dir,
+    )
+    assert result["status"] == "skip"
+    assert result["reason"] == "heal_overlay_pythonpath_already_bound"
+    assert result["completion_authority"] is False
+    assert restarts == []
+
+
+def test_ready_owner_missing_lanes_relaunches_same_unit(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    original_relaunch = fleet_heals.relaunch_native_lanes_on_ready_owner
+    monkeypatch.setattr(fleet_heals, "_extra_gate_ready", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        fleet_heals, "attach_native_lanes",
+        lambda *a, **k: {"status": "skip", "supervisors": 0, "daemons": 0, "recipe": "attach_native_lanes"},
+    )
+    monkeypatch.setattr(
+        fleet_heals, "collapse_extra_gate_recursion",
+        lambda *a, **k: {
+            "status": "skip",
+            "recipe": "collapse_extra_gate_recursion",
+            "reason": "heal_overlay_pythonpath_already_bound",
+            "completion_authority": False,
+        },
+    )
+    dumps = []
+    monkeypatch.setattr(
+        fleet_heals, "run_board_dump_stop_repair_import_start",
+        lambda *a, **k: dumps.append(True) or {
+            "status": "applied",
+            "recipe": "dump_stop_repair_import_start",
+            "completion_authority": False,
+            "completion_authoritative": False,
+            "unstalled": [],
+            "problems": ["missing_lanes"],
+            "started": True,
+            "reason": "dumped, stopped supervisor, repaired from problems, imported, started supervisor",
+        },
+    )
+    restarts = []
+    monkeypatch.setattr(
+        fleet_heals, "relaunch_native_lanes_on_ready_owner",
+        lambda board, observation, state, **k: (
+            restarts.append(str(board.get("id"))) or {
+                "status": "applied",
+                "recipe": "relaunch_native_lanes_on_ready_owner",
+                "completion_authority": False,
+                "reason": "exclusive extra-gate is ready; sealed launch is restarted so lane supervisors attach without a second owner",
+            }
+        ),
+    )
+    result = apply_supervisor_heal(
+        {"id": "sawm", "cwd": str(tmp_path)},
+        {
+            "stall_class": "ready_owner_missing_lanes",
+            "observation": {
+                "details": {
+                    "owner_ready": True,
+                    "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
+                    "lanes": [{"lane": 0, "supervisor": {}, "daemon": {}}],
+                }
+            },
+        },
+    )
+    assert result["completion_authority"] is False
+    assert dumps == []
+    assert result["recipe"] in {
+        "attach_native_lanes",
+        "relaunch_native_lanes_on_ready_owner",
+        "ready_owner_waiting_for_lane_attach",
+        "collapse_extra_gate_recursion",
+    }
+    skipped = original_relaunch(
+        {"id": "spar"},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-spar-supervisor.service"}}},
+        {},
+        restart_unit=lambda unit: restarts.append(unit),
+    )
+    assert skipped["reason"] == "retain_owner_not_rewrapped"
+    assert "ipfs-taskboard-spar-supervisor.service" not in restarts
+    waiting = original_relaunch(
+        {"id": "sawm", "cooldown_seconds": 180},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"}}},
+        {
+            "last_action_result": {
+                "recipe": "relaunch_native_lanes_on_ready_owner",
+                "status": "applied",
+                "applied_at": time.time(),
+            },
+            "last_action_at": time.time(),
+        },
+        restart_unit=lambda unit: restarts.append(unit),
+    )
+    assert waiting["reason"] == "lane_relaunch_already_recorded"
+    assert waiting.get("applied_at")
+    retried = original_relaunch(
+        {"id": "sawm", "cooldown_seconds": 180},
+        {"details": {"extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"}}},
+        {
+            "last_action_result": {
+                "recipe": "relaunch_native_lanes_on_ready_owner",
+                "reason": "lane_relaunch_already_recorded",
+            },
+            "last_action_at": time.time(),
+        },
+        restart_unit=lambda unit: restarts.append(unit),
+    )
+    assert retried["status"] == "applied"
+    assert retried.get("applied_at")
+    waiting_ready = original_relaunch(
+        {"id": "sawm", "cooldown_seconds": 180},
+        {
+            "details": {
+                "owner_ready": True,
+                "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
+            }
+        },
+        {},
+        restart_unit=lambda unit: restarts.append(unit),
+    )
+    assert waiting_ready["recipe"] == "ready_owner_waiting_for_lane_attach"
+    assert waiting_ready["status"] == "wait"
+
+
+def test_owner_missing_binds_overlay_launcher_before_dump_stop(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_heals import apply_supervisor_heal
+
+    monkeypatch.setattr(
+        fleet_heals, "collapse_extra_gate_recursion",
+        lambda *a, **k: {
+            "status": "applied",
+            "recipe": "collapse_extra_gate_recursion",
+            "completion_authority": False,
+            "restarted": True,
+            "reason": "one exclusive owner; overlay launcher bound so leftover retrying and live schema serve in place",
+        },
+    )
+    dumps = []
+    monkeypatch.setattr(
+        fleet_heals, "run_board_dump_stop_repair_import_start",
+        lambda *a, **k: dumps.append(True) or {"status": "skip"},
+    )
+    result = apply_supervisor_heal(
+        {"id": "sawm", "cwd": str(tmp_path)},
+        {
+            "stall_class": "owner_missing",
+            "observation": {
+                "details": {
+                    "extra_gate": {"live_owner_unit": "ipfs-taskboard-sawm-supervisor.service"},
+                }
+            },
+        },
+    )
+    assert result["status"] == "applied"
+    assert result["recipe"] == "collapse_extra_gate_recursion"
+    assert result["completion_authority"] is False
+    assert dumps == []
 
 
 def test_wrap_python_execstart_injects_heal_overlay_once():

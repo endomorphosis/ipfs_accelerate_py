@@ -1316,6 +1316,35 @@ def test_missing_checkout_under_deletion_hold_is_not_rematerialized(tmp_path):
     assert state["planned_action"] == ""
 
 
+def test_ready_owner_missing_lanes_is_not_llm_repair():
+    observation = {
+        "health": "degraded",
+        "complete": False,
+        "reason_codes": [
+            "lane_0_supervisor_missing",
+            "lane_0_daemon_missing",
+            "native_status_nonzero",
+        ],
+        "details": {
+            "owner_ready": True,
+            "task_counts": {},
+            "lanes": [
+                {"lane": 0, "supervisor": {}, "daemon": {}, "status": "running"},
+                {"lane": 1, "supervisor": {}, "daemon": {}, "status": "running"},
+            ],
+        },
+    }
+    assert fleet.classify_stall(observation) == "ready_owner_missing_lanes"
+    state = {
+        "health": "degraded", "observation": observation,
+        "stall_class": "ready_owner_missing_lanes",
+        "incident_since": 0, "next_action_at": 0, "attempts": 0,
+    }
+    assert fleet.select_action(
+        state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0, "repair": {"argv": ["r"]}}, 100
+    ) == "supervisor_heal"
+
+
 def test_nonzero_native_status_with_live_lanes_is_not_llm_repair():
     observation = {
         "health": "degraded",
@@ -1547,7 +1576,7 @@ def test_classify_stall_distinguishes_independent_work_beside_blocked_peers():
         waiting_live,
         {"failure_grace_seconds": 0, "ensure": {"argv": ["ensure"]}, "repair": {"argv": ["r"]}},
         100,
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_run_cycle_writes_ducklake_fleet_health_without_completion_authority(tmp_path):
@@ -1639,7 +1668,7 @@ def test_live_unready_owner_outranks_extra_gate_recursion():
         state, {"failure_grace_seconds": 0, "blocked_grace_seconds": 0,
                 "repair": {"argv": ["llm"]}, "ensure": {"argv": ["ensure"]},
                 "max_ensure_attempts": 2}, 100
-    ) == ""
+    ) == "supervisor_heal"
 
 
 def test_unsettled_goals_outrank_extra_gate_recursion():

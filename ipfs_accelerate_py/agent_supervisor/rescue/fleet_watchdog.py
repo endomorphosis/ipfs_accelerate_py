@@ -91,6 +91,16 @@ def _live_daemons(details: dict[str, Any]) -> bool:
     return any(isinstance(lane, dict) and lane.get("daemon") for lane in lanes)
 
 
+def _all_lane_supervisors_missing(
+    details: dict[str, Any], reasons: set[str],
+) -> bool:
+    lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
+    named = [lane for lane in lanes if isinstance(lane, dict)]
+    if named:
+        return all(not lane.get("supervisor") for lane in named)
+    return any(str(reason).endswith("_supervisor_missing") for reason in reasons)
+
+
 def _uninterruptible_lanes(details: dict[str, Any]) -> bool:
     lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
     for lane in lanes:
@@ -284,6 +294,10 @@ def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None 
         return "independent_todos_unclaimed"
     if any("process_uninterruptible" in reason for reason in reasons) or _uninterruptible_lanes(details):
         return "kernel_uninterruptible_wait"
+    if details.get("owner_ready") is True and _all_lane_supervisors_missing(details, reasons):
+        # Extra-gate is live; sealed launch handed off a scheduler that never
+        # spawned lanes. That is not a coding stall and not a second owner.
+        return "ready_owner_missing_lanes"
     if "native_status_nonzero" in reasons and _live_daemons(details):
         # A nonzero native status with live lanes is not a coding stall.
         # Task counts may be missing for one sample; workers still own the board.
@@ -701,7 +715,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
             )
             or stall in {
                 "owner_missing",
+                "owner_live_status_unreadable",
                 "independent_todos_unclaimed",
+                "ready_owner_missing_lanes",
                 "stalled_no_progress",
             }
         ):
@@ -766,6 +782,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         # Empty native counts with live extra-gate still need false-terminal
         # unstall (PCTDD-035/038). Wait after skip; never llm_router.
         return "supervisor_heal"
+    if stall == "ready_owner_missing_lanes":
+        # Extra-gate is ready; sealed launch never attached lane supervisors.
+        return "supervisor_heal"
     if stall == "extra_gate_recursion":
         # Bind overlay heals to the live exclusive owner. Never ensure a
         # competing extra-gate unit while that owner is live.
@@ -775,9 +794,9 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "configured_control_plane_dirty":
         return "supervisor_heal"
     if stall == "owner_live_status_unreadable":
-        # A live exclusive owner with a torn/failed status projection is not
-        # owner-missing. Ensure would start a competing owner.
-        return ""
+        # Crash-loop extra-gates still advertise a pid. Bind overlay heals to
+        # that same unit; never ensure a competing owner.
+        return "supervisor_heal"
     if stall == "owner_missing":
         # A missing exclusive owner is not an llm_router job. Clear overlay
         # copies if the last ensure failed dirty, then start the owner even
@@ -939,6 +958,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "todos_waiting_on_blocked_dependencies",
                     "kernel_uninterruptible_wait",
                     "native_status_retry_with_live_workers",
+                    "relaunch_native_lanes_on_ready_owner",
+                    "ready_owner_waiting_for_lane_attach",
+                    "attach_native_lanes",
+                    "restore_native_owner_execstart",
+                    "restart_native_owner_and_attach",
+                    "bind_schema_serve_in_place",
                     "collapse_extra_gate_recursion",
                     "unstall_stale_native_work",
                     "overlay_first_native_admission",
@@ -949,6 +974,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "stale_in_progress_does_not_stall_remaining_todos",
                     "overlay_current_tree_smoke",
                     "dump_stop_repair_import_start",
+                    "owner_live_status_unreadable",
                 }
             ):
                 # Unstall/false-terminal rearm must retry on cooldown, not 1h

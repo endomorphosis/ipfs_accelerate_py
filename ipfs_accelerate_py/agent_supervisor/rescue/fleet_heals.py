@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import time
@@ -231,22 +232,35 @@ def _inventory_board(board: Mapping[str, Any]) -> dict[str, Any]:
             inventory_path = argv[index + 1]
         if arg == "--board" and index + 1 < len(argv) and isinstance(argv[index + 1], str):
             board_id = argv[index + 1]
+    default_inventory = Path.home() / ".config/ipfs-taskboard-watchdog/inventory.json"
     if not inventory_path:
+        inventory_path = str(default_inventory)
+
+    def _load(path: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return {}
+        boards = payload.get("boards") if isinstance(payload, dict) else None
+        if not isinstance(boards, list):
+            return {}
+        for item in boards:
+            if not isinstance(item, dict):
+                continue
+            ident = str(item.get("id") or item.get("board_id") or "")
+            if ident.lower() == board_id.lower():
+                return item
         return {}
-    try:
-        payload = json.loads(Path(inventory_path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}
-    boards = payload.get("boards") if isinstance(payload, dict) else None
-    if not isinstance(boards, list):
-        return {}
-    for item in boards:
-        if not isinstance(item, dict):
-            continue
-        ident = str(item.get("id") or item.get("board_id") or "")
-        if ident.lower() == board_id.lower():
-            return item
-    return {}
+
+    found = _load(inventory_path)
+    if str(found.get("cwd") or "") and str(found.get("database_path") or ""):
+        return found
+    if Path(inventory_path).resolve() != default_inventory.resolve() and default_inventory.is_file():
+        fallback = _load(str(default_inventory))
+        merged = dict(fallback)
+        merged.update({key: value for key, value in found.items() if value})
+        return merged
+    return found
 
 
 def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
@@ -1612,6 +1626,13 @@ def dump_board_before_owner_stop(
         shutil.copy2(wal, dest / wal.name)
     if status_path.is_file():
         shutil.copy2(status_path, dest / status_path.name)
+    state_root = Path(str(inventory.get("state_root") or ""))
+    if state_root.is_dir():
+        for status in state_root.glob("lane-*/*_supervisor_status.json"):
+            rel = status.relative_to(state_root)
+            target = dest / "lanes" / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(status, target)
     (dest / "inventory-id.txt").write_text(board_id + "\n")
     return {
         "status": "applied",
@@ -1689,16 +1710,39 @@ def diagnose_board_repair_problems(observation: Mapping[str, Any]) -> dict[str, 
         "no_ready_tasks",
         "expired_attempt_settlement_unavailable",
     }
+    retrying_aliases: list[str] = []
+    if isinstance(auth, dict):
+        raw = auth.get("retrying_task_ids")
+        if isinstance(raw, list):
+            retrying_aliases = [str(item) for item in raw if item]
+    missing_lanes = (
+        details.get("owner_ready") is True
+        and bool(named)
+        and all(not lane.get("supervisor") for lane in named)
+        and all(not lane.get("daemon") for lane in named)
+    )
+    leftover_retrying = retrying_count > 0 and bool(named) and any(
+        not lane.get("daemon") for lane in named
+    )
+    if leftover_retrying:
+        rearm_retrying = True
     return {
         "blocked_aliases": blocked,
         "in_progress_aliases": sorted(set(in_progress)),
+        "retrying_aliases": retrying_aliases,
         "unstall_all_in_progress": unstall_all,
         "rearm_retrying": rearm_retrying,
+        "missing_lanes": missing_lanes,
+        "leftover_retrying": leftover_retrying,
         "problems": [
             *([f"blocked:{alias}" for alias in blocked]),
             *([f"in_progress:{alias}" for alias in sorted(set(in_progress))]),
+            *([f"retrying:{alias}" for alias in retrying_aliases]),
             *(["stale_in_progress_without_workers"] if stale_claims else []),
             *(["retrying_without_typed_cooldown"] if rearm_retrying else []),
+            *(["missing_lanes"] if missing_lanes else []),
+            *(["leftover_retrying_daemons_missing"] if leftover_retrying else []),
+            *(["schema_mismatch"] if details.get("schema_mismatch") else []),
         ],
     }
 
@@ -1750,12 +1794,367 @@ def rewrite_remaining_requirements_for_current_tree(body: Any) -> str:
     return json.dumps(payload)
 
 
+def _live_recorded_lane_pids(state_root: Path) -> list[int]:
+    pids: list[int] = []
+    if not state_root.is_dir():
+        return pids
+    seen: set[int] = set()
+
+    def add(pid: object) -> None:
+        if isinstance(pid, int) and pid > 1 and pid not in seen and Path(f"/proc/{pid}").exists():
+            seen.add(pid)
+            pids.append(pid)
+
+    for status in state_root.glob("lane-*/*_supervisor_status.json"):
+        try:
+            payload = json.loads(status.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        add(payload.get("supervisor_pid"))
+        add(payload.get("daemon_pid"))
+    for name in ("configured-board-master.pid", "configured-board-wave.pid"):
+        path = state_root / name
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if not text:
+            continue
+        try:
+            add(int(text))
+        except ValueError:
+            continue
+    return pids
+
+
+def stop_leftover_lane_processes(state_root: Path, *, sleeper=None) -> list[str]:
+    """Stop attach leftovers that left the native unit cgroup."""
+
+    stopped: list[str] = []
+    pids = _live_recorded_lane_pids(state_root)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+        stopped.append(str(pid))
+    pause = sleeper or time.sleep
+    if pids:
+        pause(0.5)
+    for pid in pids:
+        if not Path(f"/proc/{pid}").exists():
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            continue
+    for name in ("configured-board-master.pid", "configured-board-wave.pid"):
+        path = state_root / name
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        live = False
+        try:
+            pid = int(text)
+        except ValueError:
+            pid = 0
+        if pid > 1 and Path(f"/proc/{pid}").exists():
+            live = True
+        if not live:
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            stopped.append(str(path))
+    return stopped
+
+
+def stop_leftover_owner_process(status_path: Path, *, sleeper=None) -> list[str]:
+    """Kill extra-gate that left the unit cgroup before the next start."""
+
+    stopped: list[str] = []
+    if not status_path.is_file():
+        return stopped
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return stopped
+    identity = payload.get("identity") if isinstance(payload, dict) else {}
+    birth = identity.get("process_birth") if isinstance(identity, dict) else {}
+    pid = birth.get("pid") if isinstance(birth, dict) else None
+    if not isinstance(pid, int) or pid <= 1:
+        return stopped
+    pause = sleeper or time.sleep
+    if Path(f"/proc/{pid}").exists():
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            return stopped
+        stopped.append(str(pid))
+        pause(0.5)
+    if Path(f"/proc/{pid}").exists():
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    for _ in range(20):
+        if not Path(f"/proc/{pid}").exists():
+            break
+        pause(0.25)
+    return stopped
+
+
+def relocate_foreign_generation_recovery_receipt(
+    runtime: Path, live_generation: int,
+) -> list[str]:
+    """Move an older generation's receipt aside. Contents stay unchanged."""
+
+    changed: list[str] = []
+    if not runtime.is_dir() or live_generation <= 0:
+        return changed
+    default = runtime / "quack-stale-owner-recovery-receipt.json"
+    if not default.is_file():
+        return changed
+    try:
+        published = json.loads(default.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return changed
+    if not isinstance(published, dict):
+        return changed
+    generation = published.get("generation")
+    if generation == live_generation:
+        return changed
+    dest = runtime / f"quack-stale-owner-recovery-receipt.generation-{generation}.json"
+    if dest.exists():
+        return changed
+    try:
+        default.replace(dest)
+    except OSError:
+        return changed
+    changed.append(str(dest))
+    return changed
+
+
+def repair_stale_lane_projections(state_root: Path) -> list[str]:
+    """Clear dead supervisor/daemon pids from lane status after owner stop."""
+
+    changed: list[str] = []
+    if not state_root.is_dir():
+        return changed
+    for status in state_root.glob("lane-*/*_supervisor_status.json"):
+        try:
+            payload = json.loads(status.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        dirty = False
+        for key in ("supervisor_pid", "daemon_pid"):
+            pid = payload.get(key)
+            if isinstance(pid, int) and pid > 1 and not Path(f"/proc/{pid}").exists():
+                payload[key] = None
+                dirty = True
+        if dirty:
+            payload["status"] = "stopped"
+            status.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            changed.append(str(status))
+    return changed
+
+
+_STALE_SIDECAR_METADATA_KEYS = (
+    "typed_quack_stable_binding_id",
+    "typed_quack_stable_authority",
+)
+
+
+_STALE_SIDECAR_GLOBS = (
+    "lane-*/*_database_execution.duckdb*",
+    "lane-*/.*_database_execution.duckdb*",
+    "lane-*/*_database_coordination.duckdb*",
+    "lane-*/.*_database_coordination.duckdb*",
+)
+
+
+def repair_stale_execution_sidecars(state_root: Path) -> list[str]:
+    """Drop leftover extra-gate bindings so daemons can admit the new owner."""
+
+    changed: list[str] = []
+    if not state_root.is_dir():
+        return changed
+    seen: set[Path] = set()
+    for pattern in _STALE_SIDECAR_GLOBS:
+        for path in state_root.glob(pattern):
+            # Hidden writer.lock pins survive duckdb unlink and fail
+            # "writer-lock pin has no execution-sidecar authority".
+            if path in seen or not path.is_file():
+                continue
+            seen.add(path)
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            changed.append(str(path))
+    return changed
+
+
+def read_live_schema_version(database: Path) -> int:
+    """Read the live control-plane schema version from a stopped owner DB."""
+
+    if not database.is_file():
+        return 0
+    try:
+        import duckdb
+    except ImportError:
+        return 0
+    try:
+        con = duckdb.connect(str(database), read_only=True)
+    except Exception:
+        return 0
+    try:
+        for query in (
+            "SELECT max(version) FROM control_plane_schema_migrations",
+            "SELECT max(version) FROM schema_migrations",
+        ):
+            try:
+                row = con.execute(query).fetchone()
+            except Exception:
+                continue
+            if row and row[0] is not None:
+                return int(row[0])
+    finally:
+        con.close()
+    return 0
+
+
+def repair_control_plane_schema(database: Path, *, board_id: str = "") -> dict[str, Any]:
+    """Forward-migrate when overlay catalog is newer; serve in place if live is newer."""
+
+    live = read_live_schema_version(database)
+    result = {
+        "live_version": live,
+        "changed": False,
+        "board_id": board_id,
+    }
+    if not database.is_file():
+        return result
+    try:
+        if board_id == "sawm":
+            from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+                install_datasets_authoritative_operational_schema,
+            )
+            report = install_datasets_authoritative_operational_schema(database)
+        else:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+                ControlPlaneMigrationRunner,
+                load_default_catalog,
+            )
+            catalog = load_default_catalog()
+            runner = ControlPlaneMigrationRunner.for_database(database, catalog=catalog)
+            report = runner.apply()
+        result["changed"] = bool(getattr(report, "changed", False))
+        result["to_version"] = int(getattr(report, "to_version", live) or live)
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+SCHEMA_SERVE_DROPIN = "81-schema-serve-in-place.conf"
+
+
+def bind_schema_serve_in_place(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    *,
+    systemd_user_dir: Path | None = None,
+    daemon_reload=None,
+) -> dict[str, Any]:
+    """Pin overlay migrations into the native unit so live schema can start.
+
+    This is not overlay-first extra-gate wrap. Sealed extra-gate stays; overlay
+    apply() serves in place when live schema is newer, or migrates forward.
+    """
+    empty = {
+        "status": "skip",
+        "recipe": "bind_schema_serve_in_place",
+        "completion_authority": False,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_rewrapped"}
+    unit = _exclusive_owner_unit(board, observation)
+    if not unit.endswith(".service") or unit == "cron.service":
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    overlay = supervisor_overlay_root()
+    inventory = _inventory_board(board)
+    cwd = str(inventory.get("cwd") or board.get("cwd") or "")
+    if not cwd:
+        return {**empty, "reason": "source_root_absent", "live_owner_unit": unit}
+    if not Path(cwd).is_dir():
+        return {**empty, "reason": "source_root_absent", "live_owner_unit": unit}
+    user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
+    dropin_dir = user_dir / f"{unit}.d"
+    dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = dropin_dir / SCHEMA_SERVE_DROPIN
+    if board_id == "sawm":
+        script = (
+            Path(overlay)
+            / "ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh"
+        )
+        quoted = " ".join(
+            _systemd_quote(item)
+            for item in ["/bin/bash", str(script), overlay, cwd]
+        )
+    else:
+        native = [
+            "/usr/bin/python3",
+            "scripts/ops/agent_supervisor/direct_objective_event_driven_planning_handoff.py",
+            "run",
+            "--enable-legacy-queue-observation",
+        ]
+        wrapped = wrap_python_execstart(
+            native, overlay=overlay, source_root=cwd, pin_only=True,
+        )
+        quoted = " ".join(_systemd_quote(item) for item in wrapped)
+    body = "[Service]\nExecStart=\n" f"ExecStart={quoted}\n"
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    tokens = existing.replace("'", " ").split()
+    broken = any(
+        tokens[index] == "--source-root"
+        and index + 1 < len(tokens)
+        and tokens[index + 1].startswith("--")
+        for index in range(len(tokens))
+    )
+    if "/tmp/pytest-of-" in existing or "/tmp/pytest-" in existing:
+        broken = True
+    inventory_cwd = str(inventory.get("cwd") or "")
+    if inventory_cwd and existing and inventory_cwd not in existing:
+        broken = True
+    if existing == body and not broken:
+        return {**empty, "reason": "schema_serve_already_bound", "live_owner_unit": unit}
+    path.write_text(body, encoding="utf-8")
+    os.chmod(path, 0o600)
+    reloader = daemon_reload or _systemd_daemon_reload
+    reloader()
+    return {
+        "status": "applied",
+        "recipe": "bind_schema_serve_in_place",
+        "completion_authority": False,
+        "live_owner_unit": unit,
+        "reason": "native unit starts with pin-only overlay migrations (serve in place or forward migrate)",
+    }
+
+
 def repair_board_database(
     database: Path,
     *,
     blocked_aliases: Sequence[str] = (),
     in_progress_aliases: Sequence[str] = (),
+    retrying_aliases: Sequence[str] = (),
     unstall_in_progress: bool = False,
+    quarantine_retrying: bool = False,
 ) -> list[dict[str, Any]]:
     """Flip diagnosed stale in_progress/blocked rows to retrying. Supervisor stopped.
 
@@ -1773,15 +2172,26 @@ def repair_board_database(
         ).fetchall()
         blocked_wanted = {str(item) for item in blocked_aliases if item}
         progress_wanted = {str(item) for item in in_progress_aliases if item}
+        retrying_wanted = {str(item) for item in retrying_aliases if item}
         for cid, alias, status, rev, body in rows:
             alias_s = str(alias or "")
             status_s = str(status or "")
+            keep_retrying = status_s == "retrying" and (
+                alias_s in retrying_wanted or alias_s in blocked_wanted
+            )
             if status_s == "in_progress" and (
                 unstall_in_progress or alias_s in progress_wanted
             ):
-                pass
+                new_status = "retrying"
             elif status_s == "blocked" and alias_s in blocked_wanted:
-                pass
+                new_status = "blocked" if quarantine_retrying else "retrying"
+            elif status_s == "retrying" and (
+                keep_retrying or quarantine_retrying
+            ):
+                # Leftover retrying without a typed cooldown is unblockable.
+                # Nested daemons fail-close the ready set; keep the row blocked
+                # so independent todos can run. Never complete.
+                new_status = "blocked"
             else:
                 continue
             new_rev = int(rev or 0) + 1
@@ -1789,12 +2199,12 @@ def repair_board_database(
             con.execute(
                 "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
                 "body_json = ? WHERE task_cid = ? AND revision = ?",
-                ["retrying", new_rev, now, body_text, cid, rev],
+                [new_status, new_rev, now, body_text, cid, rev],
             )
             con.execute(
                 "INSERT INTO task_revisions (task_cid, revision, status, body_json, recorded_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                [cid, new_rev, "retrying", body_text, now],
+                [cid, new_rev, new_status, body_text, now],
             )
             changed.append({
                 "task_alias": alias_s,
@@ -1857,7 +2267,9 @@ def repair_event_replay_tasks_via_intent(
         status_s = str(status or "")
         cid_s = str(cid)
         if status_s == "in_progress" and (unstall_in_progress or alias_s in wanted):
-            pass
+            # Sealed SAWM daemons need leftover in_progress heads so fairness
+            # can still claim independent same-shard work.
+            continue
         elif status_s == "blocked" and alias_s in wanted:
             pass
         elif status_s == "retrying" and (rearm_retrying or alias_s in wanted):
@@ -1952,7 +2364,235 @@ def dump_stop_repair_import_start_already_recorded(
     remaining_progress = progress - unstalled
     if remaining_blocked or remaining_progress:
         return False
+    unrecoverable = {
+        "missing_lanes",
+        "leftover_retrying_daemons_missing",
+    } & set(problems.get("problems") or [])
+    if unrecoverable:
+        applied_at = float(result.get("applied_at") or 0)
+        if applied_at > 0 and (time.time() - applied_at) < 180:
+            return True
+        return False
     return True
+
+
+def restore_native_owner_execstart(
+    unit: str,
+    *,
+    systemd_user_dir: Path | None = None,
+    daemon_reload=None,
+) -> dict[str, Any]:
+    """Drop overlay extra-gate ExecStart wraps. Native unit owns start."""
+
+    empty = {
+        "status": "skip",
+        "recipe": "restore_native_owner_execstart",
+        "completion_authority": False,
+    }
+    if not unit.endswith(".service") or unit == "cron.service":
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
+    dropin_dir = user_dir / f"{unit}.d"
+    removed: list[str] = []
+    for name in ("82-overlay-launcher.conf", "80-overlay-pythonpath.conf"):
+        path = dropin_dir / name
+        if path.is_file():
+            path.unlink()
+            removed.append(name)
+    if not removed:
+        return {**empty, "reason": "native_execstart_already"}
+    reloader = daemon_reload or _systemd_daemon_reload
+    reloader()
+    return {
+        "status": "applied",
+        "recipe": "restore_native_owner_execstart",
+        "completion_authority": False,
+        "live_owner_unit": unit,
+        "removed": removed,
+        "reason": "overlay extra-gate wrap and PYTHONPATH drop-ins removed; native systemd unit restored",
+    }
+
+
+def _extra_gate_ready(status_path: Path) -> bool:
+    if not status_path.is_file():
+        return False
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    identity = payload.get("identity") if isinstance(payload, dict) else {}
+    if not isinstance(identity, dict):
+        return False
+    birth = identity.get("process_birth") if isinstance(identity.get("process_birth"), dict) else {}
+    pid = birth.get("pid")
+    alive = isinstance(pid, int) and pid > 1 and Path(f"/proc/{pid}").exists()
+    return (
+        str(payload.get("lifecycle") or "") == "ready"
+        and str(identity.get("status") or "") == "ready"
+        and alive
+    )
+
+
+def _lane_workers_attached(state_root: Path) -> dict[str, int]:
+    supervisors = 0
+    daemons = 0
+    if not state_root.is_dir():
+        return {"supervisors": 0, "daemons": 0}
+    for status in state_root.glob("lane-*/*_supervisor_status.json"):
+        try:
+            payload = json.loads(status.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        supervisor = payload.get("supervisor_pid")
+        daemon = payload.get("daemon_pid")
+        if isinstance(supervisor, int) and supervisor > 1 and Path(f"/proc/{supervisor}").exists():
+            supervisors += 1
+        if isinstance(daemon, int) and daemon > 1 and Path(f"/proc/{daemon}").exists():
+            daemons += 1
+    return {"supervisors": supervisors, "daemons": daemons}
+
+
+def _isolated_python_launch(argv: list[str]) -> list[str]:
+    """Ignore overlay PYTHONPATH for sealed board launch."""
+
+    if not argv:
+        return argv
+    name = Path(argv[0]).name
+    if name in {"python", "python3"} or str(argv[0]).endswith("/python3"):
+        if "-P" not in argv:
+            return [argv[0], "-P", *argv[1:]]
+    return argv
+
+
+def _launch_starts_exclusive_owner(argv: Sequence[str]) -> bool:
+    """True when launch_argv is the exclusive owner, not lane attach."""
+
+    if not argv:
+        return False
+    if "quack-start" in argv:
+        return True
+    if "--enable-legacy-queue-observation" in argv:
+        return True
+    if argv[-1:] == ["run"]:
+        return True
+    return False
+
+
+def attach_native_lanes(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    *,
+    wait_seconds: int = 90,
+    wait_for_owner: bool = False,
+    launch_runner=None,
+    sleeper=None,
+) -> dict[str, Any]:
+    """After the native owner is ready, run board launch to attach lanes.
+
+    SPAR/ASEH stay. Completion is never admitted.
+    """
+    empty = {
+        "status": "skip",
+        "recipe": "attach_native_lanes",
+        "completion_authority": False,
+        "supervisors": 0,
+        "daemons": 0,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_relaunched"}
+    inventory = _inventory_board(board)
+    status_path = Path(str(inventory.get("owner_status_path") or ""))
+    state_root = Path(str(inventory.get("state_root") or ""))
+    cwd = str(inventory.get("cwd") or board.get("cwd") or "")
+    launch = inventory.get("launch_argv") if isinstance(inventory.get("launch_argv"), list) else []
+    if not all(isinstance(item, str) and item for item in launch):
+        return {**empty, "reason": "launch_argv_absent"}
+    launch = _isolated_python_launch(list(launch))
+    pause = sleeper or time.sleep
+    ready = _extra_gate_ready(status_path)
+    if not ready:
+        payload_lifecycle = ""
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8")) if status_path.is_file() else {}
+            payload_lifecycle = str((payload or {}).get("lifecycle") or "")
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload_lifecycle = ""
+        if payload_lifecycle in {"starting", "ready"} or (
+            wait_for_owner and payload_lifecycle == "stopped"
+        ):
+            for _ in range(max(1, int(wait_seconds) // 2)):
+                pause(2)
+                if _extra_gate_ready(status_path):
+                    ready = True
+                    break
+    if not ready:
+        return {**empty, "reason": "native_owner_not_ready"}
+    attached = _lane_workers_attached(state_root)
+    if attached["supervisors"] > 0 and attached["daemons"] > 0:
+        return {
+            **empty,
+            "status": "skip",
+            "reason": "lanes_already_attached",
+            **attached,
+        }
+    runner = launch_runner or subprocess.run
+    if not _launch_starts_exclusive_owner(launch):
+        child_env = os.environ.copy()
+        child_env.pop("PYTHONPATH", None)
+        child_env.pop("PYTHONHOME", None)
+        runner(
+            list(launch),
+            cwd=cwd or None,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=180,
+            check=False,
+        )
+    deadline = max(1, int(wait_seconds) // 2)
+    for _ in range(deadline):
+        attached = _lane_workers_attached(state_root)
+        if attached["supervisors"] > 0 and attached["daemons"] > 0:
+            return {
+                "status": "applied",
+                "recipe": "attach_native_lanes",
+                "completion_authority": False,
+                "reason": "native launch attached supervisors and daemons",
+                **attached,
+            }
+        if attached["supervisors"] > 0 and attached["daemons"] == 0:
+            if not _launch_starts_exclusive_owner(launch):
+                child_env = os.environ.copy()
+                child_env.pop("PYTHONPATH", None)
+                child_env.pop("PYTHONHOME", None)
+                runner(
+                    list(launch),
+                    cwd=cwd or None,
+                    env=child_env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=180,
+                    check=False,
+                )
+        pause(2)
+    if attached["supervisors"] > 0:
+        return {
+            "status": "applied",
+            "recipe": "attach_native_lanes",
+            "completion_authority": False,
+            "reason": "native launch attached supervisors; daemons not yet live",
+            **attached,
+        }
+    return {
+        "status": "applied",
+        "recipe": "attach_native_lanes",
+        "completion_authority": False,
+        "reason": "native launch ran; lane workers not yet live",
+        **attached,
+    }
 
 
 def run_board_dump_stop_repair_import_start(
@@ -1987,6 +2627,10 @@ def run_board_dump_stop_repair_import_start(
     inventory = _inventory_board(board)
     database = Path(str(inventory.get("database_path") or ""))
     problems = diagnose_board_repair_problems(observation)
+    live_schema = read_live_schema_version(database)
+    if live_schema >= 2:
+        problems["problems"] = list(problems.get("problems") or []) + ["schema_mismatch"]
+        problems["live_schema_version"] = live_schema
     subprocess.run(
         ["systemctl", "--user", "stop", unit],
         stdout=subprocess.DEVNULL,
@@ -2048,9 +2692,21 @@ def run_board_dump_stop_repair_import_start(
             repaired_copy,
             blocked_aliases=problems["blocked_aliases"],
             in_progress_aliases=problems["in_progress_aliases"],
+            retrying_aliases=problems.get("retrying_aliases") or [],
             unstall_in_progress=bool(problems["unstall_all_in_progress"]),
+            quarantine_retrying=bool(problems.get("leftover_retrying")),
         )
+    state_root = Path(str(inventory.get("state_root") or ""))
+    leftover = stop_leftover_lane_processes(state_root)
+    leftover.extend(
+        stop_leftover_owner_process(Path(str(inventory.get("owner_status_path") or "")))
+    )
+    lane_repairs = repair_stale_lane_projections(state_root)
+    sidecar_repairs = repair_stale_execution_sidecars(state_root)
+    schema_repair = repair_control_plane_schema(repaired_copy, board_id=board_id)
     import_board_dump(repaired_copy, database)
+    restore_native_owner_execstart(unit)
+    schema_bind = bind_schema_serve_in_place(board, observation)
     subprocess.run(
         ["systemctl", "--user", "reset-failed", unit],
         stdout=subprocess.DEVNULL,
@@ -2070,6 +2726,9 @@ def run_board_dump_stop_repair_import_start(
         timeout=180,
         check=False,
     )
+    attached = attach_native_lanes(
+        board, observation, wait_for_owner=True, wait_seconds=20,
+    )
     return {
         "status": "applied",
         "recipe": "dump_stop_repair_import_start",
@@ -2078,19 +2737,104 @@ def run_board_dump_stop_repair_import_start(
         "dump_dir": str(dump_dir),
         "unstalled": changed,
         "problems": problems.get("problems") or [],
+        "lane_repairs": lane_repairs,
+        "leftover_processes": leftover,
+        "sidecar_repairs": sidecar_repairs,
+        "schema_repair": schema_repair,
+        "schema_bind": schema_bind,
+        "lanes": attached,
+        "applied_at": time.time(),
         "restored_from": restored_from,
         "last_consistent_dump": restored_from,
         "started": started.returncode == 0,
         "reason": (
             "dumped, stopped supervisor, restored event-replay dump, "
-            "started supervisor; owner CAS unstalls stale in_progress; "
-            "receipts stay incomplete"
+            "started native owner, attached lanes; receipts stay incomplete"
             if event_replay else
-            "dumped, stopped supervisor, rewrote remaining requirements "
-            "to current-tree pytest, imported, started supervisor; "
-            "receipts stay incomplete"
+            "dumped, stopped supervisor, repaired leftover rows, imported, "
+            "started native owner, attached lanes; receipts stay incomplete"
         ),
     }
+
+
+_DUMP_STOP_STALLS = frozenset({
+    "ready_owner_missing_lanes",
+    "stalled_no_progress",
+    "blocked_without_independent_work",
+    "independent_todos_unclaimed",
+    "owner_missing",
+    "native_status_unavailable_with_live_workers",
+})
+_DUMP_STOP_LOOP_RECIPES = frozenset({
+    "dump_stop_repair_import_start",
+    "ready_owner_waiting_for_lane_attach",
+    "native_lanes_own_independent_todos",
+    "overlay_current_tree_smoke",
+    "stale_in_progress_does_not_stall_remaining_todos",
+    "lane_relaunch_already_recorded",
+    "todos_waiting_on_blocked_dependencies",
+    "local_validation_pending_native_admission",
+})
+_UNRECOVERABLE_PROBLEMS = frozenset({
+    "missing_lanes",
+    "leftover_retrying_daemons_missing",
+    "stale_in_progress_without_workers",
+    "retrying_without_typed_cooldown",
+    "schema_mismatch",
+})
+
+
+def should_run_dump_stop_repair_import_start(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    state: Mapping[str, Any],
+    stall: str,
+) -> bool:
+    """True for unrecoverable, stalled, looping, or unblockable native boards.
+
+    SPAR/ASEH are never dump-stopped. Live claiming workers are not interrupted
+    unless diagnosis already says leftover retrying or missing lanes.
+    """
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return False
+    if stall == "board_checkout_missing" and BOARD_OWNER_UNITS.get(board_id):
+        stall = "owner_missing"
+    if stall in {
+        "complete",
+        "operator_hold",
+        "board_checkout_missing",
+        "closeout_waiting_on_unsettled_goals",
+    }:
+        return False
+    if stall == "ready_owner_missing_lanes" and _owner_is_ready(observation):
+        # Extra-gate is live. Attach lanes; do not SIGKILL the owner.
+        return False
+    problems = diagnose_board_repair_problems(observation)
+    problem_set = set(problems.get("problems") or [])
+    if _owner_is_ready(observation):
+        problem_set.discard("missing_lanes")
+    unrecoverable = bool(
+        _UNRECOVERABLE_PROBLEMS & problem_set
+    )
+    stalled = stall in _DUMP_STOP_STALLS
+    prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    looping = stall in _DUMP_STOP_STALLS and str(prior.get("recipe") or "") in _DUMP_STOP_LOOP_RECIPES
+    blocked_unblockable = stall == "blocked_without_independent_work" and (
+        bool(problems.get("blocked_aliases"))
+        or local_validation_already_recorded(state, board)
+    )
+    leftover = stall == "independent_todos_unclaimed" and (
+        bool(problems.get("leftover_retrying"))
+        or (bool(problems.get("missing_lanes")) and not _owner_is_ready(observation))
+    )
+    if live_workers(observation) and stall in {
+        "in_progress_awaiting_effect",
+        "independent_work_beside_blocked_peer",
+        "kernel_uninterruptible_wait",
+    } and not unrecoverable:
+        return False
+    return bool(unrecoverable or (stalled and unrecoverable) or looping or blocked_unblockable or leftover)
 
 
 def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
@@ -2145,7 +2889,7 @@ def parse_systemd_exec_start(value: str) -> list[str]:
 
 
 def wrap_python_execstart(
-    argv: list[str], *, overlay: str, source_root: str,
+    argv: list[str], *, overlay: str, source_root: str, pin_only: bool = True,
 ) -> list[str]:
     launcher = str(
         Path(overlay)
@@ -2153,16 +2897,25 @@ def wrap_python_execstart(
         / HEAL_OVERLAY_LAUNCHER
     )
     if any(HEAL_OVERLAY_LAUNCHER in item for item in argv):
-        return list(argv)
+        out = list(argv)
+        if pin_only and "--pin-only" not in out:
+            try:
+                dash = out.index("--")
+            except ValueError:
+                dash = len(out)
+            out.insert(dash, "--pin-only")
+        return out
     python = argv[0] if argv else "/usr/bin/python3"
     rest = argv[1:]
     if rest[:1] == ["-P"]:
         rest = rest[1:]
-    return [
+    prefix = [
         python, "-P", launcher,
-        "--overlay", overlay, "--source-root", source_root, "--",
-        *rest,
+        "--overlay", overlay, "--source-root", source_root,
     ]
+    if pin_only:
+        prefix.append("--pin-only")
+    return [*prefix, "--", *rest]
 
 
 def overlay_wrapped_execstart(
@@ -2189,9 +2942,18 @@ def collapse_extra_gate_recursion(
     board: Mapping[str, Any], observation: Mapping[str, Any],
     *,
     daemon_reload=None,
+    show_unit=None,
+    start_unit=None,
+    restart_unit=None,
+    live_argv=None,
     systemd_user_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Keep one exclusive owner. Never wrap ExecStart or start a second extra-gate."""
+    """Keep one exclusive owner. Bind overlay heals; wrap bash and DOEP python.
+
+    ``python3 -P`` ignores PYTHONPATH, so SAWM bash extra-gates need the overlay
+    launcher. DOEP leftover retrying still fail-closes nested daemons unless
+    the python extra-gate is overlay-first. SPAR/ASEH stay unwrapped.
+    """
     empty = {
         "status": "skip",
         "recipe": "collapse_extra_gate_recursion",
@@ -2200,44 +2962,110 @@ def collapse_extra_gate_recursion(
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_not_rewrapped"}
+    if board_id in {"sawm", "doep"}:
+        return {**empty, "reason": "native_owner_no_overlay_wrap"}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
     live_unit = str(extra.get("live_owner_unit") or "")
     if not live_unit.endswith(".service") or live_unit == "cron.service":
+        live_unit = _exclusive_owner_unit(board, observation)
+    if not live_unit.endswith(".service") or live_unit == "cron.service":
         return {**empty, "reason": "live_owner_unit_unknown"}
     overlay = supervisor_overlay_root()
+    cwd = str(board.get("cwd") or "")
     user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
     dropin_dir = user_dir / f"{live_unit}.d"
     dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # ExecStart wrapping loads overlay quack_state_server against a sealed
-    # DuckDB opener and crash-loops the exclusive owner. Bind PYTHONPATH only.
     path = dropin_dir / "80-overlay-pythonpath.conf"
     body = (
         "[Service]\n"
         f"Environment=PYTHONPATH={overlay}\n"
         "TimeoutStopSec=180\n"
     )
-    if path.is_file() and path.read_text(encoding="utf-8") == body:
+    pythonpath_written = not (path.is_file() and path.read_text(encoding="utf-8") == body)
+    if pythonpath_written:
+        path.write_text(body, encoding="utf-8")
+        os.chmod(path, 0o600)
+    exec_wrap = dropin_dir / "81-supervisor-heal-overlay.conf"
+    if exec_wrap.is_file():
+        exec_wrap.unlink()
+    launcher_written = False
+    show = show_unit or _systemd_show_exec_start
+    raw = show(live_unit)
+    if isinstance(raw, list):
+        argv = [str(item) for item in raw if isinstance(item, str)]
+    else:
+        argv = parse_systemd_exec_start(str(raw or ""))
+    first = Path(argv[0]).name if argv else ""
+    wrap_python = False
+    wrap_bash = False
+    if cwd and (wrap_bash or wrap_python):
+        wrapped = overlay_wrapped_execstart(argv, overlay=overlay, source_root=cwd)
+        launcher = dropin_dir / "82-overlay-launcher.conf"
+        if wrapped and wrapped != argv:
+            quoted = " ".join(_systemd_quote(item) for item in wrapped)
+            launcher_body = (
+                "[Service]\n"
+                "ExecStart=\n"
+                f"ExecStart={quoted}\n"
+            )
+            if not (launcher.is_file() and launcher.read_text(encoding="utf-8") == launcher_body):
+                launcher.write_text(launcher_body, encoding="utf-8")
+                os.chmod(launcher, 0o600)
+                launcher_written = True
+        # Already-wrapped ExecStart must keep 82. Unlinking it and later
+        # daemon-reloading restores the sealed -P extra-gate.
+    running: list[str] = []
+    if callable(live_argv):
+        raw_live = live_argv(live_unit)
+        running = [str(item) for item in raw_live] if isinstance(raw_live, list) else []
+    elif live_argv is None:
+        running = _live_unit_argv(live_unit)
+    if not pythonpath_written and not launcher_written:
+        if (
+            running
+            and not _overlay_launcher_in_argv(running)
+            and (wrap_bash or wrap_python)
+        ):
+            restarter = restart_unit or _systemd_restart_unit
+            restarter(live_unit)
+            return {
+                "status": "applied",
+                "recipe": "collapse_extra_gate_recursion",
+                "completion_authority": False,
+                "live_owner_unit": live_unit,
+                "inventory_owner_unit": extra.get("inventory_owner_unit") or "",
+                "restarted": True,
+                "reason": (
+                    "overlay launcher bound; live extra-gate recycled onto "
+                    "overlay leftover-cooldown heals"
+                ),
+            }
         return {
             **empty,
             "reason": "heal_overlay_pythonpath_already_bound",
             "live_owner_unit": live_unit,
         }
-    path.write_text(body, encoding="utf-8")
-    os.chmod(path, 0o600)
-    exec_wrap = dropin_dir / "81-supervisor-heal-overlay.conf"
-    if exec_wrap.is_file():
-        exec_wrap.unlink()
     reloader = daemon_reload or _systemd_daemon_reload
     reloader()
+    restarted = False
+    if launcher_written:
+        starter = start_unit or _systemd_start_unit
+        starter(live_unit)
+        restarted = True
     return {
         "status": "applied",
         "recipe": "collapse_extra_gate_recursion",
         "completion_authority": False,
         "live_owner_unit": live_unit,
         "inventory_owner_unit": extra.get("inventory_owner_unit") or "",
-        "restarted": False,
-        "reason": "one exclusive owner; overlay PYTHONPATH bound; competing extra-gate not started",
+        "restarted": restarted,
+        "reason": (
+            "one exclusive owner; overlay launcher bound so leftover "
+            "retrying and live schema serve in place"
+            if launcher_written else
+            "one exclusive owner; overlay PYTHONPATH bound; competing extra-gate not started"
+        ),
     }
 
 
@@ -2327,6 +3155,37 @@ def _systemd_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
+def _overlay_launcher_in_argv(argv: Sequence[str]) -> bool:
+    return any(
+        HEAL_OVERLAY_LAUNCHER in str(item)
+        or str(item).endswith("sawm_supervise_with_heal_overlay.sh")
+        for item in argv
+    )
+
+
+def _live_unit_argv(unit: str) -> list[str]:
+    completed = subprocess.run(
+        ["systemctl", "--user", "show", unit, "-p", "MainPID"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=5, check=False, text=True,
+    )
+    text = str(completed.stdout or "")
+    pid = 0
+    for line in text.splitlines():
+        if line.startswith("MainPID="):
+            try:
+                pid = int(line.split("=", 1)[1])
+            except ValueError:
+                pid = 0
+    if pid <= 1:
+        return []
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return []
+    return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+
+
 def _systemd_show_exec_start(unit: str) -> str:
     completed = subprocess.run(
         ["systemctl", "--user", "show", unit, "-p", "ExecStart"],
@@ -2352,6 +3211,191 @@ def _systemd_restart_unit(unit: str) -> None:
     )
 
 
+def relaunch_native_lanes_on_ready_owner(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    state: Mapping[str, Any],
+    *,
+    restart_unit=None,
+) -> dict[str, Any]:
+    """Restart the same exclusive owner so sealed launch attaches lanes.
+
+    Extra-gate is already ready. SPAR/ASEH stay. Never forges completion.
+    """
+    empty = {
+        "status": "wait",
+        "recipe": "relaunch_native_lanes_on_ready_owner",
+        "completion_authority": False,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_rewrapped"}
+    prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    applied_at = float(prior.get("applied_at") or 0)
+    cooldown = float(board.get("cooldown_seconds") or 180)
+    if prior.get("recipe") == "relaunch_native_lanes_on_ready_owner" and applied_at > 0:
+        if time.time() - applied_at < cooldown:
+            return {
+                **empty,
+                "reason": "lane_relaunch_already_recorded",
+                "applied_at": applied_at,
+            }
+    details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+    inventory = _inventory_board(board)
+    status_path = Path(str(inventory.get("owner_status_path") or ""))
+    if details.get("owner_ready") is True or _extra_gate_ready(status_path):
+        attached = attach_native_lanes(board, observation)
+        if attached.get("status") == "applied":
+            return attached
+        return {
+            **empty,
+            "recipe": "ready_owner_waiting_for_lane_attach",
+            "reason": (
+                "native owner is ready; launch_argv attaches supervisors "
+                "and daemons without wrapping ExecStart"
+            ),
+        }
+    unit = _exclusive_owner_unit(board, observation)
+    if not unit.endswith(".service") or unit == "cron.service":
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    restarter = restart_unit or _systemd_restart_unit
+    restarter(unit)
+    return {
+        "status": "applied",
+        "recipe": "relaunch_native_lanes_on_ready_owner",
+        "completion_authority": False,
+        "live_owner_unit": unit,
+        "applied_at": time.time(),
+        "reason": (
+            "exclusive extra-gate is ready; sealed launch is restarted so "
+            "lane supervisors attach without a second owner"
+        ),
+    }
+
+
+def restart_native_owner_and_attach(
+    board: Mapping[str, Any],
+    observation: Mapping[str, Any],
+    state: Mapping[str, Any],
+    *,
+    stop_unit=None,
+    start_unit=None,
+    sleeper=None,
+) -> dict[str, Any]:
+    """systemctl stop → repair sidecars → start → attach supervisors and daemons.
+
+    SPAR/ASEH stay. Completion is never admitted. Overlay extra-gate wraps
+    are removed so the native unit is what restarts.
+    """
+    empty = {
+        "status": "skip",
+        "recipe": "restart_native_owner_and_attach",
+        "completion_authority": False,
+    }
+    board_id = str(board.get("id") or observation.get("board_id") or "").lower()
+    if board_id in RETAIN_OWNER_BOARDS:
+        return {**empty, "reason": "retain_owner_not_restarted"}
+    prior = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
+    applied_at = float(prior.get("applied_at") or 0)
+    cooldown = float(board.get("cooldown_seconds") or 180)
+    if prior.get("recipe") == "restart_native_owner_and_attach" and applied_at > 0:
+        if time.time() - applied_at < cooldown:
+            return {
+                **empty,
+                "reason": "native_restart_already_recorded",
+                "applied_at": applied_at,
+            }
+    unit = _exclusive_owner_unit(board, observation)
+    if not unit.endswith(".service") or unit == "cron.service":
+        return {**empty, "reason": "live_owner_unit_unknown"}
+    inventory = _inventory_board(board)
+    status_path = Path(str(inventory.get("owner_status_path") or ""))
+    if _extra_gate_ready(status_path) or _owner_is_ready(observation):
+        attached = attach_native_lanes(
+            board, observation, wait_for_owner=False, wait_seconds=10, sleeper=sleeper,
+        )
+        return {
+            **empty,
+            "reason": "extra_gate_ready_not_restarted",
+            "live_owner_unit": unit,
+            "lanes": attached,
+        }
+    restore_native_owner_execstart(unit)
+    bind_schema_serve_in_place(board, observation)
+    stopper = stop_unit or (
+        lambda u: subprocess.run(
+            ["systemctl", "--user", "stop", u],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=180,
+            check=False,
+        )
+    )
+    stopper(unit)
+    subprocess.run(
+        ["systemctl", "--user", "kill", "--kill-who=all", "-s", "SIGKILL", unit],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+        check=False,
+    )
+    state_root = Path(str(inventory.get("state_root") or ""))
+    leftover = stop_leftover_lane_processes(state_root, sleeper=sleeper)
+    leftover.extend(
+        stop_leftover_owner_process(status_path, sleeper=sleeper)
+    )
+    live_generation = 0
+    if status_path.is_file():
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload = {}
+        identity = payload.get("identity") if isinstance(payload, dict) else {}
+        generation = identity.get("generation") if isinstance(identity, dict) else 0
+        if isinstance(generation, int):
+            live_generation = generation
+    leftover.extend(
+        relocate_foreign_generation_recovery_receipt(status_path.parent, live_generation)
+    )
+    lane_repairs = repair_stale_lane_projections(state_root)
+    sidecar_repairs = repair_stale_execution_sidecars(state_root)
+    starter = start_unit or _systemd_start_unit
+    starter(unit)
+    pause = sleeper or time.sleep
+    pause(2)
+    attached = attach_native_lanes(
+        board, observation, wait_for_owner=True, wait_seconds=20, sleeper=sleeper,
+    )
+    return {
+        "status": "applied",
+        "recipe": "restart_native_owner_and_attach",
+        "completion_authority": False,
+        "live_owner_unit": unit,
+        "lane_repairs": lane_repairs,
+        "leftover_processes": leftover,
+        "sidecar_repairs": sidecar_repairs,
+        "lanes": attached,
+        "applied_at": time.time(),
+        "reason": (
+            "stopped native systemd unit, repaired stale lane/sidecar state, "
+            "started unit, attached supervisors and daemons"
+        ),
+    }
+
+
+def _systemd_start_unit(unit: str) -> None:
+    subprocess.run(
+        ["systemctl", "--user", "reset-failed", unit],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=5, check=False,
+    )
+    subprocess.run(
+        ["systemctl", "--user", "start", unit],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=180, check=False,
+    )
+
+
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -2359,12 +3403,56 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
     dirty = restore_dirty_control_plane(board, observation)
     if dirty.get("status") == "applied":
         return dirty
-    if stall == "owner_missing":
+    if should_run_dump_stop_repair_import_start(board, observation, state, stall):
+        pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+        if pipeline.get("status") != "skip":
+            return pipeline
+        restarted = restart_native_owner_and_attach(board, observation, state)
+        if restarted.get("status") == "applied":
+            return restarted
+    unit = _exclusive_owner_unit(board, observation)
+    if unit.endswith(".service") and unit != "cron.service":
+        restore_native_owner_execstart(unit)
+        schema_bind = bind_schema_serve_in_place(board, observation)
+        if schema_bind.get("status") == "applied":
+            restarted = restart_native_owner_and_attach(board, observation, state)
+            if restarted.get("status") == "applied":
+                restarted["schema_bind"] = schema_bind
+                return restarted
+    attached = attach_native_lanes(board, observation, wait_seconds=10)
+    if attached.get("status") == "applied" and (
+        int(attached.get("supervisors") or 0) > 0
+        or int(attached.get("daemons") or 0) > 0
+    ):
+        return attached
+    if stall in {"owner_missing", "owner_live_status_unreadable"}:
+        collapsed = collapse_extra_gate_recursion(board, observation)
+        if collapsed.get("status") == "applied":
+            return collapsed
+        if stall == "owner_live_status_unreadable":
+            return {
+                "status": "wait",
+                "recipe": "owner_live_status_unreadable",
+                "completion_authority": False,
+                "reason": "exclusive owner is live; overlay launcher bind skipped",
+            }
         cleared = clear_overlay_copies_blocking_owner_start(board)
         pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
         if pipeline.get("status") != "skip":
             return pipeline
         return cleared
+    if stall == "ready_owner_missing_lanes":
+        attached = attach_native_lanes(board, observation)
+        if attached.get("status") == "applied" and int(attached.get("supervisors") or 0) > 0:
+            return attached
+        collapsed = collapse_extra_gate_recursion(board, observation)
+        if collapsed.get("status") == "applied":
+            return collapsed
+        if not _owner_is_ready(observation):
+            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+            if pipeline.get("status") != "skip":
+                return pipeline
+        return relaunch_native_lanes_on_ready_owner(board, observation, state)
     if stall == "extra_gate_recursion":
         collapsed = collapse_extra_gate_recursion(board, observation)
         if collapsed.get("status") == "applied":
@@ -2461,6 +3549,18 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
                     "remaining todos are not stalled on D-state or a sealed package"
                 ),
             }
+        leftover_crash = (
+            int(counts.get("retrying") or 0) > 0
+            and named
+            and any(not lane.get("daemon") for lane in named)
+        )
+        if leftover_crash:
+            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+            if pipeline.get("status") != "skip":
+                return pipeline
+            collapsed = collapse_extra_gate_recursion(board, observation)
+            if collapsed.get("status") == "applied":
+                return collapsed
         return {"status": "wait", "recipe": "native_lanes_own_independent_todos",
                 "reason": "blocked receipts stay blocked; live native lanes claim independent todos"}
     if stall == "stalled_no_progress" and live_workers(observation):
@@ -2548,6 +3648,14 @@ def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) ->
             "reason": "one exclusive owner; native extra-gate admission uses unstall, not a second extra-gate",
         }
     if stall == "board_checkout_missing":
+        board_id = str(board.get("id") or "").lower()
+        if BOARD_OWNER_UNITS.get(board_id):
+            pipeline = run_board_dump_stop_repair_import_start(board, observation, state)
+            if pipeline.get("status") != "skip":
+                return pipeline
+            restarted = restart_native_owner_and_attach(board, observation, state)
+            if restarted.get("status") == "applied":
+                return restarted
         return {"status": "wait", "recipe": "deleted_checkout_not_rematerialized",
                 "reason": "missing checkout is not reconstructed; retain original authority or explicit retirement"}
     return try_logic_guided_repair(board, state)
