@@ -6091,6 +6091,44 @@ def record_end_to_end_token_compute(
     }
 
 
+def measure_hermetic_end_to_end_token_compute() -> dict[str, Any]:
+    """DOEP-110 measured hermetic compile. GPU remains unavailable."""
+
+    from ipfs_accelerate_py.agent_supervisor.context.program_world_context import (
+        compile_program_world_context,
+    )
+    from ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid import cid_for_bytes
+
+    started = time.perf_counter()
+    receipt = compile_program_world_context(
+        {
+            "token_budget": 64,
+            "materials": [
+                {
+                    "identity_cid": cid_for_bytes(b"doep-110-proof"),
+                    "kind": "proofs",
+                    "required": True,
+                    "tokens": 8,
+                },
+                {
+                    "identity_cid": cid_for_bytes(b"doep-110-tests"),
+                    "kind": "tests",
+                    "required": True,
+                    "tokens": 8,
+                },
+            ],
+        }
+    )
+    elapsed = time.perf_counter() - started
+    input_tokens = max(8 * len(receipt.included), 1)
+    return record_end_to_end_token_compute(
+        input_tokens=input_tokens,
+        output_tokens=len(receipt.included),
+        cpu_seconds=elapsed,
+        gpu_seconds=None,
+    )
+
+
 __all__ = [
     "AttributionRole",
     "BENCHMARK_CAUSAL_SPAN_INTERFACE",

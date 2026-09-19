@@ -19,7 +19,7 @@ import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Mapping, TextIO
 
 # ---------------------------------------------------------------------------
 # Interface pins (stdlib only at module import)
@@ -1507,6 +1507,16 @@ class ProgramWorldCLI:
             "mode": result.mode,
             "completion_authority": False,
         }
+
+    def operation(self, name: str, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_service import (
+            ProgramWorldService,
+        )
+
+        result = dict(ProgramWorldService().operation(name, payload))
+        result["completion_authority"] = False
+        result["subprocess"] = False
+        return result
 
 
 if __name__ == "__main__":  # pragma: no cover

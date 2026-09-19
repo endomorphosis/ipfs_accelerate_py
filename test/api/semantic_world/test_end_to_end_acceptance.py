@@ -228,7 +228,7 @@ class SemanticWorldEndToEndScenario:
         return _ok("repair", proposal_only=delta["proposal_only"])
 
     def _vfs(self) -> dict[str, Any]:
-        return _ok("vfs", reason_code="kit_owned_bytes_not_simulated")
+        return _closed("vfs", "kit_vfs_unavailable")
 
     def _proofs(self) -> dict[str, Any]:
         context = compile_program_world_context(

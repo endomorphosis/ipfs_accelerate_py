@@ -97,6 +97,12 @@ class ProgramWorldService:
             "trace": self._trace,
             "procedure": self._procedure,
             "benchmark": self._benchmark,
+            "world": self._world,
+            "state": self._state,
+            "transition": self._transition,
+            "relation": self._relation,
+            "dogfood": self._dogfood,
+            "index": self._index,
         }
         result = handlers.get(name, self._probe)(body)
         result.setdefault("operation", name)
@@ -250,11 +256,157 @@ class ProgramWorldService:
             "completion_authority": False,
         }
 
+    def _world(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        snapshot = payload.get("snapshot")
+        if not isinstance(snapshot, Mapping) or "snapshot_cid" not in snapshot:
+            return {
+                "bound": False,
+                "reason_code": "snapshot_unavailable",
+                "proposal_only": True,
+            }
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.world_view import (
+            SupervisorWorldView,
+            WorldViewError,
+        )
+
+        try:
+            SupervisorWorldView(snapshot)
+        except (WorldViewError, ValueError) as exc:
+            return {
+                "bound": False,
+                "reason_code": str(exc)[:200],
+                "proposal_only": True,
+            }
+        return {"bound": True, "proposal_only": True}
+
+    def _state(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_required import (
+            admit_required_program_world_dispatch,
+        )
+
+        result = admit_required_program_world_dispatch(
+            {
+                "task_id": payload.get("task_id") or "SAWM-039",
+                "receipts": tuple(payload.get("receipts") or ()),
+            }
+        )
+        return {
+            "admitted": False,
+            "dispatch_admitted": bool(result["admitted"]),
+            "missing": list(result["missing"]),
+            "proposal_only": True,
+        }
+
+    def _transition(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.analysis.program_event_predictor import (
+            EventPredictionError,
+            predict_next_program_event,
+        )
+
+        try:
+            predicted = predict_next_program_event(
+                {
+                    "event_type": payload.get("event_type") or "call",
+                    "current_state": payload.get("current_state") or "state",
+                    "observed_event": payload.get("observed_event"),
+                }
+            )
+        except EventPredictionError as exc:
+            return {"ok": False, "reason_code": str(exc), "proposal_only": True}
+        return {
+            "ok": True,
+            "prediction": dict(predicted),
+            "observation": False,
+            "proposal_only": True,
+        }
+
+    def _relation(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        kind = str(payload.get("kind") or payload.get("relation_kind") or "exact")
+        if kind.lower() in {"similar", "similarity", "ann", "knn", "nearest"}:
+            return {
+                "ok": False,
+                "reason_code": "neural_similarity_is_never_a_semantic_relation",
+                "ann_authoritative": False,
+                "proposal_only": True,
+            }
+        return {
+            "ok": True,
+            "kind": kind,
+            "source_authority": "ipfs_datasets_py.logic.software_contracts.semantic_state.program_relations",
+            "proposal_only": True,
+            "ann_authoritative": False,
+        }
+
+    def _dogfood(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        module_path = (
+            Path(__file__).resolve().parents[1] / "evaluation" / "program_graph_sequence.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "program_graph_sequence_dogfood", module_path
+        )
+        if spec is None or spec.loader is None:
+            return {
+                "ok": False,
+                "reason_code": "graph_sequence_unavailable",
+                "proposal_only": True,
+            }
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        result = module.run_program_graph_sequence_ablation(
+            nodes=tuple(payload.get("nodes") or ("a", "b")),
+            types=dict(payload.get("types") or {"a": "fn", "b": "unknown"}),
+            gold=str(payload.get("gold") or "a"),
+            backends=dict(
+                payload.get("backends")
+                or {"gnn": False, "graph_transformer": False, "tagseq": False, "linear": True}
+            ),
+        )
+        return {
+            "ok": True,
+            "static_baseline_hit": result["static_baseline_hit"],
+            "encoders": result["encoders"],
+            "runtime_authority": False,
+            "proposal_only": True,
+        }
+
+    def _index(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        del payload
+        return {
+            "available": False,
+            "surface": "ipfs_kit_py.projection_index",
+            "reason_code": "ann_index_unavailable",
+            "ann_authoritative": False,
+            "proposal_only": True,
+        }
+
 
 def describe_controls() -> dict[str, Any]:
     return {
         "interface": ProgramWorldService.INTERFACE,
-        "commands": ["status", "resolve", "world", "graph", "state", "trace", "reuse"],
+        "commands": [
+            "status",
+            "resolve",
+            "world",
+            "graph",
+            "state",
+            "trace",
+            "transition",
+            "call-target",
+            "repair",
+            "relation",
+            "projection",
+            "reuse",
+            "procedure",
+            "dogfood",
+            "index",
+            "benchmark",
+        ],
         "completion_authority": False,
         "authoritative": False,
+        "subprocess": False,
     }
