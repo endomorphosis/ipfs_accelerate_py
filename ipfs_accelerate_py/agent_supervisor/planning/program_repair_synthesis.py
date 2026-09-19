@@ -4720,6 +4720,45 @@ def synthesize_program_repair(
     return synth.synthesize(request)
 
 
+def bounded_model_assisted_synthesis(
+    *,
+    residual_only: bool,
+    max_model_calls: int,
+    model_calls_used: int = 0,
+    changes_behavior: bool = False,
+    self_admits: bool = False,
+) -> Mapping[str, Any]:
+    """DOEP-092 bounded hybrid residual wrapper. Never completes a task."""
+
+    if max_model_calls < 0 or max_model_calls > 8:
+        raise ProgramRepairBoundsError("max_model_calls out of bound")
+    if model_calls_used > max_model_calls:
+        raise ProgramRepairBoundsError("model call budget exhausted")
+    if not residual_only:
+        raise ProgramRepairAuthorityError(
+            "model-assisted synthesis may only fill residual syntax debt"
+        )
+    if changes_behavior:
+        raise ProgramRepairAuthorityError(
+            "model-assisted synthesis cannot change declared behavior"
+        )
+    if self_admits:
+        raise ProgramRepairAuthorityError(
+            "model-assisted synthesis cannot self-admit or complete tasks"
+        )
+    return MappingProxyType(
+        {
+            "schema": HYBRID_USAGE_RECEIPT_SCHEMA,
+            "proposal_only": True,
+            "admitted": False,
+            "completion_authority": False,
+            "model_calls_used": model_calls_used,
+            "max_model_calls": max_model_calls,
+            "residual_only": True,
+        }
+    )
+
+
 __all__ = (
     "CONTRACT_VERSION",
     "EQUALITY_REWRITE_RECEIPT_SCHEMA",
@@ -4766,6 +4805,7 @@ __all__ = (
     "ResidualHybridDisposition",
     "ResidualHybridPacket",
     "ResidualHybridRepairService",
+    "bounded_model_assisted_synthesis",
     "create_program_repair_synthesizer",
     "prove_equality_under_theory",
     "synthesize_program_repair",

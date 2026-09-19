@@ -1,0 +1,16 @@
+{
+  "schema": "doep-residual-gap-and-marginal-return@1",
+  "completion_authority": false,
+  "promoted": false,
+  "native_completed": 61,
+  "remaining_todo": 24,
+  "gaps": [
+    "live extra-gate cannot claim remaining todos",
+    "overlay tests are not DuckDB completion evidence",
+    "dispatcher still stalls on native observation/settlement"
+  ],
+  "marginal_return": {
+    "more_overlay_modules": "diminishing versus extra-gate claim path",
+    "forged_cas": "forbidden"
+  }
+}

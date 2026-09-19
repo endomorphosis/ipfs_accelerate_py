@@ -1094,6 +1094,47 @@ def compact_scope_adjudication(
     return payload
 
 
+def validate_semantic_nonempty_patch(
+    *,
+    changed_paths: Sequence[str],
+    declared_scope: Sequence[str],
+    semantic_delta: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Refuse empty, out-of-scope, or semantically vacant patches.
+
+    This does not complete a task.
+    """
+
+    paths = _normalized_paths(changed_paths)
+    scope = _normalized_paths(declared_scope)
+    if not paths:
+        raise ScopeAdjudicationError("patch is empty")
+    out_of_scope = [
+        path
+        for path in paths
+        if not any(_path_matches(path, pattern) for pattern in scope)
+    ]
+    if out_of_scope:
+        raise ScopeAdjudicationError(
+            f"patch paths outside declared scope: {out_of_scope}"
+        )
+    delta = dict(semantic_delta or {})
+    if not any(delta.get(key) for key in ("added_symbols", "changed_contracts", "tests_added")):
+        if all(path.endswith((".md", ".txt")) for path in paths):
+            raise ScopeAdjudicationError("patch is semantically empty")
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/semantic-nonempty-patch@1",
+        "accepted": True,
+        "changed_paths": list(paths),
+        "completion_authority": False,
+        "completion_authoritative": False,
+    }
+
+
+class ScopeAdjudicationError(ValueError):
+    """Closed patch-scope / nonempty validation failure."""
+
+
 __all__ = [
     "DEFAULT_MAX_IMPORT_CLOSURE_DEPTH",
     "DEFAULT_MAX_IMPORT_CLOSURE_FILES",
@@ -1104,6 +1145,8 @@ __all__ = [
     "ScopeExpansionReason",
     "ScopeExpansionVerdict",
     "ScopePathDecision",
+    "ScopeAdjudicationError",
     "adjudicate_scope_expansion",
     "compact_scope_adjudication",
+    "validate_semantic_nonempty_patch",
 ]

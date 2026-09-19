@@ -111,4 +111,34 @@ def __getattr__(name: str) -> Any:
             "SupervisorWorldView": SupervisorWorldView,
             "WorldViewError": WorldViewError,
         }[name]
+    if name in {
+        "SemanticWorldReleaseReport",
+        "SemanticWorldMigrationReceipt",
+        "SemanticWorldRollbackTarget",
+        "build_current_tree_release_report",
+    }:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_release import (
+            SemanticWorldMigrationReceipt,
+            SemanticWorldReleaseReport,
+            SemanticWorldRollbackTarget,
+            build_current_tree_release_report,
+        )
+
+        return {
+            "SemanticWorldReleaseReport": SemanticWorldReleaseReport,
+            "SemanticWorldMigrationReceipt": SemanticWorldMigrationReceipt,
+            "SemanticWorldRollbackTarget": SemanticWorldRollbackTarget,
+            "build_current_tree_release_report": build_current_tree_release_report,
+        }[name]
+    if name in {"ProgramWorldService", "SemanticWorldStatusResult"}:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_service import (
+            ProgramWorldService,
+            SemanticWorldStatusResult,
+        )
+
+        return {
+            "ProgramWorldService": ProgramWorldService,
+            "SemanticWorldStatusResult": SemanticWorldStatusResult,
+        }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+

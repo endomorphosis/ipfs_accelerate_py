@@ -1,0 +1,12 @@
+{
+  "schema": "doep-historical-paired-replay@1",
+  "pairs": [
+    {
+      "replay_id": "doep-r5-20260919T000327Z",
+      "baseline": "codex-primed",
+      "candidate": "direct-supervisor",
+      "mutates_live_store": false,
+      "completion_authority": false
+    }
+  ]
+}

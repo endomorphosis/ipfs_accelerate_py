@@ -1,0 +1,9 @@
+{
+  "schema": "doep-live-shadow-campaign@1",
+  "influences_live": false,
+  "completion_authority": false,
+  "duckdb_written": false,
+  "cases": [
+    {"case_id": "shadow-1", "live": "todo", "shadow": "todo"}
+  ]
+}

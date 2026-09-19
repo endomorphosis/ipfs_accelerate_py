@@ -235,9 +235,48 @@ def install_supervisor_heal_overlay(
         overlay_module(qualname, str(overlay_root / relative), package=package)
 
 
+SEALED_SAWM_OBSERVATION_MODULES = (
+    (
+        "ipfs_accelerate_py.agent_supervisor.runtime.native_dispatch_drain",
+        "ipfs_accelerate_py/agent_supervisor/runtime/native_dispatch_drain.py",
+        "ipfs_accelerate_py.agent_supervisor.runtime",
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.runtime.owner_status_observation",
+        "ipfs_accelerate_py/agent_supervisor/runtime/owner_status_observation.py",
+        "ipfs_accelerate_py.agent_supervisor.runtime",
+    ),
+)
+
+
+def pin_sealed_sawm_observation_runtime(source_root: str) -> None:
+    """Keep SAWM native observation on the sealed checkout file.
+
+    Overlay-first extra-gate must bind typed-owner heals, but
+    ``_owner_status_observation_runtime`` refuses any module whose
+    ``__file__`` is not the sealed checkout path. Without this pin the
+    exclusive owner never publishes ``owner-status-observation.json`` or
+    the native drain listener, and the admitted coordinator sleeps on
+    ``native_dispatch_observation_unavailable`` instead of spawning lanes.
+    """
+
+    root = Path(_abspath(source_root))
+    for qualname, relative, package in SEALED_SAWM_OBSERVATION_MODULES:
+        sys.modules.pop(qualname, None)
+        overlay_module(qualname, str(root / relative), package=package)
+
+
 def _is_spar_source(source_root: str, args: list[str]) -> bool:
     blob = f"{source_root} {' '.join(args)}"
     return "semantic_preserving" in blob or "materialize_semantic_preserving" in blob
+
+
+def _is_sawm_source(source_root: str, args: list[str]) -> bool:
+    blob = f"{source_root} {' '.join(args)}"
+    return (
+        "semantic-addressed-world-model" in blob
+        or "semantic_addressed_world_model" in blob
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -297,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
     if source_root not in sys.path:
         sys.path.insert(0, source_root)
     overlay_root = Path(overlay)
+    if _is_sawm_source(source_root, args):
+        pin_sealed_sawm_observation_runtime(source_root)
     if _is_spar_source(source_root, args):
         overlay_module(
             "ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root",

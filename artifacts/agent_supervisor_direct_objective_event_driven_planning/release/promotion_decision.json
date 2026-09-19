@@ -1,0 +1,7 @@
+{
+  "schema": "doep-promotion-decision@1",
+  "decision": "honest_non_promotion",
+  "promoted": false,
+  "completion_authority": false,
+  "reason": "remaining DOEP tasks are still todo on the live extra-gate; overlay tests are not DuckDB completion"
+}

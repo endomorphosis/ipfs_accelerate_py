@@ -1493,5 +1493,22 @@ def main(
     return EXIT_OK
 
 
+class ProgramWorldCLI:
+    """Thin SAWM-039 adapter over ProgramWorldService. No DuckDB writes."""
+
+    def status_json(self) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_service import (
+            ProgramWorldService,
+        )
+
+        result = ProgramWorldService().status()
+        return {
+            "status": result.status,
+            "mode": result.mode,
+            "completion_authority": False,
+        }
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())
+

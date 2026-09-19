@@ -1,0 +1,19 @@
+{
+  "schema": "doep-historical-replays@1",
+  "replays": [
+    {
+      "replay_id": "doep-r5-20260919T000327Z",
+      "source": "watchdog-board-dump",
+      "generation": 288,
+      "network": false,
+      "mutates_live_store": false
+    },
+    {
+      "replay_id": "doep-r5-20260917T202356Z",
+      "source": "watchdog-board-dump",
+      "generation": 280,
+      "network": false,
+      "mutates_live_store": false
+    }
+  ]
+}

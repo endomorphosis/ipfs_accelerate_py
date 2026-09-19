@@ -6053,6 +6053,44 @@ def project_work_telemetry_samples(
     return record.sample_map()
 
 
+def record_end_to_end_token_compute(
+    *,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cpu_seconds: float | None,
+    gpu_seconds: float | None = None,
+) -> dict[str, Any]:
+    """DOEP-110 end-to-end token/compute sample. Zeros are never synthesized."""
+
+    def _sample(name: str, value: int | float | None, unit: str) -> dict[str, Any]:
+        if value is None:
+            return {
+                "name": name,
+                "status": "unavailable",
+                "reason_code": "sensor_unavailable",
+                "value": None,
+                "unit": unit,
+            }
+        return {
+            "name": name,
+            "status": "measured",
+            "value": value,
+            "unit": unit,
+            "reason_code": None,
+        }
+
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/end-to-end-token-compute@1",
+        "samples": [
+            _sample("input_tokens", input_tokens, "tokens"),
+            _sample("output_tokens", output_tokens, "tokens"),
+            _sample("cpu_seconds", cpu_seconds, "seconds"),
+            _sample("gpu_seconds", gpu_seconds, "seconds"),
+        ],
+        "completion_authority": False,
+    }
+
+
 __all__ = [
     "AttributionRole",
     "BENCHMARK_CAUSAL_SPAN_INTERFACE",
@@ -6133,6 +6171,7 @@ __all__ = [
     "project_scheduler_clock_samples",
     "project_token_ledger_samples",
     "project_work_telemetry_samples",
+    "record_end_to_end_token_compute",
     "provider_response_contains_credentials",
     "reject_self_certified_counters",
     "sample_energy_optional",

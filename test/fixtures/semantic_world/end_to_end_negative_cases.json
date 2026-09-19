@@ -1,0 +1,9 @@
+{
+  "schema": "sawm-e2e-negative-cases@1",
+  "cases": [
+    {"id": "stale-root", "step": "root", "expect": "reject"},
+    {"id": "unadmitted-privacy", "step": "projection", "expect": "reject"},
+    {"id": "neural-as-authority", "step": "reuse", "expect": "reject"},
+    {"id": "missing-receipt", "step": "completion", "expect": "reject"}
+  ]
+}

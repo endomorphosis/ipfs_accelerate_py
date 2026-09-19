@@ -1,0 +1,6 @@
+{
+  "schema": "doep-task-receipt@1",
+  "task_id": "DOEP-126",
+  "completion_authoritative": false,
+  "decision": "overlay-implementation-without-board-cas"
+}

@@ -1,0 +1,34 @@
+{
+  "catalog": [
+    "mod.resolved.a",
+    "mod.resolved.b",
+    "mod.dynamic.a",
+    "mod.callback.a",
+    "mod.dispatch.a",
+    "mod.plugin.a",
+    "mod.reflection.a",
+    "mod.exception.a",
+    "mod.recursion.a",
+    "mod.async.a",
+    "mod.ood.foreign"
+  ],
+  "frequencies": {
+    "mod.resolved.b": 9,
+    "mod.dynamic.a": 4,
+    "mod.callback.a": 3
+  },
+  "cases": [
+    {"id": "c-resolved", "family": "resolved", "split": "dev", "current": "mod.resolved.a", "gold": "mod.resolved.b"},
+    {"id": "c-dynamic", "family": "dynamic", "split": "dev", "current": "mod.dynamic.a", "gold": "mod.dynamic.a"},
+    {"id": "c-callback", "family": "callback", "split": "held_out", "current": "mod.callback.a", "gold": "mod.callback.a"},
+    {"id": "c-dispatch", "family": "dispatch", "split": "dev", "current": "mod.dispatch.a", "gold": "mod.dispatch.a"},
+    {"id": "c-plugin", "family": "plugin", "split": "dev", "current": "mod.plugin.a", "gold": "mod.plugin.a"},
+    {"id": "c-reflection", "family": "reflection", "split": "dev", "current": "mod.reflection.a", "gold": "mod.reflection.a"},
+    {"id": "c-exception", "family": "exception", "split": "dev", "current": "mod.exception.a", "gold": "mod.exception.a"},
+    {"id": "c-recursion", "family": "recursion", "split": "dev", "current": "mod.recursion.a", "gold": "mod.recursion.a"},
+    {"id": "c-async", "family": "async", "split": "dev", "current": "mod.async.a", "gold": "mod.async.a"},
+    {"id": "c-ood", "family": "ood", "split": "ood", "current": "mod.ood.foreign", "gold": "mod.resolved.b"},
+    {"id": "c-abstain", "family": "resolved", "split": "held_out", "current": "mod.resolved.a", "gold": "mod.resolved.b", "abstain": true},
+    {"id": "c-invalid", "family": "resolved", "split": "train", "current": "mod.missing.current", "gold": "mod.resolved.b"}
+  ]
+}

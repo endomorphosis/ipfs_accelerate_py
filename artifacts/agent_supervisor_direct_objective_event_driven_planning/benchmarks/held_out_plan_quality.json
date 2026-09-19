@@ -1,0 +1,9 @@
+{
+  "schema": "doep-held-out-plan-quality@1",
+  "held_out": true,
+  "leaked_from_hermetic": false,
+  "completion_authority": false,
+  "scores": [
+    {"objective_id": "DOEP-G120-HELD", "plan_quality": 0.0, "admitted": false}
+  ]
+}

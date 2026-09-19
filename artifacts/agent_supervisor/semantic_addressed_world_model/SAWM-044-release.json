@@ -1,0 +1,9 @@
+{
+  "schema": "SemanticWorldReleaseReport@1",
+  "completion_authority": false,
+  "cas_completed": false,
+  "generation_published": false,
+  "native_completed": 20,
+  "remaining_todo": 25,
+  "rollback_target": "sawm-extra-gate-generation-48"
+}

@@ -419,6 +419,112 @@ class ExternalQuackOwner:
         )
 
 
+OWNER_LOSS_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/external-quack-owner-loss-recovery@1"
+)
+OWNER_RESTART_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/external-quack-owner-restart-recovery@1"
+)
+
+
+def recover_after_owner_loss(
+    *,
+    previous_lease: OwnerLease,
+    owner_server: object | None = None,
+    board_namespace: str,
+    shard_id: str,
+) -> Mapping[str, Any]:
+    """Recover a facade after exclusive-owner loss without minting a generation.
+
+    A still-READY owner is not stolen. Missing replacement stays unrecovered.
+    Completions are never admitted here.
+    """
+
+    if not isinstance(previous_lease, OwnerLease):
+        raise StaleOwnerError(
+            "owner-loss recovery requires the exact previous lease",
+            reason_code="stale_owner",
+        )
+    if owner_server is None:
+        return MappingProxyType(
+            {
+                "schema": OWNER_LOSS_RECOVERY_SCHEMA,
+                "recovered": False,
+                "reason_code": "owner_lost",
+                "minted_generation": False,
+                "completion_authority": False,
+                "previous_generation": int(previous_lease.generation),
+            }
+        )
+    rebound = _bind_external_quack_owner(
+        owner_server=owner_server,  # type: ignore[arg-type]
+        board_namespace=board_namespace,
+        shard_id=shard_id,
+    )
+    current = rebound.lease()
+    if (
+        current.store_id != previous_lease.store_id
+        or current.database_uuid != previous_lease.database_uuid
+        or current.board_namespace != previous_lease.board_namespace
+        or current.shard_id != previous_lease.shard_id
+    ):
+        raise StaleOwnerError(
+            "replacement owner is not the same store",
+            reason_code="invalid_failover",
+        )
+    if current.generation != previous_lease.generation:
+        raise StaleOwnerError(
+            "owner-loss recovery must not mint a successor generation",
+            reason_code="generation_mint_refused",
+        )
+    if current.server_id == previous_lease.server_id:
+        raise DuplicateOwnerError(
+            "live owner was not lost; recovery refused",
+            reason_code="owner_still_live",
+        )
+    return MappingProxyType(
+        {
+            "schema": OWNER_LOSS_RECOVERY_SCHEMA,
+            "recovered": True,
+            "reason_code": "owner_lost_same_generation_rebind",
+            "minted_generation": False,
+            "completion_authority": False,
+            "previous_generation": int(previous_lease.generation),
+            "generation": int(current.generation),
+            "lease_cid": current.content_id,
+        }
+    )
+
+
+def recover_after_owner_restart(
+    *,
+    previous_lease: OwnerLease,
+    owner_server: object,
+    board_namespace: str,
+    shard_id: str,
+) -> Mapping[str, Any]:
+    """Rebind after same-generation owner restart. Never mint generation N+1."""
+
+    rebound = _bind_external_quack_owner(
+        owner_server=owner_server,  # type: ignore[arg-type]
+        board_namespace=board_namespace,
+        shard_id=shard_id,
+    )
+    current = rebound.assert_current(previous_lease)
+    return MappingProxyType(
+        {
+            "schema": OWNER_RESTART_RECOVERY_SCHEMA,
+            "recovered": True,
+            "reason_code": "same_generation_restart",
+            "minted_generation": False,
+            "completion_authority": False,
+            "generation": int(current.generation),
+            "server_id": current.server_id,
+            "lease_cid": current.content_id,
+        }
+    )
+
+
 def _bind_external_quack_owner(
     *,
     owner_server: QuackStateServer,
@@ -465,6 +571,10 @@ __all__ = (
     "TransportAuthError",
     "TransportSession",
     "UnsignedEnvelopeError",
+    "OWNER_LOSS_RECOVERY_SCHEMA",
+    "OWNER_RESTART_RECOVERY_SCHEMA",
     "issue_envelope",
+    "recover_after_owner_loss",
+    "recover_after_owner_restart",
     "verify_envelope",
 )

@@ -1,0 +1,5 @@
+{
+  "schema": "sawm-041-ablation@1",
+  "rungs": ["A", "B"],
+  "completion_authority": false
+}

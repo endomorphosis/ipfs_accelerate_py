@@ -1,0 +1,19 @@
+{
+  "schema": "doep-hermetic-objectives@1",
+  "objectives": [
+    {
+      "objective_id": "DOEP-G000",
+      "title": "Direct objective event-driven planning",
+      "hermetic": true,
+      "network": false,
+      "secrets": false
+    },
+    {
+      "objective_id": "DOEP-G120",
+      "title": "Benchmark and corpus harnesses",
+      "hermetic": true,
+      "network": false,
+      "secrets": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "doep-hermetic-paired-benchmark@1",
+  "pairs": [
+    {
+      "case_id": "pair-1",
+      "baseline": "codex-primed",
+      "candidate": "direct-supervisor",
+      "network": false,
+      "completion_authority": false
+    }
+  ]
+}

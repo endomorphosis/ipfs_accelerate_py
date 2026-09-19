@@ -1,0 +1,13 @@
+{
+  "schema": "doep-held-out-objectives@1",
+  "disjoint_from": "doep-hermetic-objectives@1",
+  "objectives": [
+    {
+      "objective_id": "DOEP-G120-HELD",
+      "title": "Held-out benchmark objectives",
+      "family_id": "held-out-family",
+      "hermetic": true,
+      "network": false
+    }
+  ]
+}

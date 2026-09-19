@@ -1178,6 +1178,37 @@ def canonical_context_json_bytes(value: Any) -> bytes:
     return canonical_json_bytes(value)
 
 
+def invalidate_context_capsule(
+    capsule: ContextCapsule,
+    *,
+    tree_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Mark a capsule unusable when the bound tree is no longer current.
+
+    This is invalidation of the existing ContextCapsule contract, not a
+    second pack format. Completion is never admitted here.
+    """
+
+    if not isinstance(capsule, ContextCapsule):
+        raise ContextContractError("invalidate_context_capsule requires a ContextCapsule")
+    current = str(tree_id or "").strip()
+    bound = str(capsule.tree_id or "").strip()
+    if not current:
+        raise ContextIdentityError("invalidate_context_capsule requires tree_id")
+    stale = bool(bound) and bound != current
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/context-pack-invalidation@1",
+        "valid": not stale,
+        "stale": stale,
+        "reason": str(reason or "tree_mismatch"),
+        "bound_tree_id": bound,
+        "current_tree_id": current,
+        "completion_authority": False,
+        "completion_authoritative": False,
+    }
+
+
 ContextLimits = ContextBudget
 ContextContractLimits = ContextBudget
 ContextEvidenceReference = ContextReference
@@ -1214,4 +1245,5 @@ __all__ = [
     "SharedContextCapsule",
     "SharedContextDeltaCapsule",
     "canonical_context_json_bytes",
+    "invalidate_context_capsule",
 ]

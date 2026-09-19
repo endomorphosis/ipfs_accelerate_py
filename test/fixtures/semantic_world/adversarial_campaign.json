@@ -1,0 +1,14 @@
+{
+  "schema": "sawm-adversarial-campaign@1",
+  "attacks": [
+    "forged_cid",
+    "stale_tree",
+    "similarity_trap",
+    "poisoned_trace",
+    "model_authority",
+    "unsafe_procedure",
+    "corrupt_index",
+    "root_conflict",
+    "privacy_failure"
+  ]
+}

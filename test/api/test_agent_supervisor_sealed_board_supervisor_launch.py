@@ -157,7 +157,7 @@ def test_sawm_overlay_supervise_uses_sealed_launch():
     )
     text = script.read_text(encoding="utf-8")
     assert "SEALED=" in text
-    assert "--pin-only" in text
+    assert '"${LAUNCH[@]}" quack-start' in text
     assert "owner_ready()" in text
     assert "live_owner_ready.py" in text
     assert "STATUS_JSON" not in text
@@ -165,6 +165,37 @@ def test_sawm_overlay_supervise_uses_sealed_launch():
     assert '"${LAUNCH[@]}" launch' not in text
     assert "lanes_attached" in text
     assert "retrying without stopping extra-gate" in text
+    assert "client vault rearmed, retrying without stopping extra-gate" in text
+
+
+def test_pin_sealed_sawm_observation_runtime_uses_checkout_file(tmp_path):
+    import ipfs_accelerate_py.agent_supervisor.runtime.owner_status_observation as observation
+
+    from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
+        _is_sawm_source,
+        pin_sealed_sawm_observation_runtime,
+    )
+
+    original = Path(observation.__file__).resolve()
+    sealed = tmp_path / "semantic-addressed-world-model-r2"
+    relative = Path("ipfs_accelerate_py/agent_supervisor/runtime")
+    (sealed / relative).mkdir(parents=True)
+    for name in ("owner_status_observation.py", "native_dispatch_drain.py"):
+        (sealed / relative / name).write_text(
+            (original.parent / name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    try:
+        pin_sealed_sawm_observation_runtime(str(sealed))
+        import ipfs_accelerate_py.agent_supervisor.runtime.owner_status_observation as pinned
+
+        assert Path(pinned.__file__).resolve() == (sealed / relative / "owner_status_observation.py").resolve()
+        assert _is_sawm_source(
+            str(sealed),
+            ["scripts/ops/agent_supervisor/semantic_addressed_world_model.py", "quack-start"],
+        )
+    finally:
+        pin_sealed_sawm_observation_runtime(str(original.parents[3]))
 
 
 def test_live_owner_ready_skips_stale_first_run_status(tmp_path):

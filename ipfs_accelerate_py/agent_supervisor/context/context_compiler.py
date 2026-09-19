@@ -5236,6 +5236,14 @@ class ContextCompiler:
             **kwargs,
         )
 
+    def compile_program_world(self, request: Any, **kwargs: Any) -> Any:
+        """SAWM-022 exclusive extension: program-world capsule assembly."""
+
+        from .program_world_context import compile_program_world_context
+
+        budget = int(getattr(self.budget, "max_input_tokens", 256) or 256)
+        return compile_program_world_context(request, token_budget=budget, **kwargs)
+
 
 def reconstruct_context(
     parent: ContextCapsule, delta: ContextDeltaCapsule

@@ -1,0 +1,7 @@
+{
+  "schema": "doep-low-risk-canary-run@1",
+  "risk_class": "R4",
+  "completion_authority": false,
+  "authority_expanded": false,
+  "duckdb_written": false
+}

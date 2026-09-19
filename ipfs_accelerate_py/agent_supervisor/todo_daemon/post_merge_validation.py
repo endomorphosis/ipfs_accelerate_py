@@ -318,8 +318,55 @@ def verify_post_merge_validation_evidence(
     return not reasons, tuple(dict.fromkeys(reasons))
 
 
+def admit_proof_test_merge(
+    *,
+    test_evidence: Mapping[str, Any] | None,
+    proof_evidence: Mapping[str, Any] | None,
+    expected_task_id: str,
+    expected_target_commit: str,
+    expected_repository_tree_id: str,
+) -> dict[str, Any]:
+    """Admit a merge only when current tests and proofs both pass.
+
+    This does not complete a task and does not write DuckDB.
+    """
+
+    ok, reasons = verify_post_merge_validation_evidence(
+        test_evidence,
+        expected_task_id=expected_task_id,
+        expected_target_commit=expected_target_commit,
+        expected_repository_tree_id=expected_repository_tree_id,
+    )
+    if not ok or not isinstance(test_evidence, Mapping) or test_evidence.get("passed") is not True:
+        return {
+            "admitted": False,
+            "reason_codes": reasons or ("tests_not_passed",),
+            "completion_authority": False,
+        }
+    if not isinstance(proof_evidence, Mapping) or proof_evidence.get("passed") is not True:
+        return {
+            "admitted": False,
+            "reason_codes": ("proofs_not_passed",),
+            "completion_authority": False,
+        }
+    if str(proof_evidence.get("repository_tree_id") or "") != expected_repository_tree_id:
+        return {
+            "admitted": False,
+            "reason_codes": ("proof_tree_mismatch",),
+            "completion_authority": False,
+        }
+    return {
+        "admitted": True,
+        "reason_codes": (),
+        "completion_authority": False,
+        "task_id": expected_task_id,
+        "target_commit": expected_target_commit,
+    }
+
+
 __all__ = [
     "POST_MERGE_VALIDATION_EVIDENCE_SCHEMA",
+    "admit_proof_test_merge",
     "build_post_merge_validation_evidence",
     "verify_post_merge_validation_evidence",
 ]
