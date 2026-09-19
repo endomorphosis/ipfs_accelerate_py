@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from benchmarks.agent_supervisor.doep.paired import run_historical_paired_replay
+
 
 RESULT = (
     Path(__file__).resolve().parents[3]
@@ -16,9 +18,11 @@ RESULT = (
 
 
 def test_historical_paired_replay_does_not_mutate_or_complete() -> None:
-    payload = json.loads(RESULT.read_text(encoding="utf-8"))
-    assert payload["schema"] == "doep-historical-paired-replay@1"
+    snapshot = json.loads(RESULT.read_text(encoding="utf-8"))
+    payload = run_historical_paired_replay()
+    assert payload["schema"] == snapshot["schema"] == "doep-historical-paired-replay@1"
     assert payload["pairs"]
+    assert payload["mutates_live_store"] is False
     for pair in payload["pairs"]:
         assert pair["mutates_live_store"] is False
         assert pair["completion_authority"] is False

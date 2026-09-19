@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from benchmarks.agent_supervisor.doep.paired import run_live_shadow_campaign
+
 
 RESULT = (
     Path(__file__).resolve().parents[3]
@@ -16,8 +18,9 @@ RESULT = (
 
 
 def test_live_shadow_campaign_does_not_write_or_complete() -> None:
-    payload = json.loads(RESULT.read_text(encoding="utf-8"))
-    assert payload["influences_live"] is False
+    snapshot = json.loads(RESULT.read_text(encoding="utf-8"))
+    payload = run_live_shadow_campaign()
+    assert payload["influences_live"] is snapshot["influences_live"] is False
     assert payload["completion_authority"] is False
     assert payload["duckdb_written"] is False
     assert payload["cases"]

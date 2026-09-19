@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from benchmarks.agent_supervisor.doep.corpora import load_held_out_objectives
 
 
 HELD = (
@@ -16,11 +17,10 @@ HERMETIC = HELD.with_name("hermetic_objectives.json")
 
 
 def test_held_out_corpus_is_disjoint_from_hermetic() -> None:
-    held = json.loads(HELD.read_text(encoding="utf-8"))
-    hermetic = json.loads(HERMETIC.read_text(encoding="utf-8"))
-    held_ids = {item["objective_id"] for item in held["objectives"]}
-    hermetic_ids = {item["objective_id"] for item in hermetic["objectives"]}
-    assert held_ids.isdisjoint(hermetic_ids)
+    held = load_held_out_objectives(HELD, hermetic_path=HERMETIC)
+    assert held["held_out"] is True
+    assert held["leaked_from_hermetic"] is False
+    assert held["completion_authority"] is False
     for objective in held["objectives"]:
         assert objective["network"] is False
         assert objective["hermetic"] is True

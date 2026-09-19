@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from benchmarks.agent_supervisor.doep.corpora import load_historical_replays
 
 
 FIXTURE = (
@@ -15,9 +16,11 @@ FIXTURE = (
 
 
 def test_historical_replays_are_offline_and_non_mutating() -> None:
-    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload = load_historical_replays(FIXTURE)
     assert payload["schema"] == "doep-historical-replays@1"
     assert payload["replays"]
+    assert payload["mutates_live_store"] is False
+    assert payload["completion_authority"] is False
     for replay in payload["replays"]:
         assert replay["network"] is False
         assert replay["mutates_live_store"] is False

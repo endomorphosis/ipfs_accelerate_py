@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from benchmarks.agent_supervisor.doep.low_risk_canary import run_low_risk_canary
+from benchmarks.agent_supervisor.doep.paired import run_low_risk_canary_campaign
 
 
 RESULT = (
@@ -18,9 +18,9 @@ RESULT = (
 
 
 def test_canary_run_stays_low_risk_and_non_completing() -> None:
-    payload = json.loads(RESULT.read_text(encoding="utf-8"))
-    assert payload["risk_class"] == "R4"
+    snapshot = json.loads(RESULT.read_text(encoding="utf-8"))
+    payload = run_low_risk_canary_campaign()
+    assert payload["risk_class"] == snapshot["risk_class"] == "R4"
     assert payload["completion_authority"] is False
     assert payload["duckdb_written"] is False
-    live = run_low_risk_canary([{"case_id": "c1", "risk_class": "R4"}])
-    assert live["completion_authority"] is False
+    assert payload["authority_expanded"] is False
