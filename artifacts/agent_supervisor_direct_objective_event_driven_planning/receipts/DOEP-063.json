@@ -1,0 +1,52 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-063",
+  "task_cid": "sha256:a117a64676549c4a29666f6b0d90e407c08cbaa362d8454ee50a0647094599e9",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "profile_id": "doep-validation/DOEP-PLAN-V5/DOEP-063@1",
+  "candidate_status": "receipt_materialized",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+    "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-063.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-063.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+    "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-063.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-063.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+    "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-063.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-063.json"
+  ],
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_063_implement_accelerate_freshness_and_selection.py",
+          "-q"
+        ],
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  },
+  "required_evidence": {
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  }
+}
