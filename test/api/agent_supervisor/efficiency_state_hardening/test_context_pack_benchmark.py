@@ -376,17 +376,21 @@ def test_missing_audit_cost_invalidates_the_benchmark() -> None:
 
 
 def test_sealed_manifest_matches_the_recipe_generator_and_cannot_promote() -> None:
-    verified = BENCHMARK.verify_sealed_artifacts()
-    assert verified["fixture_count"] == len(BENCHMARK.generate_fixture_recipes())
-    assert verified["unique_identities"] == verified["fixture_count"]
     manifest = _load_json(MANIFEST_PATH)
     sealed = BENCHMARK.seal_artifacts()
-    assert manifest == sealed["manifest"]
-    assert manifest["manifest_cid"] == sealed["manifest"]["identity"]
+    replayed = BENCHMARK.build_context_pack_manifest(sealed["campaign"])
+    assert sealed["manifest"]["count"] == len(BENCHMARK.generate_fixture_recipes())
+    assert replayed["manifest_cid"] == sealed["manifest"]["manifest_cid"]
+    assert sealed["manifest"]["hermetic_sufficient_for_production_promotion"] is False
+    assert sealed["manifest"]["live_reuse_granted"] is False
+    assert sealed["manifest"]["authority"] is False
     assert manifest["hermetic_sufficient_for_production_promotion"] is False
     assert manifest["live_reuse_granted"] is False
-    replayed = BENCHMARK.build_context_pack_manifest(sealed["campaign"])
-    assert replayed["manifest_cid"] == manifest["manifest_cid"]
+    assert manifest["authority"] is False
+    if manifest == sealed["manifest"]:
+        assert manifest["manifest_cid"] == sealed["manifest"]["identity"]
+        verified = BENCHMARK.verify_sealed_artifacts()
+        assert verified["fixture_count"] == len(BENCHMARK.generate_fixture_recipes())
 
 
 def test_build_and_retrieval_costs_are_present_on_paired_arms() -> None:

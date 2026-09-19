@@ -45,16 +45,17 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack import (
 from ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack_selector import (
     select_current_minimal_pack,
 )
-from ipfs_datasets_py.logic.software_contracts.content import cid_for_bytes
-from ipfs_datasets_py.proof_context.context_pack import (
+from ipfs_accelerate_py.agent_supervisor.efficiency_state_hardening.remaining_task_context_ports import (
     CriticalOmissionError,
     build_minimal_semantic_pack,
-)
-from ipfs_datasets_py.proof_context.incremental_context import (
-    expansion_precision_recall,
+    cid_for_bytes,
     expand_incremental_pack,
+    expansion_precision_recall,
+    install_remaining_task_ports,
+    open_context_pack_store,
 )
-from ipfs_kit_py.proof_context.state_store import open_context_pack_store
+
+install_remaining_task_ports()
 
 
 PACKAGE_DIR: Final[Path] = Path(__file__).resolve().parent
