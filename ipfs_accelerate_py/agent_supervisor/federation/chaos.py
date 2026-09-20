@@ -1212,7 +1212,7 @@ def build_federation_chaos_suite(
 
     if type(identity) is not FederationChaosIdentity:
         raise FederationChaosError("suite requires exact FederationChaosIdentity")
-    return FederationChaosSuite(
+    suite = FederationChaosSuite(
         identity=identity,
         scenarios=tuple(
             ChaosScenario(
@@ -1223,6 +1223,22 @@ def build_federation_chaos_suite(
             for attack in ChaosAttack
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        run_id = str(getattr(identity, "run_id", "") or getattr(identity, "record_id", "") or "chaos-suite")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_chaos_suite",
+            record_ref=run_id,
+            subject_kind="record_cid",
+            subject_ref=run_id,
+        )
+    except Exception:
+        pass
+    return suite
 
 
 def build_chaos_observation(
@@ -1239,7 +1255,7 @@ def build_chaos_observation(
 
     if type(scenario) is not ChaosScenario:
         raise FederationChaosError("observation requires exact ChaosScenario")
-    return ChaosObservation(
+    observation = ChaosObservation(
         scenario_id=scenario.scenario_id,
         attack=scenario.attack,
         probe_id=_CLOSED_PROBE_IDS[scenario.attack],
@@ -1250,6 +1266,21 @@ def build_chaos_observation(
         evidence_refs=evidence_refs,
         reason_code=reason_code,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_chaos_observation",
+            record_ref=str(observation.scenario_id),
+            subject_kind="record_cid",
+            subject_ref=str(observation.probe_id),
+        )
+    except Exception:
+        pass
+    return observation
 
 
 def run_federation_chaos_suite(

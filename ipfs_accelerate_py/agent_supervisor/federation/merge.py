@@ -462,7 +462,7 @@ def compile_merge_train(
         )
         for ordinal, item in enumerate(ordered, start=1)
     )
-    return CompiledMergeTrain(
+    train = CompiledMergeTrain(
         lane_id=_identifier(lane_id, "lane_id"),
         fencing_epoch=expected_fence,
         merge_order=tuple(item.task_id for item in ordered),
@@ -470,6 +470,23 @@ def compile_merge_train(
         worktrees=worktrees,
         candidates=ordered,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="merge_train",
+            record_ref=str(train.cid),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(train.cid),
+        )
+    except Exception:
+        pass
+    return train
 
 
 def release_merge(

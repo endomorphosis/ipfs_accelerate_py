@@ -130,8 +130,24 @@ def evaluate_intervention(
             "mismatched intervention requires a durable mismatch_ref"
         )
     if computed in {"matched", "excluded"}:
-        return replace(test, mismatch_ref="")
-    return test
+        result = replace(test, mismatch_ref="")
+    else:
+        result = test
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_intervention",
+            record_ref=str(result.record_id),
+            subject_kind="record_cid",
+            subject_ref=str(result.abstraction_map_id or result.record_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def resulting_faithfulness(

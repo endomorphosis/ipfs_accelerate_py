@@ -428,7 +428,7 @@ def build_minimal_slice(
             if subject.supervisor_id in compiled.do_not_wake and subject.supervisor_id in known
         )
     )
-    return SupervisorWakeSlice(
+    slice_ = SupervisorWakeSlice(
         event_ids=tuple(event.event_id for event in events),
         changed_fact_refs=changed,
         node_ids=ordered_nodes,
@@ -438,6 +438,26 @@ def build_minimal_slice(
         reused_receipt_refs=reused,
         frontier_ref="frontier:" + compiled.cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            bind_supervisor_catalogs,
+            compose_semantic_work,
+            mirror_work_record,
+        )
+
+        bind_supervisor_catalogs()
+        first_event = str(events[0].event_id)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="wake_slice",
+            record_ref=str(slice_.frontier_ref),
+            subject_kind="record_cid",
+            subject_ref=first_event,
+        )
+        compose_semantic_work(subject_kind="record_cid", subject_ref=first_event)
+    except Exception:
+        pass
+    return slice_
 
 
 class SupervisorEventLoop:
