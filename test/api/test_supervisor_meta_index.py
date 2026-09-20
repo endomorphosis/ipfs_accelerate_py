@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
     compose_semantic_work,
     mirror_capsule_record,
     mirror_vector_index,
+    mirror_work_record,
     orchestration_view,
     register_taskboard,
 )
@@ -149,6 +150,50 @@ def test_mirror_capsule_and_vector_into_composition(tmp_path, monkeypatch) -> No
     assert work["capsule_composition"] is True
     assert work["extra_gate_attached"] is False
     assert "vector" in work["formal_surfaces"] or "vector" in work["kinds"]
+
+
+def test_mirror_plan_synthesis_and_bm25_work_records(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    plan = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="plan-content:1",
+    )
+    synthesis = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="synthesis",
+        record_ref="repair:1",
+        tree_id="tree:work",
+        paths=("ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",),
+    )
+    bm25 = mirror_work_record(
+        catalog_kind="bm25",
+        record_kind="bm25",
+        record_ref="bm25:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    analysis = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="static_analysis",
+        record_ref="ast:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (plan, synthesis, bm25, analysis):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["event_driven_qualified"] is True
 
 
 def test_ducklake_projection_is_observational(tmp_path) -> None:

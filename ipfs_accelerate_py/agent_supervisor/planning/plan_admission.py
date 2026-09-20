@@ -424,4 +424,21 @@ def admit_plan(
 
     ranked = rank_plans(candidates, cache_keys=cache_keys, history=history)
     winner = logic_gate(ranked)
-    return PlanAdmission(admitted=winner.plan, admitted_id=winner.candidate_id, ranked=ranked)
+    admission = PlanAdmission(
+        admitted=winner.plan, admitted_id=winner.candidate_id, ranked=ranked
+    )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan",
+            record_ref=admission.admitted_id,
+            subject_kind="record_cid",
+            subject_ref=admission.content_id,
+        )
+    except Exception:
+        pass
+    return admission

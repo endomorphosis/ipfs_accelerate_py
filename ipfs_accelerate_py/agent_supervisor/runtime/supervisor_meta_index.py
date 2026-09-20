@@ -1106,6 +1106,75 @@ def mirror_knowledge_graph(
         }
 
 
+def mirror_work_record(
+    *,
+    catalog_kind: str,
+    record_kind: str,
+    record_ref: str,
+    tree_id: str = "",
+    subject_kind: str = "tree_id",
+    subject_ref: str = "",
+    paths: Sequence[str] = (),
+    locator_ref: str = "",
+) -> dict[str, Any]:
+    try:
+        if catalog_kind not in CATALOG_KINDS:
+            catalog_kind = "metadata"
+        catalog = register_catalog(
+            kind=catalog_kind,
+            locator_ref=locator_ref or catalog_kind,
+            tree_id=tree_id,
+            project=False,
+        )
+        if catalog.get("status") == "skip":
+            return catalog
+        subject = subject_ref or tree_id or record_ref
+        kind = subject_kind if subject_kind in SUBJECT_KINDS else "tree_id"
+        links = [
+            link_identity(
+                subject_kind=kind,
+                subject_ref=subject,
+                catalog_id=str(catalog.get("catalog_id") or ""),
+                record_kind=record_kind,
+                record_ref=record_ref,
+                project=False,
+            )
+        ]
+        for path in tuple(paths)[:16]:
+            links.append(
+                link_identity(
+                    subject_kind="path",
+                    subject_ref=path,
+                    catalog_id=str(catalog.get("catalog_id") or ""),
+                    record_kind=record_kind,
+                    record_ref=record_ref,
+                    project=False,
+                )
+            )
+        index = _active()
+        projection = index.project_ducklake() if index is not None else {
+            "status": "unconfigured",
+            "completion_authority": False,
+            "authoritative": False,
+        }
+        return {
+            "schema": SCHEMA,
+            "record_kind": record_kind,
+            "record_ref": record_ref,
+            "links": links,
+            "n": len(links),
+            "ducklake": projection,
+            "completion_authority": False,
+            "event_driven_qualified": True,
+        }
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+        }
+
+
 def register_taskboard(
     *,
     board_id: str,

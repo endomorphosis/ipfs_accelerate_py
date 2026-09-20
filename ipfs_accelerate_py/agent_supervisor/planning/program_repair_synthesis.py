@@ -4717,7 +4717,24 @@ def synthesize_program_repair(
     """Module-level convenience wrapper around :class:`ProgramRepairSynthesizer`."""
 
     synth = synthesizer or create_program_repair_synthesizer(request.roots)
-    return synth.synthesize(request)
+    receipt = synth.synthesize(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="synthesis",
+            record_ref=str(getattr(receipt, "content_id", "") or receipt.disposition),
+            tree_id=str(getattr(request.roots, "tree_id", "") or ""),
+            subject_kind="tree_id",
+            subject_ref=str(getattr(request.roots, "tree_id", "") or ""),
+            paths=tuple(request.target_paths),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def bounded_model_assisted_synthesis(

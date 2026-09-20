@@ -964,6 +964,26 @@ class AnalysisPipelineMetrics:
         }
 
 
+def _mirror_analysis_result(result: "AnalysisPipelineResult") -> "AnalysisPipelineResult":
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        request = result.request
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="static_analysis",
+            record_ref=str(result.ast_index_id or getattr(request, "cache_key", "") or ""),
+            tree_id=str(getattr(request, "tree_id", "") or ""),
+            subject_kind="tree_id",
+            subject_ref=str(getattr(request, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class AnalysisPipelineResult:
     """One integrated analysis result and its authority decision."""
@@ -3310,7 +3330,7 @@ class AnalysisPipeline:
                 self._metrics["invalidated"] += 1
             else:
                 self._metrics["exact_hits"] += 1
-                return result
+                return _mirror_analysis_result(result)
 
         produced: dict[str, Any] = {}
 
@@ -3414,7 +3434,7 @@ class AnalysisPipeline:
                 # A leader may have filled the cache between our optimistic
                 # lookup and flight registration.  Treat this as exact reuse.
                 self._metrics["exact_hits"] += 1
-                return self._exact_hit_result(refreshed, request)
+                return _mirror_analysis_result(self._exact_hit_result(refreshed, request))
         if joined:
             self._metrics["joined"] += 1
             status = PipelineCacheStatus.JOINED
@@ -3449,7 +3469,7 @@ class AnalysisPipeline:
                     raise AnalysisBindingError(
                         "cached consensus receipt identity mismatch"
                     )
-        return AnalysisPipelineResult(
+        return _mirror_analysis_result(AnalysisPipelineResult(
             request=request,
             packet=packet,
             cache_status=status,
@@ -3530,7 +3550,7 @@ class AnalysisPipeline:
                 if isinstance(coordinated, CacheCoordinationResult)
                 else None
             ),
-        )
+        ))
 
     run = analyze
     execute = analyze

@@ -532,7 +532,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
             tree_id=projection.tree_id,
             repository_id=projection.repository_id,
         )
-        return self._commit_fact(
+        commit = self._commit_fact(
             operation="federation.retrieval.index.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -555,6 +555,26 @@ class RetrievalProjectionStore(ProofProjectionStore):
                 recorded_at=recorded_at,
             ),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            method = str(projection.retrieval_method or "bm25")
+            kind = method if method in {"bm25", "vector", "knowledge_graph"} else (
+                "knowledge_graph" if method == "kg" else "bm25"
+            )
+            mirror_work_record(
+                catalog_kind=kind,
+                record_kind=method,
+                record_ref=bound.record_id,
+                tree_id=projection.tree_id,
+                subject_kind="tree_id",
+                subject_ref=projection.tree_id,
+            )
+        except Exception:
+            pass
+        return commit
 
     def record_nomination(
         self,
