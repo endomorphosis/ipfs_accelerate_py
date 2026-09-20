@@ -5084,7 +5084,24 @@ def build_verification_commitment(
 ) -> VerificationCommitment:
     """Build a structural receipt commitment; this is not a ZK proof."""
 
-    return VerificationCommitment.from_bundle(verification_bundle)
+    commitment = VerificationCommitment.from_bundle(verification_bundle)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(verification_bundle, "repository_tree_cid", "") or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="verification_commitment",
+            record_ref=str(commitment.commitment_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(commitment.commitment_id),
+        )
+    except Exception:
+        pass
+    return commitment
 
 
 __all__ = [

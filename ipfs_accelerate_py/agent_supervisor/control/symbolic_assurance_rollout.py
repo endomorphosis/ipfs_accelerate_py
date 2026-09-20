@@ -1810,12 +1810,27 @@ def evaluate_adversarial_gates(
     by_id = {item.gate_id: item for item in observations}
     ordered = tuple(by_id[item.gate_id] for item in resolved_profile.gates)
 
-    return AdversarialGateReport(
+    report = AdversarialGateReport(
         fixture=fixture,
         observations=ordered,
         observed_at=observed_at,
         profile=resolved_profile,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="adversarial_gate_report",
+            record_ref=str(report.report_id),
+            subject_kind="record_cid",
+            subject_ref=str(report.report_id),
+        )
+    except Exception:
+        pass
+    return report
 
 
 def verify_adversarial_e2e_report(

@@ -754,7 +754,7 @@ def evaluate_parallel_execution_completion(
             "quorum_met": False,
         }
 
-    return evaluate_goal_completion(
+    result = evaluate_goal_completion(
         current_state=current_state,
         acceptance_criteria=PARALLEL_EXECUTION_ACCEPTANCE_CRITERIA,
         evidence=evidence,
@@ -777,6 +777,22 @@ def evaluate_parallel_execution_completion(
         blocked_reason=blocked_reason,
         require_completion_gate=True,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="parallel_execution_completion",
+            record_ref=str(repository_tree or repository_id),
+            tree_id=str(repository_tree),
+            subject_kind="tree_id" if repository_tree else "record_cid",
+            subject_ref=str(repository_tree or repository_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _request_value(request: MergeRequest, name: str, *metadata_names: str) -> str:

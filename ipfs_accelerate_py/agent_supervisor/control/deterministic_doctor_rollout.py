@@ -1136,7 +1136,7 @@ def evaluate_rollback(
         extra_codes: Sequence[str] = (),
         force_report_only: bool = False,
     ) -> RollbackReceipt:
-        return RollbackReceipt(
+        receipt = RollbackReceipt(
             reason=reason,
             from_mode=current,
             to_mode=(
@@ -1148,6 +1148,21 @@ def evaluate_rollback(
             reason_codes=tuple(sorted({*codes, *extra_codes})),
             policy_binding_id=policy.policy_binding_id,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="doctor_rollback",
+                record_ref=str(receipt.receipt_id or receipt.policy_binding_id or receipt.reason),
+                subject_kind="record_cid",
+                subject_ref=str(receipt.policy_binding_id or receipt.receipt_id or receipt.reason),
+            )
+        except Exception:
+            pass
+        return receipt
 
     if kill_switch or policy.kill_switch_engaged or "kill_switch" in codes:
         return _receipt(

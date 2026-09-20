@@ -396,7 +396,22 @@ def build_ipfs_kit_vfs_assurance_profile(
 ) -> AssuranceRolloutProfile:
     """Build the locked IPFS Kit VFS assurance profile from config."""
 
-    return load_assurance_config(path, checkout_root=checkout_root).profile
+    profile = load_assurance_config(path, checkout_root=checkout_root).profile
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ipfs_kit_vfs_assurance",
+            record_ref=str(profile.profile_id),
+            subject_kind="record_cid",
+            subject_ref=str(profile.profile_id),
+        )
+    except Exception:
+        pass
+    return profile
 
 
 def resolve_safe_root(

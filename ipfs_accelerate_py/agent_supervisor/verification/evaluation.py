@@ -2120,6 +2120,24 @@ def compare_selected_with_full_suite(
     )
 
 
+def _mirror_corpus_eval(summary: SelectionCorpusEvaluationSummary) -> SelectionCorpusEvaluationSummary:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="selection_corpus_eval",
+            record_ref=str(summary.corpus_id),
+            subject_kind="record_cid",
+            subject_ref=str(summary.repository_id or summary.corpus_id),
+        )
+    except Exception:
+        pass
+    return summary
+
+
 def evaluate_controlled_fixture_corpus(
     fixtures: Sequence[ControlledSemanticFixture | Mapping[str, Any]] | None,
     *,
@@ -2137,7 +2155,7 @@ def evaluate_controlled_fixture_corpus(
     if not corpus_present:
         reasons.append(REASON_CORPUS_ABSENT)
         elapsed = int((time.perf_counter() - started) * 1000)
-        return SelectionCorpusEvaluationSummary(
+        return _mirror_corpus_eval(SelectionCorpusEvaluationSummary(
             corpus_id=corpus_id,
             corpus_present=False,
             measurement_status=MeasurementStatus.NOT_MEASURED,
@@ -2152,13 +2170,13 @@ def evaluate_controlled_fixture_corpus(
             policy_id=policy_id,
             environment_id=environment_id,
             evaluation_duration_ms=elapsed,
-        )
+        ))
 
     items = list(fixtures or ())
     if not items:
         reasons.append(REASON_ZERO_EVALUATED)
         elapsed = int((time.perf_counter() - started) * 1000)
-        return SelectionCorpusEvaluationSummary(
+        return _mirror_corpus_eval(SelectionCorpusEvaluationSummary(
             corpus_id=corpus_id,
             corpus_present=True,
             measurement_status=MeasurementStatus.NOT_MEASURED,
@@ -2173,7 +2191,7 @@ def evaluate_controlled_fixture_corpus(
             policy_id=policy_id,
             environment_id=environment_id,
             evaluation_duration_ms=elapsed,
-        )
+        ))
 
     evaluations: list[TestSelectionEvaluation] = []
     for raw in items:
@@ -2250,7 +2268,7 @@ def evaluate_controlled_fixture_corpus(
 
     reasons.append(REASON_IDENTITIES_BOUND)
     elapsed = int((time.perf_counter() - started) * 1000)
-    return SelectionCorpusEvaluationSummary(
+    return _mirror_corpus_eval(SelectionCorpusEvaluationSummary(
         corpus_id=corpus_id,
         corpus_present=True,
         measurement_status=status,
@@ -2268,7 +2286,7 @@ def evaluate_controlled_fixture_corpus(
         policy_id=policy_id,
         environment_id=environment_id,
         evaluation_duration_ms=elapsed,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
