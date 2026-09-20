@@ -912,12 +912,27 @@ class TrustAwareProofCache:
                 receipt=receipt,
                 reason_codes=(ProofCacheReason.RETENTION_EVICTED.value,),
             )
-        return CacheStoreResult(
+        stored = CacheStoreResult(
             True,
             cache_key,
             receipt=receipt,
             reason_codes=(ProofCacheReason.STORED.value,),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="mcp_contract_proof",
+                record_ref=str(cache_key.to_formal_key().key_id),
+                subject_kind="record_cid",
+                subject_ref=str(receipt.receipt_id),
+            )
+        except Exception:
+            pass
+        return stored
 
     store = put
     put_receipt = put

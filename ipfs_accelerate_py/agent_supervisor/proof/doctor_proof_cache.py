@@ -1820,13 +1820,28 @@ class DoctorProofCacheGate:
             reconstructed=True,
             authoritative=True,
         )
-        return DoctorCacheStoreResult(
+        stored_result = DoctorCacheStoreResult(
             True,
             cache_key,
             receipt=reconstructed,
             reason_codes=(DoctorCacheReason.STORED.value,),
             audit=audit,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="doctor_proof",
+                record_ref=str(getattr(cache_key, "key_id", "") or reconstructed.receipt_id),
+                subject_kind="record_cid",
+                subject_ref=str(reconstructed.receipt_id),
+            )
+        except Exception:
+            pass
+        return stored_result
 
     store = put
     put_receipt = put

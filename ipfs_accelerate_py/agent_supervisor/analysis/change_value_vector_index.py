@@ -2260,7 +2260,7 @@ def build_change_value_vector_index(
                 "code symbol index roots do not match the value index snapshot"
             )
 
-    return ChangeValueIndexSnapshot(
+    snapshot = ChangeValueIndexSnapshot(
         forest_id=forest_id,
         tree_id=tree_id,
         coverage_id=coverage_id,
@@ -2280,6 +2280,19 @@ def build_change_value_vector_index(
         lineage=lineage,
         max_row_bytes=max_row_bytes,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_vector_index,
+        )
+
+        mirror_vector_index(
+            tree_id=snapshot.tree_id,
+            index_id=snapshot.index_id,
+            paths=snapshot.included_paths,
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def _score(

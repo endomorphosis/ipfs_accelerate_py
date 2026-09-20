@@ -1162,6 +1162,25 @@ class ProgramWorldHammer:
         )
 
 
+def _mirror_proof_search(receipt: ProgramWorldProofSearchReceipt) -> ProgramWorldProofSearchReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="program_world_proof",
+            record_ref=str(receipt.receipt_id),
+            tree_id=str(receipt.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(receipt.tree_id),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def search_program_world_proof(
     compilation: ProgramWorldGoalCompilation | Mapping[str, Any],
     *,
@@ -1196,7 +1215,7 @@ def search_program_world_proof(
             proof_status=ProofStatus.STALE,
             reason_codes=("stale_tree",),
         )
-        return ProgramWorldProofSearchReceipt(
+        return _mirror_proof_search(ProgramWorldProofSearchReceipt(
             receipt_id=_compact_id(compiled.compilation_id, prefix="search"),
             outcome=ProgramWorldSearchOutcome.STALE,
             compilation_id=compiled.compilation_id,
@@ -1206,7 +1225,7 @@ def search_program_world_proof(
             admission=admission,
             backend=backend,
             reason_codes=("stale_tree",),
-        )
+        ))
 
     if compiled.disposition in {
         ProgramWorldCompilationDisposition.CONFLICT,
@@ -1233,7 +1252,7 @@ def search_program_world_proof(
                 proof_status=ProofStatus.INCONCLUSIVE,
                 reason_codes=_reason_codes(reasons, ("empty_or_abstained_inventory",)),
             )
-        return ProgramWorldProofSearchReceipt(
+        return _mirror_proof_search(ProgramWorldProofSearchReceipt(
             receipt_id=_compact_id(compiled.compilation_id, prefix="search"),
             outcome=ProgramWorldSearchOutcome.ABSTAINED,
             compilation_id=compiled.compilation_id,
@@ -1243,7 +1262,7 @@ def search_program_world_proof(
             admission=admission,
             backend=backend,
             reason_codes=admission.reason_codes,
-        )
+        ))
 
     payload: dict[str, Any] = dict(candidate or {})
     if search is not None:
@@ -1322,7 +1341,7 @@ def search_program_world_proof(
         outcome = ProgramWorldSearchOutcome.UNSUPPORTED
     elif hint == "unavailable" and not admission.admitted:
         outcome = ProgramWorldSearchOutcome.UNAVAILABLE
-    return ProgramWorldProofSearchReceipt(
+    return _mirror_proof_search(ProgramWorldProofSearchReceipt(
         receipt_id=_compact_id(
             f"{compiled.compilation_id}:{outcome.value}:{admission.admission_id}",
             prefix="search",
@@ -1337,7 +1356,7 @@ def search_program_world_proof(
         reconstruction=reconstruction,
         replay=replay_receipt,
         reason_codes=admission.reason_codes,
-    )
+    ))
 
 
 def map_hammer_outcome(status: Any) -> ProgramWorldSearchOutcome:

@@ -1118,7 +1118,7 @@ def compile_program_world_goals(
     tactician = ProgramWorldTactician(
         roots, expected_tree_id=expected_tree_id, top_k=top_k
     )
-    return tactician.compile(
+    compilation = tactician.compile(
         successor_plan=successor_plan,
         goals=goals,
         repair_residuals=repair_residuals,
@@ -1129,6 +1129,22 @@ def compile_program_world_goals(
         logic_family_refs=logic_family_refs,
         expected_tree_id=expected_tree_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="tactician",
+            record_ref=str(compilation.compilation_id),
+            tree_id=str(compilation.roots.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(compilation.roots.tree_id),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 __all__ = [

@@ -275,6 +275,43 @@ def test_mirror_decision_context_replan_and_analysis_cache(tmp_path, monkeypatch
     assert work["extra_gate_attached"] is False
 
 
+def test_mirror_proof_search_tactician_and_value_vectors(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    proof = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="program_world_proof",
+        record_ref="search:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    tactician = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="tactician",
+        record_ref="compilation:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    doctor = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="doctor_proof",
+        record_ref="doctor:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    for item in (proof, tactician, doctor):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert "proof_cache" in work["formal_surfaces"] or "proof_cache" in work["kinds"]
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
