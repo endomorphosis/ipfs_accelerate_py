@@ -1134,12 +1134,27 @@ class AnalysisCache:
                 raise AnalysisCacheError(
                     f"persisted analysis cache entry failed verification: {path}"
                 ) from exc
-        return AnalysisCacheStoreResult(
+        stored = AnalysisCacheStoreResult(
             True,
             cache_key,
             entry=persisted,
             evicted_count=evicted,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="analysis_cache",
+                record_ref=str(cache_key.key_id),
+                subject_kind="record_cid",
+                subject_ref=str(cache_key.key_id),
+            )
+        except Exception:
+            pass
+        return stored
 
     store = put
 

@@ -233,6 +233,48 @@ def test_mirror_event_driven_ast_and_world_snapshot(tmp_path, monkeypatch) -> No
     assert "world_model" in work["formal_surfaces"] or "world_model" in work["kinds"]
 
 
+def test_mirror_decision_context_replan_and_analysis_cache(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    decision = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="decision",
+        record_ref="decision:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    context = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="context",
+        record_ref="program-world-context",
+        subject_kind="record_cid",
+        subject_ref="program-world-context",
+    )
+    replan = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="replan",
+        record_ref="counterexample:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    cache = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="analysis_cache",
+        record_ref="analysis-cache:1",
+        subject_kind="record_cid",
+        subject_ref="analysis-cache:1",
+    )
+    for item in (decision, context, replan, cache):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

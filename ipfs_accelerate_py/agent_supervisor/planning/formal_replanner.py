@@ -4632,7 +4632,7 @@ def replan_if_changed(
 ) -> ResponsiveReplanDecision:
     """Stateless convenience entry point for responsive bounded replanning."""
 
-    return FormalReplanner(
+    decision = FormalReplanner(
         limits=limits,
         admission_callback=admission_callback,
     ).replan_if_changed(
@@ -4655,6 +4655,22 @@ def replan_if_changed(
         max_identical_failures=max_identical_failures,
         cancelled=cancelled,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="replan",
+            record_ref=str(decision.counterexample_id),
+            tree_id=str(repository_tree_id or ""),
+            subject_kind="tree_id" if repository_tree_id else "record_cid",
+            subject_ref=str(repository_tree_id or decision.counterexample_id),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def replan_for_signal(

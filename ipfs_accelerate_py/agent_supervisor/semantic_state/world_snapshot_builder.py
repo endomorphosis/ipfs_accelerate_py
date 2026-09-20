@@ -292,6 +292,20 @@ def build_world_snapshot(
         ),
         "component_status": MappingProxyType(required_statuses),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_snapshot",
+            record_ref=str(repository_id),
+            subject_kind="record_cid",
+            subject_ref=str(repository_id),
+        )
+    except Exception:
+        pass
     return MappingProxyType(result)
 
 

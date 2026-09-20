@@ -1488,6 +1488,21 @@ class RepositoryIndexer:
             )
             if publish:
                 self._publish_unlocked(result)
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                mirror_work_record(
+                    catalog_kind="ast",
+                    record_kind="repository_index",
+                    record_ref=str(result.index_id),
+                    subject_kind="record_cid",
+                    subject_ref=str(result.index_id),
+                    paths=tuple(getattr(result.snapshot, "paths", ()) or ())[:32],
+                )
+            except Exception:
+                pass
             return result
 
     index_snapshot = build

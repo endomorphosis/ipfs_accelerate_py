@@ -188,9 +188,26 @@ def compile_program_world_context(
     *,
     token_budget: int = 256,
 ) -> ProgramWorldContextReceipt:
-    return ProgramWorldContextPlanner(token_budget=token_budget).compile_program_world_context(
+    receipt = ProgramWorldContextPlanner(token_budget=token_budget).compile_program_world_context(
         request
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        included = tuple(getattr(item, "source_cid", "") or getattr(item, "kind", "") for item in receipt.included)
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context",
+            record_ref=str(getattr(receipt, "token_budget", "") or "program-world-context"),
+            subject_kind="record_cid",
+            subject_ref="program-world-context",
+            paths=tuple(item for item in included if item),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def explain_program_world_context(

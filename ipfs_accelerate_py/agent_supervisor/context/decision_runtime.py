@@ -690,6 +690,25 @@ class DecisionRuntimeDecision:
         return self.receipt.receipt_id
 
 
+def _mirror_decision(decision: DecisionRuntimeDecision) -> DecisionRuntimeDecision:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        request = decision.decision_request
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision",
+            record_ref=str(decision.receipt.receipt_id),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(request, "request_id", "") or decision.receipt.receipt_id),
+        )
+    except Exception:
+        pass
+    return decision
+
+
 @dataclass(frozen=True)
 class ObservedEffect:
     effect_id: str
@@ -1796,7 +1815,7 @@ class DecisionRuntime:
                 decision_request_id=request.request_id,
                 reason_codes=("runtime_off",),
             )
-            return DecisionRuntimeDecision(receipt, request)
+            return _mirror_decision(DecisionRuntimeDecision(receipt, request))
 
         reasons = list(self._validate_bindings(request))
         if self._invalidation_quarantine_reasons:
@@ -1868,7 +1887,7 @@ class DecisionRuntime:
                 admission_receipt_id=(admission_receipt.receipt_id if admission_receipt else ""),
                 reason_codes=normalized_reasons or ("shadow_non_authoritative",),
             )
-            return DecisionRuntimeDecision(receipt, request, compilation, admission_receipt)
+            return _mirror_decision(DecisionRuntimeDecision(receipt, request, compilation, admission_receipt))
 
         if normalized_reasons:
             receipt = self._record(
@@ -1908,7 +1927,7 @@ class DecisionRuntime:
             permit_id=permit.permit_id if permit else "",
             authoritative=bool(boundary.mutating and permit is not None),
         )
-        return DecisionRuntimeDecision(receipt, request, compilation, admission_receipt, permit)
+        return _mirror_decision(DecisionRuntimeDecision(receipt, request, compilation, admission_receipt, permit))
 
     def _decide_completion(
         self,
@@ -1965,7 +1984,7 @@ class DecisionRuntime:
                 context_witness_id=witness.content_id if witness else "",
                 reason_codes=normalized_reasons or ("shadow_non_authoritative",),
             )
-            return DecisionRuntimeDecision(receipt, request, compilation)
+            return _mirror_decision(DecisionRuntimeDecision(receipt, request, compilation))
         if normalized_reasons:
             self._record(
                 boundary=DecisionBoundary.COMPLETION,
@@ -1988,7 +2007,7 @@ class DecisionRuntime:
                 "completion_evidence_id": content_identity(evidence),
             },
         )
-        return DecisionRuntimeDecision(receipt, request, compilation)
+        return _mirror_decision(DecisionRuntimeDecision(receipt, request, compilation))
 
     def route(
         self,
@@ -2044,7 +2063,7 @@ class DecisionRuntime:
             ),
             metadata={"payload_id": content_identity(_plain(payload or {}))},
         )
-        return DecisionRuntimeDecision(receipt)
+        return _mirror_decision(DecisionRuntimeDecision(receipt))
 
     prepare = route
 
