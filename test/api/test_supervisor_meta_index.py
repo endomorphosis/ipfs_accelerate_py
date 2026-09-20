@@ -804,6 +804,45 @@ def test_mirror_frontier_rebalance_evidence_and_formal_suite(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_promotion_doctor_evidence_and_proof_selection(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    promotion = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="federation_promotion",
+        record_ref="decision:1",
+        subject_kind="record_cid",
+        subject_ref="identity:1",
+    )
+    doctor = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="causal_evidence_from_doctor",
+        record_ref="record:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    selection = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_requirement_selection",
+        record_ref="selection:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (promotion, doctor, selection):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

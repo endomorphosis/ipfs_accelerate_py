@@ -2600,7 +2600,23 @@ def select_proof_requirements(
 ) -> PolicySelection:
     """Functional spelling of :meth:`FormalVerificationPolicy.select`."""
 
-    return policy.select(changes, repository_tree_id=repository_tree_id)
+    selection = policy.select(changes, repository_tree_id=repository_tree_id)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_requirement_selection",
+            record_ref=str(getattr(selection, "selection_id", "") or repository_tree_id or "proof-selection"),
+            tree_id=str(repository_tree_id or selection.repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(repository_tree_id or selection.repository_tree_id),
+        )
+    except Exception:
+        pass
+    return selection
 
 
 def evaluate_proof_gate(

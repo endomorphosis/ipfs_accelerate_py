@@ -406,12 +406,29 @@ def admit_exact_from_doctor(
             "projected doctor nomination cannot be admitted as exact evidence"
         )
     exact = replace(projected.evidence, authoritative=True)
-    return CausalEvidenceAdmission(
+    admission = CausalEvidenceAdmission(
         evidence=exact,
         source_kind="federation_native",
         doctor_evidence_id=doctor_evidence.evidence_id,
         localization_cid=localization.localization_cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="causal_evidence_from_doctor",
+            record_ref=str(record_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(record_id),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 def dispose_with_localization(

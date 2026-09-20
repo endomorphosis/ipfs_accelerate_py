@@ -3768,7 +3768,23 @@ def compile_formal_plan(
 
 
 def compile_formal_plan_json(source: str | bytes | Path) -> PlanCompilationResult:
-    return FormalPlanCompiler().compile_json(source)
+    result = FormalPlanCompiler().compile_json(source)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = ""
+        if result.plan is not None:
+            plan_id = str(getattr(result.plan, "plan_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan",
+            record_ref=plan_id or result.source_identity or "formal-plan-json",
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_formal_plan_duckdb(source: Any, **records: Any) -> PlanCompilationResult:
