@@ -1,12 +1,7 @@
-"""Bind remaining SPAR/SAWM/ASEH/PCTDD/DOEP board theory to extra-gate runtime.
+"""Manual remaining SPAR/SAWM/ASEH/PCTDD/DOEP control surfaces.
 
-Remaining-task modules live on the overlay. Extra-gate workers currently
-import the sealed nested accelerate (`python3 -P` plus nested PYTHONPATH) and
-override a no-model kernel abstention into Grok/Codex. This module is the
-typed remaining-task control surface those workers should call instead.
-
-It never writes DuckDB, never CAS-completes a task, and never treats overlay
-pytest as extra-gate admission.
+This is the overlay remaining-task dispatcher. It is not extra-gate admission,
+not an agent-supervisor board worker, and never writes DuckDB.
 """
 
 from __future__ import annotations
@@ -93,31 +88,6 @@ def remaining_task_overlay_root(overlay: str | os.PathLike[str] | None = None) -
     if env:
         return Path(env).resolve()
     return Path(__file__).resolve().parents[3]
-
-
-def remaining_task_pythonpath_entries(overlay: str | os.PathLike[str] | None = None) -> tuple[str, ...]:
-    return (str(remaining_task_overlay_root(overlay)),)
-
-
-def prepend_remaining_task_overlay_pythonpath(
-    overlay: str | os.PathLike[str] | None = None,
-    *,
-    environ: Mapping[str, str] | None = None,
-) -> str:
-    """Put overlay remaining-task modules first for extra-gate children.
-
-    ``python3 -P`` still honors PYTHONPATH. Extra-gate parent pin-only /
-    sealed observation still insert their own ``sys.path[0]``. This is not
-    an ExecStart wrap and does not exclusive-open DuckDB.
-    """
-
-    root = str(remaining_task_overlay_root(overlay))
-    target = os.environ if environ is None else environ
-    current = str(target.get("PYTHONPATH") or "")
-    parts = [item for item in current.split(os.pathsep) if item and item != root]
-    updated = os.pathsep.join((root, *parts))
-    target["PYTHONPATH"] = updated
-    return updated
 
 
 def _board_for(task_id: str) -> str:
@@ -213,36 +183,89 @@ def _execute_sawm(binding: RemainingTaskBinding) -> dict[str, Any]:
     )
 
     service = ProgramWorldService()
-    if binding.task_id == "SAWM-044":
-        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_release import (
-            build_current_tree_release_report,
+    task_id = binding.task_id
+    if task_id == "SAWM-016":
+        return _base_result(binding, surface="reuse", result=service.operation("reuse"))
+    if task_id == "SAWM-020":
+        return _base_result(binding, surface="procedure", result=service.operation("procedure"))
+    if task_id == "SAWM-022":
+        from ipfs_accelerate_py.agent_supervisor.context.program_world_context import (
+            compile_program_world_context,
         )
 
-        report = build_current_tree_release_report().as_dict()
-        return _base_result(binding, surface="release", report=report, released=False)
-    if binding.task_id in {"SAWM-039"}:
+        receipt = compile_program_world_context({"token_budget": 32, "materials": ()})
+        return _base_result(binding, surface="context", included=len(receipt.included))
+    if task_id == "SAWM-030":
+        from ipfs_accelerate_py.agent_supervisor.self_improvement.program_world_residual_foundry import (
+            evaluate_program_world_calibration,
+            prepare_program_world_training,
+        )
+
+        return _base_result(
+            binding,
+            surface="residual-foundry",
+            training=dict(prepare_program_world_training("call_ranking")),
+            calibration=evaluate_program_world_calibration({"ece": 0.0, "ood_rate": 0.0}),
+        )
+    if task_id == "SAWM-031":
+        from ipfs_accelerate_py.agent_supervisor.runtime.program_world_model_serving import (
+            serve_program_world_specialist,
+        )
+
+        return _base_result(
+            binding,
+            surface="serving",
+            result=serve_program_world_specialist({"specialist": "call_ranking"}),
+        )
+    if task_id == "SAWM-032":
+        return _base_result(binding, surface="repair", result=service.operation("repair"))
+    if task_id == "SAWM-034":
+        return _base_result(binding, surface="shadow-write", result=service.operation("world"))
+    if task_id == "SAWM-035":
+        return _base_result(binding, surface="shadow-read", result=service.operation("state"))
+    if task_id == "SAWM-036":
+        return _base_result(binding, surface="guarded", result=service.operation("dogfood"))
+    if task_id == "SAWM-037":
+        return _base_result(binding, surface="required", result=service.operation("state"))
+    if task_id == "SAWM-038":
+        return _base_result(binding, surface="projection", result=service.operation("projection"))
+    if task_id == "SAWM-039":
         return _base_result(
             binding,
             surface="controls",
             status=asdict(service.status()),
             controls=describe_controls(),
         )
-    if binding.task_id == "SAWM-041":
-        result = service.operation("benchmark")
-        return _base_result(binding, surface="benchmark", result=result)
-    if binding.task_id == "SAWM-016":
-        result = service.operation("reuse")
-        return _base_result(binding, surface="reuse", result=result)
+    if task_id == "SAWM-041":
+        return _base_result(binding, surface="benchmark", result=service.operation("benchmark"))
+    if task_id == "SAWM-042":
+        return _base_result(binding, surface="adversarial", result=service.operation("index"))
+    if task_id == "SAWM-044":
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_release import (
+            build_current_tree_release_report,
+        )
+
+        report = build_current_tree_release_report().as_dict()
+        return _base_result(binding, surface="release", report=report, released=False)
     return _base_result(
         binding,
         surface="program-world",
         status=asdict(service.status()),
         controls=describe_controls(),
+        result=service.operation("relation"),
     )
 
 
 def _execute_doep(binding: RemainingTaskBinding) -> dict[str, Any]:
     task_id = binding.task_id
+    if task_id == "DOEP-066":
+        from benchmarks.agent_supervisor.doep.context_pack import run_context_pack_benchmark
+
+        return _base_result(
+            binding,
+            surface="context-pack",
+            result=run_context_pack_benchmark(({"case_id": "doep-066", "tokens": 1},)),
+        )
     if task_id == "DOEP-111":
         from benchmarks.agent_supervisor.doep.baseline import run_codex_primed_baseline
 
@@ -261,6 +284,51 @@ def _execute_doep(binding: RemainingTaskBinding) -> dict[str, Any]:
             write_duckdb=False,
         )
         return _base_result(binding, surface="candidate", result=result)
+    if task_id in {"DOEP-113", "DOEP-114", "DOEP-115"}:
+        from benchmarks.agent_supervisor.doep import corpora
+
+        loaders = {
+            "DOEP-113": corpora.load_hermetic_objectives,
+            "DOEP-114": corpora.load_historical_replays,
+            "DOEP-115": corpora.load_held_out_objectives,
+        }
+        return _base_result(binding, surface="corpus", result=loaders[task_id]())
+    if task_id in {"DOEP-116", "DOEP-123"}:
+        from benchmarks.agent_supervisor.doep.live_shadow import run_live_shadow_cohort
+
+        return _base_result(
+            binding,
+            surface="live-shadow",
+            result=run_live_shadow_cohort(
+            (
+                {
+                    "case_id": "doep-shadow",
+                    "live_decision": "hold",
+                    "shadow_decision": "hold",
+                },
+            )
+        ),
+        )
+    if task_id in {"DOEP-117", "DOEP-124"}:
+        from benchmarks.agent_supervisor.doep.low_risk_canary import run_low_risk_canary
+
+        return _base_result(
+            binding,
+            surface="canary",
+            result=run_low_risk_canary(({"case_id": "doep-canary"},)),
+        )
+    if task_id == "DOEP-120":
+        from benchmarks.agent_supervisor.doep.paired import run_hermetic_paired_benchmark
+
+        return _base_result(binding, surface="paired", result=run_hermetic_paired_benchmark())
+    if task_id == "DOEP-121":
+        from benchmarks.agent_supervisor.doep.paired import run_historical_paired_replay
+
+        return _base_result(binding, surface="historical-replay", result=run_historical_paired_replay())
+    if task_id == "DOEP-122":
+        from benchmarks.agent_supervisor.doep.paired import run_held_out_plan_quality
+
+        return _base_result(binding, surface="held-out", result=run_held_out_plan_quality())
     if task_id in {"DOEP-125", "DOEP-126"}:
         from benchmarks.agent_supervisor.doep.promotion import (
             produce_promotion_or_honest_non_promotion,
@@ -324,5 +392,5 @@ def execute_remaining_task(
     }
     result = handlers[binding.board](binding)
     if result.get("completion_authority") is True or result.get("cas_completed") is True:
-        raise RemainingTaskRuntimeError("remaining-task runtime cannot admit extra-gate completion")
+        raise RemainingTaskRuntimeError("remaining-task runtime cannot admit board completion")
     return result

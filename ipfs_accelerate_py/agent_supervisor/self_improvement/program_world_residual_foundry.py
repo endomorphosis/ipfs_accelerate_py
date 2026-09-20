@@ -6,8 +6,31 @@ Promotion cannot complete a board task.
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
+
+
+def _load_calibration_module():
+    path = (
+        Path(__file__).resolve().parents[1] / "evaluation" / "program_world_calibration.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "program_world_calibration_foundry", path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("calibration monitor unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_CALIBRATION = _load_calibration_module()
+ProgramWorldCalibrationMonitor = _CALIBRATION.ProgramWorldCalibrationMonitor
+evaluate_program_world_calibration = _CALIBRATION.evaluate_program_world_calibration
 
 
 FAMILIES: Final[tuple[str, ...]] = (
@@ -37,15 +60,6 @@ class ProgramWorldCheckpointAdmission:
     reason_code: str
     proposal_only: bool = True
     completion_authority: bool = False
-
-
-@dataclass
-class ProgramWorldCalibrationMonitor:
-    drift: bool = False
-    ood: bool = False
-
-    def healthy(self) -> bool:
-        return not self.drift and not self.ood
 
 
 @dataclass

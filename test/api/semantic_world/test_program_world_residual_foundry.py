@@ -31,6 +31,18 @@ def test_admitted_family_checkpoint_is_proposal_only() -> None:
     assert admission.completion_authority is False
 
 
+def test_calibration_metrics_refuse_promotion() -> None:
+    from ipfs_accelerate_py.agent_supervisor.self_improvement.program_world_residual_foundry import (
+        evaluate_program_world_calibration,
+    )
+
+    result = evaluate_program_world_calibration({"ece": 0.2, "ood_rate": 0.4, "held_out_drop": 0.3})
+    assert result["healthy"] is False
+    assert result["promotable"] is False
+    assert result["completion_authority"] is False
+    assert result["reason_code"] == "drift_or_ood"
+
+
 def test_drift_abstains_from_promotion() -> None:
     foundry = ProgramWorldResidualFoundry(
         families={

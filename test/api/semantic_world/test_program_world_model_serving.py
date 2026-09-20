@@ -38,3 +38,23 @@ def test_privacy_and_batch_bounds() -> None:
         )
     with pytest.raises(ProgramWorldBatchingError, match="max_batch"):
         batch_program_world_predictions([{"id": n} for n in range(9)], max_batch=8)
+    with pytest.raises(ProgramWorldBatchingError, match="mix"):
+        batch_program_world_predictions(
+            [
+                {"id": 1, "privacy": "a", "tenant": "t", "profile": "p", "authority": "x"},
+                {"id": 2, "privacy": "b", "tenant": "t", "profile": "p", "authority": "x"},
+            ]
+        )
+
+
+def test_caller_claimed_gpu_is_not_simulated(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.program_world_model_serving.probe_gpu",
+        lambda: False,
+    )
+    with pytest.raises(ProgramWorldServingError, match="gpu_unavailable"):
+        serve_program_world_specialist(
+            {"checkpoint_admitted": True, "gpu_available": True, "require_gpu": True}
+        )
+    cpu = serve_program_world_specialist({"checkpoint_admitted": True})
+    assert cpu["device"] == "cpu"

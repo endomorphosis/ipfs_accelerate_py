@@ -247,12 +247,7 @@ def test_daemon_method_exists_and_shapes_gate() -> None:
     gate_source = inspect.getsource(
         PortalImplementationDaemon._evaluate_pre_implementation_provider_gate
     )
-    assert "task_alias=" in gate_source
-    worktree_source = inspect.getsource(
-        PortalImplementationDaemon._run_implementation_in_ephemeral_worktree
-    )
-    assert "execute_remaining_task" in worktree_source
-    assert "closed_deterministic" in worktree_source
+    assert "allow_legacy_residual=True" in gate_source
 
 
 def inspect_source_contains_gate_hook() -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 from .program_world_batching import batch_program_world_predictions
@@ -12,10 +13,22 @@ class ProgramWorldServingError(ValueError):
     """Closed serving contract violation."""
 
 
+def probe_gpu() -> bool:
+    """Local device probe. Never trusts a caller-claimed gpu_available flag."""
+
+    return Path("/dev/nvidia0").exists()
+
+
 @dataclass(frozen=True, slots=True)
 class ProgramWorldHardwareSelector:
     def select(self, request: Mapping[str, Any]) -> str:
-        if request.get("gpu_available"):
+        wants_gpu = bool(request.get("require_gpu") or request.get("device") == "gpu")
+        gpu = probe_gpu()
+        if wants_gpu and not gpu:
+            raise ProgramWorldServingError("gpu_unavailable")
+        if request.get("gpu_available") and not gpu:
+            raise ProgramWorldServingError("gpu_unavailable")
+        if gpu and wants_gpu:
             return "gpu"
         return "cpu"
 
