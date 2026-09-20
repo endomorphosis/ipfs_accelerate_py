@@ -1443,7 +1443,7 @@ def compile_binding_compatibility_plan(
         for item in adapters
     ):
         preserve = False
-    return BindingCompatibilityPlan(
+    plan = BindingCompatibilityPlan(
         adapter_cids=tuple(item.adapter_cid for item in adapters),
         write_paths=resolved.effect_scope.write_paths,
         preimage_cid=resolved.preimage.preimage_cid,
@@ -1455,6 +1455,24 @@ def compile_binding_compatibility_plan(
         preserve_binding=preserve,
         silent_incompatibility=False,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(plan.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="binding_compatibility_plan",
+            record_ref=str(getattr(plan, "plan_cid", "") or plan.packet_cid or "binding-compatibility"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.packet_cid or "binding-compatibility"),
+            paths=tuple(plan.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def compile_binding_compatibility_receipt(

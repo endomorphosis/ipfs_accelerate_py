@@ -1865,13 +1865,28 @@ def compile_dcr031_mcp_contract_obligations(
                 unsupported_reason=reason,
             )
         )
-    return McpGraphObligationCompilation(
+    compilation = McpGraphObligationCompilation(
         disposition=McpObligationDisposition.OPEN,
         graph_cid=graph_cid,
         candidate_cid=candidate_cid,
         input_cids=input_cids,
         obligations=tuple(sorted(obligations, key=lambda item: item.obligation_id)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcp_contract_obligations",
+            record_ref=str(compilation.graph_cid or compilation.candidate_cid or "mcp-contract-obligations"),
+            subject_kind="record_cid",
+            subject_ref=str(compilation.candidate_cid or compilation.graph_cid or "mcp-contract-obligations"),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 __all__ = [

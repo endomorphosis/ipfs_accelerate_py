@@ -1396,7 +1396,22 @@ def compile_legal_constraints(
 ) -> LegalCompilationResult:
     """Compile with the default provider-free LegalIR constraint adapter."""
 
-    return LegalConstraintAdapter().compile(artifact, query)
+    compilation = LegalConstraintAdapter().compile(artifact, query)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="legal_constraints",
+            record_ref=str(compilation.query_id or compilation.legal_root_cid_v1 or "legal-constraints"),
+            subject_kind="record_cid",
+            subject_ref=str(compilation.legal_root_artifact_id or compilation.query_id or "legal-constraints"),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 LegalConstraintRequest = LegalApplicabilityQuery

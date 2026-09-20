@@ -1030,7 +1030,7 @@ def compile_verification_receipt(
     compiler = ReceiptCompiler(durable=durable)
     if store is None:
         store = durable is not None
-    return compiler.compile(
+    compiled = compiler.compile(
         bindings,
         exit_code=exit_code,
         stages_passed=stages_passed,
@@ -1038,6 +1038,23 @@ def compile_verification_receipt(
         reason_codes=reason_codes,
         store=store,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(compiled, "bindings", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="verification_receipt",
+            record_ref=str(compiled.receipt_cid or compiled.output_cid or "verification-receipt"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(compiled.receipt_cid or "verification-receipt"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 # ---------------------------------------------------------------------------
@@ -1149,7 +1166,7 @@ def admit_receipt(
         can_verify = False
         can_promote = False
 
-    return ReceiptAdmission(
+    admitted = ReceiptAdmission(
         schema=FRESHNESS_ADMISSION_SCHEMA,
         interface=FRESHNESS_ADMISSION_INTERFACE,
         receipt_cid=compiled.receipt_cid,
@@ -1162,6 +1179,23 @@ def admit_receipt(
         simulated=compiled.simulated,
         unavailable_proof=compiled.unavailable_proof,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(compiled, "bindings", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="verification_receipt_admission",
+            record_ref=str(admitted.receipt_cid or "verification-receipt-admission"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(admitted.receipt_cid or "verification-receipt-admission"),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def receipt_may_verify(admission: ReceiptAdmission) -> bool:

@@ -1038,7 +1038,7 @@ def evaluate_cve_security_gate(
         else CVESecurityGateOutcome.PASS
     )
     unique_findings = {item.finding_id: item for item in findings}
-    return CVESecurityGateResult(
+    result = CVESecurityGateResult(
         outcome=outcome,
         policy_receipt_id=policy.content_id,
         context=context,
@@ -1047,6 +1047,21 @@ def evaluate_cve_security_gate(
         decisions=tuple(decisions),
         findings=tuple(unique_findings.values()),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="cve_security_gate",
+            record_ref=str(result.policy_receipt_id or "cve-security-gate"),
+            subject_kind="record_cid",
+            subject_ref=str(result.policy_receipt_id or "cve-security-gate"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Compatibility spellings for enforcement integration.

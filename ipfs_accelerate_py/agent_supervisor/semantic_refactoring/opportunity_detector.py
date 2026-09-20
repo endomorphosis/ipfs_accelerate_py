@@ -894,7 +894,7 @@ def compile_opportunity_evidence(evidence: Mapping[str, Any] | Any) -> Opportuni
         if not isinstance(payload.get("partition_receipt"), Mapping)
         else payload.get("partition_receipt", {}).get("receipt_cid") or "",
     )
-    return OpportunityEvidence(
+    evidence_view = OpportunityEvidence(
         tree_id=tree_id,
         modules=modules,
         evidence_cids=cids,
@@ -908,6 +908,23 @@ def compile_opportunity_evidence(evidence: Mapping[str, Any] | Any) -> Opportuni
         oversized_partition_subjects=partition_subjects,
         vector_scores=scores,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree = str(evidence_view.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="opportunity_evidence",
+            record_ref=str((evidence_view.evidence_cids[0] if evidence_view.evidence_cids else "") or tree or "opportunity-evidence"),
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or "opportunity-evidence",
+        )
+    except Exception:
+        pass
+    return evidence_view
 
 
 def _intersecting(owner_members: Mapping[str, tuple[str, ...]], members: Sequence[str]) -> tuple[str, ...]:
@@ -1902,7 +1919,24 @@ def compile_durable_goals(
     if not resolved:
         raise OpportunityDetectorError("goal compilation requires findings")
     goals = tuple(_goal_from_finding(item) for item in resolved)
-    return GoalCompilationReceipt(tree_id=tree_id, goals=goals)
+    receipt = GoalCompilationReceipt(tree_id=tree_id, goals=goals)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree = str(receipt.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="durable_goal_compilation",
+            record_ref=str(getattr(receipt, "receipt_cid", "") or tree or "durable-goals"),
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or "durable-goals",
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 class GoalCompiler:

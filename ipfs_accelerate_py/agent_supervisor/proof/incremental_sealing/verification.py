@@ -1278,7 +1278,7 @@ def verify_seal(
     stages.append("signature")
     stages.append("cryptography")
 
-    return _accept(
+    accepted = _accept(
         seal_kind=seal_kind,
         seal_status=status_value,
         seal_cid=seal_cid,
@@ -1296,6 +1296,21 @@ def verify_seal(
             "stages": list(VERIFICATION_STAGES),
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="incremental_seal_verification",
+            record_ref=str(accepted.seal_cid or "incremental-seal"),
+            subject_kind="record_cid",
+            subject_ref=str(accepted.seal_cid or "incremental-seal"),
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 __all__ = (

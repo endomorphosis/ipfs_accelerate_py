@@ -1344,7 +1344,7 @@ def compile_initialization_rewrite_plan(
     obligations = tuple(
         sorted({item.obligation_id for item in rewrites if item.obligation_id})
     )
-    return InitializationRewritePlan(
+    plan = InitializationRewritePlan(
         rewrite_cids=tuple(item.rewrite_cid for item in rewrites),
         write_paths=resolved.effect_scope.write_paths,
         preimage_cid=resolved.preimage.preimage_cid,
@@ -1356,6 +1356,24 @@ def compile_initialization_rewrite_plan(
         cycle_free=True,
         traces_validated=True,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(plan.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="initialization_rewrite_plan",
+            record_ref=str(plan.packet_cid or "initialization-rewrite"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.packet_cid or "initialization-rewrite"),
+            paths=tuple(plan.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def compile_initialization_rewrite_receipt(

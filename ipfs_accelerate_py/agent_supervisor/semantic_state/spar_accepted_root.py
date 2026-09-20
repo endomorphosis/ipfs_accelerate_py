@@ -572,7 +572,7 @@ def admit_accepted_root(
         and len(evidence) >= 1
         and all(isinstance(item, str) and item for item in evidence)
     ):
-        return {
+        admitted = {
             "schema": SCHEMA,
             "admitted": True,
             "authority": "datasets_spar_accepted_root",
@@ -583,6 +583,21 @@ def admit_accepted_root(
             "evidence_cids": list(evidence),
             "producer_interface": PRODUCER_INTERFACE,
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="spar_accepted_root",
+                record_ref=str(admitted.get("accepted_root_cid") or subject_cid or "spar-accepted-root"),
+                subject_kind="record_cid",
+                subject_ref=str(subject_cid or "spar-accepted-root"),
+            )
+        except Exception:
+            pass
+        return admitted
     supervisor_outcomes = admit_current_bound_clause_records(
         subject, current_source.get("clause_records") or {}
     )

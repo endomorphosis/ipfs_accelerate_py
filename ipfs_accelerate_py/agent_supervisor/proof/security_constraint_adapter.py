@@ -1801,7 +1801,22 @@ def compile_security_constraints(
 ) -> SecurityPolicyReceipt:
     """Compile a pinned, normalized SecurityIR artifact."""
 
-    return SecurityConstraintAdapter().compile(artifact)
+    receipt = SecurityConstraintAdapter().compile(artifact)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="security_constraints",
+            record_ref=str(getattr(receipt, "content_id", "") or receipt.security_root_cid_v1 or "security-constraints"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.security_root_artifact_id or receipt.security_root_cid_v1 or "security-constraints"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def evaluate_security_authorization(

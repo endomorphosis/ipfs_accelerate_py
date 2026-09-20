@@ -5384,7 +5384,7 @@ def compile_code_proof_obligations(
             ),
         )
     )
-    return CodeProofObligationCompilation(
+    compilation = CodeProofObligationCompilation(
         repository_id=str(repository_id or "").strip(),
         repository_tree_id=tree_id,
         catalog_version=catalog.catalog_version,
@@ -5402,6 +5402,23 @@ def compile_code_proof_obligations(
         task_id=str(task_id or "").strip(),
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree = str(compilation.repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_proof_obligations",
+            record_ref=str(compilation.scope_set_id or compilation.task_id or "code-proof-obligations"),
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or str(compilation.catalog_id or "code-proof-obligations"),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 # Compatibility spellings for the obligation compiler.

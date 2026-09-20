@@ -1405,7 +1405,7 @@ def admit_receipt(
     reasons = tuple(
         item.reason_code for item in checks if not item.passed
     ) or (("all_ten_points_passed",) if admitted else ())
-    return AdmissionResult(
+    result = AdmissionResult(
         admitted=admitted,
         disposition=(
             AdmissionDisposition.ADMITTED
@@ -1421,6 +1421,21 @@ def admit_receipt(
         semantic_verdict=normalized.semantic_verdict,
         reasons=reasons,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_platform_admission",
+            record_ref=str(result.receipt_content_id or "logic-platform-admission"),
+            subject_kind="record_cid",
+            subject_ref=str(result.receipt_content_id or "logic-platform-admission"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def may_affect_completion_or_merge(

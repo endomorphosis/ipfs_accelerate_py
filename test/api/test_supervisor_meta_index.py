@@ -1756,6 +1756,197 @@ def test_mirror_capsules_graphs_snapshots_and_refactor_surfaces(tmp_path, monkey
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_proof_zkp_capsule_and_refactor_receipts(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    context = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_contract_proof_context",
+        record_ref="context:1",
+        subject_kind="obligation_ref",
+        subject_ref="obligation:1",
+    )
+    delta = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_contract_proof_context_delta",
+        record_ref="delta:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    packet = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="contract_repair_packet",
+        record_ref="packet:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    intent = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="intent_constraints",
+        record_ref="intent:1",
+        subject_kind="record_cid",
+        subject_ref="intent:1",
+    )
+    security = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="security_constraints",
+        record_ref="security:1",
+        subject_kind="record_cid",
+        subject_ref="artifact:1",
+    )
+    legal = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="legal_constraints",
+        record_ref="query:1",
+        subject_kind="record_cid",
+        subject_ref="legal:1",
+    )
+    platform = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="logic_platform_admission",
+        record_ref="receipt:2",
+        subject_kind="record_cid",
+        subject_ref="receipt:2",
+    )
+    obligations = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_proof_obligations",
+        record_ref="scope:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    mcp = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="mcp_contract_obligations",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    cve = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="cve_security_gate",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    zkp = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="program_zkp_verification",
+        record_ref="zkp:1",
+        subject_kind="record_cid",
+        subject_ref="circuit:1",
+    )
+    seal = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="incremental_seal_verification",
+        record_ref="seal:1",
+        subject_kind="record_cid",
+        subject_ref="seal:1",
+    )
+    capsule = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="semantic_capsule_admission",
+        record_ref="capsule:1",
+        subject_kind="capsule_cid",
+        subject_ref="capsule:1",
+    )
+    verification = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="verification_receipt",
+        record_ref="receipt:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    receipt_admit = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="verification_receipt_admission",
+        record_ref="receipt:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    accepted = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="spar_accepted_root",
+        record_ref="root:1",
+        subject_kind="record_cid",
+        subject_ref="subject:1",
+    )
+    binding = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="binding_compatibility_plan",
+        record_ref="packet:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    imports = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="import_rewrite_receipt",
+        record_ref="packet:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    init = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="initialization_rewrite_plan",
+        record_ref="packet:4",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    goals = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="durable_goal_compilation",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    opportunity = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="opportunity_evidence",
+        record_ref="evidence:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (
+        context,
+        delta,
+        packet,
+        intent,
+        security,
+        legal,
+        platform,
+        obligations,
+        mcp,
+        cve,
+        zkp,
+        seal,
+        capsule,
+        verification,
+        receipt_admit,
+        accepted,
+        binding,
+        imports,
+        init,
+        goals,
+        opportunity,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

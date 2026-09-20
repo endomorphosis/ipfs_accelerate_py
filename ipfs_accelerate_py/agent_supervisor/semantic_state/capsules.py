@@ -501,13 +501,28 @@ def admit_capsule(
         validity_bindings=bindings,
         raw_source_required=raw_source_required,
     )
-    return CapsuleAdmission(
+    admitted = CapsuleAdmission(
         ref=ref,
         admission=admission,
         freshness=freshness_value,
         caveats=tuple(sorted(set(caveats))),
         assessment_cid=assessment_cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="semantic_capsule_admission",
+            record_ref=str(admitted.ref.capsule_cid or "semantic-capsule"),
+            subject_kind="capsule_cid",
+            subject_ref=str(admitted.ref.capsule_cid or "semantic-capsule"),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def retrieve_opaque_source(

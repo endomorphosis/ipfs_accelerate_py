@@ -1208,7 +1208,22 @@ def compile_code_contract_proof_context(
 ) -> CompiledProofContext:
     """Compile and cache the smallest closed context for ``request``."""
 
-    return (compiler or _DEFAULT_COMPILER).compile(request, previous_receipt=previous_receipt)
+    compiled = (compiler or _DEFAULT_COMPILER).compile(request, previous_receipt=previous_receipt)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_contract_proof_context",
+            record_ref=str(compiled.context_id or compiled.request_id or compiled.obligation_id or "code-contract-proof-context"),
+            subject_kind="obligation_ref",
+            subject_ref=str(compiled.obligation_id or compiled.request_id or "code-contract-proof-context"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 compile_proof_context = compile_code_contract_proof_context
@@ -1224,12 +1239,27 @@ def compile_proof_context_delta(
 ) -> ProofContextDelta:
     """Compile a retry which never retransmits base-context items."""
 
-    return (compiler or _DEFAULT_COMPILER).compile_delta(
+    delta = (compiler or _DEFAULT_COMPILER).compile_delta(
         request,
         base_receipt=base_receipt,
         counterexample_item_ids=counterexample_item_ids,
         requested_evidence_item_ids=requested_evidence_item_ids,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_contract_proof_context_delta",
+            record_ref=str(getattr(delta, "delta_id", "") or getattr(base_receipt, "receipt_id", "") or "proof-context-delta"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(base_receipt, "receipt_id", "") or "proof-context-delta"),
+        )
+    except Exception:
+        pass
+    return delta
 
 
 __all__ = [

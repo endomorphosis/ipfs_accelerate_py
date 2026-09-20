@@ -2596,7 +2596,28 @@ def compile_intent_constraints(
     *,
     bounds: IntentAdapterBounds | None = None,
 ) -> IntentConstraintCompilationResult:
-    return IntentConstraintAdapter(bounds=bounds).compile(intent, formalization)
+    compilation = IntentConstraintAdapter(bounds=bounds).compile(intent, formalization)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        constraint_set = getattr(compilation, "constraint_set", None)
+        record_ref = str(
+            getattr(constraint_set, "constraint_set_id", "")
+            or getattr(compilation, "status", "")
+            or "intent-constraints"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="intent_constraints",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 def create_intent_conformance_request(

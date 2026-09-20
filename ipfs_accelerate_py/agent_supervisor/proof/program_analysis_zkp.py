@@ -3855,6 +3855,20 @@ def record_production_program_zkp_verification(
     # No semantic claim promotion: still only zk_trace_attested.
     if receipt.claim_level is not ClaimLevel.ZK_TRACE_ATTESTED:
         raise ProgramZkpClaimPromotionError("production receipt cannot promote claim level")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="program_zkp_verification",
+            record_ref=str(getattr(receipt, "content_id", "") or receipt.public_input_digest or "program-zkp"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.circuit_id or receipt.public_input_digest or "program-zkp"),
+        )
+    except Exception:
+        pass
     return receipt
 
 

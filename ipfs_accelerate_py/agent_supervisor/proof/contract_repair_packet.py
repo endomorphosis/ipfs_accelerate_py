@@ -2733,7 +2733,22 @@ def compile_contract_repair_packet(
 ) -> CompiledRepairPacket:
     """Public entry: compile and optionally cache a repair packet."""
 
-    return (compiler or _DEFAULT_COMPILER).compile(request)
+    compiled = (compiler or _DEFAULT_COMPILER).compile(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_repair_packet",
+            record_ref=str(compiled.packet_id or compiled.request_id or "contract-repair-packet"),
+            subject_kind="record_cid",
+            subject_ref=str(compiled.request_id or compiled.packet_id or "contract-repair-packet"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 # ---------------------------------------------------------------------------

@@ -1188,7 +1188,7 @@ def compile_import_rewrite_receipt(
         rewrites=rewrites,
         plans=reexport_plans,
     )
-    return ImportRewriteReceipt(
+    receipt = ImportRewriteReceipt(
         tree_id=resolved.tree_id,
         packet_cid=resolved.packet_cid,
         preimage_cid=preimage_cid,
@@ -1196,6 +1196,24 @@ def compile_import_rewrite_receipt(
         reexport_cids=tuple(item.plan_cid for item in reexport_plans),
         write_paths=resolved.effect_scope.write_paths,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="import_rewrite_receipt",
+            record_ref=str(receipt.packet_cid or "import-rewrite"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(receipt.packet_cid or "import-rewrite"),
+            paths=tuple(receipt.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def execute_import_rewrites(
