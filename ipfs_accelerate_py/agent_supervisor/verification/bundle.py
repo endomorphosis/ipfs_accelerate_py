@@ -440,6 +440,20 @@ def build_verification_summary(
         raise VerificationBundleBuildError(
             "verification summary exceeds ContextPack compact bound"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="verification_summary",
+            record_ref=str(summary.summary_id),
+            subject_kind="record_cid",
+            subject_ref=str(summary.repository_tree_cid or summary.summary_id),
+        )
+    except Exception:
+        pass
     return summary
 
 

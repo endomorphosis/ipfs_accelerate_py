@@ -2280,7 +2280,7 @@ def evaluate_symbolic_assurance_rollout(
         desired_mode=desired_mode,
         prior_gate_report=prior_gate_report,
     )
-    return AssuranceRolloutDecision(
+    decision = AssuranceRolloutDecision(
         binding=binding,
         policy=policy,
         gate_report=gate_report,
@@ -2294,6 +2294,21 @@ def evaluate_symbolic_assurance_rollout(
             prior_gate_report.report_id if prior_gate_report is not None else ""
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_assurance_rollout",
+            record_ref=str(decision.shadow_report_id),
+            subject_kind="record_cid",
+            subject_ref=str(decision.shadow_report_id),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def verify_symbolic_assurance_rollout(

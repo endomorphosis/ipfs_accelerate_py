@@ -980,6 +980,50 @@ def test_mirror_source_snapshot_calibration_pack_and_escalation(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_authorization_ladder_rollout_and_receipt_envelope(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    authz = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="authorization_decision",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    ladder = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="model_route_ladder",
+        record_ref="deterministic",
+        subject_kind="record_cid",
+        subject_ref="deterministic",
+    )
+    rollout = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_assurance_rollout",
+        record_ref="shadow:1",
+        subject_kind="record_cid",
+        subject_ref="shadow:1",
+    )
+    envelope = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="receipt_envelope",
+        record_ref="body-cid",
+        subject_kind="record_cid",
+        subject_ref="body-cid",
+    )
+    for item in (authz, ladder, rollout, envelope):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

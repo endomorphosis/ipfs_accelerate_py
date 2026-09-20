@@ -767,6 +767,20 @@ def build_receipt_envelope(
     }
     if metadata:
         envelope["metadata"] = dict(metadata)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="receipt_envelope",
+            record_ref=str(body_cid),
+            subject_kind="record_cid",
+            subject_ref=str(body_cid),
+        )
+    except Exception:
+        pass
     return envelope
 
 

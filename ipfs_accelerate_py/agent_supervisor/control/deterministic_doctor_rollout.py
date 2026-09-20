@@ -992,7 +992,7 @@ def evaluate_rollout_decision(
     if narrow_disabled:
         mutation = False
 
-    return DeterministicDoctorRolloutDecision(
+    decision = DeterministicDoctorRolloutDecision(
         requested_mode=requested,
         effective_mode=effective,
         kill_switch_engaged=policy.kill_switch_engaged,
@@ -1003,6 +1003,21 @@ def evaluate_rollout_decision(
         floor_breaches=tuple(breaches),
         policy_binding_id=policy.policy_binding_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_rollout_decision",
+            record_ref=str(decision.policy_binding_id or decision.effective_mode),
+            subject_kind="record_cid",
+            subject_ref=str(decision.policy_binding_id or decision.effective_mode),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 # ---------------------------------------------------------------------------

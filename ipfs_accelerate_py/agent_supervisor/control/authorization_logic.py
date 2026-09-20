@@ -1073,7 +1073,22 @@ def evaluate_authorization(
 ) -> AuthorizationDecision:
     """Evaluate one request with the deterministic reference semantics."""
 
-    return ReferenceAuthorizationEvaluator().evaluate(policy, request)
+    decision = ReferenceAuthorizationEvaluator().evaluate(policy, request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorization_decision",
+            record_ref=str(decision.request_identity or decision.policy_identity),
+            subject_kind="record_cid",
+            subject_ref=str(decision.policy_identity),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 authorize = evaluate_authorization

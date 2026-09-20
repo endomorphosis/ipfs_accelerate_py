@@ -1444,7 +1444,7 @@ def evaluate_ladder_for_model_route(
     required, _reasons = select_required_route(
         normalized_facts, normalized_attempts, normalized_policy
     )
-    return evaluate_receipt_to_human_ladder(
+    decision = evaluate_receipt_to_human_ladder(
         ladder_evidence_from_verification(
             normalized_facts,
             required_route=required,
@@ -1452,6 +1452,21 @@ def evaluate_ladder_for_model_route(
             policy=normalized_policy,
         )
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="model_route_ladder",
+            record_ref=str(decision.selected_route or decision.selected_stage),
+            subject_kind="record_cid",
+            subject_ref=str(decision.selected_route or decision.selected_stage),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def _assert_ladder_agrees_with_decision(
