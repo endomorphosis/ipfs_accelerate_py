@@ -793,7 +793,22 @@ def build_generic_rollout_profile(
         "default_fixture_repositories": fixtures,
     }
     kwargs.update(overrides)
-    return AssuranceRolloutProfile(**kwargs)
+    profile = AssuranceRolloutProfile(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_rollout_profile",
+            record_ref=str(profile.profile_id),
+            subject_kind="record_cid",
+            subject_ref=str(profile.profile_id),
+        )
+    except Exception:
+        pass
+    return profile
 
 
 # ---------------------------------------------------------------------------
@@ -1156,7 +1171,7 @@ def freeze_multi_repository_fixture(
             "inventory_policy_revision": inventory_policy_revision,
         }
     )
-    return FrozenMultiRepoFixture(
+    fixture = FrozenMultiRepoFixture(
         fixture_id=fixture_id,
         fixture_revision=fixture_revision,
         forest_id=forest_id,
@@ -1165,6 +1180,21 @@ def freeze_multi_repository_fixture(
         inventory_policy_id=inventory_policy_id,
         inventory_policy_revision=inventory_policy_revision,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="frozen_multi_repo_fixture",
+            record_ref=str(fixture.fixture_id),
+            subject_kind="record_cid",
+            subject_ref=str(fixture.forest_id),
+        )
+    except Exception:
+        pass
+    return fixture
 
 
 # ---------------------------------------------------------------------------
@@ -2357,7 +2387,7 @@ def build_default_rollout_binding(
 ) -> AssuranceRolloutBinding:
     resolved = profile or build_generic_rollout_profile()
     selected = repository_id or fixture.repository_ids[0]
-    return AssuranceRolloutBinding(
+    binding = AssuranceRolloutBinding(
         repository_id=selected,
         tree_id=next(
             item.tree_id
@@ -2373,6 +2403,22 @@ def build_default_rollout_binding(
         capability_id=resolved.capability_id,
         capability_revision=resolved.capability_revision,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_rollout_binding",
+            record_ref=str(binding.tree_id or binding.forest_id),
+            tree_id=str(binding.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(binding.tree_id),
+        )
+    except Exception:
+        pass
+    return binding
 
 
 def build_default_rollout_policy(
@@ -2921,7 +2967,7 @@ def run_symbolic_assurance_e2e(
         policy=policy,
         desired_mode=desired_mode,
     )
-    return {
+    payload = {
         "fixture": fixture.to_dict(),
         "adversarial_e2e_gate": report.to_dict(),
         "shadow_rollout_report": shadow.to_dict(),
@@ -2931,6 +2977,21 @@ def run_symbolic_assurance_e2e(
         "receipts": project_bounded_receipts(decision),
         "automatic_mutation_enabled": False,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_assurance_e2e",
+            record_ref=str(decision.shadow_report_id or fixture.fixture_id),
+            subject_kind="record_cid",
+            subject_ref=str(fixture.forest_id or fixture.fixture_id),
+        )
+    except Exception:
+        pass
+    return payload
 
 
 __all__ = (

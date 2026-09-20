@@ -1076,7 +1076,7 @@ def admit_task(
     if disposition is TaskDisposition.ADMITTED_CANARY:
         prior = shadow_map.get(evidence.task_id)
         bound_shadow = evidence.shadow_receipt_cid or (prior.receipt_id if prior else "")
-    return TaskAdmissionReceipt(
+    receipt = TaskAdmissionReceipt(
         task_id=evidence.task_id,
         task_cid=evidence.task_cid,
         disposition=disposition.value,
@@ -1089,6 +1089,21 @@ def admit_task(
         shadow_receipt_cid=bound_shadow,
         policy_identity=admitted_policy.policy_identity,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="live_task_admission",
+            record_ref=str(receipt.task_id),
+            subject_kind="task_id",
+            subject_ref=str(receipt.task_id),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def _policy_from(
@@ -1261,7 +1276,7 @@ def admit_cohort(
         reasons.append(LiveCohortReason.CANARY_WITHOUT_SAFETY.value)
         population_status = "insufficient"
         canary_mutation_permitted = False
-    return CohortAdmissionReceipt(
+    snapshot = CohortAdmissionReceipt(
         disposition=disposition.value,
         admitted=qualified,
         live=qualified,
@@ -1281,6 +1296,21 @@ def admit_cohort(
         sealed_at=admitted_policy.sealed_at,
         as_of=as_of_text,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="live_cohort_admission",
+            record_ref=str(snapshot.policy_identity or snapshot.as_of),
+            subject_kind="record_cid",
+            subject_ref=str(snapshot.policy_identity or snapshot.as_of),
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def build_manifest(

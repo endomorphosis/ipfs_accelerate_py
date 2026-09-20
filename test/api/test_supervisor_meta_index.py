@@ -1115,6 +1115,48 @@ def test_mirror_goal_completion_gate_and_adversarial_population(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_live_task_cohort_fixture_and_e2e(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    task = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="live_task_admission",
+        record_ref="SAWM-039",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    cohort = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="live_cohort_admission",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    fixture = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="frozen_multi_repo_fixture",
+        record_ref="fixture:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    e2e = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_assurance_e2e",
+        record_ref="shadow:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    for item in (task, cohort, fixture, e2e):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
