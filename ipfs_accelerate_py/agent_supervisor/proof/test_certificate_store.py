@@ -1637,7 +1637,26 @@ class TestCertificateStore:
             data, claimed = self._coerce_certificate_bytes(certificate)
         except (CertificateStoreIntegrityError, TestExecutionContractError, TypeError, ValueError):
             return CasPutResult(False, "", CertificateStoreReason.MALFORMED)
-        return self.cas.put_bytes(data, claimed_cid=claimed)
+        result = self.cas.put_bytes(data, claimed_cid=claimed)
+        if result.stored:
+            try:
+                from .proof_certificate_database import mirror_zkp_certificate
+
+                payload = certificate if isinstance(certificate, Mapping) else {}
+                if hasattr(certificate, "to_dict"):
+                    payload = certificate.to_dict()
+                mirror_zkp_certificate(
+                    key_id=str(payload.get("execution_key_cid") or result.cid or ""),
+                    receipt_id=str(payload.get("receipt_cid") or ""),
+                    envelope_id=str(payload.get("statement_cid") or ""),
+                    circuit_id=str(payload.get("circuit_cid") or ""),
+                    proof_digest=str(payload.get("proof_digest") or ""),
+                    simulated="simulated"
+                    in str(payload.get("backend_mode") or "").lower(),
+                )
+            except Exception:
+                pass
+        return result
 
     def put_canonical_bytes(
         self, data: bytes, *, claimed_cid: str | None = None

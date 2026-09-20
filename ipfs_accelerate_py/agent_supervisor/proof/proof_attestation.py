@@ -1978,7 +1978,7 @@ def create_attestation_envelope(
         raise AttestationValidationError(
             "envelope generation requires a prepared receipt-attestation request"
         )
-    return ReceiptAttestationEnvelope(
+    envelope = ReceiptAttestationEnvelope(
         statement=request.statement,
         backend_mode=backend_mode,
         proof_artifact_id=proof_artifact_id,
@@ -1986,6 +1986,22 @@ def create_attestation_envelope(
         prover_id=prover_id,
         backend_health=backend_health,
     )
+    try:
+        from .proof_certificate_database import mirror_zkp_certificate
+
+        statement = request.statement
+        mirror_zkp_certificate(
+            key_id=str(getattr(statement, "policy_id", "") or ""),
+            receipt_id=str(getattr(statement, "proof_receipt_id", "") or ""),
+            envelope_id=str(getattr(envelope, "envelope_id", "") or ""),
+            circuit_id=str(getattr(statement, "circuit_id", "") or ""),
+            backend_id=str(getattr(statement, "backend_id", "") or ""),
+            proof_digest=str(proof_digest or ""),
+            simulated="simulated" in str(getattr(backend_mode, "value", backend_mode) or "").lower(),
+        )
+    except Exception:
+        pass
+    return envelope
 
 
 def evaluate_backend_health(

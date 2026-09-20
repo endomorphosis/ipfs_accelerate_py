@@ -1685,6 +1685,25 @@ class FormalVerificationCache:
             raise
         finally:
             connection.close()
+        try:
+            from .proof_certificate_database import mirror_proof_cache_entry
+
+            mirror_proof_cache_entry(
+                key_id=cache_key.key_id,
+                receipt_id=typed_receipt.receipt_id,
+                verdict=str(getattr(typed_receipt.verdict, "value", typed_receipt.verdict) or ""),
+                assurance=str(
+                    getattr(
+                        getattr(typed_receipt, "assurance", None),
+                        "value",
+                        getattr(typed_receipt, "assurance", ""),
+                    )
+                    or ""
+                ),
+                complete=complete,
+            )
+        except Exception:
+            pass
         return CacheStoreResult(True, cache_key, entry=entry)
 
     store = put
@@ -1896,6 +1915,21 @@ class FormalVerificationCache:
             raise
         finally:
             connection.close()
+        try:
+            from .proof_certificate_database import mirror_zkp_certificate
+
+            mirror_zkp_certificate(
+                key_id=cache_key.key_id,
+                receipt_id=record.proof_receipt_id,
+                envelope_id=str(record.envelope_id or ""),
+                circuit_id=str(statement.circuit_id or ""),
+                backend_id=str(statement.backend_id or ""),
+                public_input_digest=str(record.public_input_digest or ""),
+                ipfs_cid=str(entry.ipfs_cid or ""),
+                simulated="simulated" in str(getattr(record.envelope.backend_mode, "value", record.envelope.backend_mode) or "").lower(),
+            )
+        except Exception:
+            pass
         return AttestationCacheStoreResult(True, cache_key, entry=entry)
 
     store_attestation = put_attestation
