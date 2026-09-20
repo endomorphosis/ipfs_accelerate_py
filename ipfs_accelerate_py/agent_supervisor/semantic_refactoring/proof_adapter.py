@@ -1862,7 +1862,7 @@ def compile_premise_corpus(
                 toolchain_id=payload.get("toolchain_id", toolchain_id),
             )
         )
-    return PremiseCorpus(
+    corpus = PremiseCorpus(
         tree_id=tree_id,
         corpus_revision=corpus_revision,
         premises=records,
@@ -1870,6 +1870,23 @@ def compile_premise_corpus(
         toolchain_id=toolchain_id,
         selector_mode=selector_mode,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree = str(corpus.tree_id or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="premise_corpus",
+            record_ref=str(getattr(corpus, "corpus_cid", "") or corpus.corpus_revision or tree or "premise-corpus"),
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or str(corpus.corpus_revision or "premise-corpus"),
+        )
+    except Exception:
+        pass
+    return corpus
 
 
 def _lower_clause(

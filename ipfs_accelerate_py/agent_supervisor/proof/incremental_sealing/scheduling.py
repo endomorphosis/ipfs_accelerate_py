@@ -231,7 +231,24 @@ class ProofWorkScheduler:
                     verdict=verdict,
                 )
             )
-        return tuple(slots)
+        scheduled = tuple(slots)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            first = scheduled[0] if scheduled else None
+            record_ref = str(getattr(getattr(first, "item", None), "work_id", "") or "proof-schedule")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="proof_work_schedule",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return scheduled
 
     @property
     def in_flight(self) -> tuple[str, ...]:

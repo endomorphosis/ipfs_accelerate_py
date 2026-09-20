@@ -513,6 +513,23 @@ class ContextPackSelector:
                 stale_fields=selection.admission.stale_fields,
                 reason_codes=selection.admission.invalidation_reasons,
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            pack = selection.selected
+            tree_id = str(getattr(current, "tree_id", "") or getattr(pack, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="current_context_pack",
+                record_ref=str(getattr(pack, "pack_cid", "") or getattr(pack, "capsule_cid", "") or "current-pack"),
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or str(getattr(pack, "pack_cid", "") or "current-pack"),
+            )
+        except Exception:
+            pass
         return selection
 
 

@@ -2158,7 +2158,7 @@ def seal_cryptographic_attested(
         prover_id=envelope.prover_id,
         receipt=verification_receipt,
     )
-    return PlannerDoctorAttestation(
+    attested = PlannerDoctorAttestation(
         public_inputs=envelope.public_inputs,
         proof_artifact_id=envelope.proof_artifact_id,
         proof_digest=envelope.proof_digest,
@@ -2168,6 +2168,21 @@ def seal_cryptographic_attested(
         status=PlannerDoctorAttestationStatus.ATTESTED,
         program_zkp_verification_receipt=checked_receipt,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="planner_doctor_attestation",
+            record_ref=str(attested.proof_artifact_id or attested.proof_digest or "planner-doctor-attestation"),
+            subject_kind="record_cid",
+            subject_ref=str(attested.proof_digest or attested.prover_id or "planner-doctor-attestation"),
+        )
+    except Exception:
+        pass
+    return attested
 
 
 def simulated_attestation_cannot_satisfy_attested(

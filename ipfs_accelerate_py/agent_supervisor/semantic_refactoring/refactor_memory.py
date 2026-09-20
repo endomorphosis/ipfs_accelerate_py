@@ -1462,12 +1462,27 @@ def compile_memory_receipt(
     store: RefactorMemoryStore,
     decision: RefactorReuseDecision,
 ) -> RefactorMemoryReceipt:
-    return RefactorMemoryReceipt(
+    receipt = RefactorMemoryReceipt(
         store_cid=store.store_cid,
         decision_cid=decision.decision_cid,
         query_key_cid=decision.query_key_cid,
         decision=decision.decision,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refactor_memory_receipt",
+            record_ref=str(receipt.decision_cid or receipt.store_cid or "refactor-memory"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.query_key_cid or receipt.decision_cid or "refactor-memory"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 class RefactorMemory:

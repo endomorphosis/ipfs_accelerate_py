@@ -3352,7 +3352,7 @@ def compile_mutation_campaign_request(
             if item.case_id not in derived_ids
         ] + derived_cases
 
-    return MutationCampaignRequest(
+    request = MutationCampaignRequest(
         tree_id=tree_id,
         packet_cid=packet_cid,
         wave_receipt_cid=_wave_receipt_cid(wave_map),
@@ -3371,6 +3371,24 @@ def compile_mutation_campaign_request(
         adversarial_verdicts=tuple(resolved_adversarial_verdicts),
         full_suite_required=_full_suite_required(selection_map),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id_text = str(request.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mutation_campaign_request",
+            record_ref=str(request.packet_cid or request.wave_receipt_cid or "mutation-campaign"),
+            tree_id=tree_id_text,
+            subject_kind="tree_id" if tree_id_text else "record_cid",
+            subject_ref=tree_id_text or str(request.packet_cid or "mutation-campaign"),
+            paths=tuple(request.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return request
 
 
 def validate_mutation_campaign(

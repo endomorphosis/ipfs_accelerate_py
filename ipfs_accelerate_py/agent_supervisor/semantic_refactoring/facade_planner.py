@@ -1807,7 +1807,24 @@ def compile_facade_plan_receipt(
         if isinstance(plan, CompatibilityFacadePlan)
         else CompatibilityFacadePlan.from_dict(plan)
     )
-    return FacadePlanningReceipt(tree_id=resolved.tree_id, plan=resolved)
+    receipt = FacadePlanningReceipt(tree_id=resolved.tree_id, plan=resolved)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="facade_plan_receipt",
+            record_ref=str(getattr(resolved, "plan_cid", "") or tree_id or "facade-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or "facade-plan",
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def encode_canonical_plan(plan: CompatibilityFacadePlan) -> dict[str, Any]:

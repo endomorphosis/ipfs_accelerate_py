@@ -977,7 +977,7 @@ def compile_partition_evidence(
     )
     if declared_analyzer != ANALYZER_ID:
         raise PartitionGeneratorError("analyzer_id must remain the SPAR-013 analyzer")
-    return _EvidenceView(
+    view = _EvidenceView(
         tree_id=tree_id,
         scc=scc,
         state=state,
@@ -992,6 +992,23 @@ def compile_partition_evidence(
         initialization_cid=initialization_cid,
         analyzer_id=declared_analyzer,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree = str(view.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="partition_evidence",
+            record_ref=str(view.graph_cid or view.compatibility_cid or tree or "partition-evidence"),
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or str(view.graph_cid or "partition-evidence"),
+        )
+    except Exception:
+        pass
+    return view
 
 
 def _owner_violations(

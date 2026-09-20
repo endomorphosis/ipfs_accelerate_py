@@ -649,6 +649,24 @@ def _sha256_text(value: str) -> str:
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _mirror_lean_admission(admission: LeanProofAdmission) -> LeanProofAdmission:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="lean_proof_admission",
+            record_ref=str(admission.theorem_id or admission.proof_sha256 or "lean-proof-admission"),
+            subject_kind="record_cid",
+            subject_ref=str(admission.declaration_name or admission.theorem_id or "lean-proof-admission"),
+        )
+    except Exception:
+        pass
+    return admission
+
+
 def _lean_admission_rejection(
     *,
     code: KernelFailureCode,
@@ -658,7 +676,7 @@ def _lean_admission_rejection(
     declaration_name: str,
     model_artifact_id: str,
 ) -> LeanProofAdmission:
-    return LeanProofAdmission(
+    admission = LeanProofAdmission(
         accepted=False,
         failure_code=code,
         reason=reason,
@@ -669,6 +687,7 @@ def _lean_admission_rejection(
         declaration_name=declaration_name,
         model_artifact_id=model_artifact_id,
     )
+    return _mirror_lean_admission(admission)
 
 
 def admit_lean_proof_text(
@@ -868,16 +887,18 @@ def admit_lean_proof_text(
             declaration_name=declaration_name,
             model_artifact_id=model_artifact_id,
         )
-    return LeanProofAdmission(
-        accepted=True,
-        failure_code=KernelFailureCode.NONE,
-        reason="proof text admitted for independent Lean kernel checking",
-        proof_sha256=_sha256_text(proof),
-        checked_source_sha256=_sha256_text(checked_source),
-        checked_source=checked_source,
-        theorem_id=theorem_id,
-        declaration_name=declaration_name,
-        model_artifact_id=model_artifact_id,
+    return _mirror_lean_admission(
+        LeanProofAdmission(
+            accepted=True,
+            failure_code=KernelFailureCode.NONE,
+            reason="proof text admitted for independent Lean kernel checking",
+            proof_sha256=_sha256_text(proof),
+            checked_source_sha256=_sha256_text(checked_source),
+            checked_source=checked_source,
+            theorem_id=theorem_id,
+            declaration_name=declaration_name,
+            model_artifact_id=model_artifact_id,
+        )
     )
 
 

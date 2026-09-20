@@ -1947,6 +1947,185 @@ def test_mirror_proof_zkp_capsule_and_refactor_receipts(tmp_path, monkeypatch) -
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_lean_attestation_and_refactor_receipts(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    source = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="mcp_contract_source_admission",
+        record_ref="source:1",
+        subject_kind="record_cid",
+        subject_ref="source:1",
+    )
+    trigger = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="replan_trigger",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    schedule = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_work_schedule",
+        record_ref="work:1",
+        subject_kind="record_cid",
+        subject_ref="work:1",
+    )
+    lean = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="lean_proof_admission",
+        record_ref="theorem:1",
+        subject_kind="record_cid",
+        subject_ref="decl:1",
+    )
+    attested = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="planner_doctor_attestation",
+        record_ref="artifact:1",
+        subject_kind="record_cid",
+        subject_ref="digest:1",
+    )
+    codemod = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="codemod_receipt",
+        record_ref="codemod:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    context = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="semantic_refactor_context_receipt",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    facade = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="facade_plan_receipt",
+        record_ref="plan:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    corpus = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="premise_corpus",
+        record_ref="corpus:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    memory = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_memory_receipt",
+        record_ref="decision:1",
+        subject_kind="record_cid",
+        subject_ref="key:1",
+    )
+    selection = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_validation_selection",
+        record_ref="selection:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    control = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="semantic_refactor_control_receipt",
+        record_ref="status",
+        subject_kind="record_cid",
+        subject_ref="ok",
+    )
+    target = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="target_api_receipt",
+        record_ref="plan:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    state = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="explicit_state_object_plan",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    procedure = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_procedure",
+        record_ref="nomination:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    translation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="translation_validation_request",
+        record_ref="packet:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    mutation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="mutation_campaign_request",
+        record_ref="packet:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    partition = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="partition_evidence",
+        record_ref="graph:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    pack = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="current_context_pack",
+        record_ref="pack:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (
+        source,
+        trigger,
+        schedule,
+        lean,
+        attested,
+        codemod,
+        context,
+        facade,
+        corpus,
+        memory,
+        selection,
+        control,
+        target,
+        state,
+        procedure,
+        translation,
+        mutation,
+        partition,
+        pack,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

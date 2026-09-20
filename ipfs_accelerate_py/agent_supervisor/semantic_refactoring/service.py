@@ -866,7 +866,22 @@ def compile_control_receipt(
     status: str,
     payload: Mapping[str, Any],
 ) -> ControlReceipt:
-    return ControlReceipt(operation=operation, status=status, payload=dict(payload))
+    receipt = ControlReceipt(operation=operation, status=status, payload=dict(payload))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_refactor_control_receipt",
+            record_ref=str(operation or "refactor-control"),
+            subject_kind="record_cid",
+            subject_ref=str(status or operation or "refactor-control"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 class ControlStateStore:

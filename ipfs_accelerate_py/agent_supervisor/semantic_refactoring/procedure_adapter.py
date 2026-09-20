@@ -2267,6 +2267,28 @@ def nominate_procedure_promotion(
     )
 
 
+def _mirror_procedure_receipt(
+    receipt: RefactorProcedureCompilationReceipt,
+) -> RefactorProcedureCompilationReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refactor_procedure",
+            record_ref=str(receipt.nomination_cid or receipt.plan_cid or tree_id or "refactor-procedure"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(receipt.plan_cid or "refactor-procedure"),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def _empty_receipt(
     *,
     tree_id: str,
@@ -2289,7 +2311,8 @@ def _empty_receipt(
         routes.append(QualificationRoute.HELD_OUT.value)
     if adv.status != QualificationStatus.MISSING.value:
         routes.append(QualificationRoute.ADVERSARIAL.value)
-    return RefactorProcedureCompilationReceipt(
+    return _mirror_procedure_receipt(
+        RefactorProcedureCompilationReceipt(
         tree_id=tree_id,
         status=status,
         trajectory_cids=[item.trajectory_cid for item in trajectories],
@@ -2302,6 +2325,7 @@ def _empty_receipt(
         nomination_cid=nomination.nomination_cid if nomination is not None else "",
         negative_transition_cids=list(negatives),
         typed_terminal=typed_terminal,
+        )
     )
 
 
@@ -2416,7 +2440,8 @@ def compile_refactor_procedure(
     nomination = nominate_procedure_promotion(
         plan, contract, routes, promote=promote
     )
-    return RefactorProcedureCompilationReceipt(
+    return _mirror_procedure_receipt(
+        RefactorProcedureCompilationReceipt(
         tree_id=tree_id,
         status=CompilationStatus.NOMINATED.value,
         trajectory_cids=[item.trajectory_cid for item in accepted],
@@ -2429,6 +2454,7 @@ def compile_refactor_procedure(
         nomination_cid=nomination.nomination_cid,
         negative_transition_cids=negatives,
         typed_terminal=False,
+        )
     )
 
 

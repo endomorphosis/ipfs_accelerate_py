@@ -1905,7 +1905,7 @@ def compile_translation_validation_request(
         if tuple(sorted(resolved_wave_paths)) != tuple(sorted(write_paths)):
             raise TranslationValidationError("SPAR-025 write_paths must match SPAR-019")
 
-    return TranslationValidationRequest(
+    request = TranslationValidationRequest(
         tree_id=tree_id,
         packet_cid=packet_cid,
         wave_receipt_cid=_wave_receipt_cid(wave_map),
@@ -1918,6 +1918,24 @@ def compile_translation_validation_request(
         dimension_evidence=tuple(evidence_items),
         full_suite_required=_full_suite_required(selection_map),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id_text = str(request.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="translation_validation_request",
+            record_ref=str(getattr(request, "request_cid", "") or request.packet_cid or "translation-validation"),
+            tree_id=tree_id_text,
+            subject_kind="tree_id" if tree_id_text else "record_cid",
+            subject_ref=tree_id_text or str(request.packet_cid or "translation-validation"),
+            paths=tuple(request.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return request
 
 
 def validate_translation(

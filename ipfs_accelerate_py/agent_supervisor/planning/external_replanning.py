@@ -55,4 +55,19 @@ class ReplanTrigger:
 
 
 def compile_trigger(kind: str, *, plan_id: str, evidence_id: str) -> ReplanTrigger:
-    return ReplanTrigger(kind=kind, plan_id=plan_id, evidence_id=evidence_id)
+    trigger = ReplanTrigger(kind=kind, plan_id=plan_id, evidence_id=evidence_id)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="replan_trigger",
+            record_ref=str(plan_id or evidence_id or "replan-trigger"),
+            subject_kind="record_cid",
+            subject_ref=str(evidence_id or plan_id or "replan-trigger"),
+        )
+    except Exception:
+        pass
+    return trigger

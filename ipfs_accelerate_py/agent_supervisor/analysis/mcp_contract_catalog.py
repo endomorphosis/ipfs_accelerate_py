@@ -1728,13 +1728,28 @@ def admit_source(
         raise McpContractCatalogError(
             f"source_id already registered: {source.source_id}"
         )
-    return McpContractCatalog(
+    admitted = McpContractCatalog(
         claim_families=catalog.claim_families,
         sources=catalog.sources + (source,),
         contracts=catalog.contracts,
         contradictions=catalog.contradictions,
         catalog_version=catalog.catalog_version,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mcp_contract_source_admission",
+            record_ref=str(source.source_id or "mcp-contract-source"),
+            subject_kind="record_cid",
+            subject_ref=str(source.source_id or "mcp-contract-source"),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def register_contract(

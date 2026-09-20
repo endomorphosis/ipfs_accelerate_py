@@ -1598,7 +1598,24 @@ def compile_codemod_receipt(result: ExtractionResult | Mapping[str, Any]) -> Cod
     resolved = (
         result if isinstance(result, ExtractionResult) else ExtractionResult.from_dict(result)
     )
-    return resolved.receipt()
+    receipt = resolved.receipt()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or getattr(resolved, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="codemod_receipt",
+            record_ref=str(getattr(receipt, "receipt_cid", "") or tree_id or "codemod-receipt"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(getattr(receipt, "receipt_cid", "") or "codemod-receipt"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def encode_canonical_result(result: ExtractionResult) -> dict[str, Any]:

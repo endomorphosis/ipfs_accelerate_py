@@ -1491,7 +1491,7 @@ def compile_explicit_state_object_plan(
         sorted({item.obligation_id for item in transforms if item.obligation_id})
     )
     owners = tuple(sorted({item.owner_id for item in transforms}))
-    return ExplicitStateObjectPlan(
+    plan = ExplicitStateObjectPlan(
         transform_cids=tuple(item.transform_cid for item in transforms),
         write_paths=resolved.effect_scope.write_paths,
         preimage_cid=resolved.preimage.preimage_cid,
@@ -1504,6 +1504,24 @@ def compile_explicit_state_object_plan(
         no_duplicated_mutable_state=True,
         missing_release_guessed=False,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(plan.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="explicit_state_object_plan",
+            record_ref=str(plan.packet_cid or "explicit-state-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.packet_cid or "explicit-state-plan"),
+            paths=tuple(plan.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def compile_explicit_state_object_receipt(
