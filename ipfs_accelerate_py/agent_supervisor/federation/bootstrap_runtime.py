@@ -611,7 +611,7 @@ def admit_bootstrap_federation(
         maximum_fanout=64,
         idempotency_key="register:" + subscription.subscription_id,
     )
-    return BootstrapAdmission(
+    admission = BootstrapAdmission(
         federation_identity=federation_identity,
         federation_receipt=federation_receipt,
         supervisor=supervisor,
@@ -619,6 +619,22 @@ def admit_bootstrap_federation(
         subscription=subscription,
         fencing_epoch=fencing_epoch,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="bootstrap_federation",
+            record_ref=str(federation_identity.record_id),
+            tree_id=str(repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(repository_tree_id),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 __all__ = [

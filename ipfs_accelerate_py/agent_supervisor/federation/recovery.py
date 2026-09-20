@@ -418,7 +418,7 @@ def compile_recovery(
             )
         )
     )
-    return CompiledRecoveryPlan(
+    plan = CompiledRecoveryPlan(
         subject_kind=snapshot.subject_kind,
         previous_subject_id=snapshot.subject_id,
         recovered_subject_id=recovered_subject_id,
@@ -437,6 +437,23 @@ def compile_recovery(
         replay_effect_ids=replay,
         checkpoint_ref=snapshot.checkpoint_ref,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_recovery",
+            record_ref=str(plan.recovered_subject_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.recovered_subject_id),
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def recover(

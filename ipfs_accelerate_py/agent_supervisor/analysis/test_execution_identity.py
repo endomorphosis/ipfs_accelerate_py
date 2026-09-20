@@ -1369,9 +1369,24 @@ def compile_test_execution_key(
 ) -> CompiledTestExecutionKey:
     """Compile a test execution key into a stable ContentIdentity-backed artifact."""
 
-    return TestExecutionIdentityCompiler().compile_execution_key(
+    compiled = TestExecutionIdentityCompiler().compile_execution_key(
         execution_key, **fields
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_execution_key",
+            record_ref=str(compiled.execution_cid or compiled.locator_cid or "test-execution-key"),
+            subject_kind="record_cid",
+            subject_ref=str(compiled.execution_cid or compiled.locator_cid or "test-execution-key"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 __all__ = (

@@ -589,6 +589,52 @@ def test_mirror_proof_gate_rollout_and_goal_benchmark(tmp_path, monkeypatch) -> 
     assert work["extra_gate_attached"] is False
 
 
+def test_mirror_test_execution_leanstral_and_federation_waves(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    execution = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="test_execution_key",
+        record_ref="cid:exec",
+        subject_kind="record_cid",
+        subject_ref="cid:exec",
+    )
+    leanstral = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="leanstral_proof_context",
+        record_ref="capsule:leanstral",
+        subject_kind="record_cid",
+        subject_ref="obligation:1",
+    )
+    wave = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="parallel_frontier",
+        record_ref="wave:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    recovery = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="federation_recovery",
+        record_ref="subject:recovered",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (execution, leanstral, wave, recovery):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["event_driven_qualified"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

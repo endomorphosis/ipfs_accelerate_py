@@ -2064,6 +2064,20 @@ def build_leanstral_proof_context(
                 )
             except ProofContextBudgetError:
                 continue
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="leanstral_proof_context",
+            record_ref=str(result.capsule_id),
+            subject_kind="record_cid",
+            subject_ref=str(result.theorem.obligation_id if result.theorem else result.capsule_id),
+        )
+    except Exception:
+        pass
     return result
 
 

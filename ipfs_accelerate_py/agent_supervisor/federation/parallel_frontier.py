@@ -252,6 +252,29 @@ def _incompatible_pairs(
     return pairs
 
 
+def _mirror_parallel_frontier(
+    frontier: CompiledParallelFrontier,
+    binding: FederationBinding,
+) -> CompiledParallelFrontier:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="parallel_frontier",
+            record_ref=str(frontier.wave_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(frontier.wave_id),
+        )
+    except Exception:
+        pass
+    return frontier
+
+
 def compile_parallel_frontier(
     tasks: Sequence[ParallelTask],
     *,
@@ -309,7 +332,8 @@ def compile_parallel_frontier(
             merge_order=(),
             assignment_refs=(),
         )
-        return CompiledParallelFrontier(
+        return _mirror_parallel_frontier(
+            CompiledParallelFrontier(
             wave_id="wave:" + empty.cid,
             admitted=(),
             serialized=(),
@@ -318,6 +342,8 @@ def compile_parallel_frontier(
             asleep=asleep,
             merge_order=(),
             assignment_refs=(),
+        ),
+            binding,
         )
     report = classify_intents(
         tuple(task.intent for task in active),
@@ -403,7 +429,8 @@ def compile_parallel_frontier(
         merge_order=merge_order,
         assignment_refs=assignment_refs,
     )
-    return CompiledParallelFrontier(
+    return _mirror_parallel_frontier(
+        CompiledParallelFrontier(
         wave_id="wave:" + provisional.cid,
         admitted=admitted_ids,
         serialized=serialized_ids,
@@ -412,6 +439,8 @@ def compile_parallel_frontier(
         asleep=asleep,
         merge_order=merge_order,
         assignment_refs=assignment_refs,
+        ),
+        binding,
     )
 
 
