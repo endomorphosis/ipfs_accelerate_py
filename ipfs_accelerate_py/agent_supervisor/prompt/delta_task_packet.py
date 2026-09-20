@@ -2901,7 +2901,24 @@ def admit_provider_packet(
             "deterministic hit does not admit a provider packet",
             reason_code="deterministic_hit",
         )
-    return packet.provider_packet()
+    admitted = packet.provider_packet()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(packet, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="delta_provider_packet",
+            record_ref=str(getattr(packet, "packet_id", "") or getattr(packet, "context_cid", "") or "delta-provider-packet"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(getattr(packet, "packet_id", "") or "delta-provider-packet"),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def bind_provider_reply(

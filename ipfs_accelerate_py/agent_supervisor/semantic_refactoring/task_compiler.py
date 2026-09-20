@@ -1898,7 +1898,7 @@ def compile_extraction_wave_tasks(
             )
         for kind in subgoal.task_kinds:
             tasks.append(_task_from_subgoal(subgoal, kind, module_commands))
-    return ExtractionWaveTaskCompilationReceipt(
+    compiled = ExtractionWaveTaskCompilationReceipt(
         tree_id=receipt.tree_id,
         tasks=tasks,
         blocked_retry_fingerprints=receipt.blocked_retry_fingerprints,
@@ -1906,6 +1906,23 @@ def compile_extraction_wave_tasks(
         lease_id=lease_id,
         fence_id=fence_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(compiled.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_tasks",
+            record_ref=str(compiled.worktree_id or compiled.tree_id or "extraction-wave-tasks"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(compiled.worktree_id or "extraction-wave-tasks"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 class ExtractionWaveTaskCompiler:

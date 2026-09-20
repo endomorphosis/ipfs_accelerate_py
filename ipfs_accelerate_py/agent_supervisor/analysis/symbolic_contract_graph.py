@@ -3082,7 +3082,7 @@ def build_symbolic_contract_graph(
 ) -> SymbolicContractGraph:
     """Build and validate a graph from already-typed records."""
 
-    return SymbolicContractGraph(
+    graph = SymbolicContractGraph(
         snapshot_id=snapshot_id,
         version=version,
         nodes=tuple(
@@ -3099,6 +3099,18 @@ def build_symbolic_contract_graph(
         ),
         mandatory_edge_ids=tuple(mandatory_edge_ids),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(
+            tree_id=str(snapshot_id or ""),
+            graph_id=str(graph.graph_id or snapshot_id or "symbolic-contract-graph"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 # Compact compatibility aliases for downstream graph consumers.

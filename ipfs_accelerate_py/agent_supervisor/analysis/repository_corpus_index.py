@@ -1869,10 +1869,21 @@ def build_repository_corpus_index(
             )
             try:
                 from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
                     orchestrate_semantic_work,
                 )
 
                 paths = tuple(getattr(entry, "path", "") for entry in result.entries if getattr(entry, "path", ""))[:16]
+                tree_id = str(result.forest_id or "")
+                mirror_work_record(
+                    catalog_kind="bm25",
+                    record_kind="repository_corpus_index",
+                    record_ref=str(getattr(result, "inventory_cid", "") or result.forest_id or "repository-corpus"),
+                    tree_id=tree_id,
+                    subject_kind="tree_id" if tree_id else "record_cid",
+                    subject_ref=tree_id or str(result.forest_id or "repository-corpus"),
+                    paths=paths,
+                )
                 orchestrate_semantic_work(
                     subject_kind="tree_id",
                     subject_ref=str(result.forest_id),

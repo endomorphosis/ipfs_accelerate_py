@@ -1698,11 +1698,37 @@ def build_program_dependency_graph(
         if "\n" in sample_val or sample_val.strip().startswith(
             ("def ", "class ", "import ", "from ", '"""', "'''")
         ) or len(sample_val) > 64:
-            return ProgramDependencyGraph.from_python_sources(
+            built = ProgramDependencyGraph.from_python_sources(
                 roots, sources, **kwargs
             ).graph  # type: ignore[return-value]
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_knowledge_graph,
+                )
+
+                tree_id = str(getattr(getattr(built, "roots", None), "tree_id", "") or "")
+                mirror_knowledge_graph(
+                    tree_id=tree_id,
+                    graph_id=str(getattr(built, "graph_id", "") or tree_id or "program-dependency-graph"),
+                )
+            except Exception:
+                pass
+            return built
     graph = ProgramDependencyGraph(roots)
-    return graph.build(sources, **kwargs)  # type: ignore[arg-type]
+    built = graph.build(sources, **kwargs)  # type: ignore[arg-type]
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        tree_id = str(getattr(getattr(built, "roots", None), "tree_id", "") or "")
+        mirror_knowledge_graph(
+            tree_id=tree_id,
+            graph_id=str(getattr(built, "graph_id", "") or tree_id or "program-dependency-graph"),
+        )
+    except Exception:
+        pass
+    return built
 
 
 __all__ = [

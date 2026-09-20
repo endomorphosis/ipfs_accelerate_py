@@ -1824,6 +1824,22 @@ def build_repository_snapshot(
         allow_dirty_analysis=dirty_enabled,
     )
     snapshot.assert_exhaustive_tracked_coverage()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(snapshot.head_tree_id or "")
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="repository_snapshot",
+            record_ref=str(snapshot.head_tree_id or snapshot.head_commit_id or "repository-snapshot"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(snapshot.head_commit_id or "repository-snapshot"),
+        )
+    except Exception:
+        pass
     return snapshot
 
 

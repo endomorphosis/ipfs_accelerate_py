@@ -1235,11 +1235,26 @@ def evaluate_proof_aware_plans(
         )
         for item in evaluated[1:]
     )
-    return ProofAwarePlanEvaluation(
+    evaluation = ProofAwarePlanEvaluation(
         selected=winner,
         rejected=rejected,
         policy=policy,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_aware_plan_evaluation",
+            record_ref=str(evaluation.selected.candidate_id),
+            subject_kind="record_cid",
+            subject_ref=str(evaluation.selected.candidate_id),
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 evaluate_proof_aware_plan_candidates = evaluate_proof_aware_plans
@@ -2167,12 +2182,29 @@ def evaluate_evidence_aware_plans(
             item.candidate_id,
         ),
     )
-    return EvidenceAwarePlanEvaluation(
+    evaluation = EvidenceAwarePlanEvaluation(
         selected=admissible[0] if admissible else None,
         admissible=tuple(admissible),
         rejected=tuple(rejected),
         policy=resolved_policy,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        selected = evaluation.selected
+        record_ref = str(getattr(selected, "candidate_id", "") or "evidence-aware-plan")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="evidence_aware_plan_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 def validate_evidence_aware_plan_evaluation(
@@ -2273,11 +2305,28 @@ def evaluate_analysis_proposals(
             item.proposal.branch.branch_id,
         )
     )
-    return AnalysisProposalEvaluation(
+    evaluation = AnalysisProposalEvaluation(
         accepted=tuple(accepted),
         rejected=tuple(rejected),
         plan_evaluation=plan_evaluation,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = evaluation.accepted[0] if evaluation.accepted else None
+        record_ref = str(getattr(first, "proposal_id", "") or getattr(getattr(first, "branch", None), "branch_id", "") or "analysis-proposal")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="analysis_proposal_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 # Bounded objective-work evaluation ------------------------------------------------
@@ -2755,13 +2804,30 @@ def evaluate_objective_work_proposals(
             item.canonical_id,
         )
     )
-    return ObjectiveWorkProposalEvaluation(
+    evaluation = ObjectiveWorkProposalEvaluation(
         accepted=tuple(accepted),
         rejected=tuple(rejected),
         policy=resolved_policy,
         admitted_cost=float(admitted_cost),
         admitted_tokens=admitted_tokens,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = evaluation.accepted[0] if evaluation.accepted else None
+        record_ref = str(getattr(first, "candidate_id", "") or getattr(first, "canonical_id", "") or "objective-work")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_work_proposal_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 # ---------------------------------------------------------------------------
@@ -3143,11 +3209,28 @@ def evaluate_and_or_plan_branches(
             ),
         )
     )
-    return AndOrPlanEvaluation(
+    evaluation = AndOrPlanEvaluation(
         selected=ranked[0] if ranked else None,
         ranked=ranked,
         pruned=pruned,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        selected = evaluation.selected
+        record_ref = str(getattr(selected, "branch_id", "") or "and-or-plan")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="and_or_plan_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 # Compatibility spellings for callers that use "search" rather than "AND/OR".

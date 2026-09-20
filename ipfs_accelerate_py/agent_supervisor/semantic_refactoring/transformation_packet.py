@@ -2037,7 +2037,7 @@ def compile_refactor_transformation_packet(
             }
         )
     )
-    return RefactorTransformationPacket(
+    packet = RefactorTransformationPacket(
         tree_id=tree_id,
         preimage=resolved_preimage,
         edits=edits,
@@ -2072,6 +2072,24 @@ def compile_refactor_transformation_packet(
         comparison_receipt_cid=resolved_comparison.receipt_cid,
         analyzer_id=ANALYZER_ID,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(packet.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refactor_transformation_packet",
+            record_ref=str(packet.packet_cid or tree_id or "refactor-packet"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(packet.packet_cid or "refactor-packet"),
+            paths=tuple(packet.effect_scope.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return packet
 
 
 def compile_transformation_packet_receipt(

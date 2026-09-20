@@ -1693,7 +1693,7 @@ def build_repository_reasoning_snapshot(
 ) -> RepositoryReasoningSnapshot:
     """Construct a validated repository reasoning snapshot."""
 
-    return RepositoryReasoningSnapshot(
+    snapshot = RepositoryReasoningSnapshot(
         roots=_coerce_roots(roots),
         paths=_coerce_path_entries(paths),
         gitlinks=_coerce_gitlink_entries(gitlinks),
@@ -1707,6 +1707,23 @@ def build_repository_reasoning_snapshot(
         completeness=completeness,
         notes=tuple(notes),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(snapshot, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="repository_reasoning_snapshot",
+            record_ref=str(snapshot.snapshot_id or scope_id or "reasoning-snapshot"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(snapshot.snapshot_id or "reasoning-snapshot"),
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def reasoning_snapshot_from_sca_snapshot(

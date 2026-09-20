@@ -1754,7 +1754,7 @@ def compile_extraction_wave_plan(
     ordered = order_wave_packets(
         resolved, packet_dependencies=kwargs.get("packet_dependencies")
     )
-    return ExtractionWavePlan(
+    plan = ExtractionWavePlan(
         tree_id=receipt.tree_id,
         packet_cids=receipt.packet_cids,
         checkpoint_cids=receipt.checkpoint_cids,
@@ -1764,6 +1764,24 @@ def compile_extraction_wave_plan(
         lease_id=ordered[0].lease_fence.lease_id,
         fence_id=ordered[0].lease_fence.fence_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(plan.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_plan",
+            record_ref=str(plan.rollback_cid or plan.worktree_id or "extraction-wave-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.rollback_cid or "extraction-wave-plan"),
+            paths=tuple(plan.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def compile_extraction_wave_receipt(
@@ -1774,7 +1792,24 @@ def compile_extraction_wave_receipt(
 ) -> ExtractionWaveReceipt:
     """Compile a SPAR-025 receipt over a checkpointed wave."""
 
-    return execute_extraction_wave(packets, **kwargs)
+    receipt = execute_extraction_wave(packets, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_receipt",
+            record_ref=str(getattr(receipt, "rollback_cid", "") or getattr(receipt, "worktree_id", "") or "extraction-wave"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(getattr(receipt, "rollback_cid", "") or "extraction-wave"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def dry_run_extraction_wave(

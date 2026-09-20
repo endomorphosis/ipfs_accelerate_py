@@ -1677,7 +1677,7 @@ def compile_planner_doctor_context(
         "residual_max_cost_units": request.residual_budget.max_cost_units,
     }
 
-    return PlannerDoctorContextCapsule(
+    capsule = PlannerDoctorContextCapsule(
         task_id=request.task_id,
         acceptance_ids=request.acceptance_ids,
         open_obligation_ids=request.open_obligation_ids,
@@ -1715,6 +1715,23 @@ def compile_planner_doctor_context(
             "proof_carrying_artifact_cid": request.proof_carrying_artifact_cid,
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(result, "receipt", None), "tree_id", "") or request.tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="planner_doctor_context",
+            record_ref=str(capsule.capsule_id or request.task_id or "planner-doctor-context"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(request.task_id or "planner-doctor-context"),
+        )
+    except Exception:
+        pass
+    return capsule
 
 
 def _source_preview_limit(capsule_class: ProofCarryingCapsuleClass) -> int:
@@ -1916,7 +1933,24 @@ def compile_proof_carrying_context(
     }
     serialized = _canonical_json(extra_metadata)
     _reject_injection(serialized, where="compiled_capsule")
-    return replace(capsule, metadata=extra_metadata)
+    compiled = replace(capsule, metadata=extra_metadata)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(request.tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="proof_carrying_context",
+            record_ref=str(compiled.capsule_id or request.task_id or "proof-carrying-context"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(request.task_id or "proof-carrying-context"),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 # ---------------------------------------------------------------------------
@@ -2083,7 +2117,7 @@ def compile_planner_doctor_context_delta(
                 reason_code="required_core_dropped",
             )
 
-    return PlannerDoctorContextDelta(
+    delta = PlannerDoctorContextDelta(
         parent_capsule_id=str(parent_capsule.capsule_id),
         task_id=child_request.task_id or parent.task_id,
         changed_evidence_ids=tuple(changed_ids),
@@ -2097,6 +2131,23 @@ def compile_planner_doctor_context_delta(
             "full_context_replay": False,
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(parent_capsule, "tree_id", "") or child_request.tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="planner_doctor_context_delta",
+            record_ref=str(delta.parent_capsule_id or delta.task_id or "planner-doctor-delta"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(delta.task_id or "planner-doctor-delta"),
+        )
+    except Exception:
+        pass
+    return delta
 
 
 # ---------------------------------------------------------------------------
@@ -2417,6 +2468,22 @@ def admit_residual_proposal(
                 "residual proposal rejected: " + ", ".join(admission.reason_codes[:8]),
                 reason_code=primary,
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(getattr(capsule.compile_result, "receipt", None), "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="residual_proposal_admission",
+                record_ref=str(capsule.capsule_id or capsule.task_id or "residual-proposal"),
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or str(capsule.task_id or "residual-proposal"),
+            )
+        except Exception:
+            pass
         return admission, charged
 
     admission = ResidualProposalAdmission(
@@ -2426,6 +2493,22 @@ def admit_residual_proposal(
         rejected_record_ids=tuple(sorted(set(rejected))),
         usage=charged.usage,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(capsule.compile_result, "receipt", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_proposal_admission",
+            record_ref=str(capsule.capsule_id or capsule.task_id or "residual-proposal"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(capsule.task_id or "residual-proposal"),
+        )
+    except Exception:
+        pass
     return admission, charged
 
 

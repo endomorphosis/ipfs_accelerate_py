@@ -2174,6 +2174,22 @@ def compile_manifest_to_capsule(
         acceptance=acceptance,
         evidence=tuple(evidence),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(manifest.tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="database_context_capsule",
+            record_ref=str(getattr(result.capsule, "capsule_id", "") or manifest.manifest_cid or "database-context"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(manifest.manifest_cid or "database-context"),
+        )
+    except Exception:
+        pass
     return result.capsule
 
 

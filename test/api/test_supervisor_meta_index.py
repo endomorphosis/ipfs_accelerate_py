@@ -1550,6 +1550,212 @@ def test_mirror_validation_evidence_graphs_and_rpr_admission(tmp_path, monkeypat
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_capsules_graphs_snapshots_and_refactor_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    planner = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="planner_doctor_context",
+        record_ref="capsule:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    proof_ctx = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="proof_carrying_context",
+        record_ref="capsule:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    delta = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="planner_doctor_context_delta",
+        record_ref="capsule:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    database = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="database_context_capsule",
+        record_ref="manifest:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    residual = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="residual_proposal_admission",
+        record_ref="capsule:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    dependency = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="program_dependency_graph",
+        record_ref="graph:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    contract = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="symbolic_contract_graph",
+        record_ref="graph:2",
+        tree_id="snapshot:1",
+        subject_kind="tree_id",
+        subject_ref="snapshot:1",
+    )
+    mcp = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="mcp_contract_graph",
+        record_ref="graph:3",
+        subject_kind="record_cid",
+        subject_ref="graph:3",
+    )
+    proof_eval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_aware_plan_evaluation",
+        record_ref="candidate:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    evidence_eval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="evidence_aware_plan_evaluation",
+        record_ref="candidate:2",
+        subject_kind="record_cid",
+        subject_ref="candidate:2",
+    )
+    analysis_eval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="analysis_proposal_evaluation",
+        record_ref="proposal:1",
+        subject_kind="record_cid",
+        subject_ref="proposal:1",
+    )
+    objective = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="objective_work_proposal_evaluation",
+        record_ref="work:1",
+        subject_kind="record_cid",
+        subject_ref="work:1",
+    )
+    and_or = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="and_or_plan_evaluation",
+        record_ref="branch:1",
+        subject_kind="record_cid",
+        subject_ref="branch:1",
+    )
+    snapshot = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="repository_snapshot",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    reasoning = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="repository_reasoning_snapshot",
+        record_ref="snapshot:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    corpus = mirror_work_record(
+        catalog_kind="bm25",
+        record_kind="repository_corpus_index",
+        record_ref="forest:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    wave = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="extraction_wave_plan",
+        record_ref="rollback:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    wave_receipt = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="extraction_wave_receipt",
+        record_ref="rollback:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    tasks = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="extraction_wave_tasks",
+        record_ref="worktree:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    packet = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_transformation_packet",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    promotion = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="promotion_admission",
+        record_ref="comparison:1",
+        subject_kind="record_cid",
+        subject_ref="checkpoint:1",
+    )
+    provider = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="delta_provider_packet",
+        record_ref="packet:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (
+        planner,
+        proof_ctx,
+        delta,
+        database,
+        residual,
+        dependency,
+        contract,
+        mcp,
+        proof_eval,
+        evidence_eval,
+        analysis_eval,
+        objective,
+        and_or,
+        snapshot,
+        reasoning,
+        corpus,
+        wave,
+        wave_receipt,
+        tasks,
+        packet,
+        promotion,
+        provider,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

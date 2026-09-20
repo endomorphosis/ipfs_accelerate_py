@@ -615,7 +615,7 @@ def admit_promotion(
     control = (
         PROMOTE_CONTROL_OPERATION.value if admitted else REJECT_CONTROL_OPERATION.value
     )
-    return PromotionAdmissionReceipt(
+    receipt = PromotionAdmissionReceipt(
         decision=decision,
         admitted=admitted,
         comparison_receipt_id=comparison.receipt_id,
@@ -635,6 +635,21 @@ def admit_promotion(
         ),
         cas_authorized=admitted,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="promotion_admission",
+            record_ref=str(receipt.comparison_receipt_id or receipt.candidate_checkpoint_id or "promotion-admission"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.candidate_checkpoint_id or receipt.comparison_receipt_id or "promotion-admission"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def compare_and_admit_promotion(

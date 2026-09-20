@@ -271,11 +271,23 @@ def build_mcp_contract_graph(
         "edges": sorted(edges, key=lambda item: item["id"]),
         "blockers": sorted(blockers, key=lambda item: canonical_json_bytes(item)),
     }
-    return {
+    graph = {
         **body,
         "graph_cid": content_identity(body),
         "canonical_bytes": canonical_json_bytes(body).decode("utf-8"),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(
+            tree_id=str(graph.get("graph_cid") or ""),
+            graph_id=str(graph.get("graph_cid") or "mcp-contract-graph"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 __all__ = [
