@@ -69,4 +69,19 @@ def evaluate_program_world_calibration(
     *,
     monitor: ProgramWorldCalibrationMonitor | None = None,
 ) -> dict[str, Any]:
-    return (monitor or ProgramWorldCalibrationMonitor()).evaluate(metrics)
+    result = (monitor or ProgramWorldCalibrationMonitor()).evaluate(metrics)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_calibration",
+            record_ref=str(result.get("reason_code") or "world-calibration"),
+            subject_kind="record_cid",
+            subject_ref=str(result.get("reason_code") or "world-calibration"),
+        )
+    except Exception:
+        pass
+    return result

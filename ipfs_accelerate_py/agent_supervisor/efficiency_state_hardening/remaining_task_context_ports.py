@@ -99,7 +99,7 @@ def build_minimal_semantic_pack(**fields: Any) -> MinimalSemanticPack:
     pack_cid = cid_for_bytes(_canonical({k: v for k, v in envelope.items() if k != "pack_cid"}))
     envelope["pack_cid"] = pack_cid
     included = 180 + 20 * len(capsule_cids)
-    return MinimalSemanticPack(
+    pack = MinimalSemanticPack(
         pack_cid=pack_cid,
         capsule_cids=capsule_cids,
         view=_CoverageView(
@@ -110,6 +110,22 @@ def build_minimal_semantic_pack(**fields: Any) -> MinimalSemanticPack:
         ),
         envelope=envelope,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="minimal_semantic_pack",
+            record_ref=str(pack.pack_cid),
+            tree_id=str(tree),
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=str(tree or pack.pack_cid),
+        )
+    except Exception:
+        pass
+    return pack
 
 
 class DatasetsContextPackAuthority:

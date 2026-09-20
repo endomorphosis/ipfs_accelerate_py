@@ -230,18 +230,38 @@ class ModelEscalationAdmission:
         return self.decision.route is ModelRoute.HUMAN_REVIEW_REQUIRED
 
 
+def _mirror_escalation(admission: ModelEscalationAdmission) -> ModelEscalationAdmission:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="model_escalation",
+            record_ref=str(admission.question_id or admission.disposition.value),
+            subject_kind="record_cid",
+            subject_ref=str(admission.question_id or admission.disposition.value),
+        )
+    except Exception:
+        pass
+    return admission
+
+
 def _escalation_denied(
     decision: ModelRouteDecision,
     *reason_codes: str,
     question_id: str = "",
     exhaustion: BudgetExhaustion | None = None,
 ) -> ModelEscalationAdmission:
-    return ModelEscalationAdmission(
+    return _mirror_escalation(
+        ModelEscalationAdmission(
         decision=decision,
         disposition=EscalationDisposition.DENIED,
         question_id=question_id,
         exhaustion=exhaustion,
         reason_codes=tuple(dict.fromkeys(reason_codes)),
+        )
     )
 
 
@@ -382,12 +402,14 @@ def admit_model_escalation(
             question_id=question.question_id,
             exhaustion=outcome,
         )
-    return ModelEscalationAdmission(
+    return _mirror_escalation(
+        ModelEscalationAdmission(
         decision=decision,
         disposition=EscalationDisposition.ADMITTED,
         question_id=question.question_id,
         reservation=outcome,
         reason_codes=("typed_question_capability_matched", "budget_reserved"),
+        )
     )
 
 

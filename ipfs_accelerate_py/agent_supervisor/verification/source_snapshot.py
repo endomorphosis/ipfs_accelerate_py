@@ -607,11 +607,26 @@ def build_source_snapshot(repo_root: Path | str) -> SourceSnapshot:
     if index != _index_entries(root) or untracked != _untracked_paths(root):
         raise SourceSnapshotError("repository path set changed during source snapshot")
     _validate_gitlinks(root, index, validate_physical=True)
-    return SourceSnapshot(
+    snapshot = SourceSnapshot(
         entries=entries,
         source_snapshot_id=_snapshot_id(manifest),
         observed_head=_observed_head(root),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            orchestrate_semantic_work,
+        )
+
+        first_path = snapshot.entries[0].path if snapshot.entries else ""
+        orchestrate_semantic_work(
+            subject_kind="record_cid",
+            subject_ref=str(snapshot.source_snapshot_id),
+            tree_id=str(snapshot.observed_head or ""),
+            path=first_path,
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def source_snapshot_id(repo_root: Path | str) -> str:

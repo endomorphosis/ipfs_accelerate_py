@@ -481,7 +481,24 @@ def evaluate_low_risk_merge_conjunction(
     }
     if set(conditions) != set(LOW_RISK_MERGE_CONDITIONS):
         raise RepairControllerError("low-risk merge conjunction is incomplete")
-    return MappingProxyType({name: conditions[name] for name in LOW_RISK_MERGE_CONDITIONS})
+    result = MappingProxyType({name: conditions[name] for name in LOW_RISK_MERGE_CONDITIONS})
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = str(getattr(plan, "rollback_plan_id", "") or getattr(plan, "worktree_id", "") or "repair-conjunction")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="low_risk_merge_conjunction",
+            record_ref=plan_id,
+            subject_kind="record_cid",
+            subject_ref=plan_id,
+            paths=tuple(inspected_paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 def merge_disposition_for(

@@ -935,6 +935,51 @@ def test_mirror_decision_graph_verification_bundle_and_patch_admission(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_source_snapshot_calibration_pack_and_escalation(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    snapshot = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="source_snapshot",
+        record_ref="snapshot:1",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    calibration = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="world_calibration",
+        record_ref="healthy",
+        subject_kind="record_cid",
+        subject_ref="healthy",
+    )
+    pack = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="minimal_semantic_pack",
+        record_ref="pack:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    escalation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="model_escalation",
+        record_ref="question:1",
+        subject_kind="record_cid",
+        subject_ref="question:1",
+    )
+    for item in (snapshot, calibration, pack, escalation):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

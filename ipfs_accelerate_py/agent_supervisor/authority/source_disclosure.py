@@ -1076,6 +1076,21 @@ def admit_disclosure(
         paths=paths,
         principal=principal,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="source_disclosure",
+            record_ref=str(decision.reason_code or "source-disclosure"),
+            subject_kind="record_cid",
+            subject_ref=str(context_pack_content_id or decision.reason_code or "source-disclosure"),
+            paths=tuple(paths or ())[:16],
+        )
+    except Exception:
+        pass
     if decision.verdict is DisclosureVerdict.PERMIT:
         return decision
     reason = decision.reason_code
