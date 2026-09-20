@@ -1069,6 +1069,52 @@ def test_mirror_rollback_adversarial_corpus_and_commitment(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_goal_completion_gate_and_adversarial_population(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    goal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="goal_completion",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    gate = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="completion_gate",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    proof_goal = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_proof_goal_completion",
+        record_ref="binding:1",
+        subject_kind="record_cid",
+        subject_ref="binding:1",
+    )
+    population = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="frozen_adversarial_population",
+        record_ref="fixture:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    for item in (goal, gate, proof_goal, population):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

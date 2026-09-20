@@ -4212,7 +4212,23 @@ def evaluate_completion_gate(
         "evaluated_at": current.isoformat(),
         "freshness_seconds": max(0.0, float(freshness_seconds)),
     }
-    return CompletionGateResult(all(check.passed for check in checks), tuple(checks), evaluated)
+    result = CompletionGateResult(all(check.passed for check in checks), tuple(checks), evaluated)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="completion_gate",
+            record_ref=str(repository_tree or repository_id or "completion-gate"),
+            tree_id=str(repository_tree),
+            subject_kind="tree_id" if repository_tree else "record_cid",
+            subject_ref=str(repository_tree or repository_id or "completion-gate"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _acceptance_criteria(values: Sequence[str] | str | None) -> tuple[str, ...]:
@@ -4440,7 +4456,7 @@ def evaluate_goal_completion(
                 "Complete the goal's producing tasks before requesting completion.",
             )
 
-    return GoalCompletionDecision(
+    decision = GoalCompletionDecision(
         previous_state=previous,
         state=next_state,
         tasks_complete=bool(tasks_complete),
@@ -4453,6 +4469,22 @@ def evaluate_goal_completion(
         actionable_reasons=tuple(reasons),
         gate=gate,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_completion",
+            record_ref=str(repository_tree or repository_id or "goal-completion"),
+            tree_id=str(repository_tree),
+            subject_kind="tree_id" if repository_tree else "record_cid",
+            subject_ref=str(repository_tree or repository_id or "goal-completion"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 @dataclass(frozen=True)
@@ -5024,7 +5056,7 @@ def evaluate_code_proof_goal_completion(
             "Generated code remains unverified until every fresh implementation obligation has an accepted receipt.",
         )
     verified = bool(state is GoalState.VERIFIED_COMPLETE and proof_complete)
-    return CodeProofCompletionDecision(
+    decision = CodeProofCompletionDecision(
         previous_state=previous,
         state=state,
         tasks_complete=tasks_complete,
@@ -5037,6 +5069,21 @@ def evaluate_code_proof_goal_completion(
         reason_codes=tuple(reasons),
         actionable_reasons=tuple(actionable),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_proof_goal_completion",
+            record_ref=str(binding_id or "code-proof-completion"),
+            subject_kind="record_cid",
+            subject_ref=str(binding_id or "code-proof-completion"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 # Names used by older prototypes and external consumers.

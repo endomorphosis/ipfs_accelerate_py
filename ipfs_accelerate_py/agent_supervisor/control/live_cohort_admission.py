@@ -1338,6 +1338,20 @@ def build_manifest(
         ],
     }
     payload["identity"] = content_identity(_body(payload, "identity"))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="live_cohort_manifest",
+            record_ref=str(payload.get("identity") or payload.get("task_id") or "live-cohort"),
+            subject_kind="record_cid",
+            subject_ref=str(payload.get("task_id") or payload.get("identity") or "live-cohort"),
+        )
+    except Exception:
+        pass
     return payload
 
 

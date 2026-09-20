@@ -2877,6 +2877,20 @@ def build_frozen_adversarial_population(
     policy = build_default_rollout_policy(
         profile=resolved, approve_assist=True, approve_automatic=False
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="frozen_adversarial_population",
+            record_ref=str(fixture.fixture_id),
+            subject_kind="record_cid",
+            subject_ref=str(fixture.forest_id or fixture.fixture_id),
+        )
+    except Exception:
+        pass
     return fixture, report, binding, policy
 
 
