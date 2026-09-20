@@ -851,6 +851,20 @@ def admit_proof_attempt_trace(
         )
     if store is not None and remember:
         store.remember(attempt_id)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_attempt_trace",
+            record_ref=str(attempt_id),
+            subject_kind="record_cid",
+            subject_ref=str(attempt_id),
+        )
+    except Exception:
+        pass
     return admitted
 
 

@@ -105,7 +105,7 @@ def build_current_tree_release_report() -> SemanticWorldReleaseReport:
         and not similarity.admitted
         and False  # remaining todos and unpublished generation forbid release
     )
-    return SemanticWorldReleaseReport(
+    report = SemanticWorldReleaseReport(
         released=released,
         safety_floor_violations=violations,
         blockers=tuple(blockers),
@@ -119,3 +119,18 @@ def build_current_tree_release_report() -> SemanticWorldReleaseReport:
             migrated=False,
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_release",
+            record_ref="SemanticWorldReleaseReport@1",
+            subject_kind="record_cid",
+            subject_ref="SemanticWorldReleaseReport@1",
+        )
+    except Exception:
+        pass
+    return report

@@ -501,6 +501,52 @@ def test_mirror_plan_admission_service_propagation_and_proof_context(
     assert work["extra_gate_attached"] is False
 
 
+def test_mirror_ir_admission_proof_trace_merge_gate_and_release(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    ir = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="ir_plan_admission",
+        record_ref="plan:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    trace = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_attempt_trace",
+        record_ref="attempt:1",
+        subject_kind="record_cid",
+        subject_ref="attempt:1",
+    )
+    gate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="merge_proof_gate",
+        record_ref="plan:proof",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    release = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="world_release",
+        record_ref="SemanticWorldReleaseReport@1",
+        subject_kind="record_cid",
+        subject_ref="SemanticWorldReleaseReport@1",
+    )
+    for item in (ir, trace, gate, release):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert "proof_cache" in work["formal_surfaces"] or "world_model" in work["formal_surfaces"] or "proof_cache" in work["kinds"] or "world_model" in work["kinds"]
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -2568,12 +2568,28 @@ def build_merge_proof_gate_receipt(
 ) -> MergeProofGateReceipt:
     """Functional spelling of :meth:`MergeProofGateReceipt.build`."""
 
-    return MergeProofGateReceipt.build(
+    receipt = MergeProofGateReceipt.build(
         policy=policy,
         selection=selection,
         repository_tree_id=repository_tree_id,
         **kwargs,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="merge_proof_gate",
+            record_ref=str(getattr(receipt, "proof_plan_id", "") or repository_tree_id),
+            tree_id=str(repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(repository_tree_id),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def select_proof_requirements(
