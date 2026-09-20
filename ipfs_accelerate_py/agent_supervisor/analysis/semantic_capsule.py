@@ -1862,7 +1862,7 @@ def compile_semantic_capsules(
             )
         )
 
-    return CapsuleCompileResult(
+    compiled = CapsuleCompileResult(
         index=index,
         explanations=explanations,
         reused_cids=reused,
@@ -1870,6 +1870,22 @@ def compile_semantic_capsules(
         demoted_receipts=demoted,
         datalog=datalog,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="capsule_index",
+            record_ref=str(index.index_cid),
+            tree_id=str(graph.root_id),
+            subject_kind="tree_id",
+            subject_ref=str(graph.root_id),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 def update_semantic_capsules(

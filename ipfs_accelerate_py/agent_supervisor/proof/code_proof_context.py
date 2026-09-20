@@ -552,7 +552,7 @@ def compile_code_proof_context_capsule(
         ),
     }
 
-    return CodeProofContextCapsule(
+    compiled = CodeProofContextCapsule(
         task_id=request.task_id,
         acceptance_ids=request.acceptance_ids,
         open_obligation_ids=tuple(manifest["open_obligation_ids"]),
@@ -569,6 +569,23 @@ def compile_code_proof_context_capsule(
             "untrusted_data_label": UNTRUSTED_DATA_LABEL,
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="code_proof_context",
+            record_ref=str(compiled.capsule.capsule_id),
+            tree_id=str(request.tree_id),
+            subject_kind="task_id",
+            subject_ref=str(request.task_id),
+            paths=tuple(request.changed_paths)[:16],
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 # ---------------------------------------------------------------------------
@@ -803,7 +820,7 @@ def compile_code_proof_context_delta(
     if reconstructed.goal != parent_capsule.goal:
         raise CodeProofContextError("delta reconstruction lost goal core")
 
-    return CodeProofContextDeltaCapsule(
+    compiled = CodeProofContextDeltaCapsule(
         parent_capsule_id=str(parent_capsule.capsule_id),
         task_id=child_request.task_id or parent.task_id,
         delta=delta,
@@ -819,6 +836,21 @@ def compile_code_proof_context_delta(
             "cache_reuse_expected_for_still_valid": True,
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="code_proof_delta",
+            record_ref=str(compiled.parent_capsule_id),
+            subject_kind="task_id",
+            subject_ref=str(compiled.task_id),
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 __all__ = [

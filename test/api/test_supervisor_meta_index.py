@@ -427,6 +427,43 @@ def test_mirror_prefix_delta_residual_packet_and_governor_seal(
     assert work["extra_gate_attached"] is False
 
 
+def test_mirror_capsule_index_and_code_proof_context(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    index = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="capsule_index",
+        record_ref="capsule-index:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    proof_ctx = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="code_proof_context",
+        record_ref="capsule:proof",
+        tree_id="tree:work",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    delta = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="code_proof_delta",
+        record_ref="capsule:parent",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    for item in (index, proof_ctx, delta):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["capsule_composition"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
