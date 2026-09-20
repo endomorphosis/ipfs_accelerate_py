@@ -393,4 +393,19 @@ def execute_remaining_task(
     result = handlers[binding.board](binding)
     if result.get("completion_authority") is True or result.get("cas_completed") is True:
         raise RemainingTaskRuntimeError("remaining-task runtime cannot admit board completion")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_database import (
+            persist_program_world_record,
+        )
+
+        persisted = persist_program_world_record(result)
+        result = dict(result)
+        result["world_model_database"] = persisted
+    except Exception as exc:
+        result = dict(result)
+        result["world_model_database"] = {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+        }
     return result

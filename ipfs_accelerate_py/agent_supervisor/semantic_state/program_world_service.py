@@ -131,6 +131,16 @@ class ProgramWorldService:
         result.setdefault("completion_authority", False)
         result.setdefault("admitted", False)
         result.setdefault("cas_completed", False)
+        result.setdefault("task_id", body.get("task_id") or "SAWM-039")
+        result.setdefault("board", "sawm")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_database import (
+                persist_program_world_record,
+            )
+
+            persist_program_world_record(result)
+        except Exception:
+            pass
         return result
 
     def _reuse(self, payload: Mapping[str, Any]) -> dict[str, Any]:
