@@ -651,10 +651,26 @@ def evaluate_required_ir_logic_hook_gate(
     identities = payload.get("dcr035_identity_cids")
     if not isinstance(identities, Mapping):
         identities = {}
-    return evaluate_required_ir_logic_gate(
+    result = evaluate_required_ir_logic_gate(
         tuple(raw_receipts),
         required_identity_cids=identities,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = str((result.receipt_ids or ("ir-logic-gate",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ir_logic_required_gate",
+            record_ref=first,
+            subject_kind="record_cid",
+            subject_ref=first,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

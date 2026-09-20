@@ -32,13 +32,29 @@ def evaluate_readiness(task: Mapping[str, Any]) -> Mapping[str, Any]:
     for predicate in READINESS_PREDICATES:
         if not task.get(predicate, False):
             reasons.append(predicate)
-    return MappingProxyType(
+    result = MappingProxyType(
         {
             "task_id": str(task.get("task_id") or ""),
             "ready": not reasons,
             "reasons": tuple(reasons),
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_id = str(result.get("task_id") or "readiness")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_readiness",
+            record_ref=task_id,
+            subject_kind="task_id",
+            subject_ref=task_id,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def construct_frontier(
@@ -62,7 +78,7 @@ def construct_frontier(
             rejected.setdefault(loser, ())
             rejected[loser] = tuple(rejected[loser]) + ("conflict",)
     selected = tuple(task_id for task_id in candidates if task_id not in blocked)
-    return MappingProxyType(
+    frontier = MappingProxyType(
         {
             "schema": SCHEMA,
             "candidates": selected,
@@ -70,3 +86,21 @@ def construct_frontier(
             "predicates": READINESS_PREDICATES,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            compose_semantic_work,
+            mirror_work_record,
+        )
+
+        first = str((frontier.get("candidates") or ("frontier",))[0] or "frontier")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="conflict_free_frontier",
+            record_ref=first,
+            subject_kind="task_id",
+            subject_ref=first,
+        )
+        compose_semantic_work(subject_kind="task_id", subject_ref=first)
+    except Exception:
+        pass
+    return frontier

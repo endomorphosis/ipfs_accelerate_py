@@ -58,7 +58,7 @@ def admit_executable(record: Mapping[str, Any]) -> Mapping[str, Any]:
                 "projected": projection["projected"],
             }
         )
-    return MappingProxyType(
+    admitted = MappingProxyType(
         {
             "schema": SCHEMA,
             "ready": True,
@@ -66,3 +66,19 @@ def admit_executable(record: Mapping[str, Any]) -> Mapping[str, Any]:
             "projected": projection["projected"],
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_id = str(record.get("task_id") or "semantic-binding")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_binding_admission",
+            record_ref=task_id,
+            subject_kind="task_id",
+            subject_ref=task_id,
+        )
+    except Exception:
+        pass
+    return admitted

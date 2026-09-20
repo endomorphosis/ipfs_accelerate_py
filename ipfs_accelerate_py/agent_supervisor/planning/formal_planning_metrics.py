@@ -720,7 +720,22 @@ def build_formal_planning_benchmark_report(
         "contains_counterexample_bodies": False,
     }
     material["report_id"] = _identity(material, "generated_at")
-    return FormalPlanningBenchmarkReport(material)
+    report = FormalPlanningBenchmarkReport(material)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_benchmark",
+            record_ref=str(material.get("report_id") or "formal-planning-benchmark"),
+            subject_kind="record_cid",
+            subject_ref=str(material.get("report_id") or "formal-planning-benchmark"),
+        )
+    except Exception:
+        pass
+    return report
 
 
 @dataclass

@@ -1895,13 +1895,28 @@ def compile_diagnosis_obligations(
 ) -> DiagnosisObligationCompilation:
     """Functional spelling for checked Doctor diagnosis lowering."""
 
-    return DiagnosisObligationAdapter(bounds=bounds).compile(
+    compilation = DiagnosisObligationAdapter(bounds=bounds).compile(
         bridge,
         localizations=localizations,
         proof_requirement_refs=proof_requirement_refs,
         security_requirement_refs=security_requirement_refs,
         validation_requirement_refs=validation_requirement_refs,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="diagnosis_obligations",
+            record_ref=str(getattr(compilation, "content_id", "") or compilation.repository_id),
+            subject_kind="record_cid",
+            subject_ref=str(compilation.repository_id or getattr(compilation, "content_id", "") or "diagnosis"),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 # Compatibility spelling emphasizing the adapter operation.

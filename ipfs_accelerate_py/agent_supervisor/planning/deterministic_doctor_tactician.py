@@ -2766,7 +2766,24 @@ def compile_doctor_repair_goals(
     **kwargs: Any,
 ) -> DoctorGoalCompilation:
     """Module-level helper for :class:`DoctorRepairGoalCompiler.compile`."""
-    return DoctorRepairGoalCompiler().compile(finding, **kwargs)
+    compilation = DoctorRepairGoalCompiler().compile(finding, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(compilation.roots, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_repair_goals",
+            record_ref=str(compilation.compilation_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(compilation.finding_id or compilation.compilation_id),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 def plan_doctor_finding(
