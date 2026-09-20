@@ -2584,6 +2584,28 @@ def _build_scc_steps(
     return tuple(steps)
 
 
+def _mirror_doctor_plan_receipt(
+    receipt: DoctorPlanCompilationReceipt,
+) -> DoctorPlanCompilationReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(receipt, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="deterministic_doctor_plan",
+            record_ref=str(receipt.plan_id or receipt.impact_closure_id or "doctor-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(receipt.plan_id or receipt.impact_closure_id or "doctor-plan"),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def compile_deterministic_doctor_plan(
     request: DoctorPlanCompilationRequest | Mapping[str, Any],
 ) -> DoctorPlanCompilationReceipt:
@@ -2818,19 +2840,21 @@ def compile_deterministic_doctor_plan(
             candidate_refs=request.candidate_refs,
             tactician_plan_ref=request.tactician_plan_ref,
         )
-        return DoctorPlanCompilationReceipt(
-            roots=roots,
-            disposition=plan_disposition,
-            impact_closure_id=closure.impact_closure_id,
-            reason_codes=tuple(sorted(set(reasons))),
-            plan=abstain_plan,
-            plan_id=abstain_plan.plan_id,
-            scc_step_ids=(),
-            consumer_disposition_set_id=disposition_set_id,
-            mutation_admissible=False,
-            producer_id=PRODUCER_ID,
-            no_model_invariant=True,
-            model_invocation_count=0,
+        return _mirror_doctor_plan_receipt(
+            DoctorPlanCompilationReceipt(
+                roots=roots,
+                disposition=plan_disposition,
+                impact_closure_id=closure.impact_closure_id,
+                reason_codes=tuple(sorted(set(reasons))),
+                plan=abstain_plan,
+                plan_id=abstain_plan.plan_id,
+                scc_step_ids=(),
+                consumer_disposition_set_id=disposition_set_id,
+                mutation_admissible=False,
+                producer_id=PRODUCER_ID,
+                no_model_invariant=True,
+                model_invocation_count=0,
+            )
         )
 
     # --- admitted path -------------------------------------------------------
@@ -2854,22 +2878,24 @@ def compile_deterministic_doctor_plan(
             covered.update(step.consumer_ids)
     if migrate_ids - covered:
         # Should not happen; fail closed.
-        return DoctorPlanCompilationReceipt(
-            roots=roots,
-            disposition=DoctorImpactPlanDisposition.ABSTAINED,
-            impact_closure_id=closure.impact_closure_id,
-            reason_codes=tuple(
-                sorted(
-                    {
-                        DoctorImpactReason.PLAN_GAP.value,
-                        DoctorImpactReason.UNCOVERED_SCC.value,
-                        DoctorImpactReason.PLAN_ABSTAINED.value,
-                    }
-                )
-            ),
-            plan=None,
-            mutation_admissible=False,
-            producer_id=PRODUCER_ID,
+        return _mirror_doctor_plan_receipt(
+            DoctorPlanCompilationReceipt(
+                roots=roots,
+                disposition=DoctorImpactPlanDisposition.ABSTAINED,
+                impact_closure_id=closure.impact_closure_id,
+                reason_codes=tuple(
+                    sorted(
+                        {
+                            DoctorImpactReason.PLAN_GAP.value,
+                            DoctorImpactReason.UNCOVERED_SCC.value,
+                            DoctorImpactReason.PLAN_ABSTAINED.value,
+                        }
+                    )
+                ),
+                plan=None,
+                mutation_admissible=False,
+                producer_id=PRODUCER_ID,
+            )
         )
 
     plan_id = content_identity(
@@ -2917,19 +2943,21 @@ def compile_deterministic_doctor_plan(
         model_invocation_count=0,
         invalidation_refs=request.invalidation_refs,
     )
-    return DoctorPlanCompilationReceipt(
-        roots=roots,
-        disposition=DoctorImpactPlanDisposition.ADMITTED,
-        impact_closure_id=closure.impact_closure_id,
-        reason_codes=tuple(reasons),
-        plan=admitted_plan,
-        plan_id=admitted_plan.plan_id,
-        scc_step_ids=tuple(step.step_id for step in steps),
-        consumer_disposition_set_id=disposition_set_id,
-        mutation_admissible=True,
-        producer_id=PRODUCER_ID,
-        no_model_invariant=True,
-        model_invocation_count=0,
+    return _mirror_doctor_plan_receipt(
+        DoctorPlanCompilationReceipt(
+            roots=roots,
+            disposition=DoctorImpactPlanDisposition.ADMITTED,
+            impact_closure_id=closure.impact_closure_id,
+            reason_codes=tuple(reasons),
+            plan=admitted_plan,
+            plan_id=admitted_plan.plan_id,
+            scc_step_ids=tuple(step.step_id for step in steps),
+            consumer_disposition_set_id=disposition_set_id,
+            mutation_admissible=True,
+            producer_id=PRODUCER_ID,
+            no_model_invariant=True,
+            model_invocation_count=0,
+        )
     )
 
 

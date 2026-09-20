@@ -666,12 +666,27 @@ def evaluate_plan_branches(
             )
         )
     ranked = (selected, *rejected)
-    return PlanEvaluation(
+    evaluation = PlanEvaluation(
         selected=selected.branch,
         rejected=tuple(item.branch for item in rejected),
         scores={item.branch.branch_id: item.score_millionths for item in ranked},
         rationales={item.branch.branch_id: item.rationale for item in ranked},
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_branch_evaluation",
+            record_ref=str(evaluation.selected.branch_id),
+            subject_kind="record_cid",
+            subject_ref=str(evaluation.selected.branch_id),
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 # Proof-aware plan evaluation -----------------------------------------------------

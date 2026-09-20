@@ -2475,7 +2475,7 @@ def execute_proof_carrying_workflow(
 ) -> ProofCarryingWorkflowResult:
     """Convenience wrapper for one complete or resumed workflow."""
 
-    return ProofCarryingPlanner(
+    result = ProofCarryingPlanner(
         source,
         artifact_path=artifact_path,
         state_path=state_path,
@@ -2483,6 +2483,21 @@ def execute_proof_carrying_workflow(
         config=config,
         **kwargs,
     ).run()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_carrying_workflow",
+            record_ref=str(result.workflow_id or result.plan_id or "proof-carrying-workflow"),
+            subject_kind="record_cid",
+            subject_ref=str(result.plan_id or result.workflow_id or "proof-carrying-workflow"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def replay_proof_carrying_workflow(

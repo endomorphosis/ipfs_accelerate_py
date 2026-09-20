@@ -1636,12 +1636,29 @@ def compile_planning_evidence_bundle(
         schedule_callback=schedule_callback,
         **adapter_kwargs,
     )
-    return compiler.compile(
+    bundle = compiler.compile(
         query,
         required_slots=required_slots,
         schedule_missing=schedule_missing,
         raise_on_rejection=raise_on_rejection,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(current_root_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planning_evidence_bundle",
+            record_ref=str(getattr(bundle, "bundle_id", "") or getattr(getattr(bundle, "query", None), "query_id", "") or "planning-evidence"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(getattr(bundle, "bundle_id", "") or "planning-evidence"),
+        )
+    except Exception:
+        pass
+    return bundle
 
 
 # Descriptive aliases used by query-planning and Doctor callers.

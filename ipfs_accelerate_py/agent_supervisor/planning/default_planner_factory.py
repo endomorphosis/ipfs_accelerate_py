@@ -895,6 +895,22 @@ class DefaultPlannerFactory:
                 reason_code="silent_success_forbidden",
             )
         self._last_handles = handles
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            disposition = handles.disposition
+            record_ref = str(getattr(disposition, "value", disposition) or handles.handles_interface)
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="default_planner_handles",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=str(handles.handles_interface or "default-planner-handles"),
+            )
+        except Exception:
+            pass
         return handles
 
 

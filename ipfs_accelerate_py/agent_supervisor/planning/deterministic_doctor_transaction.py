@@ -854,7 +854,23 @@ def evaluate_sandbox_for_plan(
         if kind in _HOSTILE_FS_KINDS:
             reasons.append(DoctorTransactionReason.HOSTILE_FS_OBSERVATION.value)
     # Deduplicate while preserving sorted stability.
-    return tuple(sorted(set(reasons)))  # type: ignore[return-value]
+    result = tuple(sorted(set(reasons)))  # type: ignore[return-value]
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = str(getattr(plan, "plan_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_sandbox_admission",
+            record_ref=plan_id or "doctor-sandbox",
+            subject_kind="record_cid",
+            subject_ref=plan_id or "doctor-sandbox",
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

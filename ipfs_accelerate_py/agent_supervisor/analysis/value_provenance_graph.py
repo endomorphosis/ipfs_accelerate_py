@@ -4172,7 +4172,24 @@ def build_value_provenance_graph(
         dependency_graph=dependency_graph,
         call_resolver=call_resolver,
     )
-    return compiler.compile_sources(files, memory_safety_facets=memory_safety_facets)
+    graph = compiler.compile_sources(files, memory_safety_facets=memory_safety_facets)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(graph, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="value_provenance_graph",
+            record_ref=str(graph.graph_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(graph.graph_id),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 def compile_value_provenance(
@@ -4196,12 +4213,30 @@ def compile_value_provenance(
         }
     })
     facets = kwargs.get("memory_safety_facets")
-    return compiler.compile_procedure(
+    graph = compiler.compile_procedure(
         source,
         path=path,
         procedure_name=procedure_name,
         memory_safety_facets=facets,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(graph, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="value_provenance_graph",
+            record_ref=str(graph.graph_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(graph.graph_id),
+            paths=(path,) if path else (),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 __all__ = [

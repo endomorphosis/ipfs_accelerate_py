@@ -2251,6 +2251,22 @@ def compile_doctor_evidence_snapshot(
             raise DoctorDiagnosticsStaleError(
                 "claimed_snapshot_id does not match compiled snapshot identity"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(snapshot, "authority_roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="doctor_evidence_snapshot",
+            record_ref=str(snapshot.snapshot_id or snapshot.snapshot_cid or "doctor-evidence"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(snapshot.snapshot_id or snapshot.snapshot_cid or "doctor-evidence"),
+        )
+    except Exception:
+        pass
     return snapshot
 
 

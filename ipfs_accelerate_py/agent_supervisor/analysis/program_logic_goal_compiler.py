@@ -2437,7 +2437,24 @@ def compile_program_logic_goals(
     **kwargs: Any,
 ) -> ProgramLogicGoalCompilation:
     """Module-level entry point matching other analysis compilers."""
-    return ProgramLogicGoalCompiler(roots).compile(**kwargs)
+    compilation = ProgramLogicGoalCompiler(roots).compile(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(compilation, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_logic_goals",
+            record_ref=str(compilation.compilation_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(compilation.compilation_id),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 __all__ = [

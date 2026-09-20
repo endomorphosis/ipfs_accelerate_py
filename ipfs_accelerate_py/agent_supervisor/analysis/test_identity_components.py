@@ -1292,7 +1292,27 @@ class TestIdentityComponents:
 def compile_test_identity_components(**kwargs: Any) -> TestIdentityComponents:
     """Functional spelling for :meth:`TestIdentityComponents.compile`."""
 
-    return TestIdentityComponents.compile(**kwargs)
+    components = TestIdentityComponents.compile(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(components, "content_id", "")
+            or getattr(components, "identity_id", "")
+            or "test-identity-components"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_identity_components",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return components
 
 
 __all__ = [

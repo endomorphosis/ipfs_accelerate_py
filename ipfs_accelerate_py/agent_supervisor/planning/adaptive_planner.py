@@ -4728,7 +4728,7 @@ def evaluate_and_or_planner_promotion(
         reasons.append("hard_constraint_violation")
     if valid_delta < 150_000 and invalid_reduction < 250_000:
         reasons.append("quality_threshold_not_met")
-    return AndOrPlannerPromotionGate(
+    gate = AndOrPlannerPromotionGate(
         baseline=baseline,
         candidate=candidate,
         valid_first_improvement_millionths=valid_delta,
@@ -4736,6 +4736,21 @@ def evaluate_and_or_planner_promotion(
         passed=not reasons,
         reason_codes=tuple(reasons),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="and_or_planner_promotion",
+            record_ref=str(getattr(candidate, "planner_id", "") or getattr(candidate, "benchmark_id", "") or "and-or-promotion"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(baseline, "planner_id", "") or getattr(baseline, "benchmark_id", "") or "and-or-promotion"),
+        )
+    except Exception:
+        pass
+    return gate
 
 
 evaluate_and_or_plan_promotion = evaluate_and_or_planner_promotion

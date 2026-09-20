@@ -1367,6 +1367,189 @@ def test_mirror_compile_admit_and_transport_surfaces(tmp_path, monkeypatch) -> N
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_validation_evidence_graphs_and_rpr_admission(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    validation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="formal_plan_validation",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="plan:1",
+    )
+    conformance = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="formal_plan_conformance",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="plan:1",
+    )
+    adversarial = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="formal_planning_adversarial",
+        record_ref="binding:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    work_graph = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="semantic_work_graph",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="graph:1",
+    )
+    workflow = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_carrying_workflow",
+        record_ref="workflow:1",
+        subject_kind="record_cid",
+        subject_ref="plan:1",
+    )
+    prediction = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="logic_prediction_admission",
+        record_ref="decision:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    branches = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_branch_evaluation",
+        record_ref="branch:1",
+        subject_kind="record_cid",
+        subject_ref="branch:1",
+    )
+    sandbox = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_sandbox_admission",
+        record_ref="plan:2",
+        subject_kind="record_cid",
+        subject_ref="plan:2",
+    )
+    promotion = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="and_or_planner_promotion",
+        record_ref="planner:v2",
+        subject_kind="record_cid",
+        subject_ref="planner:v1",
+    )
+    handles = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="default_planner_handles",
+        record_ref="ready",
+        subject_kind="record_cid",
+        subject_ref="DefaultPlannerHandles@1",
+    )
+    evidence = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planning_evidence_bundle",
+        record_ref="bundle:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    goals = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="program_logic_goals",
+        record_ref="compilation:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    runtime = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="runtime_contract_evidence",
+        record_ref="compilation:2",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    provenance = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="value_provenance_graph",
+        record_ref="graph:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    snapshot = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="doctor_evidence_snapshot",
+        record_ref="snapshot:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    doctor_plan = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="deterministic_doctor_plan",
+        record_ref="plan:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    implement = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="rpr_implement_admission",
+        record_ref="task:1",
+        subject_kind="task_id",
+        subject_ref="task:1",
+    )
+    packet = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_carrying_repair_packet",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    prompt = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="prompt_plan_admission",
+        record_ref="plan:4",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    identity = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="test_identity_components",
+        record_ref="identity:1",
+        subject_kind="record_cid",
+        subject_ref="identity:1",
+    )
+    for item in (
+        validation,
+        conformance,
+        adversarial,
+        work_graph,
+        workflow,
+        prediction,
+        branches,
+        sandbox,
+        promotion,
+        handles,
+        evidence,
+        goals,
+        runtime,
+        provenance,
+        snapshot,
+        doctor_plan,
+        implement,
+        packet,
+        prompt,
+        identity,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

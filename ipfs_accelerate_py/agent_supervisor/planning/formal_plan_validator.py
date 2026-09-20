@@ -2622,12 +2622,27 @@ def validate_formal_plan(
 ) -> PlanValidationResult:
     """Convenience entry point for one deterministic bounded validation."""
 
-    return FormalPlanValidator(bounds).validate(
+    result = FormalPlanValidator(bounds).validate(
         plan,
         formulas,
         cancellation_token=cancellation_token,
         proof_evidence=proof_evidence,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_plan_validation",
+            record_ref=str(result.plan_id),
+            subject_kind="record_cid",
+            subject_ref=str(result.plan_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 check_formal_plan = validate_formal_plan

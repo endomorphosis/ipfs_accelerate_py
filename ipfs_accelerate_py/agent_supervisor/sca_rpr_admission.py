@@ -148,11 +148,26 @@ def admit_implement_task(
         reasons.append("missing_reproof_command")
 
     if reasons:
-        return AdmissionRejection(
+        rejection = AdmissionRejection(
             schema=REJECTION_SCHEMA,
             reason_codes=tuple(reasons),
             detail="unbound implement rejected: " + ",".join(reasons),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="rpr_implement_admission",
+                record_ref=task_id or snapshot_id or "rpr-implement",
+                subject_kind="task_id" if task_id else "record_cid",
+                subject_ref=task_id or snapshot_id or "rpr-implement",
+            )
+        except Exception:
+            pass
+        return rejection
 
     write_paths = tuple(
         str(p)
@@ -167,7 +182,7 @@ def admit_implement_task(
     if isinstance(task.get("validation"), str) and task.get("validation").strip():
         validation = (task["validation"].strip(),)
 
-    return AdmittedTargetPacket(
+    packet = AdmittedTargetPacket(
         schema=ADMITTED_PACKET_SCHEMA,
         task_id=task_id,
         snapshot_id=snapshot_id,
@@ -181,6 +196,21 @@ def admit_implement_task(
         llm_output="proposal_only",
         notes="admitted under RPR; LLM output remains proposal_only",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="rpr_implement_admission",
+            record_ref=str(packet.task_id or packet.snapshot_id or "rpr-implement"),
+            subject_kind="task_id" if packet.task_id else "record_cid",
+            subject_ref=str(packet.task_id or packet.snapshot_id or "rpr-implement"),
+        )
+    except Exception:
+        pass
+    return packet
 
 
 def assert_llm_implement_allowed(packet: Mapping[str, Any] | AdmittedTargetPacket) -> None:
@@ -513,9 +543,24 @@ def admit_proof_carrying_repair_packet(
     if not isinstance(current_roots, RepairAuthorityRoots):
         reasons.append("typed_current_authority_roots_required")
     if reasons:
-        return RepairPacketAdmission(
+        admission = RepairPacketAdmission(
             RepairPacketAdmissionDisposition.REJECTED, tuple(sorted(reasons))
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="proof_carrying_repair_packet",
+                record_ref="proof-carrying-repair-packet",
+                subject_kind="record_cid",
+                subject_ref="proof-carrying-repair-packet",
+            )
+        except Exception:
+            pass
+        return admission
     assert isinstance(packet, ProofCarryingRepairPacket)
     assert isinstance(current_roots, RepairAuthorityRoots)
     if packet.authority_roots != current_roots:
@@ -564,19 +609,37 @@ def admit_proof_carrying_repair_packet(
         ):
             reasons.append("lease_or_fence_binding_mismatch")
     if reasons:
-        return RepairPacketAdmission(
+        admission = RepairPacketAdmission(
             RepairPacketAdmissionDisposition.REJECTED,
             tuple(sorted(set(reasons))),
             packet_cid=packet.content_id,
         )
-    # No current typed DCR-050/060 live receipt contract is available in this
-    # composition root.  Do not mint a DCR-002 ADMITTED envelope: that stage
-    # could be misread as mutation authority by a downstream consumer.
-    return RepairPacketAdmission(
-        RepairPacketAdmissionDisposition.INTEGRATION_PENDING,
-        ("integration_pending_dcr050_dcr060_live_receipts",),
-        packet_cid=packet.content_id,
-    )
+    else:
+        # No current typed DCR-050/060 live receipt contract is available in this
+        # composition root.  Do not mint a DCR-002 ADMITTED envelope: that stage
+        # could be misread as mutation authority by a downstream consumer.
+        admission = RepairPacketAdmission(
+            RepairPacketAdmissionDisposition.INTEGRATION_PENDING,
+            ("integration_pending_dcr050_dcr060_live_receipts",),
+            packet_cid=packet.content_id,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(current_roots, "git_tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_carrying_repair_packet",
+            record_ref=str(admission.packet_cid or packet.content_id or "proof-carrying-repair-packet"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(admission.packet_cid or packet.content_id or "proof-carrying-repair-packet"),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 __all__ = [

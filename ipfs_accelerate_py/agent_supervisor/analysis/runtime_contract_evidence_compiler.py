@@ -1862,7 +1862,7 @@ def compile_runtime_contract_evidence(
 ) -> RuntimeContractEvidenceCompilation:
     """Convenience entry for ``RuntimeContractEvidenceCompiler@1``."""
 
-    return RuntimeContractEvidenceCompiler().compile(
+    compilation = RuntimeContractEvidenceCompiler().compile(
         catalog,
         snapshot_id=snapshot_id,
         graph=graph,
@@ -1871,6 +1871,21 @@ def compile_runtime_contract_evidence(
         runtime_catalog=runtime_catalog,
         run_traces=run_traces,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_contract_evidence",
+            record_ref=str(compilation.compilation_id or compilation.snapshot_id or "runtime-contract-evidence"),
+            subject_kind="record_cid",
+            subject_ref=str(compilation.snapshot_id or compilation.compilation_id or "runtime-contract-evidence"),
+        )
+    except Exception:
+        pass
+    return compilation
 
 
 __all__ = [

@@ -1484,7 +1484,22 @@ def evaluate_formal_planning_evidence(
 ) -> AdversarialAdmission:
     """Convenience entry point for a deterministic boundary evaluation."""
 
-    return FormalPlanningAdversarialGate().evaluate(binding, evidence, policy)
+    admission = FormalPlanningAdversarialGate().evaluate(binding, evidence, policy)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_adversarial",
+            record_ref=str(admission.binding_id or admission.evidence_id or "formal-planning-adversarial"),
+            subject_kind="record_cid",
+            subject_ref=str(admission.evidence_id or admission.policy_id or "formal-planning-adversarial"),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 # Compatibility spellings for callers using trust-boundary terminology.

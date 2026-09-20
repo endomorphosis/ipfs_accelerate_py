@@ -2001,12 +2001,29 @@ def admit_prompt_plan(
         findings=tuple(findings),
         invariants=invariants,
     )
-    return PromptPlanAdmissionResult(
+    result = PromptPlanAdmissionResult(
         receipt=receipt,
         formal_compilation=formal,
         ir_receipt=ir_receipt,
         admitted_graph=graph if admitted else None,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_plan_admission",
+            record_ref=str(receipt.final_plan_cid or receipt.candidate_plan_cid or "prompt-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(receipt.candidate_plan_cid or "prompt-plan"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _safe_counterexample(value: Any) -> Any:

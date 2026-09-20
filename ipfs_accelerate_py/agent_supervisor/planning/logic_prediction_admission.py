@@ -838,7 +838,24 @@ class LogicPredictionAdmission:
             if isinstance(request, LogicPredictionAdmissionRequest)
             else LogicPredictionAdmissionRequest(**dict(request))
         )
-        return self._admit(req)
+        decision = self._admit(req)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(getattr(decision, "roots", None), "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="logic_prediction_admission",
+                record_ref=str(decision.decision_id or decision.goal_id or "logic-prediction"),
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or str(decision.goal_id or decision.decision_id or "logic-prediction"),
+            )
+        except Exception:
+            pass
+        return decision
 
     decide = admit
     assess = admit

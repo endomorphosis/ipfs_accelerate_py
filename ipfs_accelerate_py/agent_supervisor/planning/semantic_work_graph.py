@@ -93,4 +93,18 @@ def compose_work_graph(edges: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
         "edge_kinds": tuple(sorted({item["kind"] for item in ordered})),
     }
     graph["graph_cid"] = _cid({"edges": ordered, "schema": SCHEMA})
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="semantic_work_graph",
+            record_ref=str(graph["graph_cid"]),
+            subject_kind="record_cid",
+            subject_ref=str(graph["graph_cid"]),
+        )
+    except Exception:
+        pass
     return MappingProxyType(graph)

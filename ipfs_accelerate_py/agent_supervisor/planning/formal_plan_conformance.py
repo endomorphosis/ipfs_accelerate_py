@@ -1332,7 +1332,22 @@ def evaluate_plan_conformance(
 ) -> PlanConformanceResult:
     """Functional entry point for deterministic plan-trace comparison."""
 
-    return FormalPlanConformanceEvaluator().evaluate(plan, events, **kwargs)
+    result = FormalPlanConformanceEvaluator().evaluate(plan, events, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_plan_conformance",
+            record_ref=str(result.plan_id),
+            subject_kind="record_cid",
+            subject_ref=str(result.plan_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 compare_plan_conformance = evaluate_plan_conformance
