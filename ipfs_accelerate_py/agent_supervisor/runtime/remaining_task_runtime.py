@@ -410,22 +410,15 @@ def execute_remaining_task(
         }
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            bind_supervisor_catalogs,
-            compose_semantic_work,
-            observe_path,
+            orchestrate_semantic_work,
         )
 
-        bind_supervisor_catalogs()
-        for relative in binding.required_files:
-            observe_path(
-                relative,
-                extra_kinds=("ast", "bm25", "vector", "world_model", "capsule"),
-                capsule_cid=str(result.get("pack_cid") or result.get("task_id") or ""),
-            )
         result = dict(result)
-        result["meta_index"] = compose_semantic_work(
+        result["meta_index"] = orchestrate_semantic_work(
             subject_kind="path",
             subject_ref=binding.required_files[0],
+            path=binding.required_files[0],
+            capsule_cid=str(result.get("pack_cid") or result.get("task_id") or ""),
         )
     except Exception as exc:
         result = dict(result)

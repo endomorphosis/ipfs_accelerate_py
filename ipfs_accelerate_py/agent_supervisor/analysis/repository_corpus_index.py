@@ -1857,7 +1857,7 @@ def build_repository_corpus_index(
     # Shrink deterministically until the complete canonical receipt fits.
     while True:
         try:
-            return _build_result_with_byte_bound(
+            result = _build_result_with_byte_bound(
                 forest_id=forest_id,
                 limits=limits_obj,
                 descriptors=descriptors,
@@ -1867,6 +1867,21 @@ def build_repository_corpus_index(
                 global_reasons=global_reasons,
                 reused=reused,
             )
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    orchestrate_semantic_work,
+                )
+
+                paths = tuple(getattr(entry, "path", "") for entry in result.entries if getattr(entry, "path", ""))[:16]
+                orchestrate_semantic_work(
+                    subject_kind="tree_id",
+                    subject_ref=str(result.forest_id),
+                    tree_id=str(result.forest_id),
+                    path=paths[0] if paths else "",
+                )
+            except Exception:
+                pass
+            return result
         except RepositoryCorpusIndexError as exc:
             if exc.reason_code != "manifest_byte_bound_violated" or not emitted:
                 raise

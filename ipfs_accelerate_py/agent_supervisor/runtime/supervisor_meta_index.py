@@ -202,6 +202,7 @@ class SupervisorMetaIndex:
             "interface": INTERFACE,
             "catalog_id": catalog_id,
             "catalog_cid": catalog_cid,
+            "kind": kind,
             "attach_permitted": attach,
             "completion_authority": False,
         }
@@ -303,21 +304,25 @@ class SupervisorMetaIndex:
         taskboards: Sequence[Mapping[str, str]] | None = None,
     ) -> dict[str, Any]:
         env_locators = {
-            "ast": str(os.environ.get("IPFS_ACCELERATE_AST_INDEX_DUCKDB") or ""),
-            "bm25": str(os.environ.get("IPFS_ACCELERATE_BM25_DUCKDB") or ""),
-            "vector": str(os.environ.get("IPFS_ACCELERATE_VECTOR_DUCKDB") or ""),
-            "knowledge_graph": str(os.environ.get("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB") or ""),
-            "world_model": str(os.environ.get("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB") or ""),
-            "proof_cache": str(os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or ""),
+            "ast": str(os.environ.get("IPFS_ACCELERATE_AST_INDEX_DUCKDB") or "ast"),
+            "bm25": str(os.environ.get("IPFS_ACCELERATE_BM25_DUCKDB") or "bm25"),
+            "vector": str(os.environ.get("IPFS_ACCELERATE_VECTOR_DUCKDB") or "vector"),
+            "knowledge_graph": str(
+                os.environ.get("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB") or "knowledge_graph"
+            ),
+            "world_model": str(os.environ.get("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB") or "world_model"),
+            "proof_cache": str(
+                os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or "proof_cache"
+            ),
             "proof_certificate": str(
-                os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or ""
+                os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or "proof_certificate"
             ),
             "filesystem_mtime": str(os.environ.get("IPFS_ACCELERATE_META_INDEX_MTIME") or "filesystem"),
             "capsule": str(os.environ.get("IPFS_ACCELERATE_CAPSULE_INDEX") or "capsule"),
             "metadata": str(os.environ.get("IPFS_ACCELERATE_METADATA_INDEX") or "metadata"),
         }
         if locators:
-            env_locators.update({str(key): str(value) for key, value in locators.items()})
+            env_locators.update({str(key): str(value) for key, value in locators.items() if value})
         catalogs = []
         for kind, locator in env_locators.items():
             if not locator:
@@ -478,14 +483,80 @@ class SupervisorMetaIndex:
             "formal_surfaces": [
                 name
                 for name in (
+                    "filesystem_mtime",
                     "ast",
+                    "bm25",
+                    "knowledge_graph",
+                    "vector",
                     "proof_cache",
                     "proof_certificate",
                     "world_model",
-                    "knowledge_graph",
+                    "capsule",
+                    "taskboard",
                 )
                 if name in kinds or name in (view.get("kinds") or [])
             ],
+        }
+
+    def orchestrate_semantic_work(
+        self,
+        *,
+        subject_kind: str = "tree_id",
+        subject_ref: str = "",
+        tree_id: str = "",
+        path: str = "",
+        mtime_ns: int | None = None,
+        content_cid: str = "",
+        capsule_cid: str = "",
+    ) -> dict[str, Any]:
+        bound = self.bind_supervisor_catalogs(tree_id=tree_id or subject_ref)
+        observed = None
+        if path:
+            observed = self.observe_path(
+                path,
+                mtime_ns=mtime_ns,
+                content_cid=content_cid,
+                tree_id=tree_id or subject_ref,
+                capsule_cid=capsule_cid,
+                extra_kinds=(
+                    "ast",
+                    "bm25",
+                    "vector",
+                    "knowledge_graph",
+                    "proof_cache",
+                    "proof_certificate",
+                    "world_model",
+                    "capsule",
+                ),
+            )
+        composed = self.compose_semantic_work(
+            subject_kind=subject_kind,
+            subject_ref=subject_ref or path or tree_id,
+            tree_id=tree_id or subject_ref,
+        )
+        required = {
+            "filesystem_mtime",
+            "ast",
+            "bm25",
+            "knowledge_graph",
+            "vector",
+            "proof_cache",
+            "proof_certificate",
+            "world_model",
+            "capsule",
+            "taskboard",
+        }
+        present = {str(item.get("kind") or "") for item in (bound.get("catalogs") or [])}
+        present.update(composed.get("kinds") or [])
+        present.discard("")
+        return {
+            **composed,
+            "bound": bound,
+            "observed": observed,
+            "required_kinds": sorted(required),
+            "missing_kinds": sorted(required - present),
+            "catalogs_linked": required <= present,
+            "ducklake": bound.get("ducklake") or {},
         }
 
     def compose_for_subject(
@@ -888,6 +959,69 @@ def compose_semantic_work(
         }
     return index.compose_semantic_work(
         subject_kind=subject_kind, subject_ref=subject_ref, tree_id=tree_id
+    )
+
+
+def orchestrate_semantic_work(
+    *,
+    subject_kind: str = "tree_id",
+    subject_ref: str = "",
+    tree_id: str = "",
+    path: str = "",
+    mtime_ns: int | None = None,
+    content_cid: str = "",
+    capsule_cid: str = "",
+    store: SupervisorMetaIndex | None = None,
+) -> dict[str, Any]:
+    index = store if store is not None else _active()
+    if index is None:
+        return {
+            "schema": SCHEMA,
+            "linked": [],
+            "catalogs": [],
+            "n": 0,
+            "reason_code": "meta_index_unconfigured",
+            "completion_authority": False,
+            "decision_authority": False,
+            "ducklake_authoritative": False,
+            "event_driven_qualified": True,
+            "extra_gate_attached": False,
+            "capsule_composition": True,
+            "formal_surfaces": [],
+            "required_kinds": [
+                "filesystem_mtime",
+                "ast",
+                "bm25",
+                "knowledge_graph",
+                "vector",
+                "proof_cache",
+                "proof_certificate",
+                "world_model",
+                "capsule",
+                "taskboard",
+            ],
+            "missing_kinds": [
+                "filesystem_mtime",
+                "ast",
+                "bm25",
+                "knowledge_graph",
+                "vector",
+                "proof_cache",
+                "proof_certificate",
+                "world_model",
+                "capsule",
+                "taskboard",
+            ],
+            "catalogs_linked": False,
+        }
+    return index.orchestrate_semantic_work(
+        subject_kind=subject_kind,
+        subject_ref=subject_ref,
+        tree_id=tree_id,
+        path=path,
+        mtime_ns=mtime_ns,
+        content_cid=content_cid,
+        capsule_cid=capsule_cid,
     )
 
 

@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
     SupervisorMetaIndexError,
     compose_for_subject,
     compose_semantic_work,
+    orchestrate_semantic_work,
     mirror_capsule_record,
     mirror_knowledge_graph,
     mirror_vector_index,
@@ -676,6 +677,45 @@ def test_mirror_merge_train_wake_slice_and_chaos(tmp_path, monkeypatch) -> None:
     )
     assert work["extra_gate_attached"] is False
     assert work["event_driven_qualified"] is True
+
+
+def test_orchestrate_links_all_required_catalogs_without_env_locators(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.delenv("IPFS_ACCELERATE_AST_INDEX_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_BM25_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_VECTOR_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB", raising=False)
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKLAKE", str(tmp_path / "meta_index_ducklake"))
+    work = orchestrate_semantic_work(
+        subject_kind="path",
+        subject_ref="ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        tree_id="tree:work",
+        path="ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        capsule_cid="capsule:cli",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+    assert work["missing_kinds"] == []
+    for kind in (
+        "filesystem_mtime",
+        "ast",
+        "bm25",
+        "knowledge_graph",
+        "vector",
+        "proof_cache",
+        "proof_certificate",
+        "world_model",
+        "capsule",
+        "taskboard",
+    ):
+        assert kind in work["required_kinds"]
+        assert kind in work["formal_surfaces"]
+    board = next(item for item in work["catalogs"] if item["kind"] == "taskboard")
+    assert board["attach_permitted"] is False
 
 
 def test_ducklake_projection_is_observational(tmp_path) -> None:

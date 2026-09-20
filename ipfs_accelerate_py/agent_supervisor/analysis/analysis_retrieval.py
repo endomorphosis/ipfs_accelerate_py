@@ -2782,17 +2782,15 @@ def retrieve_analysis_evidence(
     response = retriever.retrieve(query, limits=limits)
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            bind_supervisor_catalogs,
-            compose_semantic_work,
+            orchestrate_semantic_work,
         )
 
-        bind_supervisor_catalogs(tree_id=str(current_root_id or ""))
-        if artifact_id:
-            compose_semantic_work(
-                subject_kind="path",
-                subject_ref=str(artifact_id),
-                tree_id=str(current_root_id or ""),
-            )
+        orchestrate_semantic_work(
+            subject_kind="path" if artifact_id else "tree_id",
+            subject_ref=str(artifact_id or current_root_id or ""),
+            tree_id=str(current_root_id or ""),
+            path=str(artifact_id or ""),
+        )
     except Exception:
         pass
     return response
