@@ -1171,11 +1171,27 @@ def build_analysis_ast_index(
         renamed_path_count=renamed,
         invalidated_blob_count=len({item.record_id for item in additions}),
     )
-    return AnalysisASTIndex(
+    index = AnalysisASTIndex(
         path_records=tuple(current),
         invalidations=tuple(all_invalidations),
         stats=stats,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="ast",
+            record_ref=index.index_id,
+            subject_kind="record_cid",
+            subject_ref=index.index_id,
+            paths=index.paths,
+        )
+    except Exception:
+        pass
+    return index
 
 
 # Concise aliases keep the standalone tranche friendly to both analysis and

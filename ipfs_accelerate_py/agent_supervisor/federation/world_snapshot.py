@@ -99,7 +99,7 @@ def assemble_federation_world_snapshot(
             raise WorldSnapshotAuthorityError(
                 "task population disagrees with the admitted supervisor snapshot"
             )
-    return FederationWorldSnapshot(
+    snapshot = FederationWorldSnapshot(
         record_id=_identifier(record_id, "record_id"),
         revision=revision,
         binding=replace(
@@ -118,6 +118,26 @@ def assemble_federation_world_snapshot(
         semantic_roots=roots,
         causal_frontier_ref=_identifier(causal_frontier_ref, "causal_frontier_ref"),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = ""
+        trees = getattr(binding, "repository_tree_ids", ()) or ()
+        if trees:
+            tree_id = str(trees[0])
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_snapshot",
+            record_ref=snapshot.record_id,
+            tree_id=tree_id,
+            subject_kind="tree_id",
+            subject_ref=tree_id or snapshot.record_id,
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def snapshot_from_frontier(

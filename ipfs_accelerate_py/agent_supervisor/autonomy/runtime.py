@@ -1250,7 +1250,7 @@ class AutonomyRuntime:
             segment_ids = suffix_receipt.nearest_safe_segment_ids
         elif self._horizon is not None and scanned:
             segment_ids = self._horizon.select_nearest_safe_segment().step_ids
-        return AutonomyCycleResult(
+        result = AutonomyCycleResult(
             status=status,
             cursor_id=event.cursor_id,
             acknowledged=acknowledged,
@@ -1265,6 +1265,20 @@ class AutonomyRuntime:
             nearest_safe_segment_ids=segment_ids,
             metrics=self._metrics.snapshot(),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                bind_supervisor_catalogs,
+                compose_semantic_work,
+            )
+
+            bind_supervisor_catalogs()
+            compose_semantic_work(
+                subject_kind="record_cid",
+                subject_ref=str(event.cursor_id),
+            )
+        except Exception:
+            pass
+        return result
 
     def handle_wake(
         self,

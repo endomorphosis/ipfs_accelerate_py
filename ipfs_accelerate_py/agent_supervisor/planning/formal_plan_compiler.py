@@ -3756,7 +3756,23 @@ def compile_formal_plan_json(source: str | bytes | Path) -> PlanCompilationResul
 
 
 def compile_formal_plan_duckdb(source: Any, **records: Any) -> PlanCompilationResult:
-    return FormalPlanCompiler().compile_duckdb(source, **records)
+    result = FormalPlanCompiler().compile_duckdb(source, **records)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = ""
+        if result.plan is not None:
+            plan_id = str(getattr(result.plan, "plan_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan",
+            record_ref=plan_id or result.source_identity or "formal-plan",
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_plan_admission(
@@ -3764,7 +3780,23 @@ def compile_plan_admission(
 ) -> "PlanAdmissionReceipt":
     """Delegate a canonical request to the hard-constraint compiler."""
 
-    return FormalPlanCompiler().compile_admission(request)
+    receipt = FormalPlanCompiler().compile_admission(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan",
+            record_ref=str(receipt.candidate_plan_id or receipt.request_id),
+            tree_id=str(receipt.repository_tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(receipt.repository_tree_id or ""),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def write_formal_plan_compiler_input_duckdb(path: str | Path, source: Mapping[str, Any]) -> Path:
@@ -3816,6 +3848,19 @@ def write_formal_plan_compiler_input_duckdb(path: str | Path, source: Mapping[st
         )
     finally:
         connection.close()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            register_catalog,
+        )
+
+        if target.name != "control.duckdb":
+            register_catalog(
+                kind="metadata",
+                locator_ref=str(target),
+                tree_id=str(bundle.get("repository_tree_id") or ""),
+            )
+    except Exception:
+        pass
     return target
 
 

@@ -196,6 +196,43 @@ def test_mirror_plan_synthesis_and_bm25_work_records(tmp_path, monkeypatch) -> N
     assert work["event_driven_qualified"] is True
 
 
+def test_mirror_event_driven_ast_and_world_snapshot(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    ast = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="ast",
+        record_ref="ast-index:1",
+        subject_kind="record_cid",
+        subject_ref="ast-index:1",
+        paths=("ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",),
+    )
+    snapshot = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="world_snapshot",
+        record_ref="world-snapshot:current",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    wake = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="event_driven",
+        record_ref="cursor:1",
+        subject_kind="record_cid",
+        subject_ref="cursor:1",
+    )
+    for item in (ast, snapshot, wake):
+        assert item["completion_authority"] is False
+        assert item["event_driven_qualified"] is True
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert "world_model" in work["formal_surfaces"] or "world_model" in work["kinds"]
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
