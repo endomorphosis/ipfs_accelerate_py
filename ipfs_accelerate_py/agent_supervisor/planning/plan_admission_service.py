@@ -1950,7 +1950,23 @@ def admit_plan_through_service(
 ) -> PlanAdmissionServiceReceipt:
     """Module-level convenience for independent multi-gate plan admission."""
 
-    return PlanAdmissionService().admit(materials)
+    receipt = PlanAdmissionService().admit(materials)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_admission_service",
+            record_ref=str(receipt.candidate_plan_id or receipt.request_id),
+            tree_id=str(receipt.repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(receipt.repository_tree_id),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def construct_plan_admission_request(

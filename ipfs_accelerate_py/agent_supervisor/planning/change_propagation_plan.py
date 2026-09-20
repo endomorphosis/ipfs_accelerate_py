@@ -1856,7 +1856,26 @@ def admit_change_propagation_plan(
 ) -> PropagationPlanAdmission:
     """Module-level entry point matching the planner interface."""
 
-    return ChangePropagationPlanner().admit(evidence)
+    admission = ChangePropagationPlanner().admit(evidence)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="change_propagation",
+            record_ref=str(admission.content_id),
+            subject_kind="record_cid",
+            subject_ref=str(admission.evidence_bundle_id or admission.content_id),
+            paths=tuple(
+                getattr(span, "path", "")
+                for span in (*admission.permitted_write_spans, *admission.permitted_read_spans)
+            )[:16],
+        )
+    except Exception:
+        pass
+    return admission
 
 
 def plan_set_identity(plans: Sequence[AtomicPropagationPlan]) -> str:

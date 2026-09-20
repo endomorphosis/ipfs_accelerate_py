@@ -3963,6 +3963,20 @@ def build_proof_planning_context_capsule(
     result._validate_limits()
     if selected_id and result.selected_candidate_id != selected_id:
         raise ProofContextBudgetError("proof planning limits cannot retain the selected candidate")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="proof_planning_context",
+            record_ref=str(result.capsule_id),
+            subject_kind="task_id",
+            subject_ref=str(result.task_id),
+        )
+    except Exception:
+        pass
     return result
 
 
@@ -3981,7 +3995,23 @@ def build_proof_context_capsule(
 
     builder_keys = {"source_root", "templates", "token_counter"}
     builder_arguments = {key: kwargs.pop(key) for key in tuple(kwargs) if key in builder_keys}
-    return ProofContextBuilder(graph_path, **builder_arguments).build(query, **kwargs)
+    capsule = ProofContextBuilder(graph_path, **builder_arguments).build(query, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_id = str(getattr(getattr(capsule, "query", None), "task_id", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="proof_context",
+            record_ref=str(capsule.capsule_id),
+            subject_kind="task_id" if task_id else "record_cid",
+            subject_ref=task_id or str(capsule.capsule_id),
+        )
+    except Exception:
+        pass
+    return capsule
 
 
 generate_proof_context_capsule = build_proof_context_capsule

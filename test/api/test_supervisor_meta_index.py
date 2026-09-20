@@ -464,6 +464,43 @@ def test_mirror_capsule_index_and_code_proof_context(tmp_path, monkeypatch) -> N
     assert work["capsule_composition"] is True
 
 
+def test_mirror_plan_admission_service_propagation_and_proof_context(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    service = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_admission_service",
+        record_ref="plan:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    propagation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="change_propagation",
+        record_ref="propagation:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    proof_ctx = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="proof_context",
+        record_ref="capsule:proof",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    for item in (service, propagation, proof_ctx):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
