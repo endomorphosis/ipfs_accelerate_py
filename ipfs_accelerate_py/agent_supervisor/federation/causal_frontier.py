@@ -288,7 +288,7 @@ def compile_frontier(
     ordered = tuple(
         sorted(entries, key=lambda item: (item.supervisor_id, item.node_id))
     )
-    return CompiledFrontier(
+    frontier = CompiledFrontier(
         event_id=event_id,
         graph_revision=graph_revision,
         entries=ordered,
@@ -296,6 +296,25 @@ def compile_frontier(
         may_wake=may_wake,
         do_not_wake=do_not_wake,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            compose_semantic_work,
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="causal_frontier",
+            record_ref=str(frontier.cid),
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=str(event_id),
+        )
+        compose_semantic_work(subject_kind="record_cid", subject_ref=str(event_id), tree_id=tree_id)
+    except Exception:
+        pass
+    return frontier
 
 
 def _frontier_templates() -> tuple[Any, ...]:

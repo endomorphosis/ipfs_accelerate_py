@@ -350,7 +350,22 @@ def admit_exact_evidence(
         raise CausalEvidenceAuthorityError(
             "doctor localization is report-only; copy the fact under federation rules"
         )
-    return CausalEvidenceAdmission(evidence=evidence, source_kind=source_kind)
+    admission = CausalEvidenceAdmission(evidence=evidence, source_kind=source_kind)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="causal_evidence",
+            record_ref=str(getattr(evidence, "record_id", "") or "causal-evidence"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(evidence, "record_id", "") or "causal-evidence"),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 def admit_exact_from_doctor(

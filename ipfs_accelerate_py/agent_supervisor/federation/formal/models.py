@@ -1193,7 +1193,22 @@ def build_federation_formal_suite(
                 subject_ids=subjects,
             )
         )
-    return FederationFormalSuite(identity=identity, bounds=bounds, scenarios=tuple(scenarios))
+    suite = FederationFormalSuite(identity=identity, bounds=bounds, scenarios=tuple(scenarios))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_formal_suite",
+            record_ref=str(getattr(identity, "identity", "") or "federation-formal-suite"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(identity, "identity", "") or "federation-formal-suite"),
+        )
+    except Exception:
+        pass
+    return suite
 
 
 def _advance(state: FederationModelState, stage: str, **updates: Any) -> FederationModelState:

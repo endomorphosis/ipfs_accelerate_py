@@ -479,7 +479,7 @@ def compile_shard_rebalance(
             raise RebalancingAuthorityError("target specialization cannot admit the rebalanced work")
     _require_policy_capability(request.units, target)
     ordered = tuple(sorted(request.units, key=lambda unit: unit.work.task_id))
-    return CompiledRebalancePlan(
+    plan = CompiledRebalancePlan(
         shard_id=request.shard_id,
         source_supervisor_id=request.source_supervisor_id,
         target_supervisor_id=target.supervisor_id,
@@ -496,6 +496,22 @@ def compile_shard_rebalance(
         tree_id=tree_id,
         semantic_root=request.semantic_root,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shard_rebalance",
+            record_ref=str(plan.cid),
+            tree_id=str(plan.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(plan.tree_id),
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def execute_shard_rebalance(

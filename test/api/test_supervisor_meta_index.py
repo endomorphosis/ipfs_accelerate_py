@@ -757,6 +757,53 @@ def test_mirror_shards_cache_keys_and_merge_release(tmp_path, monkeypatch) -> No
     assert "quack://aseh" in boards
 
 
+def test_mirror_frontier_rebalance_evidence_and_formal_suite(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    frontier = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="causal_frontier",
+        record_ref="frontier:1",
+        tree_id="tree:work",
+        subject_kind="record_cid",
+        subject_ref="event:1",
+    )
+    rebalance = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="shard_rebalance",
+        record_ref="rebalance:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    evidence = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="causal_evidence",
+        record_ref="evidence:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    suite = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="federation_formal_suite",
+        record_ref="formal:1",
+        subject_kind="record_cid",
+        subject_ref="formal:1",
+    )
+    for item in (frontier, rebalance, evidence, suite):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["event_driven_qualified"] is True
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
