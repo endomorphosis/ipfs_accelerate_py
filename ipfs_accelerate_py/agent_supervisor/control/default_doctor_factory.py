@@ -477,6 +477,21 @@ def build_default_doctor_service(
     factory = build_default_doctor_factory(**factory_kwargs)
     service = factory.build(checkout_root, **kwargs)
     assert_no_llm_surface_loaded(baseline_modules=baseline_modules)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        root_text = str(checkout_root or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="default_doctor_service",
+            record_ref=root_text or "default-doctor-service",
+            subject_kind="path" if root_text else "record_cid",
+            subject_ref=root_text or "default-doctor-service",
+        )
+    except Exception:
+        pass
     return service
 
 

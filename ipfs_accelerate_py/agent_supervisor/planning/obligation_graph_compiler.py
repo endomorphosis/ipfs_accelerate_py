@@ -3482,9 +3482,24 @@ def compile_obligation_graph(
 
     bounds = kwargs.pop("bounds", None)
     property_catalog = kwargs.pop("property_catalog", None)
-    return ObligationGraphCompiler(
+    graph = ObligationGraphCompiler(
         bounds=bounds, property_catalog=property_catalog
     ).compile(intent, current_facts, producers, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="obligation_graph",
+            record_ref=str(getattr(graph, "graph_id", "") or graph.intent_id or "obligation-graph"),
+            subject_kind="record_cid",
+            subject_ref=str(graph.intent_id or graph.current_root_id or "obligation-graph"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 compile_desired_observed_obligation_graph = compile_obligation_graph

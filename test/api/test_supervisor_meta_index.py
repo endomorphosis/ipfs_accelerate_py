@@ -1202,6 +1202,171 @@ def test_mirror_diagnosis_doctor_goals_frontier_and_binding(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_compile_admit_and_transport_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    mismatch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="contract_mismatch_obligations",
+        record_ref="intent:1",
+        subject_kind="record_cid",
+        subject_ref="intent:1",
+    )
+    finding = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_finding_plan",
+        record_ref="receipt:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    projection = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="formal_planning_operator_projection",
+        record_ref="projection:1",
+        subject_kind="record_cid",
+        subject_ref="decision:1",
+    )
+    gate = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="formal_planning_rollout_gate",
+        record_ref="decision:1",
+        subject_kind="record_cid",
+        subject_ref="decision:1",
+    )
+    approval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_transition_approval",
+        record_ref="statement:1",
+        subject_kind="record_cid",
+        subject_ref="did:key:1",
+    )
+    capability = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_operational_capability",
+        record_ref="capability:1",
+        subject_kind="record_cid",
+        subject_ref="did:key:owner",
+    )
+    remote = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_remote_owner_capability",
+        record_ref="capability:2",
+        subject_kind="record_cid",
+        subject_ref="did:key:owner",
+    )
+    doctor = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="default_doctor_service",
+        record_ref="/checkout",
+        subject_kind="path",
+        subject_ref="/checkout",
+    )
+    transport = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="analysis_transport",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    graph = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="obligation_graph",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="intent:1",
+    )
+    parallel = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="parallel_execution_plan",
+        record_ref="plan:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    repair = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_carrying_repair_plan",
+        record_ref="plan:2",
+        subject_kind="record_cid",
+        subject_ref="plan:2",
+    )
+    candidate = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="task_candidate_admission",
+        record_ref="task:1",
+        subject_kind="record_cid",
+        subject_ref="task:1",
+    )
+    handoff = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="campaign_prompt_handoff",
+        record_ref="handoff:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    query = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="reasoning_query_plan",
+        record_ref="query:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    capsule = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="formal_plan_context_capsule",
+        record_ref="capsule:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    proposal = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="task_proposal_context",
+        record_ref="capsule:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    and_or = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="typed_goal_and_or_graph",
+        record_ref="and:goal",
+        subject_kind="record_cid",
+        subject_ref="context:1",
+    )
+    for item in (
+        mismatch,
+        finding,
+        projection,
+        gate,
+        approval,
+        capability,
+        remote,
+        doctor,
+        transport,
+        graph,
+        parallel,
+        repair,
+        candidate,
+        handoff,
+        query,
+        capsule,
+        proposal,
+        and_or,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

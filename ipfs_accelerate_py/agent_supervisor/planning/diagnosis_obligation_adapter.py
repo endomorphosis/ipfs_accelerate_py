@@ -1418,13 +1418,28 @@ def compile_contract_mismatch_obligations(
             contradictory=contradictory,
             approval_required=approval_required,
         )
-    return _compile_specs(
+    graph = _compile_specs(
         (normalized,),
         proof_requirement_refs=proof_requirement_refs,
         security_requirement_refs=security_requirement_refs,
         validation_requirement_refs=validation_requirement_refs,
         bounds=bounds,
     )[0]
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_mismatch_obligations",
+            record_ref=str(getattr(graph, "graph_id", "") or graph.intent_id or "contract-mismatch"),
+            subject_kind="record_cid",
+            subject_ref=str(graph.intent_id or graph.current_root_id or "contract-mismatch"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 class DiagnosisObligationAdapter:

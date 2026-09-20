@@ -117,6 +117,22 @@ def admit_campaign_prompt_handoff(
         "admission_receipt_id": receipt.receipt_id,
     }
     payload["handoff_id"] = content_identity(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="campaign_prompt_handoff",
+            record_ref=str(payload.get("handoff_id") or receipt.receipt_id or "campaign-prompt-handoff"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(payload.get("handoff_id") or "campaign-prompt-handoff"),
+        )
+    except Exception:
+        pass
     return payload
 
 

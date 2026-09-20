@@ -2496,6 +2496,20 @@ class AnalysisTransport:
             raise AnalysisTransportError(
                 "max_result_bytes is smaller than the fixed result envelope"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="analysis_transport",
+                record_ref=str(current.request_id or current.operation or "analysis-transport"),
+                subject_kind="record_cid",
+                subject_ref=str(current.request_id or current.operation or "analysis-transport"),
+            )
+        except Exception:
+            pass
         return current
 
     def _effective_deadline(

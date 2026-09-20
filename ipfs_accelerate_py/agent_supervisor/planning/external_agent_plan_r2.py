@@ -868,6 +868,20 @@ def seal_plan_r2_transition_approval(
         raise ExternalAgentPlanR2Error("Plan R2 transition approval signature is absent")
     sealed = {**value, "signature": signature}
     _canonical_bytes(sealed)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_transition_approval",
+            record_ref=str(sealed.get("statement_cid") or sealed.get("one_use_nonce") or "plan-r2-approval"),
+            subject_kind="record_cid",
+            subject_ref=str(sealed.get("identity_did") or sealed.get("statement_cid") or "plan-r2-approval"),
+        )
+    except Exception:
+        pass
     return sealed
 
 
@@ -1161,6 +1175,20 @@ def seal_plan_r2_operational_capability(
     signed = {**value, "reviewer_signature": reviewer_signature}
     capability = {**signed, "capability_cid": _cid(signed)}
     _canonical_bytes(capability)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_operational_capability",
+            record_ref=str(capability.get("capability_cid") or "plan-r2-capability"),
+            subject_kind="record_cid",
+            subject_ref=str(capability.get("owner_principal_did") or capability.get("capability_cid") or "plan-r2-capability"),
+        )
+    except Exception:
+        pass
     return capability
 
 

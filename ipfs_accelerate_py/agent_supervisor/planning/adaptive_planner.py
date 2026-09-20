@@ -4097,7 +4097,7 @@ def compile_typed_goal_to_and_or_graph(
     )
     if len(nodes) > resolved_bounds.max_nodes:
         raise AdaptivePlannerValidationError("AND/OR graph node budget exceeded")
-    return AndOrPlanGraph(
+    graph = AndOrPlanGraph(
         frozen_context_id=frozen.context_id,
         goal_content_id=goal.content_id,
         root_node_id=root_id,
@@ -4106,6 +4106,21 @@ def compile_typed_goal_to_and_or_graph(
         max_depth=3,
         truncated=truncated,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_goal_and_or_graph",
+            record_ref=str(graph.root_node_id or frozen.context_id or "and-or-graph"),
+            subject_kind="record_cid",
+            subject_ref=str(frozen.context_id or goal.content_id or "and-or-graph"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 # Short spelling used by integration code and tests.

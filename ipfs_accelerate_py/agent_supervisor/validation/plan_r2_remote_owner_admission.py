@@ -439,6 +439,20 @@ def seal_plan_r2_remote_owner_capability(
     signed = {**value, "reviewer_signature": signature}
     capability = {**signed, "capability_cid": _cid(signed)}
     _canonical_bytes(capability, noun="remote Plan-R2 capability")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_remote_owner_capability",
+            record_ref=str(capability.get("capability_cid") or "plan-r2-remote-owner"),
+            subject_kind="record_cid",
+            subject_ref=str(capability.get("owner_principal_did") or capability.get("capability_cid") or "plan-r2-remote-owner"),
+        )
+    except Exception:
+        pass
     return MappingProxyType(capability)
 
 

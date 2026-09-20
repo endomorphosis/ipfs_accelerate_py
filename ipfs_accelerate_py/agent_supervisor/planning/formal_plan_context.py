@@ -2168,9 +2168,26 @@ def build_formal_plan_context_capsule(
     """Convenience entry point for a single proof-carrying capsule."""
 
     token_counter = kwargs.pop("token_counter", estimate_context_tokens)
-    return FormalPlanContextBuilder(compilation, validation, token_counter=token_counter).build(
+    capsule = FormalPlanContextBuilder(compilation, validation, token_counter=token_counter).build(
         query, **kwargs
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(capsule, "repository_tree_cid", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="formal_plan_context_capsule",
+            record_ref=str(getattr(capsule, "capsule_id", "") or capsule.plan_cid or "formal-plan-capsule"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "capsule_cid",
+            subject_ref=tree_id or str(getattr(capsule, "capsule_id", "") or capsule.plan_cid or "formal-plan-capsule"),
+        )
+    except Exception:
+        pass
+    return capsule
 
 
 generate_formal_plan_context_capsule = build_formal_plan_context_capsule

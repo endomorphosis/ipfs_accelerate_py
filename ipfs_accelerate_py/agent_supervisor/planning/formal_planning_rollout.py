@@ -803,6 +803,20 @@ def build_formal_planning_operator_projection(
     # Reuse the metric projection's strict private-field validator by attempting
     # a harmless one-sample report is unnecessary; explicit allow-lists above
     # are the stronger boundary here.
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_operator_projection",
+            record_ref=str(projection.get("projection_id") or projection.get("rollout_decision_id") or "formal-planning-projection"),
+            subject_kind="record_cid",
+            subject_ref=str(projection.get("rollout_decision_id") or projection.get("benchmark_report_id") or "formal-planning-projection"),
+        )
+    except Exception:
+        pass
     return projection
 
 
@@ -814,9 +828,24 @@ def gate_formal_planning_rollout(
     overrides: Iterable[FormalPlanningRolloutOverride | Mapping[str, Any]] = (),
     now: datetime | str | None = None,
 ) -> FormalPlanningRolloutDecision:
-    return FormalPlanningRolloutGate(policy).evaluate(
+    decision = FormalPlanningRolloutGate(policy).evaluate(
         report, target_mode=target_mode, overrides=overrides, now=now
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_rollout_gate",
+            record_ref=str(decision.decision_id),
+            subject_kind="record_cid",
+            subject_ref=str(decision.decision_id),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 # Compatibility-friendly aliases.

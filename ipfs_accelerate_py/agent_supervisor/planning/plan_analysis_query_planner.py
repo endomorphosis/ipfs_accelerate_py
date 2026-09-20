@@ -1827,7 +1827,7 @@ def compile_reasoning_query_plan(
     operation_registry: AnalysisOperationRegistry | None = None,
     strategy_registry: AnalysisStrategyRegistry | None = None,
 ) -> ReasoningQueryPlan:
-    return PlanAnalysisQueryPlanner(
+    plan = PlanAnalysisQueryPlanner(
         operation_registry=operation_registry,
         strategy_registry=strategy_registry,
     ).compile(
@@ -1835,6 +1835,23 @@ def compile_reasoning_query_plan(
         context=context,
         model_suggestions=model_suggestions,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(plan, "scope", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reasoning_query_plan",
+            record_ref=str(plan.request_id or "reasoning-query-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.request_id or "reasoning-query-plan"),
+        )
+    except Exception:
+        pass
+    return plan
 
 
 compile_plan_analysis_queries = compile_reasoning_query_plan

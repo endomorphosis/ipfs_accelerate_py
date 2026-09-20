@@ -2791,7 +2791,24 @@ def plan_doctor_finding(
     **kwargs: Any,
 ) -> DoctorTacticianPlanReceipt:
     """Module-level helper for :class:`DeterministicDoctorTactician.plan_finding`."""
-    return DeterministicDoctorTactician().plan_finding(finding, **kwargs)
+    receipt = DeterministicDoctorTactician().plan_finding(finding, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(receipt, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_finding_plan",
+            record_ref=str(receipt.receipt_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(receipt.finding_id or receipt.receipt_id),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def exact_first_route_order() -> tuple[str, ...]:

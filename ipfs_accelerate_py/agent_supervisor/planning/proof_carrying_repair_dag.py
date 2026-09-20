@@ -234,7 +234,22 @@ def compile_proof_carrying_repair_plan(
     if not isinstance(plan, ProofCarryingRepairPlan):
         reasons.append("typed_proof_carrying_repair_plan_required")
     if reasons:
-        return RepairPlanDagResult(RepairPlanDagDisposition.REJECTED, tuple(sorted(reasons)))
+        result = RepairPlanDagResult(RepairPlanDagDisposition.REJECTED, tuple(sorted(reasons)))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="proof_carrying_repair_plan",
+                record_ref="proof-carrying-repair-plan",
+                subject_kind="record_cid",
+                subject_ref="proof-carrying-repair-plan",
+            )
+        except Exception:
+            pass
+        return result
     report = plan.registry.report()
     body = dict(report)
     actual_registry_cid = body.pop("registry_cid", "")
@@ -290,17 +305,33 @@ def compile_proof_carrying_repair_plan(
         if not has_provider or not has_consumer_validation:
             reasons.append("premature_pin_requires_provider_commit_and_consumer_validation")
     if reasons:
-        return RepairPlanDagResult(
+        result = RepairPlanDagResult(
             RepairPlanDagDisposition.REJECTED,
             tuple(sorted(set(reasons))),
             plan_cid=plan.content_id,
         )
-    return RepairPlanDagResult(
-        RepairPlanDagDisposition.INTEGRATION_PENDING,
-        ("integration_pending_dcr052_dcr060_dcr064_dcr070",),
-        plan_cid=plan.content_id,
-        node_cids=tuple(node.content_id for node in plan.nodes),
-    )
+    else:
+        result = RepairPlanDagResult(
+            RepairPlanDagDisposition.INTEGRATION_PENDING,
+            ("integration_pending_dcr052_dcr060_dcr064_dcr070",),
+            plan_cid=plan.content_id,
+            node_cids=tuple(node.content_id for node in plan.nodes),
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_carrying_repair_plan",
+            record_ref=str(result.plan_cid or "proof-carrying-repair-plan"),
+            subject_kind="record_cid",
+            subject_ref=str(result.plan_cid or "proof-carrying-repair-plan"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

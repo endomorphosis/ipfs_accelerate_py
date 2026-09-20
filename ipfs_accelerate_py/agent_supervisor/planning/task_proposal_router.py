@@ -1036,7 +1036,7 @@ def compile_task_proposal_context(
         provider_context_window=config.provider_context_window,
         provider_max_input_tokens=config.provider_max_input_tokens,
     )
-    return compiler.compile(
+    result = compiler.compile(
         repository_id=repository_id,
         tree_id=repository_tree_id,
         objective_id=task_id,
@@ -1076,6 +1076,24 @@ def compile_task_proposal_context(
         },
         evidence=roadmap_references,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        tree_id = str(getattr(receipt, "tree_id", "") or repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="task_proposal_context",
+            record_ref=str(getattr(receipt, "capsule_id", "") or task_id or "task-proposal"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(task_id or "task-proposal"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _proposal_json_depth(value: Any, depth: int = 0) -> int:

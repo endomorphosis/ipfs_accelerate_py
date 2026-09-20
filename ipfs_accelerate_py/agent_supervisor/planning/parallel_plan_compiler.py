@@ -2450,7 +2450,24 @@ def compile_parallel_execution_plan(
 ) -> ParallelExecutionPlan:
     """Functional entry point for :class:`ParallelPlanCompiler`."""
 
-    return ParallelPlanCompiler().compile(tasks, **kwargs)
+    plan = ParallelPlanCompiler().compile(tasks, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(plan, "repository_tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="parallel_execution_plan",
+            record_ref=str(plan.plan_id or "parallel-execution-plan"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.plan_id or "parallel-execution-plan"),
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def replay_parallel_execution_plan(

@@ -1664,13 +1664,29 @@ def admit_task_candidate(
         historical_failures=historical_failures,
     )
     rejections = _task_rejections(item, score, selected)
-    return TaskAdmissionDecision(
+    decision = TaskAdmissionDecision(
         candidate=item,
         score=score,
         status=(TaskAdmissionStatus.REJECTED if rejections else TaskAdmissionStatus.ACCEPTED),
         rejections=rejections,
         source_identities=(item.semantic_identity,),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identity = str(item.semantic_identity or item.source_id or item.goal_id or "task-candidate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_candidate_admission",
+            record_ref=identity,
+            subject_kind="record_cid",
+            subject_ref=identity,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def is_over_broad(
