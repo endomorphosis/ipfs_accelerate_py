@@ -2229,7 +2229,7 @@ def validate_current_decision(
     if require_permitted and not decision.permitted:
         raise MissingQualificationCapabilityError("decision remains blocked")
     wire = decision.to_dict()
-    return MappingProxyType(
+    validated = MappingProxyType(
         {
             "schema": DECISION_VALIDATION_SCHEMA,
             "decision_id": decision.decision_id,
@@ -2248,6 +2248,21 @@ def validate_current_decision(
             "upstream_reverification_required": True,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="promotion_decision_validation",
+            record_ref=str(decision.decision_id),
+            subject_kind="record_cid",
+            subject_ref=str(decision.decision_id),
+        )
+    except Exception:
+        pass
+    return validated
 
 
 __all__ = [

@@ -843,6 +843,51 @@ def test_mirror_promotion_doctor_evidence_and_proof_selection(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_locator_disposition_nomination_and_faithfulness(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    locator = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="test_locator",
+        record_ref="locator:1",
+        subject_kind="record_cid",
+        subject_ref="locator:1",
+    )
+    disposition = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="causal_evidence_disposition",
+        record_ref="localization:1",
+        subject_kind="record_cid",
+        subject_ref="localization:1",
+    )
+    nomination = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="retrieval_nomination",
+        record_ref="record:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    faithfulness = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="causal_faithfulness",
+        record_ref="map:1",
+        subject_kind="record_cid",
+        subject_ref="matched",
+    )
+    for item in (locator, disposition, nomination, faithfulness):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

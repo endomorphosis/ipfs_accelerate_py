@@ -157,8 +157,24 @@ def resulting_faithfulness(
     """Fold durable intervention results into the live faithfulness status."""
 
     if any(item.outcome == "mismatched" for item in tests):
-        return AbstractionFaithfulness.REFUTED
-    return abstraction.faithfulness_status
+        status = AbstractionFaithfulness.REFUTED
+    else:
+        status = abstraction.faithfulness_status
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_faithfulness",
+            record_ref=str(getattr(abstraction, "record_id", "") or "causal-abstraction"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(status, "value", status) or "causal-faithfulness"),
+        )
+    except Exception:
+        pass
+    return status
 
 
 def map_may_control_scheduling(

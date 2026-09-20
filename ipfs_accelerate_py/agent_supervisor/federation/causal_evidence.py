@@ -267,12 +267,29 @@ def project_doctor_evidence(
             evidence,
             evidence_kind=CausalEvidenceKind.RETRIEVAL_NOMINATION,
         )
-    return CausalEvidenceAdmission(
+    admission = CausalEvidenceAdmission(
         evidence=evidence,
         source_kind="doctor_localization",
         doctor_evidence_id=doctor_evidence.evidence_id,
         localization_cid="" if localization is None else localization.localization_cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_evidence_projection",
+            record_ref=str(record_id),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(record_id),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 def project_retrieval_candidate(
@@ -322,11 +339,27 @@ def project_retrieval_candidate(
         evidence_ref=nomination.cid,
         authoritative=False,
     )
-    return CausalEvidenceAdmission(
+    admission = CausalEvidenceAdmission(
         evidence=evidence,
         source_kind="retrieval_candidate",
         retrieval_binding=nomination,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="retrieval_nomination",
+            record_ref=str(record_id),
+            tree_id=str(tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(tree_id),
+        )
+    except Exception:
+        pass
+    return admission
 
 
 def admit_exact_evidence(
@@ -442,13 +475,28 @@ def dispose_with_localization(
         raise CausalEvidenceAuthorityError(
             "doctor localization receipt cannot admit federation authority"
         )
-    return CausalEvidenceDispositionReceipt(
+    receipt = CausalEvidenceDispositionReceipt(
         exact_evidence_ids=tuple(localization.exact_evidence_ids),
         nomination_evidence_ids=tuple(localization.nomination_evidence_ids),
         rejected_evidence_ids=tuple(localization.rejected_evidence_ids),
         localization_cid=localization.localization_cid,
         federation_authority_admitted=False,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="causal_evidence_disposition",
+            record_ref=str(receipt.localization_cid or "causal-disposition"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.localization_cid or "causal-disposition"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def nominations_cannot_prove_independence(
