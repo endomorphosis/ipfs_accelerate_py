@@ -8,6 +8,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
     SupervisorMetaIndex,
     SupervisorMetaIndexError,
     compose_for_subject,
+    compose_semantic_work,
     orchestration_view,
     register_taskboard,
 )
@@ -83,6 +84,43 @@ def test_unconfigured_meta_index_is_skip(monkeypatch) -> None:
     assert empty["event_driven_qualified"] is True
     view = orchestration_view()
     assert view["extra_gate_attached"] is False
+
+
+def test_bind_supervisor_catalogs_and_observe_path(tmp_path) -> None:
+    index = SupervisorMetaIndex(tmp_path / "meta_index.duckdb")
+    bound = index.bind_supervisor_catalogs(
+        tree_id="tree:work",
+        locators={
+            "ast": str(tmp_path / "ast.duckdb"),
+            "bm25": str(tmp_path / "bm25.duckdb"),
+            "vector": str(tmp_path / "vector.duckdb"),
+            "knowledge_graph": str(tmp_path / "kg.duckdb"),
+            "world_model": str(tmp_path / "world_model.duckdb"),
+            "proof_cache": str(tmp_path / "proof.duckdb"),
+            "proof_certificate": str(tmp_path / "proof.duckdb"),
+        },
+    )
+    assert bound["extra_gate_attached"] is False
+    assert bound["event_driven_qualified"] is True
+    kinds = {item["catalog_id"].split(":")[1] for item in bound["catalogs"]}
+    assert "ast" in kinds
+    assert "taskboard" in kinds
+    observed = index.observe_path(
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        mtime_ns=42,
+        extra_kinds=("ast", "bm25", "vector", "world_model"),
+        capsule_cid="capsule:cli",
+    )
+    assert observed["n"] >= 2
+    work = index.compose_semantic_work(
+        subject_kind="path",
+        subject_ref="ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        tree_id="tree:work",
+    )
+    assert work["capsule_composition"] is True
+    assert work["extra_gate_attached"] is False
+    assert "ast" in work["formal_surfaces"] or "world_model" in work["formal_surfaces"]
+    assert work["completion_authority"] is False
 
 
 def test_ducklake_projection_is_observational(tmp_path) -> None:

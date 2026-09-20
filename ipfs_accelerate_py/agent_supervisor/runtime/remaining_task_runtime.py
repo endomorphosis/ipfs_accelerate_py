@@ -408,4 +408,32 @@ def execute_remaining_task(
             "reason_code": type(exc).__name__,
             "completion_authority": False,
         }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            bind_supervisor_catalogs,
+            compose_semantic_work,
+            observe_path,
+        )
+
+        bind_supervisor_catalogs()
+        for relative in binding.required_files:
+            observe_path(
+                relative,
+                extra_kinds=("ast", "bm25", "vector", "world_model", "capsule"),
+                capsule_cid=str(result.get("pack_cid") or result.get("task_id") or ""),
+            )
+        result = dict(result)
+        result["meta_index"] = compose_semantic_work(
+            subject_kind="path",
+            subject_ref=binding.required_files[0],
+        )
+    except Exception as exc:
+        result = dict(result)
+        result["meta_index"] = {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+            "event_driven_qualified": True,
+            "extra_gate_attached": False,
+        }
     return result

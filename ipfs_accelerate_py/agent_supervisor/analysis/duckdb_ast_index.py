@@ -1207,7 +1207,19 @@ class DuckDBASTIndex:
                 )
             self._connection = connection
             self._closed = False
-            return self
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                register_catalog,
+            )
+
+            register_catalog(
+                kind="ast",
+                locator_ref=str(self._path),
+                exclusive_owner="",
+            )
+        except Exception:
+            pass
+        return self
 
     @classmethod
     def from_owner_connection(

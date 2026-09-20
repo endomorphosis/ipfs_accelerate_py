@@ -45,6 +45,17 @@ def test_remaining_task_execute_is_never_board_completion() -> None:
         assert result["proposal_only"] is True
 
 
+def test_remaining_task_execute_composes_meta_index(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB", str(tmp_path / "world_model.duckdb"))
+    result = execute_remaining_task("SAWM-039")
+    assert result is not None
+    assert result["completion_authority"] is False
+    assert result["meta_index"]["event_driven_qualified"] is True
+    assert result["meta_index"]["extra_gate_attached"] is False
+    assert result["meta_index"]["capsule_composition"] is True
+
+
 def test_missing_overlay_files_do_not_bind(tmp_path) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()

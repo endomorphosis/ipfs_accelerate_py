@@ -153,6 +153,7 @@ class SupervisorMetaIndex:
         exclusive_owner: str = "",
         repository_id: str = "",
         tree_id: str = "",
+        project: bool = True,
     ) -> dict[str, Any]:
         if kind not in CATALOG_KINDS:
             raise SupervisorMetaIndexError(f"unknown catalog kind {kind}")
@@ -194,7 +195,8 @@ class SupervisorMetaIndex:
             )
         finally:
             connection.close()
-        self.project_ducklake()
+        if project:
+            self.project_ducklake()
         return {
             "schema": SCHEMA,
             "interface": INTERFACE,
@@ -214,6 +216,7 @@ class SupervisorMetaIndex:
         record_ref: str,
         freshness_mtime_ns: int | None = None,
         capsule_cid: str = "",
+        project: bool = True,
     ) -> dict[str, Any]:
         if subject_kind not in SUBJECT_KINDS:
             raise SupervisorMetaIndexError(f"unknown subject kind {subject_kind}")
@@ -283,12 +286,206 @@ class SupervisorMetaIndex:
                 )
         finally:
             connection.close()
-        self.project_ducklake()
+        if project:
+            self.project_ducklake()
         return {
             "schema": SCHEMA,
             "link_id": link_id,
             "link_cid": link_cid,
             "completion_authority": False,
+        }
+
+    def bind_supervisor_catalogs(
+        self,
+        *,
+        tree_id: str = "",
+        locators: Mapping[str, str] | None = None,
+        taskboards: Sequence[Mapping[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        env_locators = {
+            "ast": str(os.environ.get("IPFS_ACCELERATE_AST_INDEX_DUCKDB") or ""),
+            "bm25": str(os.environ.get("IPFS_ACCELERATE_BM25_DUCKDB") or ""),
+            "vector": str(os.environ.get("IPFS_ACCELERATE_VECTOR_DUCKDB") or ""),
+            "knowledge_graph": str(os.environ.get("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB") or ""),
+            "world_model": str(os.environ.get("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB") or ""),
+            "proof_cache": str(os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or ""),
+            "proof_certificate": str(
+                os.environ.get("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB") or ""
+            ),
+            "filesystem_mtime": str(os.environ.get("IPFS_ACCELERATE_META_INDEX_MTIME") or "filesystem"),
+            "capsule": str(os.environ.get("IPFS_ACCELERATE_CAPSULE_INDEX") or "capsule"),
+            "metadata": str(os.environ.get("IPFS_ACCELERATE_METADATA_INDEX") or "metadata"),
+        }
+        if locators:
+            env_locators.update({str(key): str(value) for key, value in locators.items()})
+        catalogs = []
+        for kind, locator in env_locators.items():
+            if not locator:
+                continue
+            catalogs.append(
+                self.register_catalog(
+                    kind=kind,
+                    locator_ref=locator,
+                    tree_id=tree_id,
+                    project=False,
+                )
+            )
+        boards = list(taskboards or ())
+        if not boards:
+            boards = [
+                {
+                    "board_id": "sawm",
+                    "exclusive_owner": "ipfs-taskboard-sawm-supervisor.service",
+                    "locator_ref": "quack://sawm",
+                },
+                {
+                    "board_id": "doep",
+                    "exclusive_owner": "agent-supervisor-doep-v1.service",
+                    "locator_ref": "quack://doep",
+                },
+                {
+                    "board_id": "spar",
+                    "exclusive_owner": "ipfs-taskboard-spar-supervisor.service",
+                    "locator_ref": "quack://spar",
+                },
+                {
+                    "board_id": "pctdd",
+                    "exclusive_owner": "pctdd-g9-quack-owner.service",
+                    "locator_ref": "quack://pctdd",
+                },
+            ]
+        for board in boards:
+            catalogs.append(
+                self.register_catalog(
+                    kind="taskboard",
+                    locator_ref=str(board.get("locator_ref") or f"quack://{board.get('board_id')}"),
+                    exclusive_owner=str(board.get("exclusive_owner") or ""),
+                    repository_id=str(board.get("board_id") or ""),
+                    tree_id=tree_id,
+                    project=False,
+                )
+            )
+        projection = self.project_ducklake()
+        return {
+            "schema": SCHEMA,
+            "interface": INTERFACE,
+            "catalogs": catalogs,
+            "n": len(catalogs),
+            "ducklake": projection,
+            "completion_authority": False,
+            "extra_gate_attached": False,
+            "event_driven_qualified": True,
+        }
+
+    def observe_path(
+        self,
+        path: str,
+        *,
+        mtime_ns: int | None = None,
+        content_cid: str = "",
+        tree_id: str = "",
+        capsule_cid: str = "",
+        extra_kinds: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        filesystem = self.register_catalog(
+            kind="filesystem_mtime",
+            locator_ref="filesystem",
+            tree_id=tree_id,
+            project=False,
+        )
+        links = [
+            self.link_identity(
+                subject_kind="path",
+                subject_ref=path,
+                catalog_id=str(filesystem.get("catalog_id") or ""),
+                record_kind="mtime",
+                record_ref=content_cid or path,
+                freshness_mtime_ns=mtime_ns,
+                capsule_cid=capsule_cid,
+                project=False,
+            )
+        ]
+        if content_cid:
+            links.append(
+                self.link_identity(
+                    subject_kind="content_cid",
+                    subject_ref=content_cid,
+                    catalog_id=str(filesystem.get("catalog_id") or ""),
+                    record_kind="mtime",
+                    record_ref=path,
+                    freshness_mtime_ns=mtime_ns,
+                    capsule_cid=capsule_cid,
+                    project=False,
+                )
+            )
+        for kind in extra_kinds:
+            if kind not in CATALOG_KINDS or kind == "filesystem_mtime":
+                continue
+            catalog = self.register_catalog(
+                kind=kind,
+                locator_ref=kind,
+                tree_id=tree_id,
+                project=False,
+            )
+            links.append(
+                self.link_identity(
+                    subject_kind="path",
+                    subject_ref=path,
+                    catalog_id=str(catalog.get("catalog_id") or ""),
+                    record_kind=kind,
+                    record_ref=content_cid or path,
+                    freshness_mtime_ns=mtime_ns,
+                    capsule_cid=capsule_cid,
+                    project=False,
+                )
+            )
+        projection = self.project_ducklake()
+        return {
+            "schema": SCHEMA,
+            "path": path,
+            "links": links,
+            "n": len(links),
+            "ducklake": projection,
+            "completion_authority": False,
+            "event_driven_qualified": True,
+        }
+
+    def compose_semantic_work(
+        self,
+        *,
+        subject_kind: str,
+        subject_ref: str,
+        tree_id: str = "",
+    ) -> dict[str, Any]:
+        composed = self.compose_for_subject(subject_kind=subject_kind, subject_ref=subject_ref)
+        view = self.orchestration_view(tree_id=tree_id)
+        kinds = sorted({item["catalog_kind"] for item in composed.get("linked") or []})
+        return {
+            "schema": SCHEMA,
+            "interface": INTERFACE,
+            "subject_kind": subject_kind,
+            "subject_ref": subject_ref,
+            "linked": composed.get("linked") or [],
+            "catalogs": view.get("catalogs") or [],
+            "kinds": kinds,
+            "n": int(composed.get("n") or 0),
+            "completion_authority": False,
+            "decision_authority": False,
+            "ducklake_authoritative": False,
+            "event_driven_qualified": True,
+            "extra_gate_attached": False,
+            "capsule_composition": True,
+            "formal_surfaces": [
+                name
+                for name in (
+                    "ast",
+                    "proof_cache",
+                    "proof_certificate",
+                    "world_model",
+                    "knowledge_graph",
+                )
+                if name in kinds or name in (view.get("kinds") or [])
+            ],
         }
 
     def compose_for_subject(
@@ -615,6 +812,83 @@ def orchestration_view(
             "extra_gate_attached": False,
         }
     return index.orchestration_view(tree_id=tree_id, limit=limit)
+
+
+def bind_supervisor_catalogs(
+    *,
+    tree_id: str = "",
+    locators: Mapping[str, str] | None = None,
+    taskboards: Sequence[Mapping[str, str]] | None = None,
+    store: SupervisorMetaIndex | None = None,
+) -> dict[str, Any]:
+    index = store if store is not None else _active()
+    if index is None:
+        return {
+            "status": "skip",
+            "reason_code": "meta_index_unconfigured",
+            "completion_authority": False,
+            "extra_gate_attached": False,
+            "event_driven_qualified": True,
+        }
+    return index.bind_supervisor_catalogs(
+        tree_id=tree_id, locators=locators, taskboards=taskboards
+    )
+
+
+def observe_path(
+    path: str,
+    *,
+    mtime_ns: int | None = None,
+    content_cid: str = "",
+    tree_id: str = "",
+    capsule_cid: str = "",
+    extra_kinds: Sequence[str] = (),
+    store: SupervisorMetaIndex | None = None,
+) -> dict[str, Any]:
+    index = store if store is not None else _active()
+    if index is None:
+        return {
+            "status": "skip",
+            "reason_code": "meta_index_unconfigured",
+            "completion_authority": False,
+            "event_driven_qualified": True,
+        }
+    return index.observe_path(
+        path,
+        mtime_ns=mtime_ns,
+        content_cid=content_cid,
+        tree_id=tree_id,
+        capsule_cid=capsule_cid,
+        extra_kinds=extra_kinds,
+    )
+
+
+def compose_semantic_work(
+    *,
+    subject_kind: str,
+    subject_ref: str,
+    tree_id: str = "",
+    store: SupervisorMetaIndex | None = None,
+) -> dict[str, Any]:
+    index = store if store is not None else _active()
+    if index is None:
+        return {
+            "schema": SCHEMA,
+            "linked": [],
+            "catalogs": [],
+            "n": 0,
+            "reason_code": "meta_index_unconfigured",
+            "completion_authority": False,
+            "decision_authority": False,
+            "ducklake_authoritative": False,
+            "event_driven_qualified": True,
+            "extra_gate_attached": False,
+            "capsule_composition": True,
+            "formal_surfaces": [],
+        }
+    return index.compose_semantic_work(
+        subject_kind=subject_kind, subject_ref=subject_ref, tree_id=tree_id
+    )
 
 
 def mirror_world_model_record(record: Mapping[str, Any]) -> dict[str, Any]:
