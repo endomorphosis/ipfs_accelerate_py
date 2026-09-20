@@ -1068,6 +1068,25 @@ def _deterministic_selection(
     return min(candidates, key=lambda item: item.semantic_id) if candidates else None
 
 
+def _mirror_consensus(receipt: AnalysisConsensusReceipt) -> AnalysisConsensusReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="analysis_consensus",
+            record_ref=str(receipt.receipt_id or receipt.tree_id),
+            tree_id=str(receipt.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(receipt.tree_id),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def build_analysis_consensus_receipt(
     *,
     repository_id: str,
@@ -1117,7 +1136,7 @@ def build_analysis_consensus_receipt(
             and not validator.truncated
             and validator.provenance.producer_id not in producer_ids
         ):
-            return AnalysisConsensusReceipt(
+            return _mirror_consensus(AnalysisConsensusReceipt(
                 repository_id=repository_id,
                 tree_id=tree_id,
                 objective_revision=objective_revision,
@@ -1128,13 +1147,13 @@ def build_analysis_consensus_receipt(
                 claims=claims,
                 selected_claim_id=selected.claim_id,
                 residual_uncertainty=(),
-            )
+            ))
     if datasets is None or datasets.status is AnalysisClaimStatus.FAILED:
         if local.consensus_eligible:
             reason = fallback_reason_code or (
                 "datasets_result_missing" if datasets is None else "datasets_result_failed"
             )
-            return AnalysisConsensusReceipt(
+            return _mirror_consensus(AnalysisConsensusReceipt(
                 repository_id=repository_id,
                 tree_id=tree_id,
                 objective_revision=objective_revision,
@@ -1147,11 +1166,11 @@ def build_analysis_consensus_receipt(
                 fallback_reason_code=reason,
                 fallback_explicit=True,
                 residual_uncertainty=("optional datasets result unavailable",),
-            )
+            ))
     ordinary = tuple(item for item in (local, datasets) if item is not None)
     eligible = tuple(item for item in ordinary if item.consensus_eligible)
     if len(eligible) >= 2 and len({item.semantic_id for item in eligible}) == 1:
-        return AnalysisConsensusReceipt(
+        return _mirror_consensus(AnalysisConsensusReceipt(
             repository_id=repository_id,
             tree_id=tree_id,
             objective_revision=objective_revision,
@@ -1160,11 +1179,11 @@ def build_analysis_consensus_receipt(
             outcome=AnalysisConsensusOutcome.AGREEMENT,
             resolution=AnalysisConsensusResolution.AGREEMENT,
             claims=claims,
-        )
+        ))
     if len(eligible) >= 2:
         selected = _deterministic_selection(eligible, normalized_policy)
         if selected is not None:
-            return AnalysisConsensusReceipt(
+            return _mirror_consensus(AnalysisConsensusReceipt(
                 repository_id=repository_id,
                 tree_id=tree_id,
                 objective_revision=objective_revision,
@@ -1177,8 +1196,8 @@ def build_analysis_consensus_receipt(
                 residual_uncertainty=(
                     "producer claims disagree; deterministic policy selected one diagnostic claim",
                 ),
-            )
-        return AnalysisConsensusReceipt(
+            ))
+        return _mirror_consensus(AnalysisConsensusReceipt(
             repository_id=repository_id,
             tree_id=tree_id,
             objective_revision=objective_revision,
@@ -1191,11 +1210,11 @@ def build_analysis_consensus_receipt(
                 "local and datasets claims disagree without an independent "
                 "validator or selecting policy",
             ),
-        )
+        ))
     reason = "analysis result is partial, stale, inconclusive, or proposal-only"
     if datasets is not None and datasets.status is AnalysisClaimStatus.STALE:
         reason = "datasets result is stale"
-    return AnalysisConsensusReceipt(
+    return _mirror_consensus(AnalysisConsensusReceipt(
         repository_id=repository_id,
         tree_id=tree_id,
         objective_revision=objective_revision,
@@ -1205,7 +1224,7 @@ def build_analysis_consensus_receipt(
         resolution=AnalysisConsensusResolution.PARTIAL_ONLY,
         claims=claims,
         residual_uncertainty=(reason,),
-    )
+    ))
 
 
 normalize_analysis_consensus = build_analysis_consensus_receipt

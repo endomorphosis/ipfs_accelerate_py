@@ -1562,6 +1562,20 @@ def retrieve_proof_directed(
         raise ProofDirectedRetrievalBudgetError(
             "complete mandatory retrieval receipt exceeds max_receipt_bytes"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_directed_retrieval",
+            record_ref=str(receipt.closure_id or receipt.decision_request_id),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.decision_request_id),
+        )
+    except Exception:
+        pass
     return receipt
 
 

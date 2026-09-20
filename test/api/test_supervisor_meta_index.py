@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
     compose_for_subject,
     compose_semantic_work,
     mirror_capsule_record,
+    mirror_knowledge_graph,
     mirror_vector_index,
     mirror_work_record,
     orchestration_view,
@@ -310,6 +311,35 @@ def test_mirror_proof_search_tactician_and_value_vectors(tmp_path, monkeypatch) 
     )
     assert work["extra_gate_attached"] is False
     assert "proof_cache" in work["formal_surfaces"] or "proof_cache" in work["kinds"]
+
+
+def test_mirror_graphs_consensus_and_proof_retrieval(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    graph = mirror_knowledge_graph(tree_id="tree:work", graph_id="graph:1")
+    consensus = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="analysis_consensus",
+        record_ref="consensus:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    retrieval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_directed_retrieval",
+        record_ref="closure:1",
+        subject_kind="record_cid",
+        subject_ref="decision:1",
+    )
+    for item in (graph, consensus, retrieval):
+        assert item["completion_authority"] is False
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert "knowledge_graph" in work["formal_surfaces"] or "knowledge_graph" in work["kinds"]
 
 
 def test_ducklake_projection_is_observational(tmp_path) -> None:

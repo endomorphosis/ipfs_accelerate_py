@@ -1756,7 +1756,7 @@ def build_program_graph(
 ) -> ProgramGraph:
     """Build a validated, content-addressed program evidence graph."""
 
-    return ProgramGraph(
+    graph = ProgramGraph(
         forest_id=forest_id,
         nodes=tuple(nodes),
         edges=tuple(edges),
@@ -1765,6 +1765,15 @@ def build_program_graph(
         truncated=truncated,
         truncation_reason=truncation_reason,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(tree_id=forest_id, graph_id=graph.graph_id)
+    except Exception:
+        pass
+    return graph
 
 
 def merge_program_graphs(

@@ -1825,11 +1825,20 @@ def build_semantic_dependency_graph(
         )
         projected_nodes.extend(legacy_nodes)
         projected_edges.extend(legacy_edges)
-    return SemanticDependencyGraph(
+    graph = SemanticDependencyGraph(
         root_id=root_id,
         nodes=tuple(projected_nodes),
         edges=tuple(projected_edges),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(tree_id=root_id, graph_id=graph.graph_id)
+    except Exception:
+        pass
+    return graph
 
 
 def compute_mandatory_closure(
