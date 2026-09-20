@@ -1149,7 +1149,22 @@ def evaluate_route_policy(
 ) -> RoutePolicyEvaluationResult:
     """Evaluate a shadow route-policy candidate from logged evidence."""
 
-    return RoutePolicyEvaluation().evaluate(candidate, **kwargs)
+    result = RoutePolicyEvaluation().evaluate(candidate, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="route_policy_evaluation",
+            record_ref=str(result.evaluation_id),
+            subject_kind="record_cid",
+            subject_ref=str(result.candidate_id or result.evaluation_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

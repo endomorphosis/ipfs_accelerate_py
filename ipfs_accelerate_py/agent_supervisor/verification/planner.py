@@ -1497,6 +1497,24 @@ def _compile_key_from_observation(
         raise PlannerIdentityError(f"receipt key construction failed: {exc}") from exc
 
 
+def _mirror_receipt_key(key: VerificationReceiptKey) -> VerificationReceiptKey:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="verification_receipt_key",
+            record_ref=str(key.key_id),
+            subject_kind="key_id",
+            subject_ref=str(key.key_id),
+        )
+    except Exception:
+        pass
+    return key
+
+
 def compile_check_receipt_key(
     *,
     policy: PlannerPolicy,
@@ -1521,21 +1539,21 @@ def compile_check_receipt_key(
             raise PlannerIdentityError(
                 f"prebuilt key for {check_id} semantic root disagrees with policy"
             )
-        return key
+        return _mirror_receipt_key(key)
 
     identity = policy.identity
     tool = _ensure_tool_spec(policy, kind, check_id)
     forest = patch.repository_forest or identity.repository_forest
     if forest is not None:
         target_cid = patch.target_tree_cid or identity.repository_tree_cid
-        return _compile_key_with_forest(
+        return _mirror_receipt_key(_compile_key_with_forest(
             identity=identity,
             tool=tool,
             kind=kind,
             forest=forest,
             repository_alias=patch.repository_alias or identity.repository_alias,
             target_tree_cid=target_cid,
-        )
+        ))
 
     tree_obs = (
         patch.repository_tree_observation
@@ -1563,13 +1581,13 @@ def compile_check_receipt_key(
         raise PlannerIdentityError(
             "target_tree_cid does not match repository_tree_observation"
         )
-    return _compile_key_from_observation(
+    return _mirror_receipt_key(_compile_key_from_observation(
         identity=identity,
         tool=tool,
         kind=kind,
         tree_observation=obs,
         tree_cid=tree_cid,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------

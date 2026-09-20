@@ -215,7 +215,7 @@ def build_verification_bundle(
     # Construction re-validates plan-approved reuse, counterexample binding,
     # cardinality, and identity projections.
     try:
-        return VerificationBundle(
+        bundle = VerificationBundle(
             verification_plan=plan,
             receipts=admitted,
             reused_receipt_cids=reused_ids,
@@ -224,6 +224,23 @@ def build_verification_bundle(
             unresolved_requirement_ids=unresolved,
             human_review_required=review_flag,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(plan, "repository_tree_id", "") or getattr(plan, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="verification_bundle",
+                record_ref=str(bundle.bundle_id),
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or str(bundle.bundle_id),
+            )
+        except Exception:
+            pass
+        return bundle
     except (VerificationContractError, VerificationIdentityError):
         raise
     except Exception as exc:  # pragma: no cover - defensive

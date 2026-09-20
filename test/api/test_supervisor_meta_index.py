@@ -888,6 +888,53 @@ def test_mirror_locator_disposition_nomination_and_faithfulness(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_decision_graph_verification_bundle_and_patch_admission(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    graph = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="decision_graph",
+        record_ref="graph:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    bundle = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="verification_bundle",
+        record_ref="bundle:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="verification_receipt_key",
+        record_ref="key:1",
+        subject_kind="key_id",
+        subject_ref="key:1",
+    )
+    patch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="patch_admission",
+        record_ref="plan-digest",
+        subject_kind="record_cid",
+        subject_ref="plan-digest",
+        paths=("ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",),
+    )
+    for item in (graph, bundle, key, patch):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

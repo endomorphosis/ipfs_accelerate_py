@@ -368,7 +368,7 @@ def compile_decision_graph(
         )
         evidence_by_semantic[semantic_id].update(state.contradictory_evidence_ids)
 
-    return _build_graph(
+    graph = _build_graph(
         repository_id=repository_id,
         tree_id=tree_id,
         objective_id=objective_id,
@@ -380,6 +380,29 @@ def compile_decision_graph(
             key: tuple(sorted(values)) for key, values in evidence_by_semantic.items()
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            compose_semantic_work,
+            mirror_work_record,
+        )
+
+        graph_id = str(getattr(graph, "graph_id", "") or getattr(graph, "content_id", "") or objective_id)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision_graph",
+            record_ref=graph_id,
+            tree_id=str(tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(tree_id),
+        )
+        compose_semantic_work(
+            subject_kind="tree_id",
+            subject_ref=str(tree_id),
+            tree_id=str(tree_id),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 def _dependency_descendants(

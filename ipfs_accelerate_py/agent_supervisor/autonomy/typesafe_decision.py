@@ -291,6 +291,24 @@ def admit_after_typesafe_advice(
         context=context,
         meaningful_change=meaningful_change,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        graph = getattr(meta, "decision_graph", None)
+        graph_id = str(getattr(graph, "graph_id", "") or getattr(graph, "content_id", "") or "decision-graph")
+        tree_id = str(getattr(graph, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typesafe_advice",
+            record_ref=graph_id,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or graph_id,
+        )
+    except Exception:
+        pass
     return step, advice
 
 

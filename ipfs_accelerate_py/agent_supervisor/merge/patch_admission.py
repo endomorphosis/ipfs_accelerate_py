@@ -221,4 +221,20 @@ def admit_patch(
 ) -> PatchAdmissionResult:
     """Convenience entry point for one pure fail-closed admission decision."""
 
-    return PatchAdmission().admit(plan, patch_text, receipt, **kwargs)
+    result = PatchAdmission().admit(plan, patch_text, receipt, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="patch_admission",
+            record_ref=str(result.plan_digest or result.patch_digest or "patch-admission"),
+            subject_kind="record_cid",
+            subject_ref=str(result.plan_digest or result.patch_digest or "patch-admission"),
+            paths=tuple(result.paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
