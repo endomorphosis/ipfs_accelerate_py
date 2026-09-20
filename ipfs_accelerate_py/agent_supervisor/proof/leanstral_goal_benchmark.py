@@ -907,13 +907,28 @@ def evaluate_goal_rollout_promotion(
         reasons.append("auto_safe_promotion_not_explicitly_authorized")
 
     normalized = tuple(sorted(set(reasons)))
-    return GoalRolloutGateDecision(
+    decision = GoalRolloutGateDecision(
         report_id=report.report_id,
         from_mode=source,
         target_mode=target,
         allowed=not normalized,
         reason_codes=normalized,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_rollout_gate",
+            record_ref=str(decision.report_id),
+            subject_kind="record_cid",
+            subject_ref=str(decision.report_id),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def build_paired_goal_benchmark_report(
@@ -921,7 +936,22 @@ def build_paired_goal_benchmark_report(
 ) -> PairedGoalBenchmarkReport:
     """Build a stable paired report from fixture or canary observations."""
 
-    return PairedGoalBenchmarkReport(tuple(cases))
+    report = PairedGoalBenchmarkReport(tuple(cases))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_benchmark_report",
+            record_ref=str(report.report_id),
+            subject_kind="record_cid",
+            subject_ref=str(report.report_id),
+        )
+    except Exception:
+        pass
+    return report
 
 
 __all__ = [

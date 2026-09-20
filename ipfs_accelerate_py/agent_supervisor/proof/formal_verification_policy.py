@@ -2614,13 +2614,29 @@ def evaluate_proof_gate(
 ) -> PolicyGateDecision:
     """Functional spelling of :meth:`FormalVerificationPolicy.evaluate_gate`."""
 
-    return policy.evaluate_gate(
+    decision = policy.evaluate_gate(
         selection,
         outcomes,
         validations=validations,
         override=override,
         now=now,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_gate",
+            record_ref=str(decision.decision_id),
+            tree_id=str(decision.repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(decision.repository_tree_id),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 @dataclass(frozen=True)
@@ -3170,7 +3186,22 @@ def build_proof_rollout_status(
     snapshot_id = hashlib.sha256(
         json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return ProofRolloutStatus({**material, "snapshot_id": snapshot_id})
+    status = ProofRolloutStatus({**material, "snapshot_id": snapshot_id})
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_rollout_status",
+            record_ref=str(snapshot_id),
+            subject_kind="record_cid",
+            subject_ref=str(normalized_policy.policy_id),
+        )
+    except Exception:
+        pass
+    return status
 
 
 def default_formal_verification_policy(
