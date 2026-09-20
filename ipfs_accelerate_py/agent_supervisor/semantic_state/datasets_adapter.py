@@ -1237,16 +1237,23 @@ def load_semantic_state_provider(
     *,
     forbid_filesystem_source: bool = True,
     verification_api: Any | None = None,
-) -> IpfsDatasetsSemanticStateProvider:
+    derived_coordination_client: Any | None = None,
+) -> SemanticStateProvider:
     """Return a provider bound to the pinned datasets surface (or an inject)."""
 
+    def configured(provider):
+        if derived_coordination_client is None:
+            return provider
+        from .derived_coordination import CoordinatedSemanticStateProvider
+        return CoordinatedSemanticStateProvider(provider, derived_coordination_client)
+
     if surface is not None:
-        return IpfsDatasetsSemanticStateProvider(
+        return configured(IpfsDatasetsSemanticStateProvider(
             surface,
             capability=getattr(surface, "capability", None),
             forbid_filesystem_source=forbid_filesystem_source,
             verification_api=verification_api,
-        )
+        ))
     provider = IpfsDatasetsSemanticStateProvider(
         forbid_filesystem_source=forbid_filesystem_source,
         verification_api=verification_api,
@@ -1262,7 +1269,7 @@ def load_semantic_state_provider(
             )
     except SemanticStateUnavailable:
         raise
-    return provider
+    return configured(provider)
 
 
 __all__ = [
