@@ -381,6 +381,52 @@ def test_mirror_context_capsules_proof_schedules_and_semantic_changes(
     assert work["event_driven_qualified"] is True
 
 
+def test_mirror_prefix_delta_residual_packet_and_governor_seal(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    prefix = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="prefix_context",
+        record_ref="prefix:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    delta = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="context_delta",
+        record_ref="delta:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    packet = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="residual_llm_packet",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    seal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="governor_seal",
+        record_ref="seal:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    for item in (prefix, delta, packet, seal):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

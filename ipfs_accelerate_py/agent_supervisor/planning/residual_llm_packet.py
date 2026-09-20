@@ -983,7 +983,7 @@ def seal_residual_llm_packet(
             reason_code=ResidualLlmPacketReason.OVER_BUDGET,
         )
 
-    return ResidualLlmPacket(
+    packet = ResidualLlmPacket(
         task_id=task_id,
         repository_id=repository_id,
         tree_id=tree_id,
@@ -1002,6 +1002,23 @@ def seal_residual_llm_packet(
         max_tokens=active_limits.max_tokens,
         max_capsule_bytes=active_limits.max_capsule_bytes,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_llm_packet",
+            record_ref=str(packet.packet_id),
+            tree_id=str(tree_id),
+            subject_kind="task_id",
+            subject_ref=str(task_id),
+            paths=tuple(write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return packet
 
 
 def residual_llm_packet_from_codex(

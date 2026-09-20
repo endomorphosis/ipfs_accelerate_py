@@ -6982,7 +6982,24 @@ def compile_decision_context_retry(
 
     if not isinstance(compiler, DecisionContextCompiler):
         raise ContextDeltaError("compiler must be a DecisionContextCompiler")
-    return compiler.compile_retry(parent, **kwargs)
+    result = compiler.compile_retry(parent, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="decision_context_retry",
+            record_ref=str(getattr(receipt, "capsule_id", "") or "decision-context-retry"),
+            tree_id=str(getattr(receipt, "tree_id", "") or ""),
+            subject_kind="tree_id" if getattr(receipt, "tree_id", "") else "record_cid",
+            subject_ref=str(getattr(receipt, "tree_id", "") or getattr(receipt, "capsule_id", "") or "decision-context-retry"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def expand_decision_context(
@@ -7104,9 +7121,25 @@ def compile_prefix_context(
             "value_policy",
         }
     }
-    return ContextCompiler(
+    result = ContextCompiler(
         budget, **compiler_options
     ).compile_prefix_context(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="prefix_context",
+            record_ref=str(result.receipt.capsule_id),
+            tree_id=str(result.receipt.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(result.receipt.tree_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 compile_prefix_context_capsule = compile_prefix_context
@@ -7133,9 +7166,25 @@ def compile_context_delta(
             "value_policy",
         }
     }
-    return ContextCompiler(budget, **compiler_options).compile_delta(
+    result = ContextCompiler(budget, **compiler_options).compile_delta(
         parent, **kwargs
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context_delta",
+            record_ref=str(result.receipt.delta_capsule_id),
+            tree_id=str(result.receipt.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(result.receipt.tree_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def expand_context(
@@ -7299,7 +7348,24 @@ def compile_retry_context(
         repair_round=repair_round,
         max_repair_rounds=max_repair_rounds,
     )
-    return RetryContextResult(capsule, delta_result)
+    result = RetryContextResult(capsule, delta_result)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="retry_context",
+            record_ref=str(prior_decision_id),
+            tree_id=str(current_tree),
+            subject_kind="tree_id",
+            subject_ref=str(current_tree),
+            paths=tuple(changed_files)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 build_context_capsule = compile_context_capsule

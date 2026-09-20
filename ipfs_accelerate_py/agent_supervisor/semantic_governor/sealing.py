@@ -1730,6 +1730,20 @@ def seal_governor_run(
         notes=_optional_text(notes, "notes"),
         metadata=meta_payload,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="governor_seal",
+            record_ref=str(seal.seal_id),
+            subject_kind="record_cid",
+            subject_ref=str(seal.candidate_cid or seal.seal_id),
+        )
+    except Exception:
+        pass
     return seal
 
 
