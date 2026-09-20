@@ -1021,12 +1021,25 @@ def build_code_symbol_vector_index(
         effective_tombstones = () if exhaustive else _prior_tombstones(previous, rows)
     else:
         effective_tombstones = tuple(item if isinstance(item, CodeSymbolIndexTombstone) else CodeSymbolIndexTombstone.from_dict(item) for item in tombstones)
-    return CodeVectorIndexSnapshot(
+    snapshot = CodeVectorIndexSnapshot(
         forest_id=forest_id, tree_id=tree_id, coverage_id=coverage_id, coverage_complete=coverage_complete,
         included_paths=paths, excluded_paths=tuple(excluded_paths), ast_index_id=index.index_id,
         config=config, rows=tuple(rows), tombstones=effective_tombstones, lineage=lineage,
         max_row_bytes=max_row_bytes,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_vector_index,
+        )
+
+        mirror_vector_index(
+            tree_id=snapshot.tree_id,
+            index_id=snapshot.index_id,
+            paths=snapshot.included_paths,
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 def _score(metric: str, query: Sequence[float], vector: Sequence[float]) -> float:

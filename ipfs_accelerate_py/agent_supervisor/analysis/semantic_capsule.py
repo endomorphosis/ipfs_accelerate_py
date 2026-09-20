@@ -1300,6 +1300,19 @@ def compile_semantic_capsule(
         )
     for capsule in _project_capsules(graph):
         if capsule.node_id == node_id:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_capsule_record,
+                )
+
+                mirror_capsule_record(
+                    capsule_cid=capsule.capsule_cid,
+                    node_id=capsule.node_id,
+                    tree_id=capsule.root_id,
+                    dependency_cids=capsule.dependency_cids,
+                )
+            except Exception:
+                pass
             return capsule
     raise SemanticCapsuleError(f"failed to project capsule for {node_id}")
 

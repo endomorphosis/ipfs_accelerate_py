@@ -9,6 +9,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
     SupervisorMetaIndexError,
     compose_for_subject,
     compose_semantic_work,
+    mirror_capsule_record,
+    mirror_vector_index,
     orchestration_view,
     register_taskboard,
 )
@@ -121,6 +123,32 @@ def test_bind_supervisor_catalogs_and_observe_path(tmp_path) -> None:
     assert work["extra_gate_attached"] is False
     assert "ast" in work["formal_surfaces"] or "world_model" in work["formal_surfaces"]
     assert work["completion_authority"] is False
+
+
+def test_mirror_capsule_and_vector_into_composition(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    capsule = mirror_capsule_record(
+        capsule_cid="capsule:cli",
+        node_id="node:cli",
+        tree_id="tree:work",
+        dependency_cids=("capsule:dep",),
+    )
+    assert capsule["completion_authority"] is False
+    assert capsule["n"] >= 1
+    vector = mirror_vector_index(
+        tree_id="tree:work",
+        index_id="vector:1",
+        paths=("ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",),
+    )
+    assert vector["n"] >= 1
+    work = compose_semantic_work(
+        subject_kind="path",
+        subject_ref="ipfs_accelerate_py/agent_supervisor/semantic_state/cli.py",
+        tree_id="tree:work",
+    )
+    assert work["capsule_composition"] is True
+    assert work["extra_gate_attached"] is False
+    assert "vector" in work["formal_surfaces"] or "vector" in work["kinds"]
 
 
 def test_ducklake_projection_is_observational(tmp_path) -> None:

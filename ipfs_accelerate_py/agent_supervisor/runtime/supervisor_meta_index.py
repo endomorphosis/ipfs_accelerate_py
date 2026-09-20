@@ -944,6 +944,168 @@ def mirror_proof_certificate_record(record: Mapping[str, Any]) -> dict[str, Any]
         }
 
 
+def mirror_capsule_record(
+    *,
+    capsule_cid: str,
+    node_id: str = "",
+    tree_id: str = "",
+    dependency_cids: Sequence[str] = (),
+) -> dict[str, Any]:
+    try:
+        catalog = register_catalog(
+            kind="capsule",
+            locator_ref=str(os.environ.get("IPFS_ACCELERATE_CAPSULE_INDEX") or "capsule"),
+            tree_id=tree_id,
+            project=False,
+        )
+        if catalog.get("status") == "skip":
+            return catalog
+        linked = [
+            link_identity(
+                subject_kind="capsule_cid",
+                subject_ref=capsule_cid,
+                catalog_id=str(catalog.get("catalog_id") or ""),
+                record_kind="capsule",
+                record_ref=node_id or capsule_cid,
+                capsule_cid=capsule_cid,
+                project=False,
+            )
+        ]
+        if node_id:
+            linked.append(
+                link_identity(
+                    subject_kind="record_cid",
+                    subject_ref=node_id,
+                    catalog_id=str(catalog.get("catalog_id") or ""),
+                    record_kind="capsule",
+                    record_ref=capsule_cid,
+                    capsule_cid=capsule_cid,
+                    project=False,
+                )
+            )
+        for dep in tuple(dependency_cids)[:16]:
+            linked.append(
+                link_identity(
+                    subject_kind="capsule_cid",
+                    subject_ref=dep,
+                    catalog_id=str(catalog.get("catalog_id") or ""),
+                    record_kind="capsule_dependency",
+                    record_ref=capsule_cid,
+                    capsule_cid=capsule_cid,
+                    project=False,
+                )
+            )
+        index = _active()
+        projection = index.project_ducklake() if index is not None else {
+            "status": "unconfigured",
+            "completion_authority": False,
+            "authoritative": False,
+        }
+        return {
+            "schema": SCHEMA,
+            "capsule_cid": capsule_cid,
+            "links": linked,
+            "n": len(linked),
+            "ducklake": projection,
+            "completion_authority": False,
+            "event_driven_qualified": True,
+        }
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+        }
+
+
+def mirror_vector_index(
+    *,
+    tree_id: str,
+    index_id: str,
+    paths: Sequence[str] = (),
+) -> dict[str, Any]:
+    try:
+        catalog = register_catalog(
+            kind="vector",
+            locator_ref=str(os.environ.get("IPFS_ACCELERATE_VECTOR_DUCKDB") or "vector"),
+            tree_id=tree_id,
+            project=False,
+        )
+        if catalog.get("status") == "skip":
+            return catalog
+        links = [
+            link_identity(
+                subject_kind="tree_id",
+                subject_ref=tree_id,
+                catalog_id=str(catalog.get("catalog_id") or ""),
+                record_kind="vector",
+                record_ref=index_id,
+                project=False,
+            )
+        ]
+        for path in tuple(paths)[:32]:
+            links.append(
+                link_identity(
+                    subject_kind="path",
+                    subject_ref=path,
+                    catalog_id=str(catalog.get("catalog_id") or ""),
+                    record_kind="vector",
+                    record_ref=index_id,
+                    project=False,
+                )
+            )
+        index = _active()
+        projection = index.project_ducklake() if index is not None else {
+            "status": "unconfigured",
+            "completion_authority": False,
+            "authoritative": False,
+        }
+        return {
+            "schema": SCHEMA,
+            "index_id": index_id,
+            "links": links,
+            "n": len(links),
+            "ducklake": projection,
+            "completion_authority": False,
+        }
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+        }
+
+
+def mirror_knowledge_graph(
+    *,
+    tree_id: str,
+    graph_id: str,
+) -> dict[str, Any]:
+    try:
+        catalog = register_catalog(
+            kind="knowledge_graph",
+            locator_ref=str(os.environ.get("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB") or "knowledge_graph"),
+            tree_id=tree_id,
+            project=False,
+        )
+        if catalog.get("status") == "skip":
+            return catalog
+        linked = link_identity(
+            subject_kind="tree_id",
+            subject_ref=tree_id,
+            catalog_id=str(catalog.get("catalog_id") or ""),
+            record_kind="knowledge_graph",
+            record_ref=graph_id,
+        )
+        return linked
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "reason_code": type(exc).__name__,
+            "completion_authority": False,
+        }
+
+
 def register_taskboard(
     *,
     board_id: str,

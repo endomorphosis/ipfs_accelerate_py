@@ -141,6 +141,17 @@ class ProgramWorldService:
             persist_program_world_record(result)
         except Exception:
             pass
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                compose_semantic_work,
+            )
+
+            result["semantic_work"] = compose_semantic_work(
+                subject_kind="task_id",
+                subject_ref=str(result.get("task_id") or "SAWM-039"),
+            )
+        except Exception:
+            pass
         return result
 
     def _reuse(self, payload: Mapping[str, Any]) -> dict[str, Any]:

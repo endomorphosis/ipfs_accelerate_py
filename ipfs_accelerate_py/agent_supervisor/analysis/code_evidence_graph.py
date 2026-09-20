@@ -3117,13 +3117,25 @@ def build_code_impact_index(
 ) -> CodeImpactIndex:
     """Compatibility-friendly functional constructor for impact evidence."""
 
-    return CodeImpactIndex.from_ast_records(
+    index = CodeImpactIndex.from_ast_records(
         repository_tree_id=repository_tree_id,
         ast_records=ast_records,
         symbol_dependencies=symbol_dependencies,
         path_dependencies=path_dependencies,
         validation_targets=validation_targets,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(
+            tree_id=repository_tree_id,
+            graph_id=str(getattr(index, "index_id", "") or repository_tree_id),
+        )
+    except Exception:
+        pass
+    return index
 
 
 __all__ = [
