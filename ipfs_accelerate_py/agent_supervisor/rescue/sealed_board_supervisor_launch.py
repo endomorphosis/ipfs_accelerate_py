@@ -43,6 +43,22 @@ class _OverlayPath(list):
         return super().insert(index, path)
 
 
+def prepend_remaining_task_overlay_pythonpath(overlay: str) -> str:
+    """Expose overlay remaining-task modules to extra-gate child workers.
+
+    Implemented here so extra-gate parent does not have to import overlay
+    remaining-task packages before pin-only / sealed observation owns
+    ``sys.path``. ``python3 -P`` still honors PYTHONPATH for children.
+    """
+
+    root = _abspath(overlay)
+    current = os.environ.get("PYTHONPATH", "")
+    parts = [item for item in current.split(os.pathsep) if item and item != root]
+    updated = os.pathsep.join((root, *parts))
+    os.environ["PYTHONPATH"] = updated
+    return updated
+
+
 def overlay_supervise_exit_code(
     source_root: str,
     argv: list[str],
@@ -306,6 +322,10 @@ def main(argv: list[str] | None = None) -> int:
             "usage: sealed_board_supervisor_launch.py "
             "--overlay DIR --source-root DIR [--pin-only] -- script.py [args...]"
         )
+    # Extra-gate children (`python3 -P -m implementation_daemon`) honor
+    # PYTHONPATH. Nested accelerate does not contain remaining-task modules.
+    # Parent pin-only / sealed observation still own sys.path[0].
+    prepend_remaining_task_overlay_pythonpath(overlay)
     os.chdir(source_root)
     nested = Path(source_root) / "external" / "ipfs_accelerate"
     if pin_only:

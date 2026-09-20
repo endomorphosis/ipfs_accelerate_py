@@ -19968,6 +19968,7 @@ class PortalImplementationDaemon:
             }
 
         task_cid = self._canonical_ref(task) or task.task_id
+        task_alias = str(getattr(task, "task_id", "") or task_cid).split()[0]
         repo_id = implementation_disposition_cid(
             {"repo_root": str(self.repo_root), "kind": "repository"}
         )
@@ -20010,6 +20011,7 @@ class PortalImplementationDaemon:
         kernel = getattr(self, "pre_implementation_kernel", None)
         decision = evaluate_provider_gate(
             task_cid=task_cid,
+            task_alias=task_alias,
             forest_roots=forest,
             attempt=int(attempt),
             kernel=kernel,
@@ -30416,8 +30418,31 @@ class PortalImplementationDaemon:
                         )
                         log_fh.flush()
                         if disposition == "closed_deterministic":
-                            # Analytical / doctor path closed the claim —
-                            # do not invoke the model provider.
+                            # Remaining-task overlay modules are the no-model
+                            # route. Execute that surface; do not invoke Grok
+                            # or Codex, and do not treat this as extra-gate
+                            # DuckDB completion.
+                            try:
+                                from ipfs_accelerate_py.agent_supervisor.runtime.remaining_task_runtime import (
+                                    execute_remaining_task,
+                                )
+
+                                remaining = execute_remaining_task(task.task_id)
+                            except Exception as remaining_exc:
+                                remaining = {
+                                    "ok": False,
+                                    "reason_code": type(remaining_exc).__name__,
+                                    "completion_authority": False,
+                                }
+                            if remaining is not None:
+                                log_fh.write(
+                                    "RemainingTaskRuntime: "
+                                    f"task={task.task_id} "
+                                    f"board={remaining.get('board')} "
+                                    f"completion_authority="
+                                    f"{remaining.get('completion_authority')}\n"
+                                )
+                                log_fh.flush()
                             completed = subprocess.CompletedProcess(
                                 args=(),
                                 returncode=0,

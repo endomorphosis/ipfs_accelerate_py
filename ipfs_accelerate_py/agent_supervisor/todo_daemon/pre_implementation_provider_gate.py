@@ -98,6 +98,33 @@ def build_forest_roots_from_identity(
     )
 
 
+def _remaining_task_candidates(
+    *,
+    task_alias: str,
+    task_cid: str,
+    supplied: tuple[AnalyticalRepairCandidate, ...],
+) -> tuple[AnalyticalRepairCandidate, ...]:
+    if supplied:
+        return supplied
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.remaining_task_runtime import (
+            remaining_task_analytical_candidate,
+        )
+    except Exception:
+        return supplied
+    payload = remaining_task_analytical_candidate(task_alias or task_cid)
+    if not isinstance(payload, dict):
+        return supplied
+    return (
+        AnalyticalRepairCandidate(
+            candidate_id=str(payload.get("candidate_id") or ""),
+            reason_code=str(payload.get("reason_code") or "analytical_unique_mapping"),
+            closes_claim=bool(payload.get("closes_claim", True)),
+            evidence_cids=tuple(payload.get("evidence_cids") or ()),
+        ),
+    )
+
+
 def evaluate_provider_gate(
     *,
     task_cid: str,
@@ -105,6 +132,7 @@ def evaluate_provider_gate(
     attempt: int = 1,
     residual_packet_cid: str = "",
     analytical_candidates: tuple[AnalyticalRepairCandidate, ...] = (),
+    task_alias: str = "",
     kernel: PreImplementationKernel | None = None,
     planner_available: bool = True,
     doctor_available: bool = True,
@@ -124,7 +152,11 @@ def evaluate_provider_gate(
     """
 
     packet = str(residual_packet_cid or "").strip()
-    candidates = tuple(analytical_candidates or ())
+    candidates = _remaining_task_candidates(
+        task_alias=str(task_alias or "").strip(),
+        task_cid=str(task_cid or "").strip(),
+        supplied=tuple(analytical_candidates or ()),
+    )
     active_kernel = kernel or build_pre_implementation_kernel(
         planner_available=planner_available,
         doctor_available=doctor_available,

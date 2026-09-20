@@ -148,6 +148,20 @@ def test_install_supervisor_heal_overlay_pins_quack_state_server():
     assert hasattr(fairness, "RetainedAttemptFairness")
 
 
+def test_launch_prepends_overlay_remaining_task_pythonpath():
+    from ipfs_accelerate_py.agent_supervisor.rescue.sealed_board_supervisor_launch import (
+        main as launch_main,
+    )
+    import inspect
+
+    source = inspect.getsource(launch_main)
+    assert "prepend_remaining_task_overlay_pythonpath(overlay)" in source
+    assert "os.chdir(source_root)" in source
+    assert source.index("prepend_remaining_task_overlay_pythonpath") < source.index(
+        "os.chdir(source_root)"
+    )
+
+
 def test_sawm_overlay_supervise_uses_sealed_launch():
     from ipfs_accelerate_py.agent_supervisor.rescue.overlay_sys_path import overlay_root
 
