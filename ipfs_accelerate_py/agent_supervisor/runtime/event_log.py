@@ -1812,7 +1812,7 @@ def append_semantic_change_event(
     """Append one canonical semantic transition to the supervisor event log."""
 
     selected = change if isinstance(change, SemanticChange) else SemanticChange.from_dict(change)
-    return append_jsonl_event(
+    event = append_jsonl_event(
         path,
         SEMANTIC_CHANGE_EVENT_TYPE,
         {
@@ -1821,6 +1821,21 @@ def append_semantic_change_event(
         },
         fsync=fsync,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_change",
+            record_ref=str(selected.change_id),
+            subject_kind="record_cid",
+            subject_ref=str(selected.change_id),
+        )
+    except Exception:
+        pass
+    return event
 
 
 def read_semantic_change_page(

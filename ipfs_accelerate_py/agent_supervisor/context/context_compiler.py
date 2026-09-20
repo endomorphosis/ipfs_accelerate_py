@@ -6953,9 +6953,26 @@ def compile_decision_context(
             "max_inline_bytes",
         }
     }
-    return DecisionContextCompiler(
+    result = DecisionContextCompiler(
         budget, **compiler_options
     ).compile(request, graph, retrieval_receipt, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="decision_context",
+            record_ref=str(getattr(receipt, "capsule_id", "") or "decision-context"),
+            tree_id=str(getattr(receipt, "tree_id", "") or ""),
+            subject_kind="tree_id" if getattr(receipt, "tree_id", "") else "record_cid",
+            subject_ref=str(getattr(receipt, "tree_id", "") or getattr(receipt, "capsule_id", "") or "decision-context"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_decision_context_retry(
@@ -7048,7 +7065,23 @@ def compile_context_capsule(
             "value_policy",
         }
     }
-    return ContextCompiler(budget, **compiler_options).compile(**kwargs)
+    result = ContextCompiler(budget, **compiler_options).compile(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context_capsule",
+            record_ref=str(result.receipt.capsule_id),
+            tree_id=str(result.receipt.tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(result.receipt.tree_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_prefix_context(

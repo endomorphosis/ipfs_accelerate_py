@@ -2776,7 +2776,24 @@ def execute_proof_plan(
         run_options["timeout_seconds"] = scheduler_options.pop("timeout_seconds")
     if "stages" in scheduler_options:
         run_options["stages"] = scheduler_options.pop("stages")
-    return ProofScheduler(plan, executor, **scheduler_options).run(**run_options)
+    result = ProofScheduler(plan, executor, **scheduler_options).run(**run_options)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        scheduled = result.plan
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_schedule",
+            record_ref=str(scheduled.plan_id),
+            tree_id=str(scheduled.repository_tree_id),
+            subject_kind="tree_id",
+            subject_ref=str(scheduled.repository_tree_id),
+        )
+    except Exception:
+        pass
+    return result
 
 
 run_proof_plan = execute_proof_plan
