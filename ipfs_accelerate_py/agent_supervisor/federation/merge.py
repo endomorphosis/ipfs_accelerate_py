@@ -531,7 +531,7 @@ def release_merge(
         raise MergeAuthorityError("explicit merge order requires predecessors to merge first")
     _assert_proof_release(candidate)
     result_commit_id = _identifier(result_commit_id, "result_commit_id")
-    return MergeReceipt(
+    receipt = MergeReceipt(
         train_id=train.train_id,
         entry_id=entry.entry_id,
         task_id=task_id,
@@ -543,6 +543,22 @@ def release_merge(
         proof_ref=candidate.task_id if not candidate.requires_proof else "proof:" + candidate.task_id,
         tree_id=candidate.worktree.tree_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="merge_release",
+            record_ref=str(receipt.entry_id),
+            tree_id=str(receipt.tree_id),
+            subject_kind="task_id",
+            subject_ref=str(receipt.task_id),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 class FederationMergeCoordinator:

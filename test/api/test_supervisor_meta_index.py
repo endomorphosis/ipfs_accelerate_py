@@ -718,6 +718,45 @@ def test_orchestrate_links_all_required_catalogs_without_env_locators(
     assert board["attach_permitted"] is False
 
 
+def test_mirror_shards_cache_keys_and_merge_release(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    shards = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="supervisor_shards",
+        record_ref="shard-plan:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    cache = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="semantic_cache_key",
+        record_ref="cache-key:1",
+        subject_kind="key_id",
+        subject_ref="cache-key:1",
+    )
+    release = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="merge_release",
+        record_ref="entry:1",
+        tree_id="tree:work",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    for item in (shards, cache, release):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+    boards = {item["locator_ref"] for item in work["catalogs"] if item["kind"] == "taskboard"}
+    assert "quack://aseh" in boards
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

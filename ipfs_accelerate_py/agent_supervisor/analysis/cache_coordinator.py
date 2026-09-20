@@ -1678,12 +1678,27 @@ def build_semantic_cache_key(
     if overlap:
         raise ValueError("duplicate semantic dimensions: " + ", ".join(sorted(overlap)))
     combined.update(semantic_dimensions)
-    return SemanticCacheKey(
+    key = SemanticCacheKey(
         namespace=(
             namespace if isinstance(namespace, CacheNamespace) else CacheNamespace(str(namespace))
         ),
         dimensions=combined,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_cache_key",
+            record_ref=str(key.key_id),
+            subject_kind="key_id",
+            subject_ref=str(key.key_id),
+        )
+    except Exception:
+        pass
+    return key
 
 
 # Short spelling expected by embedding callers.
@@ -1707,7 +1722,22 @@ def build_namespace_semantic_key(
     missing = sorted(required.difference(combined))
     if missing:
         raise ValueError(f"{kind.value} semantic key is missing dimensions: " + ", ".join(missing))
-    return SemanticCacheKey(kind, combined)
+    key = SemanticCacheKey(kind, combined)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_cache_key",
+            record_ref=str(key.key_id),
+            subject_kind="key_id",
+            subject_ref=str(key.key_id),
+        )
+    except Exception:
+        pass
+    return key
 
 
 _ARTIFACT_IDENTITY_FIELDS: Final = frozenset(

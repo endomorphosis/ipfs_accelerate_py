@@ -312,11 +312,28 @@ def compile_supervisor_shards(
                 effect_classes=effects,
             )
         )
-    return CompiledShardPlan(
+    plan = CompiledShardPlan(
         shards=tuple(shards),
         assignment_revision=assignment_revision,
         fencing_epoch=fencing_epoch,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str((binding.repository_tree_ids or ("",))[0])
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="supervisor_shards",
+            record_ref=str(plan.cid),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(plan.cid),
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def _shard_templates() -> tuple[Any, ...]:

@@ -358,6 +358,11 @@ class SupervisorMetaIndex:
                     "exclusive_owner": "pctdd-g9-quack-owner.service",
                     "locator_ref": "quack://pctdd",
                 },
+                {
+                    "board_id": "aseh",
+                    "exclusive_owner": "ipfs-taskboard-aseh-supervisor.service",
+                    "locator_ref": "quack://aseh",
+                },
             ]
         for board in boards:
             catalogs.append(
