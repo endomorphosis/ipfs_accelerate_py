@@ -164,6 +164,14 @@ class ProofCertificateDatabase:
         finally:
             connection.close()
         projection = self.project_ducklake((row,))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_proof_certificate_record,
+            )
+
+            meta = mirror_proof_certificate_record({**payload, "record_cid": record_cid})
+        except Exception:
+            meta = {"status": "unavailable", "completion_authority": False}
         return {
             "schema": SCHEMA,
             "interface": INTERFACE,
@@ -171,6 +179,7 @@ class ProofCertificateDatabase:
             "stored": True,
             "completion_authority": False,
             "ducklake": projection,
+            "meta_index": meta,
         }
 
     def records_for_decision(
