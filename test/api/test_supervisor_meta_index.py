@@ -5114,6 +5114,111 @@ def test_mirror_before_hashes_identity_and_issuance_surfaces(tmp_path, monkeypat
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_identity_merkle_repair_and_delegation_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    identity = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="content_identity_verification",
+        record_ref="bafyidentity",
+        subject_kind="content_cid",
+        subject_ref="bafyidentity",
+    )
+    repair = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="repair_receipt",
+        record_ref="incident:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    merkle = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="merkle_proof",
+        record_ref="bafyleaf",
+        subject_kind="content_cid",
+        subject_ref="bafyleaf",
+    )
+    compaction = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="compaction_proof",
+        record_ref="epoch:1",
+        subject_kind="record_cid",
+        subject_ref="epoch:1",
+    )
+    schema = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="schema_version_admission",
+        record_ref="1",
+        subject_kind="record_cid",
+        subject_ref="1",
+    )
+    lineage = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="lineage_preimages",
+        record_ref="run:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    selection = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="selection_binding",
+        record_ref="selection:1",
+        subject_kind="record_cid",
+        subject_ref="selection:1",
+    )
+    cid_bytes = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="cid_bytes_verification",
+        record_ref="bafybytes",
+        subject_kind="content_cid",
+        subject_ref="bafybytes",
+    )
+    did_key = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="did_key_signature",
+        record_ref="did:key:z1",
+        subject_kind="key_id",
+        subject_ref="did:key:z1",
+    )
+    delegation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="delegation_signature",
+        record_ref="did:issuer",
+        subject_kind="record_cid",
+        subject_ref="did:issuer",
+    )
+    issued = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="issued_certificate_material",
+        record_ref="bafyissued",
+        subject_kind="content_cid",
+        subject_ref="bafyissued",
+    )
+    for item in (
+        identity,
+        repair,
+        merkle,
+        compaction,
+        schema,
+        lineage,
+        selection,
+        cid_bytes,
+        did_key,
+        delegation,
+        issued,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

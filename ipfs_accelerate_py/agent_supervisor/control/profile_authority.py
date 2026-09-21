@@ -210,6 +210,21 @@ def verify_did_key_signature(
         ed25519_public_key_from_did(identity_did).verify(encoded, _canonical(payload))
     except (InvalidSignature, UnicodeError, ValueError, LocalProfileTampered) as exc:
         raise LocalProfileTampered("Ed25519 did:key signature is invalid") from exc
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(identity_did or "did-key-signature")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="did_key_signature",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
 
 
 def _path(directory: Path | None) -> Path:

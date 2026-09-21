@@ -292,6 +292,21 @@ def admit_schema_version(
         raise ExternalAgentControlSchemaError(
             "schema version cannot skip"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(value)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schema_version_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return value
 
 

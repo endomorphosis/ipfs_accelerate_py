@@ -209,6 +209,31 @@ class IdentityVerification:
         }
 
 
+def _mirror_identity_verification(*args, **kwargs) -> IdentityVerification:
+    result = IdentityVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "cid", "")
+            or getattr(result, "recomputed_cid", "")
+            or getattr(result, "code", "")
+            or "content-identity-verification"
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="content_identity_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _as_integrity(value: Integrity | str) -> str:
     return value.value if isinstance(value, Integrity) else str(value)
 
@@ -466,7 +491,7 @@ def verify_content_identity(
 
     pseudo = classify_pseudo_cid(claimed_cid)
     if pseudo is not None:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=Integrity.UNCHECKED.value,
             code=pseudo.value,
@@ -477,7 +502,7 @@ def verify_content_identity(
     try:
         canonical_bytes, chosen = canonicalize_payload(data, codec=codec)
     except ContentIdentityError as exc:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=_as_integrity(exc.integrity),
             code=exc.code.value,
@@ -487,7 +512,7 @@ def verify_content_identity(
     try:
         validated = validate_canonical_cid(claimed_cid, codecs=(chosen,) if codec else ADMITTED_CODECS)
     except ContentIdentityError as exc:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=_as_integrity(exc.integrity),
             code=exc.code.value,
@@ -514,7 +539,7 @@ def verify_content_identity(
         )
         recomputed = validate_canonical_cid(recomputed, codecs=(chosen,))
     except Exception as exc:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=Integrity.UNCHECKED.value,
             code=IdentityErrorCode.CID_DECODE_FAILED.value,
@@ -524,7 +549,7 @@ def verify_content_identity(
 
     actual_digest = hashlib.sha256(canonical_bytes).hexdigest()
     if digest != actual_digest or validated != recomputed:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=Integrity.UNCHECKED.value,
             code=IdentityErrorCode.DIGEST_MISMATCH.value,
@@ -539,7 +564,7 @@ def verify_content_identity(
     try:
         embedded = cid_utils.digest_hex_from_cid(validated, codecs=decoded_codecs)
     except Exception as exc:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=Integrity.UNCHECKED.value,
             code=IdentityErrorCode.CID_DECODE_FAILED.value,
@@ -548,7 +573,7 @@ def verify_content_identity(
             recomputed_cid=recomputed,
         )
     if embedded != actual_digest:
-        return IdentityVerification(
+        return _mirror_identity_verification(
             ok=False,
             integrity=Integrity.UNCHECKED.value,
             code=IdentityErrorCode.DIGEST_MISMATCH.value,
@@ -559,7 +584,7 @@ def verify_content_identity(
             recomputed_cid=recomputed,
         )
 
-    return IdentityVerification(
+    return _mirror_identity_verification(
         ok=True,
         integrity=Integrity.DIGEST_VALID.value,
         code=Integrity.DIGEST_VALID.value,

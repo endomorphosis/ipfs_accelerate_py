@@ -66,6 +66,21 @@ def verify_cid_bytes(cid: str, data: bytes) -> None:
         raise StateIntegrityError(
             f"bytes do not match cid: expected {cid}, computed {actual}"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(cid or actual or "cid-bytes")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="cid_bytes_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
 
 
 class ImmutableCidState(StateProvider):

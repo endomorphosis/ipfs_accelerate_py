@@ -438,6 +438,33 @@ def sanitize_native_child_environment(
     return cleaned
 
 
+def _mirror_issued_material(
+    admitted: Mapping[str, Any] | None,
+    reason: str,
+) -> tuple[Mapping[str, Any] | None, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (admitted.get("proof_artifact_cid") if isinstance(admitted, Mapping) else "")
+            or (admitted.get("circuit_cid") if isinstance(admitted, Mapping) else "")
+            or reason
+            or "issued-certificate-material"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="issued_certificate_material",
+            record_ref=record_ref,
+            subject_kind="content_cid" if record_ref.startswith("bafy") or record_ref.startswith("Qm") else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admitted, reason
+
+
 def admit_issued_certificate_material(
     material: Any,
     *,
@@ -454,7 +481,7 @@ def admit_issued_certificate_material(
     """
 
     if material is None:
-        return None, "material_missing"
+        return _mirror_issued_material(None, "material_missing")
 
     def _has_private_keys(value: Any, *, depth: int = 0) -> bool:
         if depth > 12:
@@ -473,7 +500,7 @@ def admit_issued_certificate_material(
     public: dict[str, Any]
     if isinstance(material, Mapping):
         if _has_private_keys(material):
-            return None, "private_material_present"
+            return _mirror_issued_material(None, "private_material_present")
         public = dict(material)
     else:
         to_public = getattr(material, "to_public_dict", None)
@@ -516,7 +543,7 @@ def admit_issued_certificate_material(
                 if isinstance(cert_payload, Mapping):
                     cert_map = dict(cert_payload)
             if cert_map is None:
-                return None, "certificate_missing"
+                return _mirror_issued_material(None, "certificate_missing")
             public = {
                 "interface": str(
                     getattr(material, "interface", "")
@@ -565,11 +592,11 @@ def admit_issued_certificate_material(
 
     public = _strip_private(public)
     if not isinstance(public, Mapping):
-        return None, "material_malformed"
+        return _mirror_issued_material(None, "material_malformed")
 
     certificate = public.get("certificate")
     if not isinstance(certificate, Mapping) or not certificate:
-        return None, "certificate_missing"
+        return _mirror_issued_material(None, "certificate_missing")
     proof_digest = str(public.get("proof_digest") or certificate.get("proof_digest") or "")
     proof_artifact_cid = str(
         public.get("proof_artifact_cid")
@@ -585,13 +612,13 @@ def admit_issued_certificate_material(
         or ""
     )
     if not proof_digest or not proof_artifact_cid:
-        return None, "proof_identity_missing"
+        return _mirror_issued_material(None, "proof_identity_missing")
     if not circuit_cid or not verifying_key_cid:
-        return None, "provenance_pins_missing"
+        return _mirror_issued_material(None, "provenance_pins_missing")
     if expected_circuit_cid and circuit_cid != expected_circuit_cid:
-        return None, "circuit_cid_provenance_mismatch"
+        return _mirror_issued_material(None, "circuit_cid_provenance_mismatch")
     if expected_verifying_key_cid and verifying_key_cid != expected_verifying_key_cid:
-        return None, "verifying_key_cid_provenance_mismatch"
+        return _mirror_issued_material(None, "verifying_key_cid_provenance_mismatch")
 
     try:
         cert_bytes = json.dumps(
@@ -611,11 +638,11 @@ def admit_issued_certificate_material(
             default=str,
         ).encode("utf-8")
     except (TypeError, ValueError, UnicodeError):
-        return None, "material_not_serializable"
+        return _mirror_issued_material(None, "material_not_serializable")
     if len(cert_bytes) > max_certificate_bytes:
-        return None, "certificate_oversized"
+        return _mirror_issued_material(None, "certificate_oversized")
     if len(material_bytes) > max_material_bytes:
-        return None, "material_oversized"
+        return _mirror_issued_material(None, "material_oversized")
     proof_json = public.get("proof_json")
     if isinstance(proof_json, Mapping) and proof_json:
         try:
@@ -628,9 +655,9 @@ def admit_issued_certificate_material(
                 default=str,
             ).encode("utf-8")
         except (TypeError, ValueError, UnicodeError):
-            return None, "proof_malformed"
+            return _mirror_issued_material(None, "proof_malformed")
         if len(proof_bytes) > max_proof_bytes:
-            return None, "proof_oversized"
+            return _mirror_issued_material(None, "proof_oversized")
 
     encoded_lower = material_bytes.decode("utf-8", errors="replace").lower()
     for marker in (
@@ -641,7 +668,7 @@ def admit_issued_certificate_material(
         "retained_receipt_bytes",
     ):
         if marker in encoded_lower:
-            return None, "private_material_present"
+            return _mirror_issued_material(None, "private_material_present")
 
     admitted = {
         "interface": str(
@@ -660,7 +687,7 @@ def admit_issued_certificate_material(
         "can_authorize_skip": False,
         "authority": "non_authoritative_until_controller_verify",
     }
-    return MappingProxyType(admitted), ""
+    return _mirror_issued_material(MappingProxyType(admitted), "")
 
 
 def _result(

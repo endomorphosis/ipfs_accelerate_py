@@ -190,7 +190,23 @@ def verify_merkle_proof(
         else:
             current_hash = _hash_pair(current_hash, step["hash"])
 
-    return current_hash == expected_root
+    accepted = current_hash == expected_root
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(event_cid or expected_root or "merkle-proof")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="merkle_proof",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 # ---------------------------------------------------------------------------
@@ -294,15 +310,31 @@ def verify_compaction_proof(proof: CompactionProof) -> bool:
     For real Groth16, would verify the proof against the verification key.
     """
     if not proof.proof:
-        return False
+        accepted = False
+    elif len(proof.proof) == 64:  # SHA-256 hex = 64 chars (simulated)
+        accepted = True
+    else:
+        accepted = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
 
-    # Reconstruct what the proof should be (for simulated)
-    # In production with real ZK, this would use a verification key
-    if len(proof.proof) == 64:  # SHA-256 hex = 64 chars (simulated)
-        # We can't re-derive without the events, but we can check structure
-        return True
-
-    return False
+        record_ref = str(
+            getattr(proof, "merkle_root", "")
+            or getattr(proof, "epoch_id", "")
+            or "compaction-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compaction_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 # ---------------------------------------------------------------------------

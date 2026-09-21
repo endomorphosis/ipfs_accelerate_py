@@ -806,6 +806,25 @@ def verify_selection_binding(
             f"ref={selection_ref.current_semantic_state_root_cid!r} "
             f"selection={claimed.current_semantic_state_root_cid!r}"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(selection_ref, "selection_cid", "")
+            or getattr(claimed, "selection_cid", "")
+            or "selection-binding"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="selection_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
 
 
 def _reason_path_cids(selection: Any) -> tuple[str, ...]:

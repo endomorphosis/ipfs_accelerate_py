@@ -3163,6 +3163,28 @@ def verify_repair_receipt(
         raise RecoveryIntegrityError("repair receipt repository binding mismatch")
     if tree_id is not None and receipt.tree_id != tree_id:
         raise RecoveryIntegrityError("repair receipt tree binding mismatch")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "incident_id", "")
+            or getattr(receipt, "checkpoint_id", "")
+            or getattr(receipt, "reason_code", "")
+            or "repair-receipt"
+        )
+        tree = str(getattr(receipt, "tree_id", "") or tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_receipt",
+            record_ref=record_ref,
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or record_ref,
+        )
+    except Exception:
+        pass
     return receipt
 
 

@@ -793,6 +793,27 @@ def verify_lineage_preimages(
             raise LineagePreimageError(
                 "preimage for %s does not match committed CID" % key
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(manifest, "run_id", "")
+            or getattr(manifest, "lineage_merkle_root", "")
+            or "lineage-preimages"
+        )
+        tree_id = str(getattr(manifest, "repository_tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="lineage_preimages",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
 
 
 def typed_receipt_cid(

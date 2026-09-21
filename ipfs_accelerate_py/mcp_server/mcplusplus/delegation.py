@@ -332,6 +332,29 @@ def compute_delegation_signature_ed25519(
     return f"ed25519:{_b64_encode_urlsafe(sig)}"
 
 
+def _mirror_delegation_signature(ok: bool, delegation: UcanDelegation | None) -> bool:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(delegation, "proof_cid", "")
+            or getattr(delegation, "issuer", "")
+            or "delegation-signature"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="delegation_signature",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok
+
+
 def verify_delegation_signature_ed25519(
     *,
     delegation: UcanDelegation,
@@ -340,7 +363,7 @@ def verify_delegation_signature_ed25519(
 ) -> bool:
     """Verify Ed25519 signature token for delegation payload."""
     if not HAVE_CRYPTO_ED25519:
-        return False
+        return _mirror_delegation_signature(False, delegation)
 
     token = str(signature or "").strip()
     sig_b64 = ""
@@ -350,37 +373,37 @@ def verify_delegation_signature_ed25519(
         try:
             sig_b64 = _b64_encode_urlsafe(bytes.fromhex(token.split(":", 1)[1].strip()))
         except ValueError:
-            return False
+            return _mirror_delegation_signature(False, delegation)
     elif token.startswith("hex:"):
         try:
             sig_b64 = _b64_encode_urlsafe(bytes.fromhex(token.split(":", 1)[1].strip()))
         except ValueError:
-            return False
+            return _mirror_delegation_signature(False, delegation)
     else:
         # Interop: treat raw 64-byte signature hex as Ed25519 signature bytes.
         if len(token) == 128:
             try:
                 sig_b64 = _b64_encode_urlsafe(bytes.fromhex(token))
             except ValueError:
-                return False
+                return _mirror_delegation_signature(False, delegation)
         else:
-            return False
+            return _mirror_delegation_signature(False, delegation)
 
     if not sig_b64:
-        return False
+        return _mirror_delegation_signature(False, delegation)
 
     pub = _extract_ed25519_public_key_b64(public_key_b64)
     pub_bytes = _b64_decode(pub)
     if len(pub_bytes) != 32:
-        return False
+        return _mirror_delegation_signature(False, delegation)
 
     sig_bytes = _b64_decode(sig_b64)
     try:
         verifier = Ed25519PublicKey.from_public_bytes(pub_bytes)
         verifier.verify(sig_bytes, _canonical_delegation_payload(delegation))
-        return True
+        return _mirror_delegation_signature(True, delegation)
     except (InvalidSignature, ValueError, TypeError):
-        return False
+        return _mirror_delegation_signature(False, delegation)
 
 
 def _caveats_allow(
