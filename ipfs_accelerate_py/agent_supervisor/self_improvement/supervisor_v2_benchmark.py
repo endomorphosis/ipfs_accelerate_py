@@ -1402,7 +1402,27 @@ def verify_v2_benchmark_report(
         payload = report
     else:
         raise V2BenchmarkValidationError("report must be V2BenchmarkReport or an object")
-    return V2BenchmarkReport.from_dict(payload, corpus=corpus)
+    result = V2BenchmarkReport.from_dict(payload, corpus=corpus)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "report_id", "")
+            or getattr(corpus, "corpus_id", "")
+            or "v2-benchmark-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_benchmark_report_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def replay_v2_benchmark(

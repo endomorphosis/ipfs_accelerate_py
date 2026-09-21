@@ -1875,11 +1875,27 @@ def verify_adversarial_e2e_report(
             injection=injection,
             observed_at=report.observed_at,
         )
+        accepted = _canonical_bytes(report.to_dict()) == _canonical_bytes(
+            independent.to_dict()
+        )
     except SymbolicAssuranceRolloutError:
-        return False
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        independent.to_dict()
-    )
+        accepted = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "report_id", "") or "adversarial-e2e-verify")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="adversarial_e2e_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 # ---------------------------------------------------------------------------
@@ -2372,11 +2388,31 @@ def verify_symbolic_assurance_rollout(
             desired_mode=decision.desired_mode,
             prior_gate_report=prior_gate_report,
         )
+        accepted = _canonical_bytes(decision.to_dict()) == _canonical_bytes(
+            replayed.to_dict()
+        )
     except SymbolicAssuranceRolloutError:
-        return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+        accepted = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "shadow_report_id", "")
+            or getattr(gate_report, "report_id", "")
+            or "symbolic-assurance-rollout-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_assurance_rollout_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def build_default_rollout_binding(

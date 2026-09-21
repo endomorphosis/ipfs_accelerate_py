@@ -5354,6 +5354,103 @@ def test_mirror_deployment_seal_benchmark_and_repository_surfaces(tmp_path, monk
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_rollout_and_report_verification_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    decision_runtime = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="decision_runtime_rollout_verification",
+        record_ref="decision-runtime-rollout-verify",
+        subject_kind="record_cid",
+        subject_ref="decision-runtime-rollout-verify",
+    )
+    adversarial = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="adversarial_e2e_verification",
+        record_ref="adversarial-e2e-verify",
+        subject_kind="record_cid",
+        subject_ref="adversarial-e2e-verify",
+    )
+    assurance = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_assurance_rollout_verification",
+        record_ref="symbolic-assurance-rollout-verify",
+        subject_kind="record_cid",
+        subject_ref="symbolic-assurance-rollout-verify",
+    )
+    prompt_gate = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="prompt_workflow_gate_verification",
+        record_ref="prompt-workflow-gate-verify",
+        subject_kind="record_cid",
+        subject_ref="prompt-workflow-gate-verify",
+    )
+    prompt_rollout = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="prompt_workflow_rollout_verification",
+        record_ref="prompt-workflow-rollout-verify",
+        subject_kind="record_cid",
+        subject_ref="prompt-workflow-rollout-verify",
+    )
+    usage = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="supervisor_usage_rollout_verification",
+        record_ref="supervisor-usage-rollout-verify",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    promotion = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planner_doctor_promotion_verification",
+        record_ref="planner-doctor-promotion-verify",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    self_eval = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_self_evaluation_verification",
+        record_ref="v2-self-evaluation-verify",
+        subject_kind="record_cid",
+        subject_ref="v2-self-evaluation-verify",
+    )
+    v2_rollout = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_rollout_report_verification",
+        record_ref="v2-rollout-verify",
+        subject_kind="record_cid",
+        subject_ref="v2-rollout-verify",
+    )
+    v2_benchmark = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_benchmark_report_verification",
+        record_ref="v2-benchmark-verify",
+        subject_kind="record_cid",
+        subject_ref="v2-benchmark-verify",
+    )
+    for item in (
+        decision_runtime,
+        adversarial,
+        assurance,
+        prompt_gate,
+        prompt_rollout,
+        usage,
+        promotion,
+        self_eval,
+        v2_rollout,
+        v2_benchmark,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

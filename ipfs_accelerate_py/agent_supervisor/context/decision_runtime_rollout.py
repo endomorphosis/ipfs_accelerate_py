@@ -691,9 +691,29 @@ def verify_decision_runtime_rollout(
             desired_mode=decision.desired_mode,
             current_evaluation=current_evaluation,
         )
+        accepted = _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
     except (DecisionRuntimeRolloutError, DecisionRuntimeBenchmarkError):
-        return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
+        accepted = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "qualification_evaluation_id", "")
+            or getattr(decision, "qualification_report_id", "")
+            or "decision-runtime-rollout-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision_runtime_rollout_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 @dataclass(frozen=True)

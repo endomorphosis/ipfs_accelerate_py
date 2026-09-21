@@ -1008,9 +1008,31 @@ def verify_prompt_workflow_gate_report(
     benchmark: PromptWorkflowBenchmark,
 ) -> bool:
     if not isinstance(report, PromptWorkflowGateReport):
-        return False
-    replayed = recompute_prompt_workflow_gate(benchmark)
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+        accepted = False
+    else:
+        replayed = recompute_prompt_workflow_gate(benchmark)
+        accepted = _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "report_id", "")
+            or getattr(report, "benchmark_id", "")
+            or getattr(benchmark, "benchmark_id", "")
+            or "prompt-workflow-gate-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_workflow_gate_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def _cid(label: str) -> str:

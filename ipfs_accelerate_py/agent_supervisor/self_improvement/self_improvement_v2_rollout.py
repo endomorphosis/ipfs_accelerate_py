@@ -1131,11 +1131,31 @@ def verify_v2_rollout_report(
     )
     if not isinstance(payload, Mapping):
         raise V2RolloutError("report must be a V2RolloutReport or object")
-    return V2RolloutReport.from_dict(
+    result = V2RolloutReport.from_dict(
         payload,
         qualification=qualification,
         current=current_evaluation,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "report_id", "")
+            or getattr(result, "effective_binding_id", "")
+            or "v2-rollout-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_rollout_report_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def replay_v2_rollout(

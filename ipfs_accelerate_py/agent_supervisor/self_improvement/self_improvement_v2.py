@@ -2871,6 +2871,25 @@ def verify_v2_self_evaluation_report(
         raise V2SelfEvaluationError("persisted report fields do not match the closed schema")
     if payload != expected_payload:
         raise V2SelfEvaluationError("persisted report does not match deterministic receipt replay")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(expected, "report_id", "")
+            or getattr(expected, "policy_id", "")
+            or "v2-self-evaluation-verify"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_self_evaluation_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return expected
 
 

@@ -2735,9 +2735,31 @@ def verify_supervisor_usage_rollout(
             fenced_coordinator_available=fenced_coordinator_available,
             distributed_enforcement_requested=distributed_enforcement_requested,
         )
+        accepted = _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
     except SupervisorUsageRolloutError:
-        return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
+        accepted = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "qualification_evaluation_id", "")
+            or getattr(binding, "tree_id", "")
+            or "supervisor-usage-rollout-verify"
+        )
+        tree_id = str(getattr(binding, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="supervisor_usage_rollout_verification",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def discover_schemas() -> dict[str, str]:

@@ -2248,12 +2248,34 @@ def verify_planner_doctor_promotion_receipt(
         raise PlannerDoctorRolloutError(
             "receipt must be a PlannerDoctorPromotionReceipt or object"
         )
-    return PlannerDoctorPromotionReceipt.from_dict(
+    result = PlannerDoctorPromotionReceipt.from_dict(
         payload,
         qualification=qualification,
         current=current_observation,
         holdout=holdout_observation,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "receipt_id", "")
+            or getattr(getattr(result, "binding", None), "behavior_id", "")
+            or "planner-doctor-promotion-verify"
+        )
+        tree_id = str(getattr(getattr(result, "binding", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_promotion_verification",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def replay_planner_doctor_rollout(
