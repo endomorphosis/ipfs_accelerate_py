@@ -419,6 +419,21 @@ def verify_bytes_match_cid(
             f"CID/byte mismatch: claimed={admitted!r} expected={expected!r} "
             f"codec={codec!r}"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted or cid or "ipld-bytes")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="ipld_bytes_cid",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return admitted
 
 

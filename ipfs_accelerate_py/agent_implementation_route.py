@@ -6841,6 +6841,25 @@ def verify_agent_supervisor_native_dependency_sealed_fd(
     )
     if observed_pin != pin:
         raise ValueError("native dependency sealed payload does not match its pin")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(pin, "payload_sha256", "")
+            or getattr(binding, "payload_sha256", "")
+            or executable
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="sealed_native_fd",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return executable
 
 
@@ -7901,6 +7920,21 @@ def verify_agent_implementation_sealed_control_plane(
         raise ValueError("accepted control-plane descriptor path is unavailable") from exc
     if (path_stat.st_dev, path_stat.st_ino) != (before.st_dev, before.st_ino):
         raise ValueError("accepted control-plane descriptor path drifted")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(pin, "capsule_id", "") or getattr(pin, "archive_sha256", "") or executable)
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="sealed_control_plane",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return executable
 
 

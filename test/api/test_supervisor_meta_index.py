@@ -4892,6 +4892,94 @@ def test_mirror_dispatch_witness_boundary_and_archive_surfaces(tmp_path, monkeyp
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_recovery_sealed_fd_and_vacuity_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    recovery = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="job_recovery",
+        record_ref="task_progress_verified",
+        subject_kind="record_cid",
+        subject_ref="task_progress_verified",
+    )
+    controller = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="controller_owned_v2_context",
+        record_ref="receipt:v2",
+        subject_kind="receipt_id",
+        subject_ref="receipt:v2",
+    )
+    sealed_plane = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="sealed_control_plane",
+        record_ref="capsule:control",
+        subject_kind="capsule_cid",
+        subject_ref="capsule:control",
+    )
+    sealed_fd = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="sealed_native_fd",
+        record_ref="sha256:native",
+        subject_kind="capsule_cid",
+        subject_ref="sha256:native",
+    )
+    invalidation = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="contract_invalidation",
+        record_ref="schema@2",
+        subject_kind="record_cid",
+        subject_ref="schema@2",
+    )
+    vacuity = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="vacuity_classes",
+        record_ref="property:1",
+        subject_kind="obligation_ref",
+        subject_ref="property:1",
+    )
+    complete_pass = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="complete_pass_evaluation",
+        record_ref="complete-pass",
+        subject_kind="record_cid",
+        subject_ref="complete-pass",
+    )
+    lineage = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="lineage_merkle_root",
+        record_ref="root:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    ipld = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="ipld_bytes_cid",
+        record_ref="bafybytes",
+        subject_kind="content_cid",
+        subject_ref="bafybytes",
+    )
+    for item in (
+        recovery,
+        controller,
+        sealed_plane,
+        sealed_fd,
+        invalidation,
+        vacuity,
+        complete_pass,
+        lineage,
+        ipld,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

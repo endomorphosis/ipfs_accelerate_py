@@ -1459,6 +1459,33 @@ class ControllerOwnedV2VerificationContext:
             return None
 
 
+def _mirror_controller_v2_context(
+    admitted: ControllerOwnedV2VerificationContext | None,
+    reason: str,
+) -> tuple[ControllerOwnedV2VerificationContext | None, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(admitted, "receipt_cid", "")
+            or getattr(admitted, "candidate_context_cid", "")
+            or reason
+            or "controller-v2-context"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="controller_owned_v2_context",
+            record_ref=record_ref,
+            subject_kind="receipt_id" if getattr(admitted, "receipt_cid", "") else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admitted, reason
+
+
 def admit_controller_owned_v2_context(
     context: ControllerOwnedV2VerificationContext | Mapping[str, Any] | None,
     *,
@@ -1488,28 +1515,33 @@ def admit_controller_owned_v2_context(
                 rehash=True,
             )
         if admitted is None:
-            return None, "controller_context_invalid"
+            return _mirror_controller_v2_context(None, "controller_context_invalid")
         if admitted.aggregate_byte_length() > MAX_CONTROLLER_V2_CONTEXT_BYTES:
-            return None, "controller_context_oversized"
+            return _mirror_controller_v2_context(None, "controller_context_oversized")
         if require_retained_bytes and not (
             admitted.retained_receipt_bytes or admitted.retained_candidate_context_bytes
         ):
-            return None, "controller_context_retained_bytes_missing"
+            return _mirror_controller_v2_context(None, "controller_context_retained_bytes_missing")
         if require_complete and not admitted.is_complete:
-            return None, "controller_context_incomplete:" + ",".join(
-                admitted.missing_required_pins()
+            return _mirror_controller_v2_context(
+                None,
+                "controller_context_incomplete:" + ",".join(admitted.missing_required_pins()),
             )
         if expected_pins:
             for name, expected in expected_pins.items():
                 actual = admitted.pin_value(str(name))
                 expected_text = _pin_text(expected)
                 if expected_text and actual and actual != expected_text:
-                    return None, f"controller_context_pin_mismatch:{name}"
+                    return _mirror_controller_v2_context(
+                        None, f"controller_context_pin_mismatch:{name}"
+                    )
                 if expected_text and not actual:
-                    return None, f"controller_context_pin_missing:{name}"
-        return admitted, ""
+                    return _mirror_controller_v2_context(
+                        None, f"controller_context_pin_missing:{name}"
+                    )
+        return _mirror_controller_v2_context(admitted, "")
     except Exception:
-        return None, "controller_context_exception"
+        return _mirror_controller_v2_context(None, "controller_context_exception")
 
 
 def reconstruct_controller_owned_v2_context(

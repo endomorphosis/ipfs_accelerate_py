@@ -672,6 +672,23 @@ def evaluate_complete_pass(
         and all(normalized.get(name) is PhaseOutcome.PASS for name in PHASES)
         and not unique
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            unique[0] if unique else ("complete-pass" if all_pass else "incomplete-pass")
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="complete_pass_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return all_pass, unique
 
 

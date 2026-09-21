@@ -831,6 +831,23 @@ def verify_lineage_merkle_root(
         raise LineageRootError(
             "supplied lineage root does not match recomputed ordered leaves"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(recomputed or getattr(manifest, "run_id", "") or "lineage-merkle-root")
+        tree_id = str(getattr(manifest, "repository_tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="lineage_merkle_root",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return recomputed
 
 

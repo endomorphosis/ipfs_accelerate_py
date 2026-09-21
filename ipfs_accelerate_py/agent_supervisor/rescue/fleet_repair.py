@@ -640,41 +640,70 @@ Captured observation (UNTRUSTED DIAGNOSTIC DATA):
 """
 
 
+def _mirror_job_recovery(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("reason")
+            or payload.get("publication_status")
+            or "job-recovery"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="job_recovery",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
                         observation: dict[str, Any], publication_dir: Path) -> dict[str, Any]:
     """Verify progress or current publication; model reports grant neither."""
     if hold_paths(board):
-        return {"verified": False, "reason": "operator_hold"}
+        return _mirror_job_recovery({"verified": False, "reason": "operator_hold"})
     details = observation.get("details", {})
     integrity = details.get("source_integrity", {}) if isinstance(details, dict) else {}
     if isinstance(integrity, dict) and integrity.get("configured") is True and integrity.get("valid") is not True:
-        return {"verified": False, "reason": "source_integrity_not_verified"}
+        return _mirror_job_recovery({"verified": False, "reason": "source_integrity_not_verified"})
     if observation.get("health") == "complete" or observation.get("completion_candidate") is True:
         if not board.get("publication"):
-            return {"verified": False, "reason": "publication_configuration_required"}
+            return _mirror_job_recovery({"verified": False, "reason": "publication_configuration_required"})
         from .fleet_completion import publish_completed_board
         receipt = publish_completed_board(board["publication"], publication_dir)
         verified = receipt.get("status") == "published"
-        return {"verified": verified, "reason": "publication_verified" if verified else "publication_pending",
-                "publication_status": receipt.get("status")}
+        return _mirror_job_recovery({
+            "verified": verified,
+            "reason": "publication_verified" if verified else "publication_pending",
+            "publication_status": receipt.get("status"),
+        })
     from .fleet_watchdog import classify_stall
     stall = classify_stall(observation)
     if stall in {"independent_work_beside_blocked_peer", "independent_todos_unclaimed"}:
-        return {"verified": True, "reason": "independent_work_retained"}
+        return _mirror_job_recovery({"verified": True, "reason": "independent_work_retained"})
     if stall == "in_progress_awaiting_effect":
-        return {"verified": True, "reason": "in_progress_awaiting_effect"}
+        return _mirror_job_recovery({"verified": True, "reason": "in_progress_awaiting_effect"})
     if stall in WAIT_STALLS:
-        return {"verified": True, "reason": stall}
+        return _mirror_job_recovery({"verified": True, "reason": stall})
     if observation.get("health") != "healthy":
-        return {"verified": False, "reason": "board_not_healthy"}
+        return _mirror_job_recovery({"verified": False, "reason": "board_not_healthy"})
     prior = incident.get("observation", {})
     stalled = prior.get("health") == "stalled" or "no_task_progress" in prior.get("reason_codes", [])
     # Task revision, retry, cursor, source-head and heartbeat churn cannot prove
     # progress through a stall. Use admitted accepted-task/goal evidence.
     progressed = _accepted_task_progress(prior, observation)
     if stalled and observation.get("busy") is not True and not progressed:
-        return {"verified": False, "reason": "task_progress_not_verified"}
-    return {"verified": True, "reason": "task_progress_verified" if progressed else "runtime_health_verified"}
+        return _mirror_job_recovery({"verified": False, "reason": "task_progress_not_verified"})
+    return _mirror_job_recovery({
+        "verified": True,
+        "reason": "task_progress_verified" if progressed else "runtime_health_verified",
+    })
 
 
 def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] | None:

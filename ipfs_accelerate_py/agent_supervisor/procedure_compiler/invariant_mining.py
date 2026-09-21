@@ -1002,7 +1002,28 @@ def evaluate_vacuity_classes(
         candidate, current_bindings=current_bindings, trajectory=trajectory
     ):
         add(VacuityClass.INVARIANT_COUNTEREXAMPLE)
-    return tuple(hits)
+    result = tuple(hits)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(candidate, "property_id", "")
+            or getattr(candidate, "binding", "")
+            or (result[0].value if result else "")
+            or "vacuity-classes"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="vacuity_classes",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _refuse(

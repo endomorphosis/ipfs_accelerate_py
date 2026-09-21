@@ -587,7 +587,29 @@ def evaluate_invalidation(
             continue
         if str(current[key]).strip() != inv.value:
             matched.append(inv)
-    return tuple(matched)
+    result = tuple(matched)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = result[0] if result else None
+        record_ref = str(
+            getattr(first, "value", "")
+            or getattr(first, "reason_code", "")
+            or len(result)
+            or "contract-invalidation"
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="contract_invalidation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def require_complete_version_invalidators(
