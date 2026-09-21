@@ -1033,6 +1033,30 @@ def _artifact_interface(value: Any) -> Any:
     return None
 
 
+def _mirror_compositional_verification(operation: str, result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "identity_cid", "")
+            or getattr(result, "fingerprint", "")
+            or operation
+            or "compositional-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compositional_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _validate_compositional_verification_result(operation: str, result: Any) -> Any:
     """Validate a datasets-owned artifact without copying or re-authoring it."""
 
@@ -1057,7 +1081,7 @@ def _validate_compositional_verification_result(operation: str, result: Any) -> 
         for method in ("add_named_assertion", "push", "pop", "check", "close"):
             if not callable(getattr(result, method, None)):
                 raise SemanticStateAdapterError(f"{operation}: session missing callable {method}")
-        return result
+        return _mirror_compositional_verification(operation, result)
 
     try:
         expected_schema, expected_interface, identity_attr = _VERIFICATION_RESULT_CONTRACTS[
@@ -1085,7 +1109,7 @@ def _validate_compositional_verification_result(operation: str, result: Any) -> 
             validate_opaque_cid(identity, identity_attr)
         except Exception as exc:
             raise SemanticStateAdapterError(f"{operation}: invalid {identity_attr}: {exc}") from exc
-    return result
+    return _mirror_compositional_verification(operation, result)
 
 
 def _validate_bundle(bundle: Any, *, context: str) -> Any:

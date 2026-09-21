@@ -1039,6 +1039,26 @@ class OperationalWorldRootPublisher:
         )
 
 
+def _mirror_program_world_reuse(*args: Any, **kwargs: Any) -> ProgramWorldReuseDecision:
+    result = ProgramWorldReuseDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.state_cid or result.goal_cid or result.reason_code or "program-world-reuse")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_reuse_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Unified facade
 # ---------------------------------------------------------------------------
@@ -1099,7 +1119,7 @@ class SemanticWorldOperationalAdapters:
         environment_cid = validate_opaque_cid(environment_cid, "environment_cid")
         toolchain_cid = validate_opaque_cid(toolchain_cid, "toolchain_cid")
         if not cap.available:
-            return ProgramWorldReuseDecision(
+            return _mirror_program_world_reuse(
                 verdict=ReuseVerdict.UNAVAILABLE,
                 state_cid=state_cid,
                 goal_cid=goal_cid,
@@ -1114,7 +1134,7 @@ class SemanticWorldOperationalAdapters:
         if relation_claim is not None:
             relation_cid = self.datasets.cite_relation(relation_claim).identity_cid
         if ann_candidates:
-            return ProgramWorldReuseDecision(
+            return _mirror_program_world_reuse(
                 verdict=ReuseVerdict.REJECT,
                 state_cid=state_cid,
                 goal_cid=goal_cid,
@@ -1130,7 +1150,7 @@ class SemanticWorldOperationalAdapters:
         exact = prior_state_cid is not None and prior_state_cid == state_cid
         if exact:
             admitted = admission_authority is not None
-            return ProgramWorldReuseDecision(
+            return _mirror_program_world_reuse(
                 verdict=ReuseVerdict.REUSE,
                 state_cid=state_cid,
                 goal_cid=goal_cid,
@@ -1147,7 +1167,7 @@ class SemanticWorldOperationalAdapters:
                 admission_evidence_cid=admission_evidence_cid,
                 limitations=("reuse_is_proposal_until_supervisor_admission",),
             )
-        return ProgramWorldReuseDecision(
+        return _mirror_program_world_reuse(
             verdict=ReuseVerdict.ABSTAIN,
             state_cid=state_cid,
             goal_cid=goal_cid,

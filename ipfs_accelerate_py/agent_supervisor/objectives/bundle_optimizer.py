@@ -2632,9 +2632,27 @@ class CriticalPathWidthEvidence:
 
     def verify_integrity(self) -> bool:
         material = self._material()
-        return self.integrity_digest == hashlib.sha256(
+        accepted = self.integrity_digest == hashlib.sha256(
             canonical_json_bytes(material)
         ).hexdigest() and self.evidence_id == canonical_content_cid(material)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.evidence_id or self.repository_tree or "critical-path-width")
+            tree_id = str(self.repository_tree or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="critical_path_width_integrity",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:
@@ -2826,9 +2844,27 @@ class PacketCompletionBindingEvidence:
     def verify_integrity(self) -> bool:
         material = self._material()
         digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
-        return self.integrity_digest == digest and self.evidence_id == canonical_content_cid(
+        accepted = self.integrity_digest == digest and self.evidence_id == canonical_content_cid(
             material
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.evidence_id or self.policy_id or "packet-completion")
+            tree_id = str(self.repository_tree or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="packet_completion_integrity",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     def to_dict(self) -> dict[str, Any]:
         material = self._material()

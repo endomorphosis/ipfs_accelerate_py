@@ -730,12 +730,28 @@ class ProviderBatchEvidenceReceipt:
         return ()
 
     def verify_integrity(self) -> bool:
-        return (
+        accepted = (
             self.schema == PROVIDER_BATCH_RECEIPT_SCHEMA
             and self.content_digest == _digest(self._unsigned_dict())
             and len({item.request_id for item in self.members}) == len(self.members)
             and self.completed_at_ms >= self.started_at_ms
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.batch_id or self.evidence_id or "provider-batch")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="provider_batch_integrity",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     def to_dict(self) -> dict[str, Any]:
         result = self._unsigned_dict()

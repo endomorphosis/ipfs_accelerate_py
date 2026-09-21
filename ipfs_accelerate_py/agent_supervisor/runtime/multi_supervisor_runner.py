@@ -10298,6 +10298,31 @@ def run_supervisor_tracks(
             )
         return process, False, False
 
+    def _mirror_managed_track_admission(
+        started: subprocess.Popen[bytes] | None,
+        exhausted: bool,
+        deadline_reached: bool,
+        *,
+        track: SupervisorTrack,
+        cause: str,
+    ) -> tuple[subprocess.Popen[bytes] | None, bool, bool]:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(track.name or cause or "managed-track")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="managed_track_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return started, exhausted, deadline_reached
+
     def admit_managed_track(
         track: SupervisorTrack,
         *,
@@ -10313,12 +10338,16 @@ def run_supervisor_tracks(
                 deadline=deadline,
             )
             if started is not None or exhausted or deadline_reached:
-                return started, exhausted, deadline_reached
+                return _mirror_managed_track_admission(
+                    started, exhausted, deadline_reached, track=track, cause=cause
+                )
             sleep_for = min(max(0.01, heartbeat_interval_seconds), 1.0)
             if deadline is not None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.0:
-                    return None, False, True
+                    return _mirror_managed_track_admission(
+                        None, False, True, track=track, cause=cause
+                    )
                 sleep_for = min(sleep_for, remaining)
             time.sleep(sleep_for)
 

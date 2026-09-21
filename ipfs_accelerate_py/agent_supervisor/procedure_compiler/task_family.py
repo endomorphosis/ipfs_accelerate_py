@@ -307,6 +307,33 @@ class BoundaryDecision:
         return (not self.admitted) and self.severity is BoundarySeverity.CRITICAL
 
 
+def _mirror_boundary_decision(*args: Any, **kwargs: Any) -> BoundaryDecision:
+    result = BoundaryDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        counterexample = result.counterexample
+        record_ref = str(
+            getattr(counterexample, "example_cid", "")
+            or (result.evidence_cids[0] if result.evidence_cids else "")
+            or result.reason_code
+            or result.membership.value
+            or "family-boundary"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_boundary_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _declared_membership(family: TaskFamily, example_cid: str) -> FamilyMembershipClass | None:
     boundary = family.boundary
     declared = {
@@ -916,7 +943,7 @@ class TaskFamilyBoundaryValidator:
         *,
         evidence_cids: tuple[str, ...] = (),
     ) -> BoundaryDecision:
-        return BoundaryDecision(
+        return _mirror_boundary_decision(
             admitted=True,
             membership=membership,
             severity=BoundarySeverity.NONE,
@@ -950,7 +977,7 @@ class TaskFamilyBoundaryValidator:
                 conflicting_effect_classes=tuple(conflicting_effect_classes),
                 conflicting_validation_classes=tuple(conflicting_validation_classes),
             )
-        return BoundaryDecision(
+        return _mirror_boundary_decision(
             admitted=False,
             membership=membership,
             severity=BoundarySeverity.CRITICAL,
