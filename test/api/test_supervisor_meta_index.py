@@ -3254,6 +3254,170 @@ def test_mirror_assurance_conflict_handoff_and_validation_surfaces(tmp_path, mon
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_repair_objectives_receipts_and_governor_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    cegis = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="cegis_candidate_gate",
+        record_ref="candidate:1",
+        subject_kind="path",
+        subject_ref="src/mod.py",
+    )
+    mutation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="mutation_gate_decision",
+        record_ref="src/mod.py",
+        subject_kind="path",
+        subject_ref="src/mod.py",
+    )
+    improvement = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="improvement_proposal_evaluation",
+        record_ref="proposal:1",
+        subject_kind="record_cid",
+        subject_ref="proposal:1",
+    )
+    envelope = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="repair_evidence_envelope",
+        record_ref="evidence:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    remediation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="remediation_evaluation",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="plan:1",
+    )
+    refill = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refill_residual_guard",
+        record_ref="SAWM-039",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    triage = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="contract_mismatch_triage",
+        record_ref="triage:1",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    coverage = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="goal_coverage_map",
+        record_ref="goal:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    quorum = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="exhaustion_quorum",
+        record_ref="repo:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    scan = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refill_scan_result",
+        record_ref="repo:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    route = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="route_receipt",
+        record_ref="receipt:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    efficiency_receipt = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="task_efficiency_receipt",
+        record_ref="receipt:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    paired = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="paired_benchmark_manifest",
+        record_ref="manifest:1",
+        subject_kind="record_cid",
+        subject_ref="manifest:1",
+    )
+    governor = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="governor_report",
+        record_ref="metrics:1",
+        subject_kind="record_cid",
+        subject_ref="metrics:1",
+    )
+    shadow = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="shadow_plan_admission",
+        record_ref="plan:2",
+        subject_kind="record_cid",
+        subject_ref="plan:2",
+    )
+    inventory = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="residual_reasoning_inventory",
+        record_ref="rev:1",
+        subject_kind="record_cid",
+        subject_ref="rev:1",
+    )
+    cascade = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="residual_cascade_stage_constraints",
+        record_ref="family:1",
+        subject_kind="record_cid",
+        subject_ref="family:1",
+    )
+    refinement = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="refinement_verification",
+        record_ref="goal:2",
+        subject_kind="record_cid",
+        subject_ref="goal:2",
+    )
+    for item in (
+        cegis,
+        mutation,
+        improvement,
+        envelope,
+        remediation,
+        refill,
+        triage,
+        coverage,
+        quorum,
+        scan,
+        route,
+        efficiency_receipt,
+        paired,
+        governor,
+        shadow,
+        inventory,
+        cascade,
+        refinement,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -1429,6 +1429,21 @@ def admit_shadow_plan(plan: ShadowExecutionPlan | Mapping[str, Any]) -> ShadowEx
         )
     if plan.max_wall_time_ms == 0:
         raise PlanAdmissionError("max_wall_time_ms must be positive for execution")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(plan, "plan_cid", "") or "shadow-plan")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shadow_plan_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return plan
 
 

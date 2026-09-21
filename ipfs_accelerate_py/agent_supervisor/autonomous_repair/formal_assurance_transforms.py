@@ -461,6 +461,25 @@ def _coerce_finding(
     )
 
 
+def _mirror_mutation_gate(decision: MutationGateDecision) -> MutationGateDecision:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decision.path or getattr(decision.disposition, "value", "") or "mutation-gate")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mutation_gate_decision",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(decision.path or record_ref),
+        )
+    except Exception:
+        pass
+    return decision
+
+
 def evaluate_mutation_gate(
     path: str,
     *,
@@ -481,26 +500,30 @@ def evaluate_mutation_gate(
 
     if not path_is_admitted(normalized, admitted_paths):
         reasons.append(IpaRepairAbstentionReason.PATH_NOT_ADMITTED.value)
-        return MutationGateDecision(
-            disposition=MutationGateDisposition.DENIED,
-            path=normalized,
-            reasons=tuple(reasons),
-            before_hash=before_hash,
-            after_hash=after_hash,
-            byte_mutated=byte_mutated,
-            reanalyzed=False,
+        return _mirror_mutation_gate(
+            MutationGateDecision(
+                disposition=MutationGateDisposition.DENIED,
+                path=normalized,
+                reasons=tuple(reasons),
+                before_hash=before_hash,
+                after_hash=after_hash,
+                byte_mutated=byte_mutated,
+                reanalyzed=False,
+            )
         )
 
     if not byte_mutated and not allow_idempotent_noop:
         reasons.append(IpaRepairAbstentionReason.NO_BYTE_CHANGE.value)
-        return MutationGateDecision(
-            disposition=MutationGateDisposition.DENIED,
-            path=normalized,
-            reasons=tuple(reasons),
-            before_hash=before_hash,
-            after_hash=after_hash,
-            byte_mutated=False,
-            reanalyzed=False,
+        return _mirror_mutation_gate(
+            MutationGateDecision(
+                disposition=MutationGateDisposition.DENIED,
+                path=normalized,
+                reasons=tuple(reasons),
+                before_hash=before_hash,
+                after_hash=after_hash,
+                byte_mutated=False,
+                reanalyzed=False,
+            )
         )
 
     try:
@@ -508,14 +531,16 @@ def evaluate_mutation_gate(
     except Exception as exc:  # noqa: BLE001 - typed gate denial
         reasons.append(IpaRepairAbstentionReason.PARSE_ERROR.value)
         reasons.append(str(exc)[:200])
-        return MutationGateDecision(
-            disposition=MutationGateDisposition.DENIED,
-            path=normalized,
-            reasons=tuple(reasons),
-            before_hash=before_hash,
-            after_hash=after_hash,
-            byte_mutated=byte_mutated,
-            reanalyzed=False,
+        return _mirror_mutation_gate(
+            MutationGateDecision(
+                disposition=MutationGateDisposition.DENIED,
+                path=normalized,
+                reasons=tuple(reasons),
+                before_hash=before_hash,
+                after_hash=after_hash,
+                byte_mutated=byte_mutated,
+                reanalyzed=False,
+            )
         )
 
     if before_findings is None:
@@ -528,37 +553,43 @@ def evaluate_mutation_gate(
     after_rules = {item.rule_id for item in after_findings}
     if target_rule_id in after_rules:
         reasons.append(IpaRepairAbstentionReason.REANALYSIS_STILL_FAILS.value)
-        return MutationGateDecision(
-            disposition=MutationGateDisposition.DENIED,
-            path=normalized,
-            reasons=tuple(reasons),
-            before_hash=before_hash,
-            after_hash=after_hash,
-            byte_mutated=byte_mutated,
-            reanalyzed=True,
+        return _mirror_mutation_gate(
+            MutationGateDecision(
+                disposition=MutationGateDisposition.DENIED,
+                path=normalized,
+                reasons=tuple(reasons),
+                before_hash=before_hash,
+                after_hash=after_hash,
+                byte_mutated=byte_mutated,
+                reanalyzed=True,
+            )
         )
 
     new_rules = after_rules - before_rules
     if new_rules:
         reasons.append(IpaRepairAbstentionReason.NEW_ABSTRACT_FINDING.value)
-        return MutationGateDecision(
-            disposition=MutationGateDisposition.DENIED,
+        return _mirror_mutation_gate(
+            MutationGateDecision(
+                disposition=MutationGateDisposition.DENIED,
+                path=normalized,
+                reasons=tuple(reasons),
+                before_hash=before_hash,
+                after_hash=after_hash,
+                byte_mutated=byte_mutated,
+                reanalyzed=True,
+            )
+        )
+
+    return _mirror_mutation_gate(
+        MutationGateDecision(
+            disposition=MutationGateDisposition.ADMITTED,
             path=normalized,
-            reasons=tuple(reasons),
+            reasons=(),
             before_hash=before_hash,
             after_hash=after_hash,
             byte_mutated=byte_mutated,
             reanalyzed=True,
         )
-
-    return MutationGateDecision(
-        disposition=MutationGateDisposition.ADMITTED,
-        path=normalized,
-        reasons=(),
-        before_hash=before_hash,
-        after_hash=after_hash,
-        byte_mutated=byte_mutated,
-        reanalyzed=True,
     )
 
 

@@ -1185,7 +1185,25 @@ def admit_task_efficiency_receipt(
     admitted = json.loads(canonical_bytes(data).decode("utf-8"))
     _bind_cid(admitted, field="receipt_cid")
     validate_against_schema(admitted, schema, path="$")
-    return TaskEfficiencyReceipt(_payload=admitted)
+    receipt = TaskEfficiencyReceipt(_payload=admitted)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted.get("receipt_cid") or admitted.get("task_cid") or "task-efficiency-receipt")
+        tree_id = str(admitted.get("repository_tree") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_efficiency_receipt",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def admit_paired_benchmark_manifest(
@@ -1209,7 +1227,23 @@ def admit_paired_benchmark_manifest(
     admitted = json.loads(canonical_bytes(data).decode("utf-8"))
     _bind_cid(admitted, field="manifest_cid")
     validate_against_schema(admitted, schema, path="$")
-    return PairedBenchmarkManifest(_payload=admitted)
+    manifest = PairedBenchmarkManifest(_payload=admitted)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted.get("manifest_cid") or "paired-benchmark-manifest")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="paired_benchmark_manifest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return manifest
 
 
 # ---------------------------------------------------------------------------

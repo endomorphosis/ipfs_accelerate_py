@@ -1856,7 +1856,7 @@ def evaluate_remediation(
     if metadata:
         run_metadata.update(dict(metadata))
 
-    return RemediationEvaluationRun(
+    run = RemediationEvaluationRun(
         campaign_id=campaign.campaign_id,
         campaign_cid=campaign.campaign_cid,
         plan_cid=plan.plan_cid,
@@ -1880,6 +1880,22 @@ def evaluate_remediation(
         diagnostic=diagnostic,
         metadata=run_metadata,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(run.plan_cid or run.campaign_cid or run.campaign_id or "remediation-evaluation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remediation_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return run
 
 
 # ---------------------------------------------------------------------------

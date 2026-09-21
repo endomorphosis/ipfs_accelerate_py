@@ -1516,7 +1516,7 @@ def verify_refinement_obligations(
 ) -> RefinementVerificationResult:
     """Convenience API for complete generation, routing, and verification."""
 
-    return GoalRefinementVerifier(
+    result = GoalRefinementVerifier(
         router=router,
         policy=policy,
         audit_store=audit_store,
@@ -1527,6 +1527,27 @@ def verify_refinement_obligations(
         assumption_ids=assumption_ids,
         repairer=repairer,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            root_goal_id
+            or getattr(result, "content_id", "")
+            or getattr(plan, "plan_id", "")
+            or "refinement-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="refinement_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Compatibility-friendly descriptive aliases.

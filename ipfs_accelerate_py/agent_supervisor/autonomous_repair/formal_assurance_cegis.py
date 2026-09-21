@@ -1609,7 +1609,23 @@ def gate_candidate(
                 reasons=(CegisAbstentionReason.PUBLIC_COMPAT_RISK.value,),
             )
         )
-    return tuple(results)
+    gated = tuple(results)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(candidate, "candidate_id", "") or candidate.path or "cegis-gate")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="cegis_candidate_gate",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(candidate.path or record_ref),
+        )
+    except Exception:
+        pass
+    return gated
 
 
 def _mutation_gate_for_candidate(

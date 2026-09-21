@@ -3909,6 +3909,26 @@ class RefillResidualGuardResult:
         return payload
 
 
+def _mirror_refill_guard(result: RefillResidualGuardResult) -> RefillResidualGuardResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_id = result.task.get("task_id") if isinstance(result.task, Mapping) else ""
+        record_ref = str(task_id or getattr(result.verdict, "value", "") or "refill-residual-guard")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refill_residual_guard",
+            record_ref=record_ref,
+            subject_kind="task_id" if task_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_refill_residual_guard(
     task: Mapping[str, Any] | Any,
     *,
@@ -3930,11 +3950,13 @@ def evaluate_refill_residual_guard(
     try:
         payload = _task_mapping(task)
     except RefillResidualGuardError as exc:
-        return RefillResidualGuardResult(
-            verdict=RefillResidualGuardVerdict.REJECTED,
-            reason_codes=exc.reason_codes or (REASON_MALFORMED_TASK,),
-            task={},
-            requires_pre_implementation_kernel=False,
+        return _mirror_refill_guard(
+            RefillResidualGuardResult(
+                verdict=RefillResidualGuardVerdict.REJECTED,
+                reason_codes=exc.reason_codes or (REASON_MALFORMED_TASK,),
+                task={},
+                requires_pre_implementation_kernel=False,
+            )
         )
 
     reasons: list[str] = []
@@ -3977,14 +3999,16 @@ def evaluate_refill_residual_guard(
 
     unique_reasons = tuple(sorted(set(reasons)))
     if unique_reasons:
-        return RefillResidualGuardResult(
-            verdict=RefillResidualGuardVerdict.REJECTED,
-            reason_codes=unique_reasons,
-            task=payload,
-            requires_pre_implementation_kernel=bool(kernel_flag),
-            disposition=disposition,
-            residual_packet_schema=packet_schema,
-            doctor_preconditions=preconditions,
+        return _mirror_refill_guard(
+            RefillResidualGuardResult(
+                verdict=RefillResidualGuardVerdict.REJECTED,
+                reason_codes=unique_reasons,
+                task=payload,
+                requires_pre_implementation_kernel=bool(kernel_flag),
+                disposition=disposition,
+                residual_packet_schema=packet_schema,
+                doctor_preconditions=preconditions,
+            )
         )
 
     guarded = (
@@ -3992,15 +4016,17 @@ def evaluate_refill_residual_guard(
         if stamp_on_admit
         else dict(payload)
     )
-    return RefillResidualGuardResult(
-        verdict=RefillResidualGuardVerdict.ADMITTED,
-        reason_codes=(),
-        task=payload,
-        guarded_task=guarded,
-        requires_pre_implementation_kernel=True,
-        disposition=_disposition_token(guarded),
-        residual_packet_schema=_packet_schema_token(guarded),
-        doctor_preconditions=_doctor_preconditions(guarded),
+    return _mirror_refill_guard(
+        RefillResidualGuardResult(
+            verdict=RefillResidualGuardVerdict.ADMITTED,
+            reason_codes=(),
+            task=payload,
+            guarded_task=guarded,
+            requires_pre_implementation_kernel=True,
+            disposition=_disposition_token(guarded),
+            residual_packet_schema=_packet_schema_token(guarded),
+            doctor_preconditions=_doctor_preconditions(guarded),
+        )
     )
 
 

@@ -1128,6 +1128,25 @@ def verify_repair_evidence_envelope(
                 "completion requires an exact prior reproved evidence envelope"
             )
         envelope.require_typed_authority(require_completion=True)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(envelope, "evidence_cid", "")
+            or getattr(envelope, "content_id", "")
+            or "repair-evidence-envelope"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_evidence_envelope",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return envelope
 
 

@@ -346,12 +346,28 @@ def build_inventory(
     """Strictly ingest every supplied trajectory row; no row is silently skipped."""
 
     observations = tuple(ModelInvocationObservation.from_dict(row) for row in rows)
-    return ResidualReasoningInventory(
+    inventory = ResidualReasoningInventory(
         repository_revision=repository_revision,
         environment_id=environment_id,
         boundaries=tuple(boundaries),
         observations=observations,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(inventory.repository_revision or inventory.environment_id or "residual-inventory")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="residual_reasoning_inventory",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return inventory
 
 
 __all__ = (

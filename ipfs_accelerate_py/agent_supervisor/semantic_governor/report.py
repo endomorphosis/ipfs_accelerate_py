@@ -2566,7 +2566,27 @@ def build_governor_report(
         metadata=meta,
     )
     sealed = report.to_dict()
-    return GovernorReport.from_dict(sealed)
+    sealed_report = GovernorReport.from_dict(sealed)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(sealed_report, "metric_report_cid", "")
+            or getattr(sealed_report, "live_metrics_cid", "")
+            or "governor-report"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="governor_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return sealed_report
 
 
 def build_dashboard_data(

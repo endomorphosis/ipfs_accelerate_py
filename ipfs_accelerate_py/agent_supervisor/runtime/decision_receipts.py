@@ -1202,7 +1202,26 @@ def admit_route_receipt(payload: Mapping[str, Any] | str | bytes) -> RouteReceip
     admitted = _canonical_copy(data)
     _bind_cid(admitted, field="receipt_cid")
     validate_against_schema(admitted, schema, path="$")
-    return RouteReceipt(_payload=admitted)
+    receipt = RouteReceipt(_payload=admitted)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identity = admitted.get("identity") if isinstance(admitted.get("identity"), Mapping) else {}
+        tree_id = str(identity.get("repository_tree") or "")
+        record_ref = str(admitted.get("receipt_cid") or identity.get("task_cid") or "route-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="route_receipt",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def admit_routing_decision(payload: Mapping[str, Any] | str | bytes) -> RouteReceipt:

@@ -787,6 +787,21 @@ def build_contract_mismatch_triage(
     payload["triage_id"] = "sha256:" + sha256(
         canonical_json_bytes(payload)
     ).hexdigest()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(payload.get("triage_id") or payload.get("snapshot_id") or "contract-mismatch-triage")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_mismatch_triage",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(payload.get("snapshot_id") or record_ref),
+        )
+    except Exception:
+        pass
     return payload
 
 

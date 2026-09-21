@@ -1803,7 +1803,7 @@ def evaluate_exhaustion_quorum(
         else:
             by_member[member.member_id] = member
 
-    return ExhaustionQuorumResult(
+    quorum = ExhaustionQuorumResult(
         binding=target,
         required_members=policy.required_members,
         members=tuple(by_member.values()),
@@ -1811,6 +1811,24 @@ def evaluate_exhaustion_quorum(
         invalidated=tuple(invalidated),
         rejected=tuple(rejected),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(target, "tree_id", "") or "")
+        record_ref = str(getattr(target, "repository_id", "") or tree_id or "exhaustion-quorum")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="exhaustion_quorum",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return quorum
 
 
 evaluate_exhaustion_receipts = evaluate_exhaustion_quorum
@@ -2038,7 +2056,7 @@ def build_scan_result(
             ),
             tree_id=str(identity.get("tree_id") or identity.get("tree_identity") or ""),
         )
-    return RefillScanResult(
+    result = RefillScanResult(
         terminal_reason=terminal_reason,
         scan_mode=scan_mode,
         analyzer_version=analyzer_version,
@@ -2052,6 +2070,24 @@ def build_scan_result(
         metadata=metadata or {},
         accounting=accounting,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.repository_id or tree_id or "refill-scan-result")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refill_scan_result",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def adapt_legacy_scan_result(

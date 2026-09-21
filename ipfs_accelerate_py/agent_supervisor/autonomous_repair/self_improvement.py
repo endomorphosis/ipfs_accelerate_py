@@ -130,9 +130,34 @@ class ImprovementResult:
     network_call_count: int = 0
 
 
+def _mirror_improvement(result: ImprovementResult) -> ImprovementResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "proposal_cid", "")
+            or getattr(result.disposition, "value", "")
+            or "improvement-proposal"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="improvement_proposal_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_improvement_proposal(value: Any) -> ImprovementResult:
     if not isinstance(value, ImprovementProposal):
-        return ImprovementResult(ImprovementDisposition.REJECTED, ("typed_proposal_required",))
+        return _mirror_improvement(
+            ImprovementResult(ImprovementDisposition.REJECTED, ("typed_proposal_required",))
+        )
     reasons: list[str] = []
     if (
         not isinstance(value.selection, RepairSelectionResult)
@@ -223,9 +248,13 @@ def evaluate_improvement_proposal(value: Any) -> ImprovementResult:
     elif not value.parameter_changes:
         reasons.append("bounded_parameter_change_or_reviewed_operator_required")
     if reasons:
-        return ImprovementResult(ImprovementDisposition.REJECTED, tuple(sorted(set(reasons))))
+        return _mirror_improvement(
+            ImprovementResult(ImprovementDisposition.REJECTED, tuple(sorted(set(reasons))))
+        )
     if value.candidate.score >= value.baseline.score:
-        return ImprovementResult(ImprovementDisposition.NO_OP, ("non_improving_fixed_point",))
+        return _mirror_improvement(
+            ImprovementResult(ImprovementDisposition.NO_OP, ("non_improving_fixed_point",))
+        )
     body = {
         "schema": DCR_IMPROVEMENT_SCHEMA,
         "roots_cid": value.roots_cid,
@@ -236,10 +265,12 @@ def evaluate_improvement_proposal(value: Any) -> ImprovementResult:
         "inverse": value.inverse_cid,
         "approval": value.approval_class,
     }
-    return ImprovementResult(
-        ImprovementDisposition.PROPOSAL_PENDING,
-        ("integration_pending_live_dcr080_dcr083",),
-        content_identity(body),
+    return _mirror_improvement(
+        ImprovementResult(
+            ImprovementDisposition.PROPOSAL_PENDING,
+            ("integration_pending_live_dcr080_dcr083",),
+            content_identity(body),
+        )
     )
 
 

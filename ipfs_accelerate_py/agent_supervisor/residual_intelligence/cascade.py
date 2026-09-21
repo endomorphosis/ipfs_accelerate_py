@@ -928,6 +928,33 @@ def _missing_evidence(context: ResidualCascadeContext, stage: CascadeStage) -> b
     return False
 
 
+def _mirror_stage_constraints(
+    context: ResidualCascadeContext,
+    parsed: CascadeStage,
+    reasons: tuple[str, ...],
+) -> tuple[str, ...]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(context, "family", "")
+            or getattr(parsed, "value", parsed)
+            or "cascade-stage"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_cascade_stage_constraints",
+            record_ref=str(record_ref),
+            subject_kind="record_cid",
+            subject_ref=str(record_ref),
+        )
+    except Exception:
+        pass
+    return reasons
+
+
 def evaluate_stage_constraints(
     context: ResidualCascadeContext,
     stage: CascadeStage,
@@ -936,7 +963,7 @@ def evaluate_stage_constraints(
 
     parsed = parse_cascade_stage(stage)
     if parsed is CascadeStage.HUMAN_REVIEW:
-        return ()
+        return _mirror_stage_constraints(context, parsed, ())
     reasons: list[str] = []
     family_spec = context.family_spec
     if context.simulated:
@@ -1023,7 +1050,7 @@ def evaluate_stage_constraints(
         reasons.append(REASON_BUDGET)
     if parsed in LEARNED_STAGES and cost > context.expected_decision_value_microunits:
         reasons.append(REASON_VALUE)
-    return tuple(dict.fromkeys(reasons))
+    return _mirror_stage_constraints(context, parsed, tuple(dict.fromkeys(reasons)))
 
 
 def _make_candidate(context: ResidualCascadeContext, stage: CascadeStage) -> CascadeCandidate:

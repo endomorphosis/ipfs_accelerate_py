@@ -1614,7 +1614,7 @@ def build_goal_coverage_map(
 
     # Deduplicate identical relationships produced by aliased metadata.
     edge_by_id = {edge.edge_id: edge for edge in edges}
-    return GoalCoverageMap(
+    coverage = GoalCoverageMap(
         criteria=criterion_rows,
         edges=list(edge_by_id.values()),
         receipts=normalized_receipts,
@@ -1623,6 +1623,24 @@ def build_goal_coverage_map(
         evaluated_at=instant.isoformat(),
         repository_tree=repository_tree,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(coverage.repository_tree or "")
+        record_ref = str((coverage.registered_goal_ids[0] if coverage.registered_goal_ids else "") or tree_id or "goal-coverage")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="goal_coverage_map",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return coverage
 
 
 def goal_coverage_graph(*args: Any, **kwargs: Any) -> dict[str, Any]:
