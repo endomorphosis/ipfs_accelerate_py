@@ -5043,6 +5043,77 @@ def test_mirror_spar_preimage_authority_and_v2_publication(tmp_path, monkeypatch
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_before_hashes_identity_and_issuance_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    before = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="spar_before_hashes",
+        record_ref="bafybefore",
+        subject_kind="capsule_cid",
+        subject_ref="bafybefore",
+    )
+    identity = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="content_identity",
+        record_ref="bafyidentity",
+        subject_kind="content_cid",
+        subject_ref="bafyidentity",
+    )
+    sealed = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="sealed_cohort_artifacts",
+        record_ref="bafycohort",
+        subject_kind="record_cid",
+        subject_ref="bafycohort",
+    )
+    retained = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="retained_bytes_verification",
+        record_ref="bafybytes",
+        subject_kind="content_cid",
+        subject_ref="bafybytes",
+    )
+    epoch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_refill_epoch",
+        record_ref="epoch:1",
+        subject_kind="record_cid",
+        subject_ref="epoch:1",
+    )
+    idempotency = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refill_idempotency",
+        record_ref="idem:1",
+        subject_kind="record_cid",
+        subject_ref="idem:1",
+    )
+    issuance = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="proof_bearing_issuance_material",
+        record_ref="bafyproof",
+        subject_kind="content_cid",
+        subject_ref="bafyproof",
+    )
+    for item in (
+        before,
+        identity,
+        sealed,
+        retained,
+        epoch,
+        idempotency,
+        issuance,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

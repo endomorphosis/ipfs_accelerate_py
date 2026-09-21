@@ -545,13 +545,34 @@ def verify_before_hashes(
     before = tuple(packet.preimage.source_cids)
     if not before:
         raise ExtractionWaveError("wave requires exact before hashes")
-    if claimed_before_hashes is None:
-        return before
-    claimed = _unique_sorted_text(
-        list(claimed_before_hashes), "claimed_before_hashes", limit=MAX_MEMBERS
-    )
-    if set(claimed) != set(before):
-        raise ExtractionWaveError("before hashes do not verify")
+    if claimed_before_hashes is not None:
+        claimed = _unique_sorted_text(
+            list(claimed_before_hashes), "claimed_before_hashes", limit=MAX_MEMBERS
+        )
+        if set(claimed) != set(before):
+            raise ExtractionWaveError("before hashes do not verify")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            before[0]
+            if before
+            else getattr(getattr(packet, "preimage", None), "preimage_cid", "")
+            or "spar-before-hashes"
+        )
+        tree_id = str(getattr(packet, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="spar_before_hashes",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return before
 
 

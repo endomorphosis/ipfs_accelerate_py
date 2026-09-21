@@ -385,16 +385,35 @@ def validate_artifact_cid(value: Any) -> str:
     return decode_artifact_cid(value).text
 
 
+def _mirror_retained_bytes(ok: bool, cid: str) -> bool:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(cid or "retained-bytes")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="retained_bytes_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok
+
+
 def verify_retained_bytes(cid: str, data: bytes) -> bool:
     """Recheck decoded multihash against retained canonical bytes."""
 
     if type(data) is not bytes or not data:
-        return False
+        return _mirror_retained_bytes(False, cid)
     try:
         parsed = decode_artifact_cid(cid)
     except ProofTestReuseObjectiveContractsError:
-        return False
-    return parsed.verifies(data)
+        return _mirror_retained_bytes(False, cid)
+    return _mirror_retained_bytes(parsed.verifies(data), cid)
 
 
 def require_verified_cid(cid: str, data: bytes) -> str:

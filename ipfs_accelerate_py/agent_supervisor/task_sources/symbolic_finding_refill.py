@@ -1682,19 +1682,42 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     return covered_evidence_terms()
 
 
+def _mirror_refill_check(ok: bool, outcome: Any, record_kind: str) -> bool:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(outcome, "refill_epoch_id", "")
+            or getattr(outcome, "idempotency_id", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok
+
+
 def verify_symbolic_refill_epoch(outcome: RefillOutcome) -> bool:
     """Return True when ``outcome`` carries a well-formed epoch receipt."""
 
     if not isinstance(outcome, RefillOutcome):
-        return False
+        return _mirror_refill_check(False, outcome, "symbolic_refill_epoch")
     epoch = outcome.epoch_evidence
     if epoch is None:
-        return False
+        return _mirror_refill_check(False, outcome, "symbolic_refill_epoch")
     try:
         record = epoch.to_record()
     except (TypeError, ValueError, SymbolicFindingRefillError):
-        return False
-    return (
+        return _mirror_refill_check(False, outcome, "symbolic_refill_epoch")
+    return _mirror_refill_check(
         record.get("schema") == SYMBOLIC_REFILL_EPOCH_SCHEMA
         and record.get("epoch_id") == epoch.epoch_id == outcome.refill_epoch_id
         and record.get("binding") == outcome.binding.to_record()
@@ -1711,7 +1734,9 @@ def verify_symbolic_refill_epoch(outcome: RefillOutcome) -> bool:
         == _unique(tuple(goal.goal_id for goal in outcome.new_goals))
         and bool(record.get("changed")) is bool(outcome.changed)
         and not REFILL_AUTHORIZES_EXECUTION
-        and not REFILL_AUTHORIZES_COMPLETION
+        and not REFILL_AUTHORIZES_COMPLETION,
+        outcome,
+        "symbolic_refill_epoch",
     )
 
 
@@ -1719,15 +1744,15 @@ def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
     """Return True when ``outcome`` carries a well-formed idempotency receipt."""
 
     if not isinstance(outcome, RefillOutcome):
-        return False
+        return _mirror_refill_check(False, outcome, "refill_idempotency")
     evidence = outcome.idempotency_evidence
     if evidence is None:
-        return False
+        return _mirror_refill_check(False, outcome, "refill_idempotency")
     try:
         record = evidence.to_record()
     except (TypeError, ValueError, SymbolicFindingRefillError):
-        return False
-    return (
+        return _mirror_refill_check(False, outcome, "refill_idempotency")
+    return _mirror_refill_check(
         record.get("schema") == REFILL_IDEMPOTENCY_SCHEMA
         and record.get("idempotency_id")
         == evidence.idempotency_id
@@ -1755,7 +1780,9 @@ def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
             not record.get("resolved_task_ids")
             or bool(record.get("resolved_goal_ids"))
         )
-        and bool(record.get("replay_noop")) is bool(evidence.replay_noop)
+        and bool(record.get("replay_noop")) is bool(evidence.replay_noop),
+        outcome,
+        "refill_idempotency",
     )
 
 

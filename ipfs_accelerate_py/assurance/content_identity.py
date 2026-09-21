@@ -588,13 +588,29 @@ def verify_or_raise(
         )
     canonical_bytes, chosen = canonicalize_payload(data, codec=codec or result.codec)
     assert result.cid is not None and result.digest_hex is not None
-    return ContentIdentity(
+    identity = ContentIdentity(
         cid=result.cid,
         digest_hex=result.digest_hex,
         canonical_bytes=canonical_bytes,
         codec=chosen,
         integrity=Integrity.DIGEST_VALID.value,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(identity.cid or "content-identity")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="content_identity",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return identity
 
 
 def legacy_pseudo_cid(data: Any) -> str:

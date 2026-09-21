@@ -1427,13 +1427,29 @@ def verify_sealed_artifacts(path: Path | None = None) -> dict[str, Any]:
         raise LiveCohortAdmissionError("sealed manifest claims live evidence without qualification")
     if loaded["disposition"] not in CLOSED_DISPOSITIONS:
         raise LiveCohortAdmissionError("untyped sealed cohort disposition")
-    return {
+    result = {
         "count": loaded["count"],
         "disposition": loaded["disposition"],
         "enrollment_deadline": loaded["enrollment_deadline"],
         "identity": loaded["identity"],
         "qualification": loaded["qualification"],
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("identity") or result.get("disposition") or "sealed-artifacts")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="sealed_cohort_artifacts",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class LiveCohortAdmissionService:

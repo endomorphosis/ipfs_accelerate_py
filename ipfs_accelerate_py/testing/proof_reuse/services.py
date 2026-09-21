@@ -3314,6 +3314,33 @@ def _mapping_contains_private_keys(value: Any, *, depth: int = 0) -> bool:
     return False
 
 
+def _mirror_issuance_material(
+    admitted: ProofBearingIssuanceMaterial | None,
+    reason: str,
+) -> tuple[ProofBearingIssuanceMaterial | None, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(admitted, "proof_artifact_cid", "")
+            or getattr(admitted, "circuit_cid", "")
+            or reason
+            or "proof-bearing-issuance"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="proof_bearing_issuance_material",
+            record_ref=record_ref,
+            subject_kind="content_cid" if getattr(admitted, "proof_artifact_cid", "") else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admitted, reason
+
+
 def admit_proof_bearing_issuance_material(
     material: Any,
     *,
@@ -3330,20 +3357,20 @@ def admit_proof_bearing_issuance_material(
     """
 
     if material is None:
-        return None, "material_missing"
+        return _mirror_issuance_material(None, "material_missing")
     if isinstance(material, ProofBearingIssuanceMaterial):
         candidate = material
         public = candidate.to_public_dict()
     elif isinstance(material, Mapping):
         # Refuse private-bearing input before redaction can hide it.
         if _mapping_contains_private_keys(material):
-            return None, "private_material_present"
+            return _mirror_issuance_material(None, "private_material_present")
         public = redact_private_material_fields(dict(material))
         if not isinstance(public, Mapping):
-            return None, "material_malformed"
+            return _mirror_issuance_material(None, "material_malformed")
         certificate = public.get("certificate")
         if not isinstance(certificate, Mapping):
-            return None, "certificate_missing"
+            return _mirror_issuance_material(None, "certificate_missing")
         try:
             candidate = ProofBearingIssuanceMaterial(
                 certificate=dict(certificate),
@@ -3360,7 +3387,7 @@ def admit_proof_bearing_issuance_material(
                 verified_locally=bool(public.get("verified_locally", True)),
             )
         except Exception:
-            return None, "material_structurally_incomplete"
+            return _mirror_issuance_material(None, "material_structurally_incomplete")
         public = candidate.to_public_dict()
     else:
         # datasets IssuedTestCertificateMaterial (duck-typed).
@@ -3368,7 +3395,7 @@ def admit_proof_bearing_issuance_material(
             getattr(material, "certificate", None)
         )
         if certificate is None:
-            return None, "certificate_missing"
+            return _mirror_issuance_material(None, "certificate_missing")
         proof_json = getattr(material, "proof_json", None)
         if not isinstance(proof_json, Mapping):
             proof_json = {}
@@ -3398,15 +3425,15 @@ def admit_proof_bearing_issuance_material(
                 ),
             )
         except Exception:
-            return None, "material_structurally_incomplete"
+            return _mirror_issuance_material(None, "material_structurally_incomplete")
         public = candidate.to_public_dict()
 
     if not candidate.proof_digest or not candidate.proof_artifact_cid:
-        return None, "proof_identity_missing"
+        return _mirror_issuance_material(None, "proof_identity_missing")
     if not candidate.circuit_cid or not candidate.verifying_key_cid:
-        return None, "provenance_pins_missing"
+        return _mirror_issuance_material(None, "provenance_pins_missing")
     if not isinstance(candidate.certificate, Mapping) or not candidate.certificate:
-        return None, "certificate_empty"
+        return _mirror_issuance_material(None, "certificate_empty")
     cert_map = dict(candidate.certificate)
     for required in (
         "receipt_cid",
@@ -3426,24 +3453,24 @@ def admit_proof_bearing_issuance_material(
                 cert_map.get("receipt_id") or ""
             ).strip():
                 continue
-            return None, f"certificate_missing_{required}"
+            return _mirror_issuance_material(None, f"certificate_missing_{required}")
 
     if expected_circuit_cid and candidate.circuit_cid != expected_circuit_cid:
-        return None, "circuit_cid_provenance_mismatch"
+        return _mirror_issuance_material(None, "circuit_cid_provenance_mismatch")
     if (
         expected_verifying_key_cid
         and candidate.verifying_key_cid != expected_verifying_key_cid
     ):
-        return None, "verifying_key_cid_provenance_mismatch"
+        return _mirror_issuance_material(None, "verifying_key_cid_provenance_mismatch")
 
     if not _bounded_json_size(cert_map, limit=max_certificate_bytes):
-        return None, "certificate_oversized"
+        return _mirror_issuance_material(None, "certificate_oversized")
     if candidate.proof_json and not _bounded_json_size(
         dict(candidate.proof_json), limit=max_proof_bytes
     ):
-        return None, "proof_oversized"
+        return _mirror_issuance_material(None, "proof_oversized")
     if not _bounded_json_size(public, limit=max_material_bytes):
-        return None, "material_oversized"
+        return _mirror_issuance_material(None, "material_oversized")
 
     # Reject private leakage that survived redaction.
     encoded = json.dumps(public, sort_keys=True, default=str)
@@ -3456,8 +3483,8 @@ def admit_proof_bearing_issuance_material(
         "retained_receipt_bytes",
     ):
         if marker in lowered:
-            return None, "private_material_present"
-    return candidate, ""
+            return _mirror_issuance_material(None, "private_material_present")
+    return _mirror_issuance_material(candidate, "")
 
 
 class LazyRealTestCertificateIssuer:
