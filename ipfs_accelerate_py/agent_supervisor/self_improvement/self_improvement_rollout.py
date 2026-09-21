@@ -1257,7 +1257,23 @@ def evaluate_paired_self_improvement_rollout(
     material["report_id"] = _digest(
         {key: value for key, value in material.items() if key not in {"report_id", "evaluated_at"}}
     )
-    return PairedRolloutReport(material)
+    report = PairedRolloutReport(material)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.report_id or "paired-self-improvement-rollout")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="paired_self_improvement_rollout",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def _completion_payload(value: Any) -> dict[str, Any]:

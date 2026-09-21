@@ -3773,6 +3773,142 @@ def test_mirror_self_improvement_security_corpus_and_rollout(tmp_path, monkeypat
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_v2_rollout_scheduler_previews_and_release(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    v2 = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_self_improvement_rollout",
+        record_ref="v2-rollout:1",
+        subject_kind="record_cid",
+        subject_ref="v2-rollout:1",
+    )
+    paired = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="paired_self_improvement_rollout",
+        record_ref="paired-rollout:1",
+        subject_kind="record_cid",
+        subject_ref="paired-rollout:1",
+    )
+    throughput = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="adaptive_throughput_benchmark",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    drift = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="capacity_drift_decision",
+        record_ref="snapshot:live",
+        subject_kind="record_cid",
+        subject_ref="snapshot:live",
+    )
+    compiled = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="compiled_execution_admission",
+        record_ref="task:1",
+        subject_kind="task_id",
+        subject_ref="task:1",
+    )
+    protocol = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="protocol_repair_preview",
+        record_ref="protocol:1",
+        subject_kind="record_cid",
+        subject_ref="protocol:1",
+    )
+    ui = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="ui_projection_repair_preview",
+        record_ref="ui:1",
+        subject_kind="record_cid",
+        subject_ref="ui:1",
+    )
+    release = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="release_evidence",
+        record_ref="g212:1",
+        subject_kind="record_cid",
+        subject_ref="g212:1",
+    )
+    oracle = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="quality_oracle_manifest",
+        record_ref="oracle:1",
+        subject_kind="record_cid",
+        subject_ref="oracle:1",
+    )
+    wpd = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="worker_planner_doctor_release",
+        record_ref="blocked_synthetic",
+        subject_kind="record_cid",
+        subject_ref="blocked_synthetic",
+    )
+    claim = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="documentation_claim",
+        record_ref="claim:1",
+        subject_kind="record_cid",
+        subject_ref="claim:1",
+    )
+    advisory = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="typesafe_advisory_receipt",
+        record_ref="question:1",
+        subject_kind="record_cid",
+        subject_ref="question:1",
+    )
+    policy = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="runtime_policy_ir",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    materialization = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="objective_goal_materialization_preview",
+        record_ref="heap:1",
+        subject_kind="record_cid",
+        subject_ref="heap:1",
+    )
+    profile = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="objective_validation_repair_profile",
+        record_ref="profile:1",
+        subject_kind="record_cid",
+        subject_ref="profile:1",
+    )
+    for item in (
+        v2,
+        paired,
+        throughput,
+        drift,
+        compiled,
+        protocol,
+        ui,
+        release,
+        oracle,
+        wpd,
+        claim,
+        advisory,
+        policy,
+        materialization,
+        profile,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

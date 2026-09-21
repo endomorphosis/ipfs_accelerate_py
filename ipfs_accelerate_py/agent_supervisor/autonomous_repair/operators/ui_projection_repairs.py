@@ -267,11 +267,36 @@ def _validate(value: UiProjectionRepairRequest) -> tuple[str | None, tuple[str, 
     return None, (forest_cid, desktop_cid, graph_cid)
 
 
+def _mirror_ui_preview(preview: UiProjectionRepairPreview) -> UiProjectionRepairPreview:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            preview.request_cid
+            or getattr(preview.status, "value", "")
+            or "ui-projection-repair-preview"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ui_projection_repair_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return preview
+
+
 def preview_ui_projection_repair(request: UiProjectionRepairRequest) -> UiProjectionRepairPreview:
     """Create an exact UI projection byte preview plus inverse binding only."""
     if not isinstance(request, UiProjectionRepairRequest):
-        return UiProjectionRepairPreview(
-            UiProjectionPreviewStatus.REJECTED, ("typed_request_required",)
+        return _mirror_ui_preview(
+            UiProjectionRepairPreview(
+                UiProjectionPreviewStatus.REJECTED, ("typed_request_required",)
+            )
         )
     reason, roots = _validate(request)
     if reason:
@@ -281,7 +306,7 @@ def preview_ui_projection_repair(request: UiProjectionRepairRequest) -> UiProjec
             in {"dynamic_or_ambiguous_anchor", "generated_fixture_or_descriptor_only_authority"}
             else UiProjectionPreviewStatus.REJECTED
         )
-        return UiProjectionRepairPreview(status, (reason,))
+        return _mirror_ui_preview(UiProjectionRepairPreview(status, (reason,)))
     assert roots is not None
     forest_cid, desktop_cid, graph_cid = roots
     request_cid = content_identity(
@@ -320,13 +345,15 @@ def preview_ui_projection_repair(request: UiProjectionRepairRequest) -> UiProjec
             "after": _sha256(request.source_bytes),
         }
     )
-    return UiProjectionRepairPreview(
-        UiProjectionPreviewStatus.PREVIEWED,
-        ("integration_pending_dcr035_dcr040_dcr070_dcr072",),
-        request_cid,
-        forward,
-        inverse,
-        after,
+    return _mirror_ui_preview(
+        UiProjectionRepairPreview(
+            UiProjectionPreviewStatus.PREVIEWED,
+            ("integration_pending_dcr035_dcr040_dcr070_dcr072",),
+            request_cid,
+            forward,
+            inverse,
+            after,
+        )
     )
 
 

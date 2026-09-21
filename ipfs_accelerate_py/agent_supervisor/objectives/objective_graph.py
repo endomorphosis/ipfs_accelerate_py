@@ -6388,7 +6388,7 @@ def preview_objective_goal_materialization(
         candidate_text = objective_text
     else:
         candidate_text = proposed_text
-    return ObjectiveGoalMaterializationPreview(
+    preview = ObjectiveGoalMaterializationPreview(
         base_heap_content_id=base_content_id,
         root_goal_id=selected_root_id,
         root_content_id=root_content_id,
@@ -6408,6 +6408,26 @@ def preview_objective_goal_materialization(
         candidate_text=candidate_text,
         policy=selected_policy,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            preview.base_heap_content_id
+            or preview.root_goal_id
+            or "objective-goal-materialization"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_goal_materialization_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return preview
 
 
 # Compatibility phrasing used by generation-ledger and tracker callers.

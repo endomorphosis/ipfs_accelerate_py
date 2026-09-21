@@ -536,6 +536,25 @@ def compose_planning_nomination(
     return nominated, tuple(reasons), confidence
 
 
+def _mirror_advisory(receipt: AdvisoryReceipt) -> AdvisoryReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.question_id or receipt.action or "typesafe-advisory")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typesafe_advisory_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_closed_question(
     *,
     question_id: str,
@@ -552,27 +571,33 @@ def evaluate_closed_question(
         privacy_class=privacy_class,
         remote_disclosure_permitted=remote_disclosure_permitted,
     ):
-        return AdvisoryReceipt(
-            action="abstain",
-            question_id=question_id,
-            reason_codes=("privacy_or_unconfigured",),
-            privacy_blocked=str(privacy_class or "").casefold() in REMOTE_BLOCKED_PRIVACY
-            or not remote_disclosure_permitted,
+        return _mirror_advisory(
+            AdvisoryReceipt(
+                action="abstain",
+                question_id=question_id,
+                reason_codes=("privacy_or_unconfigured",),
+                privacy_blocked=str(privacy_class or "").casefold() in REMOTE_BLOCKED_PRIVACY
+                or not remote_disclosure_permitted,
+            )
         )
     kind = str(question_type or "").strip().casefold()
     allowed = tuple(str(item).strip() for item in alternatives if str(item).strip())
     if kind.startswith(WHICH_PREFIX) and not allowed:
-        return AdvisoryReceipt(
-            action="abstain",
-            question_id=question_id,
-            reason_codes=("empty_allowlist",),
+        return _mirror_advisory(
+            AdvisoryReceipt(
+                action="abstain",
+                question_id=question_id,
+                reason_codes=("empty_allowlist",),
+            )
         )
     questions = planning_atomic_questions(kind, allowed)
     if not questions:
-        return AdvisoryReceipt(
-            action="abstain",
-            question_id=question_id,
-            reason_codes=("unsupported_question_type",),
+        return _mirror_advisory(
+            AdvisoryReceipt(
+                action="abstain",
+                question_id=question_id,
+                reason_codes=("unsupported_question_type",),
+            )
         )
     from ipfs_accelerate_py.typesafe_inference import system_one
 
@@ -583,29 +608,35 @@ def evaluate_closed_question(
     try:
         result = system_one(redacted_state, questions, timeout=timeout)
     except Exception:
-        return AdvisoryReceipt(
-            action="abstain",
-            question_id=question_id,
-            reason_codes=("typesafe_error",),
+        return _mirror_advisory(
+            AdvisoryReceipt(
+                action="abstain",
+                question_id=question_id,
+                reason_codes=("typesafe_error",),
+            )
         )
     nominated, reasons, confidence = compose_planning_nomination(kind, result, allowed)
     if not nominated:
-        return AdvisoryReceipt(
-            action="abstain",
+        return _mirror_advisory(
+            AdvisoryReceipt(
+                action="abstain",
+                question_id=question_id,
+                choice=_choice_answer(result, "answer"),
+                confidence=confidence,
+                reason_codes=reasons or ("choice_not_in_allowlist",),
+                usage=_usage(),
+            )
+        )
+    return _mirror_advisory(
+        AdvisoryReceipt(
+            action="answered",
             question_id=question_id,
-            choice=_choice_answer(result, "answer"),
+            choice=nominated,
+            noul=_noul_answer(result, "answer"),
             confidence=confidence,
-            reason_codes=reasons or ("choice_not_in_allowlist",),
+            reason_codes=reasons,
             usage=_usage(),
         )
-    return AdvisoryReceipt(
-        action="answered",
-        question_id=question_id,
-        choice=nominated,
-        noul=_noul_answer(result, "answer"),
-        confidence=confidence,
-        reason_codes=reasons,
-        usage=_usage(),
     )
 
 

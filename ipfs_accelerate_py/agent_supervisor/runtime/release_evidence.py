@@ -1218,6 +1218,25 @@ def export_release_evidence(
     }
 
 
+def _mirror_release_evidence(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("content_id") or result.get("goal_id") or "release-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="release_evidence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_release_evidence(
     payload: Mapping[str, Any] | None,
     *,
@@ -1238,7 +1257,7 @@ def verify_release_evidence(
     }
     if not isinstance(payload, Mapping) or not payload:
         failures.append("release_evidence_missing")
-        return result
+        return _mirror_release_evidence(result)
 
     data = dict(payload)
     result["schema"] = data.get("schema")
@@ -1418,11 +1437,11 @@ def verify_release_evidence(
                 failures.append("release_evidence_source_replay_mismatch")
 
     if failures:
-        return result
+        return _mirror_release_evidence(result)
 
     result["valid"] = True
     result["snapshot"] = snapshot
-    return result
+    return _mirror_release_evidence(result)
 
 
 def expected_output_failure_reasons() -> frozenset[str]:

@@ -1043,6 +1043,21 @@ def verify_objective_validation_repair(
         )
     if profile.objective_validation_repair["evidence_term"] != OBJECTIVE_VALIDATION_EVIDENCE:
         raise ExecutionProfileError("profile objective_validation_repair evidence_term mismatch")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(profile.profile_id or profile.goal_id or "objective-validation-repair")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_validation_repair_profile",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return profile
 
 

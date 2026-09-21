@@ -185,7 +185,7 @@ def evaluate_release(
     else:
         verdict = ReleaseVerdict.FAIL
 
-    return ReleaseReceipt(
+    receipt = ReleaseReceipt(
         verdict=verdict,
         promotion_allowed=bool(promotion),
         safety_floors=floors,
@@ -196,6 +196,26 @@ def evaluate_release(
         reason_codes=tuple(dict.fromkeys(reasons)),
         interfaces=dict(REQUIRED_INTERFACES),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt.verdict, "value", "")
+            or receipt.evidence
+            or "worker-planner-doctor-release"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worker_planner_doctor_release",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 __all__ = [

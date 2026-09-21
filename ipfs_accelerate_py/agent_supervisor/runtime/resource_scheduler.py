@@ -4431,6 +4431,29 @@ class AdaptiveThroughputBenchmarkReceipt:
         return (self.requirement_id,) if valid else ()
 
 
+def _mirror_adaptive_throughput(
+    receipt: AdaptiveThroughputBenchmarkReceipt,
+) -> AdaptiveThroughputBenchmarkReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.content_id or receipt.repository_tree_id or "adaptive-throughput-benchmark")
+        tree_id = str(receipt.repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="adaptive_throughput_benchmark",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_adaptive_throughput_benchmark(
     baseline: AdaptiveThroughputRun,
     adaptive: AdaptiveThroughputRun,
@@ -4460,9 +4483,11 @@ def evaluate_adaptive_throughput_benchmark(
         "failure_codes": failures,
     }
     provisional = AdaptiveThroughputBenchmarkReceipt(content_id="", **values)
-    return replace(
-        provisional,
-        content_id=_canonical_digest(provisional._content_payload()),
+    return _mirror_adaptive_throughput(
+        replace(
+            provisional,
+            content_id=_canonical_digest(provisional._content_payload()),
+        )
     )
 
 
@@ -5562,6 +5587,32 @@ def _provider_live_slots(
     return sum(max(0, int(item.available_concurrency)) for item in normalized)
 
 
+def _mirror_capacity_drift(decision: CapacityDriftDecision) -> CapacityDriftDecision:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        snapshot_id = str(
+            decision.live_capacity_snapshot_id or decision.planned_capacity_snapshot_id or ""
+        )
+        record_ref = str(
+            snapshot_id
+            or getattr(decision.action, "value", "")
+            or "capacity-drift"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="capacity_drift_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 def evaluate_capacity_drift(
     *,
     planned_width: int,
@@ -5636,48 +5687,52 @@ def evaluate_capacity_drift(
     overcommit_prevented = False
 
     if stale_capacity or live_width <= 0:
-        return CapacityDriftDecision(
-            action=CapacityDriftAction.WAIT,
-            planned_width=target_width,
-            live_width=max(0, live_width),
-            admitted_width=0,
-            planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
-            live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
-            reasons=tuple(dict.fromkeys(reasons or ["insufficient_live_capacity"])),
-            overcommit_prevented=True,
-            wait_recommended=True,
-            degraded_task_ids=tuple(candidates),
-            admitted_task_ids=(),
-            resource_headroom={
-                "host_task_slots": max(0, live_host_width),
-                "planned_width": target_width,
-            },
-            provider_headroom={
-                "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
-            },
+        return _mirror_capacity_drift(
+            CapacityDriftDecision(
+                action=CapacityDriftAction.WAIT,
+                planned_width=target_width,
+                live_width=max(0, live_width),
+                admitted_width=0,
+                planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+                live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+                reasons=tuple(dict.fromkeys(reasons or ["insufficient_live_capacity"])),
+                overcommit_prevented=True,
+                wait_recommended=True,
+                degraded_task_ids=tuple(candidates),
+                admitted_task_ids=(),
+                resource_headroom={
+                    "host_task_slots": max(0, live_host_width),
+                    "planned_width": target_width,
+                },
+                provider_headroom={
+                    "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+                },
+            )
         )
 
     if live_width >= target_width:
         admitted = candidates[:target_width] if candidates else ()
-        return CapacityDriftDecision(
-            action=CapacityDriftAction.PROCEED,
-            planned_width=target_width,
-            live_width=live_width,
-            admitted_width=target_width,
-            planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
-            live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
-            reasons=tuple(reasons),
-            overcommit_prevented=False,
-            wait_recommended=False,
-            degraded_task_ids=tuple(candidates[target_width:]) if candidates else (),
-            admitted_task_ids=tuple(admitted) if admitted else tuple(candidates[:target_width]),
-            resource_headroom={
-                "host_task_slots": live_host_width,
-                "planned_width": target_width,
-            },
-            provider_headroom={
-                "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
-            },
+        return _mirror_capacity_drift(
+            CapacityDriftDecision(
+                action=CapacityDriftAction.PROCEED,
+                planned_width=target_width,
+                live_width=live_width,
+                admitted_width=target_width,
+                planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+                live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+                reasons=tuple(reasons),
+                overcommit_prevented=False,
+                wait_recommended=False,
+                degraded_task_ids=tuple(candidates[target_width:]) if candidates else (),
+                admitted_task_ids=tuple(admitted) if admitted else tuple(candidates[:target_width]),
+                resource_headroom={
+                    "host_task_slots": live_host_width,
+                    "planned_width": target_width,
+                },
+                provider_headroom={
+                    "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+                },
+            )
         )
 
     # Live capacity shrank: degrade to live width rather than overcommit.
@@ -5686,18 +5741,44 @@ def evaluate_capacity_drift(
     reasons.append("degraded_width")
     admitted_n = min(live_width, len(candidates) if candidates else live_width)
     if admitted_n <= 0:
-        return CapacityDriftDecision(
-            action=CapacityDriftAction.WAIT,
+        return _mirror_capacity_drift(
+            CapacityDriftDecision(
+                action=CapacityDriftAction.WAIT,
+                planned_width=target_width,
+                live_width=live_width,
+                admitted_width=0,
+                planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
+                live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
+                reasons=tuple(dict.fromkeys([*reasons, "no_safe_width"])),
+                overcommit_prevented=True,
+                wait_recommended=True,
+                degraded_task_ids=tuple(candidates),
+                admitted_task_ids=(),
+                resource_headroom={
+                    "host_task_slots": live_host_width,
+                    "planned_width": target_width,
+                },
+                provider_headroom={
+                    "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
+                },
+            )
+        )
+
+    admitted_ids = tuple(candidates[:admitted_n]) if candidates else ()
+    degraded_ids = tuple(candidates[admitted_n:]) if candidates else ()
+    return _mirror_capacity_drift(
+        CapacityDriftDecision(
+            action=CapacityDriftAction.DEGRADE,
             planned_width=target_width,
             live_width=live_width,
-            admitted_width=0,
+            admitted_width=admitted_n,
             planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
             live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
-            reasons=tuple(dict.fromkeys([*reasons, "no_safe_width"])),
-            overcommit_prevented=True,
-            wait_recommended=True,
-            degraded_task_ids=tuple(candidates),
-            admitted_task_ids=(),
+            reasons=tuple(dict.fromkeys(reasons)),
+            overcommit_prevented=overcommit_prevented,
+            wait_recommended=False,
+            degraded_task_ids=degraded_ids,
+            admitted_task_ids=admitted_ids,
             resource_headroom={
                 "host_task_slots": live_host_width,
                 "planned_width": target_width,
@@ -5706,28 +5787,6 @@ def evaluate_capacity_drift(
                 "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
             },
         )
-
-    admitted_ids = tuple(candidates[:admitted_n]) if candidates else ()
-    degraded_ids = tuple(candidates[admitted_n:]) if candidates else ()
-    return CapacityDriftDecision(
-        action=CapacityDriftAction.DEGRADE,
-        planned_width=target_width,
-        live_width=live_width,
-        admitted_width=admitted_n,
-        planned_capacity_snapshot_id=str(planned_capacity_snapshot_id or ""),
-        live_capacity_snapshot_id=str(live_capacity_snapshot_id or ""),
-        reasons=tuple(dict.fromkeys(reasons)),
-        overcommit_prevented=overcommit_prevented,
-        wait_recommended=False,
-        degraded_task_ids=degraded_ids,
-        admitted_task_ids=admitted_ids,
-        resource_headroom={
-            "host_task_slots": live_host_width,
-            "planned_width": target_width,
-        },
-        provider_headroom={
-            "provider_slots": max(0, provider_slots if provider_slots > 0 else 0),
-        },
     )
 
 
@@ -5952,7 +6011,25 @@ def admit_compiled_execution_assignments(
                 fence_token=fence_token,
             )
         )
-    return drift, tuple(admissions)
+    admissions_tuple = tuple(admissions)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        snapshot_id = str(planned_capacity_snapshot_id or live_capacity_snapshot_id or "")
+        task_id = str(admissions_tuple[0].task_id if admissions_tuple else "")
+        record_ref = str(task_id or snapshot_id or "compiled-execution-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="compiled_execution_admission",
+            record_ref=record_ref,
+            subject_kind="task_id" if task_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return drift, admissions_tuple
 
 
 

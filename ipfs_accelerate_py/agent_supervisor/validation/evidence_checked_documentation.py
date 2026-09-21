@@ -1028,48 +1028,77 @@ def render_narrowed_statement(
     )
 
 
+def _mirror_claim(statement: NarrowedStatement) -> NarrowedStatement:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(statement.claim_id or "documentation-claim")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="documentation_claim",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return statement
+
+
 def evaluate_claim(claim: ClaimIR) -> NarrowedStatement:
     """Evaluate one ClaimIR against its linked exact evidence."""
 
     if claim.kind is DocumentationClaimKind.HUMAN_HEURISTIC:
-        return render_narrowed_statement(
-            claim,
-            disposition=ClaimCheckDisposition.HUMAN_LABELED,
-            evidence_refs=claim.evidence_refs,
+        return _mirror_claim(
+            render_narrowed_statement(
+                claim,
+                disposition=ClaimCheckDisposition.HUMAN_LABELED,
+                evidence_refs=claim.evidence_refs,
+            )
         )
 
     if claim.kind is DocumentationClaimKind.NOT_A_CLAIM:
-        return NarrowedStatement(
-            claim_id=claim.claim_id,
-            disposition=ClaimCheckDisposition.ACCEPTED,
-            original_text=claim.raw_text,
-            rendered_text=claim.raw_text or "[not a strong claim]",
-            token="",
-            evidence_links=(),
-            freshness="n/a",
-            labels=claim.labels,
-            reason_codes=("not_a_claim",),
+        return _mirror_claim(
+            NarrowedStatement(
+                claim_id=claim.claim_id,
+                disposition=ClaimCheckDisposition.ACCEPTED,
+                original_text=claim.raw_text,
+                rendered_text=claim.raw_text or "[not a strong claim]",
+                token="",
+                evidence_links=(),
+                freshness="n/a",
+                labels=claim.labels,
+                reason_codes=("not_a_claim",),
+            )
         )
 
     if claim.requirements is None:
-        return render_narrowed_statement(
-            claim,
-            disposition=ClaimCheckDisposition.REJECTED,
-            reason_codes=("missing_claim_ir_requirements",),
+        return _mirror_claim(
+            render_narrowed_statement(
+                claim,
+                disposition=ClaimCheckDisposition.REJECTED,
+                reason_codes=("missing_claim_ir_requirements",),
+            )
         )
 
     if not claim.evidence_refs:
         if claim.mode is ClaimMode.FAIL:
-            return render_narrowed_statement(
-                claim,
-                disposition=ClaimCheckDisposition.REJECTED,
-                reason_codes=("missing_exact_evidence",),
+            return _mirror_claim(
+                render_narrowed_statement(
+                    claim,
+                    disposition=ClaimCheckDisposition.REJECTED,
+                    reason_codes=("missing_exact_evidence",),
+                )
             )
-        return render_narrowed_statement(
-            claim,
-            disposition=ClaimCheckDisposition.NARROWED,
-            reason_codes=("missing_exact_evidence",),
-            missing_predicates=claim.requirements.required_predicates,
+        return _mirror_claim(
+            render_narrowed_statement(
+                claim,
+                disposition=ClaimCheckDisposition.NARROWED,
+                reason_codes=("missing_exact_evidence",),
+                missing_predicates=claim.requirements.required_predicates,
+            )
         )
 
     # Prefer the first evidence ref that fully satisfies requirements.
@@ -1077,14 +1106,16 @@ def evaluate_claim(claim: ClaimIR) -> NarrowedStatement:
     for ref in claim.evidence_refs:
         ok, satisfied, missing, reasons = _evaluate_against_evidence(claim, ref)
         if ok:
-            return render_narrowed_statement(
-                claim,
-                disposition=ClaimCheckDisposition.ACCEPTED,
-                evidence=ref,
-                evidence_refs=claim.evidence_refs,
-                satisfied_predicates=satisfied,
-                missing_predicates=missing,
-                reason_codes=(),
+            return _mirror_claim(
+                render_narrowed_statement(
+                    claim,
+                    disposition=ClaimCheckDisposition.ACCEPTED,
+                    evidence=ref,
+                    evidence_refs=claim.evidence_refs,
+                    satisfied_predicates=satisfied,
+                    missing_predicates=missing,
+                    reason_codes=(),
+                )
             )
         if best is None or len(satisfied) > len(best[1]):
             best = (ref, satisfied, missing, reasons)
@@ -1092,23 +1123,27 @@ def evaluate_claim(claim: ClaimIR) -> NarrowedStatement:
     assert best is not None
     ref, satisfied, missing, reasons = best
     if claim.mode is ClaimMode.FAIL:
-        return render_narrowed_statement(
+        return _mirror_claim(
+            render_narrowed_statement(
+                claim,
+                disposition=ClaimCheckDisposition.REJECTED,
+                evidence=ref,
+                evidence_refs=claim.evidence_refs,
+                satisfied_predicates=satisfied,
+                missing_predicates=missing,
+                reason_codes=reasons or ("unsupported_strong_claim",),
+            )
+        )
+    return _mirror_claim(
+        render_narrowed_statement(
             claim,
-            disposition=ClaimCheckDisposition.REJECTED,
+            disposition=ClaimCheckDisposition.NARROWED,
             evidence=ref,
             evidence_refs=claim.evidence_refs,
             satisfied_predicates=satisfied,
             missing_predicates=missing,
             reason_codes=reasons or ("unsupported_strong_claim",),
         )
-    return render_narrowed_statement(
-        claim,
-        disposition=ClaimCheckDisposition.NARROWED,
-        evidence=ref,
-        evidence_refs=claim.evidence_refs,
-        satisfied_predicates=satisfied,
-        missing_predicates=missing,
-        reason_codes=reasons or ("unsupported_strong_claim",),
     )
 
 

@@ -1087,7 +1087,7 @@ def evaluate_v2_self_improvement_rollout(
         and effective is V2RolloutMode.SHADOW
         and rollback_reasons
     )
-    return V2RolloutReport(
+    report = V2RolloutReport(
         binding=normalized_binding,
         policy=normalized_policy,
         desired_mode=desired,
@@ -1100,6 +1100,22 @@ def evaluate_v2_self_improvement_rollout(
         automatic_ready=automatic_ready,
         rollback_applied=rollback_applied,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.report_id or report.effective_binding_id or "v2-self-improvement-rollout")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_self_improvement_rollout",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def verify_v2_rollout_report(

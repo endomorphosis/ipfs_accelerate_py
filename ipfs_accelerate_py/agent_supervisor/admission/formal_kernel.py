@@ -829,6 +829,25 @@ class RuntimePolicyIR:
         }
 
 
+def _mirror_policy_ir(ir: RuntimePolicyIR) -> RuntimePolicyIR:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(ir.policy_cid or "runtime-policy-ir")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_policy_ir",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ir
+
+
 def _policy_cid(source: Mapping[str, Any] | None) -> str:
     if source is None:
         return content_identity({"policy": "empty"})
@@ -852,11 +871,13 @@ def compile_source_policy(
     only to ``deny``, ``obligation``, or typed ``indeterminate``.
     """
     if source is None:
-        return RuntimePolicyIR(
-            verdict=PolicyIRVerdict.DENY,
-            policy_cid=_policy_cid(None),
-            reasons=("missing_source_policy",),
-            fully_translated=True,
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=PolicyIRVerdict.DENY,
+                policy_cid=_policy_cid(None),
+                reasons=("missing_source_policy",),
+                fully_translated=True,
+            )
         )
 
     if not isinstance(source, Mapping):
@@ -883,12 +904,14 @@ def compile_source_policy(
     if not isinstance(raw_clauses, Sequence) or isinstance(
         raw_clauses, (str, bytes, bytearray)
     ):
-        return RuntimePolicyIR(
-            verdict=PolicyIRVerdict.INDETERMINATE,
-            policy_cid=_policy_cid(source),
-            reasons=("clauses_not_sequence",),
-            unknown_constructs=tuple(unknown_constructs + ["clauses_type"]),
-            fully_translated=False,
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=PolicyIRVerdict.INDETERMINATE,
+                policy_cid=_policy_cid(source),
+                reasons=("clauses_not_sequence",),
+                unknown_constructs=tuple(unknown_constructs + ["clauses_type"]),
+                fully_translated=False,
+            )
         )
 
     compiled: list[CompiledPolicyClause] = []
@@ -993,49 +1016,59 @@ def compile_source_policy(
         else:
             verdict = PolicyIRVerdict.INDETERMINATE
             reasons.append("unknown_constructs_typed_indeterminate")
-        return RuntimePolicyIR(
-            verdict=verdict,
-            policy_cid=_policy_cid(source),
-            clauses=tuple(compiled),
-            obligations=_sorted_unique(obligations),
-            reasons=_sorted_unique(reasons),
-            unknown_constructs=_sorted_unique(unknown_constructs),
-            fully_translated=False,
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=verdict,
+                policy_cid=_policy_cid(source),
+                clauses=tuple(compiled),
+                obligations=_sorted_unique(obligations),
+                reasons=_sorted_unique(reasons),
+                unknown_constructs=_sorted_unique(unknown_constructs),
+                fully_translated=False,
+            )
         )
 
     if matched_prohibition:
-        return RuntimePolicyIR(
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=PolicyIRVerdict.DENY,
+                policy_cid=_policy_cid(source),
+                clauses=tuple(compiled),
+                obligations=_sorted_unique(obligations),
+                reasons=("prohibition_matched",),
+                fully_translated=True,
+            )
+        )
+    if obligations and matched_permission:
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=PolicyIRVerdict.OBLIGATION,
+                policy_cid=_policy_cid(source),
+                clauses=tuple(compiled),
+                obligations=_sorted_unique(obligations),
+                reasons=("permission_with_obligations",),
+                fully_translated=True,
+            )
+        )
+    if matched_permission:
+        return _mirror_policy_ir(
+            RuntimePolicyIR(
+                verdict=PolicyIRVerdict.ALLOW,
+                policy_cid=_policy_cid(source),
+                clauses=tuple(compiled),
+                reasons=("permission_matched",),
+                fully_translated=True,
+            )
+        )
+    return _mirror_policy_ir(
+        RuntimePolicyIR(
             verdict=PolicyIRVerdict.DENY,
             policy_cid=_policy_cid(source),
             clauses=tuple(compiled),
             obligations=_sorted_unique(obligations),
-            reasons=("prohibition_matched",),
+            reasons=("default_deny_no_permission",),
             fully_translated=True,
         )
-    if obligations and matched_permission:
-        return RuntimePolicyIR(
-            verdict=PolicyIRVerdict.OBLIGATION,
-            policy_cid=_policy_cid(source),
-            clauses=tuple(compiled),
-            obligations=_sorted_unique(obligations),
-            reasons=("permission_with_obligations",),
-            fully_translated=True,
-        )
-    if matched_permission:
-        return RuntimePolicyIR(
-            verdict=PolicyIRVerdict.ALLOW,
-            policy_cid=_policy_cid(source),
-            clauses=tuple(compiled),
-            reasons=("permission_matched",),
-            fully_translated=True,
-        )
-    return RuntimePolicyIR(
-        verdict=PolicyIRVerdict.DENY,
-        policy_cid=_policy_cid(source),
-        clauses=tuple(compiled),
-        obligations=_sorted_unique(obligations),
-        reasons=("default_deny_no_permission",),
-        fully_translated=True,
     )
 
 

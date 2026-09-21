@@ -2266,7 +2266,7 @@ def build_quality_oracle_manifest(
     for slot in slots:
         for family in slot.adversarial_family_ids:
             family_bindings.setdefault(family, []).append(slot.case_id)
-    return QualityOracleManifest(
+    manifest = QualityOracleManifest(
         oracle_handle=ORACLE_HANDLE,
         benchmark_manifest_cid=manifest_cid,
         benchmark_policy_cid=benchmark_policy_cid,
@@ -2276,6 +2276,26 @@ def build_quality_oracle_manifest(
         ),
         ablations=default_ablations(),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            manifest.oracle_manifest_cid
+            or manifest.benchmark_manifest_cid
+            or "quality-oracle-manifest"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="quality_oracle_manifest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return manifest
 
 
 def load_benchmark_artifacts(

@@ -287,11 +287,36 @@ def _validate_protocol(request: ProtocolRepairRequest) -> str | None:
     return None
 
 
+def _mirror_protocol_preview(preview: ProtocolRepairPreview) -> ProtocolRepairPreview:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            preview.request_cid
+            or getattr(preview.status, "value", "")
+            or "protocol-repair-preview"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="protocol_repair_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return preview
+
+
 def preview_protocol_repair(request: ProtocolRepairRequest) -> ProtocolRepairPreview:
     """Build a metadata/byte preview and exact inverse; never apply either."""
 
     if not isinstance(request, ProtocolRepairRequest):
-        return ProtocolRepairPreview(ProtocolRepairStatus.REJECTED, ("typed_request_required",))
+        return _mirror_protocol_preview(
+            ProtocolRepairPreview(ProtocolRepairStatus.REJECTED, ("typed_request_required",))
+        )
     try:
         reason = _validate_authority(request) or _validate_protocol(request)
         request_cid = content_identity(
@@ -313,8 +338,10 @@ def preview_protocol_repair(request: ProtocolRepairRequest) -> ProtocolRepairPre
             }
         )
     except (AttributeError, TypeError, ValueError):
-        return ProtocolRepairPreview(
-            ProtocolRepairStatus.REJECTED, ("typed_request_binding_invalid",)
+        return _mirror_protocol_preview(
+            ProtocolRepairPreview(
+                ProtocolRepairStatus.REJECTED, ("typed_request_binding_invalid",)
+            )
         )
     if reason:
         status = (
@@ -322,7 +349,9 @@ def preview_protocol_repair(request: ProtocolRepairRequest) -> ProtocolRepairPre
             if reason in {"jsonrpc_error_response", "policy_outage"}
             else ProtocolRepairStatus.REJECTED
         )
-        return ProtocolRepairPreview(status, (reason,), request_cid=request_cid)
+        return _mirror_protocol_preview(
+            ProtocolRepairPreview(status, (reason,), request_cid=request_cid)
+        )
     before = request.source_bytes
     after = before[: request.span_start] + request.replacement_bytes + before[request.span_end :]
     forward = content_identity(
@@ -331,15 +360,17 @@ def preview_protocol_repair(request: ProtocolRepairRequest) -> ProtocolRepairPre
     inverse = content_identity(
         {"before": _sha256(after), "after": _sha256(before), "request_cid": request_cid}
     )
-    return ProtocolRepairPreview(
-        ProtocolRepairStatus.PREVIEWED,
-        ("swissknife_integration_pending",),
-        request_cid,
-        forward,
-        inverse,
-        _sha256(before),
-        _sha256(after),
-        after,
+    return _mirror_protocol_preview(
+        ProtocolRepairPreview(
+            ProtocolRepairStatus.PREVIEWED,
+            ("swissknife_integration_pending",),
+            request_cid,
+            forward,
+            inverse,
+            _sha256(before),
+            _sha256(after),
+            after,
+        )
     )
 
 
