@@ -850,7 +850,24 @@ class AffectedSlice:
 
 
 def compile_affected_slice(**fields: Any) -> AffectedSlice:
-    return AffectedSlice(**fields)
+    slice_obj = AffectedSlice(**fields)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(slice_obj, "slice_cid", "") or slice_obj.slice_id or "affected-slice")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="affected_slice",
+            record_ref=record_ref,
+            subject_kind="path" if slice_obj.path else "record_cid",
+            subject_ref=str(slice_obj.path or record_ref),
+            paths=(slice_obj.path,) if slice_obj.path else (),
+        )
+    except Exception:
+        pass
+    return slice_obj
 
 
 @dataclass(frozen=True, slots=True)
@@ -957,7 +974,23 @@ class NamedUnresolvedQuestion:
 
 
 def compile_named_question(**fields: Any) -> NamedUnresolvedQuestion:
-    return NamedUnresolvedQuestion(**fields)
+    question = NamedUnresolvedQuestion(**fields)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(question.question_id or question.slice_id or "named-question")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="named_unresolved_question",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return question
 
 
 def _compile_slices(

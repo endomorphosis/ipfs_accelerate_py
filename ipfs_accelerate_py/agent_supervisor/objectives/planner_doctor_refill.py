@@ -1808,6 +1808,43 @@ def _group_key(residual: DerivedResidual) -> str:
     return f"{residual.source_kind.value}::{root}"
 
 
+def _mirror_compiled_hierarchy(
+    goals: tuple[DerivedGoalProposal, ...],
+    tasks: tuple[DerivedTaskProposal, ...],
+    decisions: tuple[ResidualDecision, ...],
+    duplicates: tuple[str, ...],
+    backoff_keys: tuple[str, ...],
+    reason_codes: list[str],
+    next_entries: dict[str, DoctorPlanRefillMemoryEntry],
+) -> tuple[
+    tuple[DerivedGoalProposal, ...],
+    tuple[DerivedTaskProposal, ...],
+    tuple[ResidualDecision, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+    list[str],
+    dict[str, DoctorPlanRefillMemoryEntry],
+]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first_goal = goals[0].goal_id if goals else ""
+        first_task = tasks[0].task_id if tasks else ""
+        record_ref = str(first_goal or first_task or "compiled-hierarchy")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="compiled_refill_hierarchy",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return goals, tasks, decisions, duplicates, backoff_keys, reason_codes, next_entries
+
+
 def compile_hierarchy(
     residuals: Sequence[DerivedResidual],
     *,
@@ -1845,7 +1882,9 @@ def compile_hierarchy(
                     reason_codes=("open_work_ceiling",),
                 )
             )
-        return (), (), tuple(decisions), tuple(duplicates), tuple(backoff_keys), reason_codes, next_entries
+        return _mirror_compiled_hierarchy(
+            (), (), tuple(decisions), tuple(duplicates), tuple(backoff_keys), reason_codes, next_entries
+        )
 
     # Group residuals by source root for goal formation.
     groups: dict[str, list[DerivedResidual]] = {}
@@ -2115,7 +2154,7 @@ def compile_hierarchy(
     ):
         reason_codes.append("goal_bound")
 
-    return (
+    return _mirror_compiled_hierarchy(
         tuple(goals),
         tuple(tasks),
         tuple(decisions),

@@ -1116,6 +1116,29 @@ def compile_import_rewrites(
     rewrites = _collect_import_rewrites(resolved, consumer_plans=plans)
     reexport_plans = _collect_reexport_plans(resolved, consumer_plans=plans)
     _reject_cycles(import_graph=import_graph, rewrites=rewrites, plans=reexport_plans)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = rewrites[0] if rewrites else None
+        record_ref = str(
+            getattr(first, "packet_cid", "")
+            or getattr(first, "consumer_id", "")
+            or resolved.packet_cid
+            or "import-rewrites"
+        )
+        tree_id = str(getattr(first, "tree_id", "") or resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="import_rewrites",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return rewrites
 
 
@@ -1145,6 +1168,29 @@ def compile_reexport_plans(
         rewrites=rewrites,
         plans=resolved_plans,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = resolved_plans[0] if resolved_plans else None
+        record_ref = str(
+            getattr(first, "packet_cid", "")
+            or getattr(first, "plan_cid", "")
+            or resolved.packet_cid
+            or "reexport-plans"
+        )
+        tree_id = str(getattr(first, "tree_id", "") or resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reexport_plans",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return resolved_plans
 
 

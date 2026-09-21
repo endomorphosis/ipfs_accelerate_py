@@ -1033,7 +1033,23 @@ def compile_policy_facts(
     """Normalize SPAR-013 evidence plus SPAR-014 constraint slices."""
 
     if evidence is None:
-        return _PolicyFacts()
+        empty = _PolicyFacts()
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="partition_policy_facts",
+                record_ref=str(tree_id or "policy-facts-empty"),
+                tree_id=str(tree_id or ""),
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=str(tree_id or "policy-facts-empty"),
+            )
+        except Exception:
+            pass
+        return empty
     payload = _mapping(evidence, "policy evidence")
     declared_tree = payload.get("tree_id")
     if declared_tree is not None and _tree_id(declared_tree) != tree_id:
@@ -1153,7 +1169,7 @@ def compile_policy_facts(
     evidence_cids = tuple(sorted(set(extra_cids)))
     if len(evidence_cids) > MAX_EVIDENCE_CIDS:
         raise PartitionPolicyError("evidence_cids exceed maximum length")
-    return _PolicyFacts(
+    facts = _PolicyFacts(
         view=view,
         resources=resources,
         transactions=transactions,
@@ -1164,6 +1180,27 @@ def compile_policy_facts(
         vector_scores=_int_map(payload.get("vector_scores"), "vector_scores"),
         evidence_cids=evidence_cids,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (facts.evidence_cids[0] if facts.evidence_cids else "")
+            or tree_id
+            or "policy-facts"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="partition_policy_facts",
+            record_ref=record_ref,
+            tree_id=str(tree_id or ""),
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=str(tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return facts
 
 
 def _result(

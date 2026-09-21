@@ -1407,6 +1407,29 @@ def compile_binding_compatibility_adapters(
     _require_classified_inventory(
         adapters=adapters, obligations=inventory_map["obligations"]
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = adapters[0] if adapters else None
+        record_ref = str(
+            getattr(first, "packet_cid", "")
+            or getattr(first, "subject_id", "")
+            or resolved.packet_cid
+            or "binding-compatibility-adapters"
+        )
+        tree_id = str(getattr(first, "tree_id", "") or resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="binding_compatibility_adapters",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return adapters
 
 

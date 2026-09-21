@@ -4342,6 +4342,181 @@ def test_mirror_kernel_closure_stages_and_portfolio(tmp_path, monkeypatch) -> No
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_observation_profiles_hierarchy_and_refactor_compiles(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    verdict = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="normative_vector_verdict",
+        record_ref="vector:accept",
+        subject_kind="record_cid",
+        subject_ref="vector:accept",
+    )
+    profile = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="observation_profile",
+        record_ref="profile:1",
+        subject_kind="record_cid",
+        subject_ref="profile:1",
+    )
+    hierarchy = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="compiled_refill_hierarchy",
+        record_ref="goal:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    reuse = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_reuse_key",
+        record_ref="key:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    slice_rec = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="affected_slice",
+        record_ref="slice:1",
+        subject_kind="path",
+        subject_ref="src/mod.py",
+    )
+    question = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="named_unresolved_question",
+        record_ref="q:1",
+        subject_kind="record_cid",
+        subject_ref="q:1",
+    )
+    trajectory = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="normalized_refactor_trajectory",
+        record_ref="traj:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    hole = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="preserved_hole",
+        record_ref="hole:1",
+        subject_kind="record_cid",
+        subject_ref="hole:1",
+    )
+    objects = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="explicit_state_objects",
+        record_ref="packet:state",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    imports = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="import_rewrites",
+        record_ref="packet:import",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    reexports = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="reexport_plans",
+        record_ref="packet:reexport",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    adapters = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="binding_compatibility_adapters",
+        record_ref="packet:bind",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    inits = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="initialization_rewrites",
+        record_ref="packet:init",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    obligations = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="compiled_obligation_requests",
+        record_ref="request:smt",
+        subject_kind="record_cid",
+        subject_ref="request:smt",
+    )
+    capsules = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="capsule_compile_result",
+        record_ref="index:1",
+        subject_kind="record_cid",
+        subject_ref="index:1",
+    )
+    translation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="logic_translation_result",
+        record_ref="request:logic",
+        subject_kind="record_cid",
+        subject_ref="request:logic",
+    )
+    capability = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_operational_capability",
+        record_ref="capability:r2",
+        subject_kind="record_cid",
+        subject_ref="capability:r2",
+    )
+    facts = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="partition_policy_facts",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    identity = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="datasets_semantic_identity",
+        record_ref="pack:1",
+        subject_kind="capsule_cid",
+        subject_ref="pack:1",
+    )
+    for item in (
+        verdict,
+        profile,
+        hierarchy,
+        reuse,
+        slice_rec,
+        question,
+        trajectory,
+        hole,
+        objects,
+        imports,
+        reexports,
+        adapters,
+        inits,
+        obligations,
+        capsules,
+        translation,
+        capability,
+        facts,
+        identity,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

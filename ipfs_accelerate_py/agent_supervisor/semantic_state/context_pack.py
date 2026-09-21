@@ -1192,6 +1192,21 @@ def verify_datasets_semantic_identity(
         raise ContextPackError("ownership drift: producer is not Datasets")
     if validated.get("interface") in {"SupervisorContextPack@1", "SupervisorContextPack"}:
         raise ContextPackError("ownership drift: competing ContextPack type")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(pack_cid or "datasets-semantic-identity")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="datasets_semantic_identity",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return validated
 
 

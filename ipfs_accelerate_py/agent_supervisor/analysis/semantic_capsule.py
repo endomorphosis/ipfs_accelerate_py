@@ -1965,6 +1965,25 @@ def verify_capsule_compile_result(
             raise SemanticCapsuleError(
                 f"capsule {capsule.node_id} failed reverify"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(restored.index, "index_cid", "")
+            or restored.task_id
+            or "capsule-compile-result"
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="capsule_compile_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return restored
 
 

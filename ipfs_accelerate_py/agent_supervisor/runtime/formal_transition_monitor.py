@@ -1734,6 +1734,25 @@ def load_normative_vectors() -> tuple[NormativeVector, ...]:
     return tuple(accept + reject)
 
 
+def _mirror_normative_verdict(verdict: MonitorVerdict, vector_id: str = "") -> MonitorVerdict:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(vector_id or verdict.code or "normative-vector")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="normative_vector_verdict",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verdict
+
+
 def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
     """Evaluate one normative vector; special-cases binding rejection probes."""
 
@@ -1772,7 +1791,7 @@ def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
             idempotency_key=idem,
             event_id="evt-reserve-1",
         )
-        return verdict
+        return _mirror_normative_verdict(verdict, vector.vector_id)
 
     if vector.vector_id == "reject/incompatible-idempotency":
         adapted = adapter.adapt_model_trace(
@@ -1782,14 +1801,17 @@ def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
             idempotency_key=idem,
         )
         adapter.run_adapted(monitor, adapted, expect_ok=True)
-        return monitor.apply_action(
-            "Start",
-            instance_id="o1",
-            operation="op.default",
-            actor="actor.default",
-            reversibility=vector.reversibility,
-            argument_cid=arg_cid,
-            idempotency_key="idem:forged-other-key",
+        return _mirror_normative_verdict(
+            monitor.apply_action(
+                "Start",
+                instance_id="o1",
+                operation="op.default",
+                actor="actor.default",
+                reversibility=vector.reversibility,
+                argument_cid=arg_cid,
+                idempotency_key="idem:forged-other-key",
+            ),
+            vector.vector_id,
         )
 
     if vector.vector_id == "reject/incompatible-receipt":
@@ -1800,15 +1822,18 @@ def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
             idempotency_key=idem,
         )
         adapter.run_adapted(monitor, adapted, expect_ok=True)
-        return monitor.apply_action(
-            "SealReceipt",
-            instance_id="o1",
-            operation="op.default",
-            actor="actor.default",
-            reversibility=vector.reversibility,
-            argument_cid=arg_cid,
-            idempotency_key=idem,
-            receipt_cid="receipt:sha256:deadbeef",
+        return _mirror_normative_verdict(
+            monitor.apply_action(
+                "SealReceipt",
+                instance_id="o1",
+                operation="op.default",
+                actor="actor.default",
+                reversibility=vector.reversibility,
+                argument_cid=arg_cid,
+                idempotency_key=idem,
+                receipt_cid="receipt:sha256:deadbeef",
+            ),
+            vector.vector_id,
         )
 
     if vector.vector_id == "reject/confirmation-reuse":
@@ -1823,13 +1848,16 @@ def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
         # while leaving confirmation_spent true (reuse probe).
         st = monitor.instances["o1"]
         st.typestate = "ObligationsSatisfied"
-        return monitor.apply_action(
-            "SatisfyConfirmation",
-            instance_id="o1",
-            operation="op.default",
-            actor="actor.default",
-            reversibility=vector.reversibility,
-            confirmation_cid=st.confirmation_cid or "confirm:1",
+        return _mirror_normative_verdict(
+            monitor.apply_action(
+                "SatisfyConfirmation",
+                instance_id="o1",
+                operation="op.default",
+                actor="actor.default",
+                reversibility=vector.reversibility,
+                confirmation_cid=st.confirmation_cid or "confirm:1",
+            ),
+            vector.vector_id,
         )
 
     adapted = adapter.adapt_model_trace(
@@ -1843,34 +1871,43 @@ def evaluate_normative_vector(vector: NormativeVector) -> MonitorVerdict:
             monitor, adapted, expect_ok=vector.expect_accept
         )
     except TransitionMonitorError as exc:
-        return MonitorVerdict(
-            schema=VERDICT_SCHEMA,
-            accepted=False,
-            code=exc.code.value,
-            message=str(exc),
-            invariants=monitor.invariants(),
+        return _mirror_normative_verdict(
+            MonitorVerdict(
+                schema=VERDICT_SCHEMA,
+                accepted=False,
+                code=exc.code.value,
+                message=str(exc),
+                invariants=monitor.invariants(),
+            ),
+            vector.vector_id,
         )
     except AssertionError:
         # expect_ok=False path exhausted without a rejection.
-        return MonitorVerdict(
+        return _mirror_normative_verdict(
+            MonitorVerdict(
+                schema=VERDICT_SCHEMA,
+                accepted=True,
+                code="accepted",
+                message="vector unexpectedly accepted",
+                invariants=monitor.invariants(),
+            ),
+            vector.vector_id,
+        )
+    if vector.expect_accept:
+        return _mirror_normative_verdict(verdicts[-1], vector.vector_id)
+    # Rejection occurred mid-vector; return the failing verdict.
+    for verdict in reversed(verdicts):
+        if not verdict.accepted:
+            return _mirror_normative_verdict(verdict, vector.vector_id)
+    return _mirror_normative_verdict(
+        MonitorVerdict(
             schema=VERDICT_SCHEMA,
             accepted=True,
             code="accepted",
             message="vector unexpectedly accepted",
             invariants=monitor.invariants(),
-        )
-    if vector.expect_accept:
-        return verdicts[-1]
-    # Rejection occurred mid-vector; return the failing verdict.
-    for verdict in reversed(verdicts):
-        if not verdict.accepted:
-            return verdict
-    return MonitorVerdict(
-        schema=VERDICT_SCHEMA,
-        accepted=True,
-        code="accepted",
-        message="vector unexpectedly accepted",
-        invariants=monitor.invariants(),
+        ),
+        vector.vector_id,
     )
 
 

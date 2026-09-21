@@ -1476,6 +1476,29 @@ def compile_explicit_state_objects(
     extractions = _collect_extraction_transforms(resolved, graph, adapters)
     transforms = _sort_transforms((*adapters, *extractions))
     _require_handled(transforms)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = transforms[0] if transforms else None
+        record_ref = str(
+            getattr(first, "packet_cid", "")
+            or getattr(first, "transform_cid", "")
+            or resolved.packet_cid
+            or "explicit-state-objects"
+        )
+        tree_id = str(getattr(first, "tree_id", "") or resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="explicit_state_objects",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return transforms
 
 

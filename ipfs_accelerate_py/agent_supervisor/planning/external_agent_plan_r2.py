@@ -1269,6 +1269,21 @@ def verify_plan_r2_operational_capability(
         )
     except (LocalProfileTampered, ValueError) as exc:
         raise ExternalAgentPlanR2Error("typed_quack_plan_transition_unavailable") from exc
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(capability_cid or reviewer or "plan-r2-operational-capability")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_operational_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return value
 
 

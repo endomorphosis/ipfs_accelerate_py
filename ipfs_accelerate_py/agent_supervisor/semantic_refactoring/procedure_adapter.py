@@ -860,7 +860,25 @@ def compile_normalized_trajectory(**fields: Any) -> NormalizedRefactorTrajectory
         )
     if extra:
         raise ProcedureAdapterError(f"unknown trajectory field: {sorted(extra)}")
-    return NormalizedRefactorTrajectory(**fields)
+    trajectory = NormalizedRefactorTrajectory(**fields)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(trajectory.transition_cid or trajectory.packet_cid or "normalized-trajectory")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="normalized_refactor_trajectory",
+            record_ref=record_ref,
+            tree_id=str(trajectory.tree_id or ""),
+            subject_kind="tree_id" if trajectory.tree_id else "record_cid",
+            subject_ref=str(trajectory.tree_id or record_ref),
+            paths=tuple(trajectory.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return trajectory
 
 
 @dataclass(frozen=True, slots=True)
@@ -927,7 +945,23 @@ class PreservedHole:
 
 
 def compile_preserved_hole(**fields: Any) -> PreservedHole:
-    return PreservedHole(**fields)
+    hole = PreservedHole(**fields)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(hole.hole_id or hole.hole_type or "preserved-hole")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="preserved_hole",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return hole
 
 
 @dataclass(frozen=True, slots=True)

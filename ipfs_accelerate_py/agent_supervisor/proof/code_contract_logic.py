@@ -2570,6 +2570,21 @@ def verify_translation_result(
             RejectionCode.INVALID_INPUT,
             "a successful translation cannot retain rejection codes",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.request_cid or getattr(result, "result_cid", "") or "translation-result")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_translation_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 

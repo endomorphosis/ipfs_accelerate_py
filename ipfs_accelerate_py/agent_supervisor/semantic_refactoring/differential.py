@@ -750,28 +750,50 @@ class ObservationProfile:
         return result
 
 
+def _mirror_observation_profile(profile: ObservationProfile) -> ObservationProfile:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(profile, "profile_cid", "") or "observation-profile")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="observation_profile",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return profile
+
+
 def compile_observation_profile(
     profile: ObservationProfile | Mapping[str, Any] | None = None,
 ) -> ObservationProfile:
     if profile is None:
-        return ObservationProfile()
-    if isinstance(profile, ObservationProfile):
-        return profile
-    payload = _as_mapping(profile, "observation_profile")
-    if "profile_cid" in payload:
-        return ObservationProfile.from_dict(payload)
-    return ObservationProfile(
-        required_dimensions=payload.get("required_dimensions", REQUIRED_TRACE_DIMENSIONS),
-        optional_dimensions=payload.get("optional_dimensions", ()),
-        network=payload.get("network", NETWORK_DENY),
-        claims_general_equivalence=payload.get("claims_general_equivalence", False),
-        traces_prove_only_observations=payload.get(
-            "traces_prove_only_observations", True
-        ),
-        unresolved_dynamics_lower_autonomy=payload.get(
-            "unresolved_dynamics_lower_autonomy", True
-        ),
-    )
+        compiled = ObservationProfile()
+    elif isinstance(profile, ObservationProfile):
+        compiled = profile
+    else:
+        payload = _as_mapping(profile, "observation_profile")
+        if "profile_cid" in payload:
+            compiled = ObservationProfile.from_dict(payload)
+        else:
+            compiled = ObservationProfile(
+                required_dimensions=payload.get("required_dimensions", REQUIRED_TRACE_DIMENSIONS),
+                optional_dimensions=payload.get("optional_dimensions", ()),
+                network=payload.get("network", NETWORK_DENY),
+                claims_general_equivalence=payload.get("claims_general_equivalence", False),
+                traces_prove_only_observations=payload.get(
+                    "traces_prove_only_observations", True
+                ),
+                unresolved_dynamics_lower_autonomy=payload.get(
+                    "unresolved_dynamics_lower_autonomy", True
+                ),
+            )
+    return _mirror_observation_profile(compiled)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1326,6 +1326,29 @@ def compile_initialization_rewrites(
     orders = _collect_order_rewrites(resolved, graph)
     rewrites = _sort_rewrites((*adapters, *effects, *orders))
     _require_handled(resolved, rewrites)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = rewrites[0] if rewrites else None
+        record_ref = str(
+            getattr(first, "packet_cid", "")
+            or getattr(first, "subject_id", "")
+            or resolved.packet_cid
+            or "initialization-rewrites"
+        )
+        tree_id = str(getattr(first, "tree_id", "") or resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="initialization_rewrites",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return rewrites
 
 

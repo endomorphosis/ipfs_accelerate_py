@@ -1102,7 +1102,24 @@ def compile_obligation_requests(
             NonConclusiveReason.INVALID_INPUT,
             "translation produced no obligations to prove",
         )
-    return tuple(compiled)
+    compiled_tuple = tuple(compiled)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = compiled_tuple[0]
+        record_ref = str(first.request_id or first.obligation_id or translation.result_cid or "obligation-requests")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compiled_obligation_requests",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return compiled_tuple
 
 
 # ---------------------------------------------------------------------------
