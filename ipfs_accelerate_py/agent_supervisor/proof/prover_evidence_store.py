@@ -387,7 +387,7 @@ def build_prover_evidence_key(
         if kernel_versions is not None
         else {"kernel": _required(kernel_version, "kernel_version")}
     )
-    return ProverEvidenceKey(
+    key = ProverEvidenceKey(
         property_class=property_value,
         normalized_model=model_value,
         translator_profile=translator_value,
@@ -399,6 +399,24 @@ def build_prover_evidence_key(
         repository_tree_id=trees[0] if trees else "",
         conformance_fixture_set_id=fixtures[0] if fixtures else "",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(key.repository_tree_id or "")
+        record_ref = str(key.key_id or tree_id or "prover-evidence-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="prover_evidence_key",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "key_id",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 make_prover_evidence_key = build_prover_evidence_key

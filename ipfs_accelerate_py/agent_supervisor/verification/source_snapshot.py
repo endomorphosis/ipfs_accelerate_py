@@ -614,13 +614,24 @@ def build_source_snapshot(repo_root: Path | str) -> SourceSnapshot:
     )
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
             orchestrate_semantic_work,
         )
 
         first_path = snapshot.entries[0].path if snapshot.entries else ""
+        snapshot_ref = str(snapshot.source_snapshot_id or "source-snapshot")
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="source_snapshot",
+            record_ref=snapshot_ref,
+            tree_id=str(snapshot.observed_head or ""),
+            subject_kind="record_cid",
+            subject_ref=snapshot_ref,
+            paths=(first_path,) if first_path else (),
+        )
         orchestrate_semantic_work(
             subject_kind="record_cid",
-            subject_ref=str(snapshot.source_snapshot_id),
+            subject_ref=snapshot_ref,
             tree_id=str(snapshot.observed_head or ""),
             path=first_path,
         )

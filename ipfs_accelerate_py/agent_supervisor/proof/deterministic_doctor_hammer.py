@@ -5012,9 +5012,29 @@ def verify_doctor_repair(
 ) -> DoctorRepairProofReceipt:
     """One-shot verification entry point."""
 
-    return DeterministicDoctorHammer().verify(
+    receipt = DeterministicDoctorHammer().verify(
         plan_receipt, goal_compilation, **kwargs
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or getattr(receipt, "content_id", "")
+            or "doctor-repair-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="doctor_repair_proof_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def build_default_obligation_context(
@@ -5041,12 +5061,28 @@ def build_default_obligation_context(
             authority=SourceAuthorityClass.AUTHORITATIVE,
         ),
     )
-    return ObligationContext(
+    context = ObligationContext(
         capability=capability,
         assumptions=assumptions,
         kernel_id=kernel_id,
         translation_map_id=f"translation-map:{translator_id}",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(translator_id or kernel_id or "obligation-context")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="doctor_obligation_context",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return context
 
 
 __all__ = [

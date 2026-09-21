@@ -430,7 +430,7 @@ def build_regression_fixture(
         ProofFailureKind.UNSAT_CORE,
     }:
         return None
-    return ProofRegressionFixture(
+    fixture = ProofRegressionFixture(
         obligation_id=diagnostic.obligation_id,
         repository_tree_id=diagnostic.repository_tree_id,
         task_id=diagnostic.task_id,
@@ -444,6 +444,24 @@ def build_regression_fixture(
         ),
         diagnostic_id=diagnostic.diagnostic_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(fixture.repository_tree_id or "")
+        record_ref = str(fixture.diagnostic_id or fixture.obligation_id or "proof-regression-fixture")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_regression_fixture",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "obligation_ref",
+            subject_ref=tree_id or str(fixture.obligation_id or record_ref),
+        )
+    except Exception:
+        pass
+    return fixture
 
 
 class ProofFallbackDeduplicator:

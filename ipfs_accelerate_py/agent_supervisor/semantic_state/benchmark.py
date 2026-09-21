@@ -1279,6 +1279,21 @@ def build_report(
     }
     report["deterministic_digest"] = deterministic_report_digest(report)
     report["content_digest"] = content_digest(report)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.get("content_digest") or report.get("corpus_id") or "semantic-state-benchmark")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="semantic_state_benchmark_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

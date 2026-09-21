@@ -2526,7 +2526,27 @@ def build_doctor_operation_request(
         **kwargs,
     }
     assert_body_free(payload, "operation request")
-    return DoctorOperationRequest.from_dict(payload)
+    request = DoctorOperationRequest.from_dict(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(request, "operation", "")
+            or payload.get("operation")
+            or "doctor-operation-request"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_operation_request",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return request
 
 
 def create_deterministic_doctor_service(

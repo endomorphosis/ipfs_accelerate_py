@@ -292,7 +292,7 @@ def build_proof_cache_key(
         ):
             raise ValueError("candidate_tree and candidate_tree_id disagree")
     tree = candidate_tree if candidate_tree is not None else candidate_tree_id
-    return ProofCacheKey(
+    key = ProofCacheKey(
         obligation=obligation,
         premises=tuple(premises),
         translator=translator,
@@ -304,6 +304,22 @@ def build_proof_cache_key(
         resource_budget=resource_budget,
         candidate_tree=tree,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or "proof-cache-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="formal_verification_cache_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 # Descriptive compatibility spelling.
@@ -456,7 +472,7 @@ def build_draft_cache_key(
 ) -> DraftCacheKey:
     """Build a complete route-aware draft key with common identity aliases."""
 
-    return DraftCacheKey(
+    key = DraftCacheKey(
         goal_digest=_one_identity("goal_digest", goal_digest, goal),
         repository_tree_digest=_one_identity(
             "repository_tree_digest",
@@ -478,6 +494,22 @@ def build_draft_cache_key(
         bounds_digest=_one_identity("bounds_digest", bounds_digest, bounds),
         policy_digest=_one_identity("policy_digest", policy_digest, policy),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or "draft-cache-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="formal_verification_draft_cache_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 make_draft_cache_key = build_draft_cache_key

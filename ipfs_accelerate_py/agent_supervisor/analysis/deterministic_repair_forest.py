@@ -187,6 +187,21 @@ def verify_deterministic_repair_forest(
         raise DeterministicRepairForestError(
             "forest verification failed: root, gitlink, config, or dirty overlay changed"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(current.get("portable_identity") or "deterministic-repair-forest")
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="deterministic_repair_forest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return current
 
 

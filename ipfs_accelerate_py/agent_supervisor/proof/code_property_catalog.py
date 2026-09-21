@@ -307,7 +307,23 @@ def build_seed_code_properties(
         missing = known_shapes - have
         if missing and ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value not in have:
             raise CodePropertyCatalogError(f"seed catalog missing shapes: {sorted(missing)}")
-    return tuple(sorted(properties, key=lambda item: item.property_id))
+    seeded = tuple(sorted(properties, key=lambda item: item.property_id))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(registry, "version", "") or CATALOG_VERSION or "code-property-seed")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="seed_code_properties",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return seeded
 
 
 def build_default_code_property_catalog(
@@ -315,11 +331,27 @@ def build_default_code_property_catalog(
 ) -> CodePropertyCatalog:
     """Return the sealed default catalog used by CBP queries and packets."""
 
-    return CodePropertyCatalog(
+    catalog = CodePropertyCatalog(
         properties=build_seed_code_properties(registry),
         catalog_version=CATALOG_VERSION,
         declared_tags=SRT_STRUCTURAL_TAGS,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(catalog.catalog_version or "code-property-catalog")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_property_catalog",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return catalog
 
 
 def register_code_property(

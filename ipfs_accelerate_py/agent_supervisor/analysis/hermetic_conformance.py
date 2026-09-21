@@ -391,6 +391,21 @@ def build_contract_graph_fixture(
         "runtime_model_calls": 0,
     }
     payload["graph_cid"] = _cid(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        graph_ref = str(payload.get("graph_cid") or snapshot_id or "contract-graph-fixture")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="swissknife_mcp_contract_graph",
+            record_ref=graph_ref,
+            subject_kind="record_cid",
+            subject_ref=graph_ref,
+        )
+    except Exception:
+        pass
     return payload
 
 

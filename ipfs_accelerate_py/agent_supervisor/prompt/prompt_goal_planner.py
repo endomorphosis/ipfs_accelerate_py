@@ -962,6 +962,21 @@ def build_prompt_goal_provider_request(
             f"provider request exceeds bounded input: {len(encoded_bytes)} > {maximum}",
             reason_code="request_over_budget",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(request.request_cid or scan.scan_cid or "prompt-goal-provider-request")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_goal_provider_request",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return encoded
 
 

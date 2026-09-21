@@ -1127,7 +1127,7 @@ def build_program_analysis_cache_key(
 ) -> ProgramAnalysisCacheKey:
     """Build a program-analysis key while accepting common aliases."""
 
-    return ProgramAnalysisCacheKey(
+    key = ProgramAnalysisCacheKey(
         forest_identity=forest_identity,
         repository_tree_identity=repository_tree_identity,
         repository_forest_identity=repository_forest_identity,
@@ -1147,6 +1147,22 @@ def build_program_analysis_cache_key(
         component_kind=component_kind,
         authority=authority,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or "program-analysis-cache-key")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="program_analysis_cache_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 make_program_analysis_cache_key = build_program_analysis_cache_key

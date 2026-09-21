@@ -887,7 +887,7 @@ def build_phase_candidate(
                 )
         if hooks.after_commit is not None:
             hooks.after_commit(commit_id)
-        return CandidatePlan(
+        plan = CandidatePlan(
             request=request,
             tree_id=tree_id,
             commit_id=commit_id,
@@ -897,6 +897,24 @@ def build_phase_candidate(
             lease_device=lease.device,
             lease_inode=lease.inode,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            bound_tree = str(plan.tree_id or "")
+            record_ref = str(plan.commit_id or bound_tree or "phase-candidate")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="protected_acceptance_phase_candidate",
+                record_ref=record_ref,
+                tree_id=bound_tree,
+                subject_kind="tree_id" if bound_tree else "record_cid",
+                subject_ref=bound_tree or record_ref,
+            )
+        except Exception:
+            pass
+        return plan
     except Exception as exc:
         cleanup_failed = False
         if rescue_created:

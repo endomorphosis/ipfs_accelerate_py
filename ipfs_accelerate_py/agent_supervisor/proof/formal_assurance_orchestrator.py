@@ -460,7 +460,7 @@ def build_capsule_bound_cache_key(
     kind_text = ""
     if property_kind not in (None, ""):
         kind_text = _enum(property_kind, PropertyKind, "property_kind").value
-    return CapsuleBoundProofCacheKey(
+    key = CapsuleBoundProofCacheKey(
         claim_id=claim_id,
         spec_id=spec_id,
         code_id=code_id,
@@ -473,6 +473,22 @@ def build_capsule_bound_cache_key(
         translation_receipt_cid=translation_receipt_cid,
         property_kind=kind_text,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or claim_id or "capsule-bound-cache-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="capsule_bound_proof_cache_key",
+            record_ref=record_ref,
+            subject_kind="capsule_cid" if capsule_cid else "key_id",
+            subject_ref=str(capsule_cid or record_ref),
+        )
+    except Exception:
+        pass
+    return key
 
 
 # ---------------------------------------------------------------------------
@@ -1095,7 +1111,7 @@ def build_conflict(
         f"disagreement between {left.stage.value} ({left.outcome.value}) and "
         f"{right.stage.value} ({right.outcome.value})"
     )
-    return SolverConflictRecord(
+    conflict = SolverConflictRecord(
         kind=kind,
         obligation_id=obligation_id,
         left_stage=left.stage.value,
@@ -1107,6 +1123,22 @@ def build_conflict(
         verifier=right.verifier or left.verifier or TOOLCHAIN_ID,
         toolchain=TOOLCHAIN_ID,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(conflict.obligation_id or "solver-conflict")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="solver_conflict_record",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return conflict
 
 
 # ---------------------------------------------------------------------------

@@ -1535,6 +1535,21 @@ def build_critical_two_run_pair(
             public_inputs_digest="sha256:public-inputs",
             witness="witness-right-secret",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(resolved, "value", resolved) or "critical-two-run-pair")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="critical_two_run_pair",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return model, left, right
 
 

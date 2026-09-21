@@ -927,7 +927,7 @@ def build_attempt(
         and projection.authority is CurriculumAuthority.HIGH
     ):
         raise UnverifiedRetentionError("unverified success cannot upgrade curriculum")
-    return ExpertIterationAttempt(
+    attempt = ExpertIterationAttempt(
         example_id=example.example_id,
         obligation_id=example.obligation_id,
         outcome_class=outcome,
@@ -950,6 +950,22 @@ def build_attempt(
         projection=projection,
         metadata={"fixture_kind": example.fixture_kind} if example.fixture_kind else {},
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(attempt.example_id or attempt.obligation_id or "expert-iteration-attempt")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="expert_iteration_attempt",
+            record_ref=record_ref,
+            subject_kind="obligation_ref" if attempt.obligation_id else "record_cid",
+            subject_ref=str(attempt.obligation_id or record_ref),
+        )
+    except Exception:
+        pass
+    return attempt
 
 
 # ---------------------------------------------------------------------------

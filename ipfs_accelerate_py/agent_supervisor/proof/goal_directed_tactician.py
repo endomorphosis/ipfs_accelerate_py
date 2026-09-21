@@ -1045,7 +1045,7 @@ def build_tactic_premise_trace(
     kind_enum = _enum(kind, RankedKind, "kind")
     digest = state_digest or f"sha256:{_sha256_hex({'goal_id': goal_id, 'items': list(item_ids)})}"
     trace_id = f"trace:{kind_enum.value}:sha256:{_sha256_hex({'goal': goal_id, 'items': list(item_ids), 'state': digest})}"
-    return TacticPremiseTrace(
+    trace = TacticPremiseTrace(
         trace_id=trace_id,
         kind=kind_enum,
         goal_id=goal_id,
@@ -1057,6 +1057,22 @@ def build_tactic_premise_trace(
         independently_validated=independently_validated,
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(trace.trace_id or trace.goal_id or "tactic-premise-trace")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="tactic_premise_trace",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(trace.goal_id or record_ref),
+        )
+    except Exception:
+        pass
+    return trace
 
 
 @dataclass(frozen=True)
@@ -1428,7 +1444,7 @@ def build_exact_tactician_cache_key(
 ) -> ExactTacticianCacheKey:
     """Build the exact cache key required by GoalDirectedProofTactician@1."""
 
-    return ExactTacticianCacheKey(
+    key = ExactTacticianCacheKey(
         tree_id=tree_id,
         target_id=target_id,
         assumption_ids=tuple(assumption_ids or ()),
@@ -1441,6 +1457,24 @@ def build_exact_tactician_cache_key(
         toolchain_id=toolchain_id,
         obligation_id=obligation_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bound_tree = str(key.tree_id or "")
+        record_ref = str(key.key_id or key.target_id or bound_tree or "exact-tactician-cache-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="exact_tactician_cache_key",
+            record_ref=record_ref,
+            tree_id=bound_tree,
+            subject_kind="tree_id" if bound_tree else "key_id",
+            subject_ref=bound_tree or record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 # ---------------------------------------------------------------------------

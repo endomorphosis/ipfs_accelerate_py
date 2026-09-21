@@ -2875,6 +2875,201 @@ def test_mirror_portfolio_rollout_partition_and_analysis_views(tmp_path, monkeyp
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_cache_keys_forests_conflicts_and_source_snapshots(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    forest = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="deterministic_repair_forest",
+        record_ref="forest:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    graph = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="swissknife_mcp_contract_graph",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="graph:1",
+    )
+    analysis_key = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="program_analysis_cache_key",
+        record_ref="key:1",
+        subject_kind="key_id",
+        subject_ref="key:1",
+    )
+    phase = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="protected_acceptance_phase_candidate",
+        record_ref="commit:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    prompt_req = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="prompt_goal_provider_request",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    attempt = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="expert_iteration_attempt",
+        record_ref="example:1",
+        subject_kind="obligation_ref",
+        subject_ref="obl:1",
+    )
+    seed = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="seed_code_properties",
+        record_ref="catalog:1",
+        subject_kind="record_cid",
+        subject_ref="catalog:1",
+    )
+    catalog = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_property_catalog",
+        record_ref="catalog:1",
+        subject_kind="record_cid",
+        subject_ref="catalog:1",
+    )
+    capsule_key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="capsule_bound_proof_cache_key",
+        record_ref="key:2",
+        subject_kind="capsule_cid",
+        subject_ref="capsule:1",
+    )
+    conflict = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="solver_conflict_record",
+        record_ref="obl:2",
+        subject_kind="obligation_ref",
+        subject_ref="obl:2",
+    )
+    trace = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="tactic_premise_trace",
+        record_ref="trace:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    tactician_key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="exact_tactician_cache_key",
+        record_ref="key:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    two_run = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="critical_two_run_pair",
+        record_ref="tenant",
+        subject_kind="record_cid",
+        subject_ref="tenant",
+    )
+    benchmark = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="semantic_state_benchmark_report",
+        record_ref="digest:1",
+        subject_kind="record_cid",
+        subject_ref="digest:1",
+    )
+    snapshot = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="source_snapshot",
+        record_ref="snapshot:1",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    proof_key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="formal_verification_cache_key",
+        record_ref="key:4",
+        subject_kind="key_id",
+        subject_ref="key:4",
+    )
+    draft_key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="formal_verification_draft_cache_key",
+        record_ref="key:5",
+        subject_kind="key_id",
+        subject_ref="key:5",
+    )
+    prover_key = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="prover_evidence_key",
+        record_ref="key:6",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    regression = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_regression_fixture",
+        record_ref="diag:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    doctor = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="doctor_repair_proof_receipt",
+        record_ref="receipt:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    obligation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="doctor_obligation_context",
+        record_ref="translator:1",
+        subject_kind="record_cid",
+        subject_ref="translator:1",
+    )
+    op_req = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_operation_request",
+        record_ref="inspect",
+        subject_kind="record_cid",
+        subject_ref="inspect",
+    )
+    for item in (
+        forest,
+        graph,
+        analysis_key,
+        phase,
+        prompt_req,
+        attempt,
+        seed,
+        catalog,
+        capsule_key,
+        conflict,
+        trace,
+        tactician_key,
+        two_run,
+        benchmark,
+        snapshot,
+        proof_key,
+        draft_key,
+        prover_key,
+        regression,
+        doctor,
+        obligation,
+        op_req,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
