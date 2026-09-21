@@ -1710,7 +1710,28 @@ def verify_codebase_proof_benchmark_report(
         "stale_evidence_detected",
         "accepted_patch_regression_count",
     )
-    return all(claimed.get(key) == expected.get(key) for key in identity_keys)
+    accepted = all(claimed.get(key) == expected.get(key) for key in identity_keys)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            claimed.get("report_id")
+            or claimed.get("suite_id")
+            or getattr(suite, "suite_id", "")
+            or "codebase-proof-benchmark"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="codebase_proof_benchmark_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 # ---------------------------------------------------------------------------

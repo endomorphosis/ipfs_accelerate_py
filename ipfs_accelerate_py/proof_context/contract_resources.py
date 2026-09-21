@@ -47,6 +47,21 @@ def admit_schema_mapping(schema: Mapping[str, Any]) -> Mapping[str, Any]:
     marker = schema.get("schema") or schema.get("$id")
     if not isinstance(marker, str) or not marker:
         raise CompatibilityError("contract schema mapping is missing identity")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(marker)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schema_mapping",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return schema
 
 

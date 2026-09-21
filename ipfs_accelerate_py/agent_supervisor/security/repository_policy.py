@@ -52,3 +52,18 @@ def admit_repository(root: Path | str) -> None:
                 raise RepositoryPolicyError("file exceeds size bound")
             if path.is_socket() or path.name == "docker.sock":
                 raise RepositoryPolicyError("unix socket is forbidden")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(base)
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="repository_admission",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass

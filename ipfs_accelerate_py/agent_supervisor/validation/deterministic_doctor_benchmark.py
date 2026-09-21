@@ -275,13 +275,34 @@ def seal_report(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def verify_report(report: Mapping[str, Any]) -> bool:
     if not isinstance(report, Mapping):
-        return False
-    if report.get("schema") not in {BENCHMARK_SCHEMA, BENCHMARK_REPORT_SCHEMA}:
-        return False
-    claimed = report.get("report_id")
-    if not isinstance(claimed, str) or not claimed.startswith("sha256:"):
-        return False
-    return claimed == seal_report(report).get("report_id")
+        accepted = False
+        claimed = ""
+    elif report.get("schema") not in {BENCHMARK_SCHEMA, BENCHMARK_REPORT_SCHEMA}:
+        accepted = False
+        claimed = str(report.get("report_id") or "")
+    else:
+        claimed = report.get("report_id")
+        if not isinstance(claimed, str) or not claimed.startswith("sha256:"):
+            accepted = False
+            claimed = str(claimed or "")
+        else:
+            accepted = claimed == seal_report(report).get("report_id")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claimed or "doctor-benchmark-report")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_benchmark_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def family_for_scenario(scenario: str) -> str:

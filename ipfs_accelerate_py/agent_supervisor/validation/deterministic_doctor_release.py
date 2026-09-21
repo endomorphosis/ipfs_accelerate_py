@@ -326,8 +326,25 @@ def seal_payload(payload: Mapping[str, Any], *, id_key: str = "receipt_id") -> d
 def verify_sealed(payload: Mapping[str, Any], *, id_key: str = "receipt_id") -> bool:
     claimed = payload.get(id_key)
     if not isinstance(claimed, str) or not claimed.startswith("sha256:"):
-        return False
-    return claimed == seal_payload(payload, id_key=id_key).get(id_key)
+        accepted = False
+    else:
+        accepted = claimed == seal_payload(payload, id_key=id_key).get(id_key)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claimed or "doctor-release-seal")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_release_seal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def _text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:

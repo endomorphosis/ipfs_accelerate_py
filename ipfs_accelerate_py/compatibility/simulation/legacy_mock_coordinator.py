@@ -145,6 +145,21 @@ def admit_legacy_workflow_coordinator(
                 selected.message,
                 code=str(selected.code),
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(getattr(selected, "code", "") or "legacy-workflow-coordinator")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="legacy_workflow_coordinator",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return
     refused = select_simulation_namespace(
         LEGACY_MOCK_COORDINATOR_NAMESPACE,

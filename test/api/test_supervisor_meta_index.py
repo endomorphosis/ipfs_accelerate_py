@@ -5219,6 +5219,141 @@ def test_mirror_identity_merkle_repair_and_delegation_surfaces(tmp_path, monkeyp
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_deployment_seal_benchmark_and_repository_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    deployment = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="deployment_binding_signature",
+        record_ref="binding:1",
+        subject_kind="record_cid",
+        subject_ref="binding:1",
+    )
+    artifacts = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="deterministic_repair_artifacts",
+        record_ref="artifacts",
+        subject_kind="path",
+        subject_ref="/tmp/artifacts",
+    )
+    repository = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="repository_admission",
+        record_ref="/tmp/repo",
+        subject_kind="path",
+        subject_ref="/tmp/repo",
+    )
+    transition = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="result_transition",
+        record_ref="succeeded",
+        subject_kind="record_cid",
+        subject_ref="succeeded",
+    )
+    position = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="crash_position",
+        record_ref="before_commit",
+        subject_kind="record_cid",
+        subject_ref="before_commit",
+    )
+    boundary = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="recovery_boundary",
+        record_ref="stage",
+        subject_kind="record_cid",
+        subject_ref="stage",
+    )
+    doctor_seal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_release_seal",
+        record_ref="sha256:seal",
+        subject_kind="record_cid",
+        subject_ref="sha256:seal",
+    )
+    planner_seal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planner_doctor_release_seal",
+        record_ref="sha256:planner",
+        subject_kind="record_cid",
+        subject_ref="sha256:planner",
+    )
+    doctor_report = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_benchmark_report",
+        record_ref="sha256:report",
+        subject_kind="record_cid",
+        subject_ref="sha256:report",
+    )
+    codebase = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="codebase_proof_benchmark_report",
+        record_ref="suite:1",
+        subject_kind="record_cid",
+        subject_ref="suite:1",
+    )
+    reuse = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_reuse_benchmark_receipt",
+        record_ref="corpus:1",
+        subject_kind="record_cid",
+        subject_ref="corpus:1",
+    )
+    efficiency = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_efficiency_report",
+        record_ref="population:1",
+        subject_kind="record_cid",
+        subject_ref="population:1",
+    )
+    scaling = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_dependency_scaling_verification",
+        record_ref="benchmark:1",
+        subject_kind="record_cid",
+        subject_ref="benchmark:1",
+    )
+    schema = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="schema_mapping",
+        record_ref="mcp++/schema@1",
+        subject_kind="record_cid",
+        subject_ref="mcp++/schema@1",
+    )
+    coordinator = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="legacy_workflow_coordinator",
+        record_ref="simulated",
+        subject_kind="record_cid",
+        subject_ref="simulated",
+    )
+    for item in (
+        deployment,
+        artifacts,
+        repository,
+        transition,
+        position,
+        boundary,
+        doctor_seal,
+        planner_seal,
+        doctor_report,
+        codebase,
+        reuse,
+        efficiency,
+        scaling,
+        schema,
+        coordinator,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -339,6 +339,21 @@ def verify_deterministic_repair_artifacts(
             raise DeterministicArtifactError(
                 f"artifact bytes do not match reviewed inputs: {filename}"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(Path(output_dir).name or "deterministic-repair-artifacts")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="deterministic_repair_artifacts",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(destination),
+        )
+    except Exception:
+        pass
 
 
 __all__ = [

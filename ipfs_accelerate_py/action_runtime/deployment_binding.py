@@ -445,13 +445,49 @@ def verify_deployment_binding_signature(
     if not isinstance(binding.signature, str) or not _HEX_SHA256.fullmatch(
         binding.signature
     ):
-        return False
+        accepted = False
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(getattr(binding, "binding_id", "") or "deployment-binding")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="deployment_binding_signature",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
     expected = hmac.new(
         _coerce_key(operator_key),
         binding.signing_payload(),
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(binding.signature, expected)
+    accepted = hmac.compare_digest(binding.signature, expected)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(binding, "binding_id", "")
+            or getattr(binding, "catalog_id", "")
+            or "deployment-binding"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="deployment_binding_signature",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def build_signed_pilot_binding(

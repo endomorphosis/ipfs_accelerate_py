@@ -195,12 +195,42 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
 def admit_position(position: Any) -> str:
     if not isinstance(position, str) or position not in CRASH_POSITIONS:
         raise UnknownFieldError(f"unknown crash position {position!r}")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(position)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="crash_position",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return position
 
 
 def admit_boundary(boundary: Any) -> str:
     if not isinstance(boundary, str) or boundary not in BOUNDARIES:
         raise UnknownFieldError(f"unknown recovery boundary {boundary!r}")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(boundary)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="recovery_boundary",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return boundary
 
 

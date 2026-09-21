@@ -366,6 +366,21 @@ def admit_transition(source: str | None, target: str) -> str:
 
     admitted_target = admit_status(target)
     if source is START:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(admitted_target or "result-transition")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="result_transition",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return admitted_target
     admitted_source = admit_status(source)
     allowed = _TRANSITION_TARGETS[admitted_source]
@@ -374,6 +389,21 @@ def admit_transition(source: str | None, target: str) -> str:
             f"illegal transition {admitted_source} -> {admitted_target}",
             details={"stage": admitted_source, "reason": admitted_target},
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted_target or admitted_source or "result-transition")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="result_transition",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return admitted_target
 
 

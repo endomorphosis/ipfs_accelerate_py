@@ -1629,11 +1629,32 @@ def verify_benchmark_receipt(
         # Allow verifying a custom corpus receipt against the same corpus only.
         pass
     if corpus is None and receipt.corpus_id != recomputed.corpus_id:
-        return False
-    if corpus is not None:
+        accepted = False
+    elif corpus is not None:
         expected = ProofReuseBenchmark(corpus=corpus).run()
-        return expected.to_dict() == receipt.to_dict()
-    return recomputed.to_dict() == receipt.to_dict()
+        accepted = expected.to_dict() == receipt.to_dict()
+    else:
+        accepted = recomputed.to_dict() == receipt.to_dict()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "corpus_id", "")
+            or getattr(recomputed, "corpus_id", "")
+            or "proof-reuse-benchmark"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_reuse_benchmark_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 # ---------------------------------------------------------------------------

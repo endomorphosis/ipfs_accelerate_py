@@ -937,9 +937,30 @@ def verify_proof_dependency_scaling_report(
     benchmark: DecisionRuntimeBenchmark,
 ) -> bool:
     if not isinstance(report, ProofDependencyScalingReport):
-        return False
-    replayed = recompute_proof_dependency_scaling(benchmark)
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+        accepted = False
+    else:
+        replayed = recompute_proof_dependency_scaling(benchmark)
+        accepted = _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "benchmark_id", "")
+            or getattr(benchmark, "benchmark_id", "")
+            or "proof-dependency-scaling"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_dependency_scaling_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 def producer_receipt_from_records(

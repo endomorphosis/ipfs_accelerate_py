@@ -2052,12 +2052,33 @@ def verify_symbolic_efficiency_report(
     """Return whether a report exactly matches deterministic replay."""
 
     if not isinstance(report, SymbolicEfficiencyBenchmarkReport):
-        return False
+        accepted = False
+    else:
+        try:
+            replayed = evaluate_symbolic_efficiency(population)
+            accepted = _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+        except SymbolicBenchmarkError:
+            accepted = False
     try:
-        replayed = evaluate_symbolic_efficiency(population)
-    except SymbolicBenchmarkError:
-        return False
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "population_id", "")
+            or getattr(population, "population_id", "")
+            or "symbolic-efficiency-report"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_efficiency_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
 
 
 __all__ = [
