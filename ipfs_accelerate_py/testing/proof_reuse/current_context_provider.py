@@ -152,6 +152,31 @@ class CurrentContextCompileResult:
         }
 
 
+def _mirror_current_context(**kwargs: Any) -> CurrentContextCompileResult:
+    result = CurrentContextCompileResult(**kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        context = result.context
+        record_ref = str(
+            getattr(context, "locator_cid", "")
+            or getattr(result.reason, "value", "")
+            or "current-context"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="current_context_compile",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _bounded_diagnostics(raw: Mapping[str, Any] | None) -> Mapping[str, Any]:
     if not raw:
         return MappingProxyType({})
@@ -383,7 +408,7 @@ class DefaultCurrentContextProvider:
                 item=item,
             )
         except Exception as exc:  # noqa: BLE001 - fail open
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.INTERNAL_ERROR,
                 diagnostics={
                     "stage": "compile",
@@ -401,17 +426,17 @@ class DefaultCurrentContextProvider:
     ) -> CurrentContextCompileResult:
         locator = str(locator_cid or "").strip()
         if not locator:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.LOCATOR_MISSING,
                 diagnostics={"stage": "locator"},
             )
         if not isinstance(candidate, CandidateExecutionContext):
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.CANDIDATE_INVALID,
                 diagnostics={"stage": "candidate_type"},
             )
         if candidate.locator_cid and candidate.locator_cid != locator:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.LOCATOR_MISMATCH,
                 diagnostics={
                     "stage": "locator_mismatch",
@@ -421,7 +446,7 @@ class DefaultCurrentContextProvider:
 
         collected = item if item is not None else self._collected_item
         if self.require_collected_item and collected is None:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.ITEM_UNAVAILABLE,
                 diagnostics={"stage": "item_required"},
             )
@@ -493,7 +518,7 @@ class DefaultCurrentContextProvider:
             except TypeError:
                 produced = compiler(candidate)  # type: ignore[misc]
         except Exception as exc:  # noqa: BLE001
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.INTERNAL_ERROR,
                 diagnostics={
                     "stage": "live_compiler",
@@ -502,13 +527,13 @@ class DefaultCurrentContextProvider:
             )
 
         if self._fixtures_executed:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.FIXTURE_EXECUTION_FORBIDDEN,
                 fixtures_executed=True,
                 diagnostics={"stage": "fixtures_executed"},
             )
         if self._test_body_executed:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.TEST_BODY_EXECUTION_FORBIDDEN,
                 test_body_executed=True,
                 diagnostics={"stage": "test_body_executed"},
@@ -516,7 +541,7 @@ class DefaultCurrentContextProvider:
 
         if isinstance(produced, CurrentExecutionContext):
             if produced.locator_cid and produced.locator_cid != locator_cid:
-                return CurrentContextCompileResult(
+                return _mirror_current_context(
                     reason=CurrentContextCompileReason.LOCATOR_MISMATCH,
                     diagnostics={"stage": "live_context_locator"},
                 )
@@ -524,14 +549,14 @@ class DefaultCurrentContextProvider:
                 "fresh_live_rebuild",
                 "controlled_preflight",
             }:
-                return CurrentContextCompileResult(
+                return _mirror_current_context(
                     reason=CurrentContextCompileReason.IDENTITY_INCOMPLETE,
                     diagnostics={
                         "stage": "rebuild_source",
                         "rebuild_source": produced.rebuild_source,
                     },
                 )
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.COMPILED,
                 context=produced,
                 rebuilt_dimensions=_REBUILD_DIMENSIONS,
@@ -546,7 +571,7 @@ class DefaultCurrentContextProvider:
                 stage="live_compiler_map",
             )
 
-        return CurrentContextCompileResult(
+        return _mirror_current_context(
             reason=CurrentContextCompileReason.IDENTITY_INCOMPLETE,
             diagnostics={"stage": "live_compiler_empty"},
         )
@@ -583,7 +608,7 @@ class DefaultCurrentContextProvider:
                 try:
                     produced = method(item, locator_cid=locator_cid)
                 except Exception as exc:  # noqa: BLE001
-                    return CurrentContextCompileResult(
+                    return _mirror_current_context(
                         reason=CurrentContextCompileReason.INTERNAL_ERROR,
                         diagnostics={
                             "stage": f"identity_services.{name}",
@@ -591,7 +616,7 @@ class DefaultCurrentContextProvider:
                         },
                     )
             except Exception as exc:  # noqa: BLE001
-                return CurrentContextCompileResult(
+                return _mirror_current_context(
                     reason=CurrentContextCompileReason.INTERNAL_ERROR,
                     diagnostics={
                         "stage": f"identity_services.{name}",
@@ -599,7 +624,7 @@ class DefaultCurrentContextProvider:
                     },
                 )
             if isinstance(produced, CurrentExecutionContext):
-                return CurrentContextCompileResult(
+                return _mirror_current_context(
                     reason=CurrentContextCompileReason.COMPILED,
                     context=produced,
                     rebuilt_dimensions=_REBUILD_DIMENSIONS,
@@ -673,7 +698,7 @@ class DefaultCurrentContextProvider:
             identity_map["component_cids"] = components
 
         if not identity_map:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.PROVIDER_ABSENT
                 if services is None
                 else CurrentContextCompileReason.IDENTITY_INCOMPLETE,
@@ -761,7 +786,7 @@ class DefaultCurrentContextProvider:
                 try:
                     value = rebuilder(candidate)
                 except Exception as exc:  # noqa: BLE001
-                    return CurrentContextCompileResult(
+                    return _mirror_current_context(
                         reason=CurrentContextCompileReason.INTERNAL_ERROR,
                         diagnostics={
                             "stage": f"rebuilder.{dimension}",
@@ -769,7 +794,7 @@ class DefaultCurrentContextProvider:
                         },
                     )
             except Exception as exc:  # noqa: BLE001
-                return CurrentContextCompileResult(
+                return _mirror_current_context(
                     reason=CurrentContextCompileReason.INTERNAL_ERROR,
                     diagnostics={
                         "stage": f"rebuilder.{dimension}",
@@ -823,7 +848,7 @@ class DefaultCurrentContextProvider:
             identity_map["component_cids"] = components
 
         if not identity_map:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.DIMENSION_UNAVAILABLE,
                 diagnostics={"stage": "dimension_rebuilders_empty"},
             )
@@ -886,7 +911,7 @@ class DefaultCurrentContextProvider:
                     pass
 
         if not live_bits:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.PROVIDER_ABSENT,
                 diagnostics={
                     "stage": "live_roots_empty",
@@ -896,7 +921,7 @@ class DefaultCurrentContextProvider:
             )
         # Incomplete identity — do not fabricate a full CurrentExecutionContext
         # from partial fingerprints (would either mismatch or falsely match).
-        return CurrentContextCompileResult(
+        return _mirror_current_context(
             reason=CurrentContextCompileReason.IDENTITY_INCOMPLETE,
             rebuilt_dimensions=tuple(live_bits.keys()),
             diagnostics={
@@ -989,7 +1014,7 @@ class DefaultCurrentContextProvider:
         }
         missing = [name for name, value in required.items() if not value]
         if missing:
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.IDENTITY_INCOMPLETE,
                 rebuilt_dimensions=tuple(rebuilt or ()),
                 diagnostics={
@@ -1032,7 +1057,7 @@ class DefaultCurrentContextProvider:
                 },
             )
         except Exception as exc:  # noqa: BLE001
-            return CurrentContextCompileResult(
+            return _mirror_current_context(
                 reason=CurrentContextCompileReason.IDENTITY_INCOMPLETE,
                 diagnostics={
                     "stage": stage,
@@ -1040,7 +1065,7 @@ class DefaultCurrentContextProvider:
                 },
             )
 
-        return CurrentContextCompileResult(
+        return _mirror_current_context(
             reason=CurrentContextCompileReason.COMPILED,
             context=context,
             rebuilt_dimensions=tuple(rebuilt or _REBUILD_DIMENSIONS),

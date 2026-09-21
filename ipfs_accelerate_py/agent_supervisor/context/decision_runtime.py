@@ -1324,6 +1324,28 @@ class DecisionRuntime:
         self._check_cancelled("retry")
         result = compiler.compile_retry(parent, **changes)
         self._check_cancelled("retry")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            capsule = getattr(result, "retry_capsule", None) or getattr(result, "capsule", None)
+            record_ref = str(
+                getattr(capsule, "content_id", "")
+                or getattr(capsule, "capsule_id", "")
+                or "runtime-decision-retry"
+            )
+            tree_id = str(getattr(capsule, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="runtime_decision_retry",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def expand_context(
@@ -1344,6 +1366,28 @@ class DecisionRuntime:
             **current,
         )
         self._check_cancelled("expansion")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            capsule = getattr(result, "retry_capsule", None) or getattr(result, "capsule", None)
+            record_ref = str(
+                getattr(capsule, "content_id", "")
+                or getattr(capsule, "capsule_id", "")
+                or "runtime-decision-expansion"
+            )
+            tree_id = str(getattr(capsule, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="runtime_decision_expansion",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     @staticmethod

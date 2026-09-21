@@ -984,6 +984,26 @@ class ProofContextDelta:
         return canonical_json(self.to_dict())
 
 
+def _mirror_proof_context_delta(*args: Any, **kwargs: Any) -> ProofContextDelta:
+    result = ProofContextDelta(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.delta_id or result.base_receipt_id or "proof-context-delta")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_contract_proof_context_delta",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(result.base_receipt_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _receipt_matches_compiled_base(
     receipt: ProofContextReceipt,
     current: CompiledProofContext,
@@ -1025,7 +1045,7 @@ def _invalid_delta(
         max_items=request.limits.max_items,
         max_bytes=request.limits.max_bytes,
     )
-    return ProofContextDelta(
+    return _mirror_proof_context_delta(
         base_receipt_id=base_receipt.receipt_id,
         base_dependency_fingerprint=base_receipt.dependency_fingerprint,
         items=(),
@@ -1068,9 +1088,26 @@ class CodeContractProofContextCompiler:
         key = (request.request_id, invalidated)
         cached = self._cache.get(key)
         if cached is not None:
-            return cached
-        result = _compile(request, invalidated_receipt_ids=invalidated)
-        self._cache[key] = result
+            result = cached
+        else:
+            result = _compile(request, invalidated_receipt_ids=invalidated)
+            self._cache[key] = result
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="code_contract_proof_context",
+                record_ref=str(
+                    result.context_id or result.request_id or result.obligation_id or "code-contract-proof-context"
+                ),
+                subject_kind="obligation_ref",
+                subject_ref=str(result.obligation_id or result.request_id or "code-contract-proof-context"),
+            )
+        except Exception:
+            pass
         return result
 
     @staticmethod
@@ -1181,7 +1218,7 @@ class CodeContractProofContextCompiler:
                 slice_reference=None,
             )
         )
-        return ProofContextDelta(
+        return _mirror_proof_context_delta(
             base_receipt_id=base_receipt.receipt_id,
             base_dependency_fingerprint=base_receipt.dependency_fingerprint,
             items=items,

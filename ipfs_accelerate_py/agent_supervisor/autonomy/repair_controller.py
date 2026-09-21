@@ -590,6 +590,27 @@ class SourceEditAdmission:
         }
 
 
+def _mirror_source_edit_admission(*args: Any, **kwargs: Any) -> SourceEditAdmission:
+    result = SourceEditAdmission(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.operator_id or result.relative_path or result.disposition.value or "source-edit")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="source_edit_admission",
+            record_ref=record_ref,
+            subject_kind="path" if result.relative_path else "record_cid",
+            subject_ref=str(result.relative_path or record_ref),
+            paths=(result.relative_path,) if result.relative_path else (),
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class _FailureRecord:
     count: int
@@ -1136,7 +1157,7 @@ class AutonomousRepairController:
 
         del allow_code_edit_materialize
         if source_edit is None:
-            return SourceEditAdmission(
+            return _mirror_source_edit_admission(
                 disposition=SourceEditAdmissionDisposition.NOT_SOURCE_EDIT,
                 admitted=False,
                 mutation_applied=False,
@@ -1148,7 +1169,7 @@ class AutonomousRepairController:
         try:
             operator = AdmittedSourceEditOperator.from_mapping(source_edit)
         except AdmittedSourceEditError as exc:
-            return SourceEditAdmission(
+            return _mirror_source_edit_admission(
                 disposition=SourceEditAdmissionDisposition.REJECTED,
                 admitted=False,
                 mutation_applied=False,
@@ -1161,7 +1182,7 @@ class AutonomousRepairController:
         ):
             reasons.append("source_edit_path_not_in_plan")
         if reasons:
-            return SourceEditAdmission(
+            return _mirror_source_edit_admission(
                 disposition=SourceEditAdmissionDisposition.REJECTED,
                 admitted=False,
                 mutation_applied=False,
@@ -1178,7 +1199,7 @@ class AutonomousRepairController:
                     preferred_path=path,
                 )
             except AdmittedSourceEditError as exc:
-                return SourceEditAdmission(
+                return _mirror_source_edit_admission(
                     disposition=SourceEditAdmissionDisposition.REJECTED,
                     admitted=False,
                     mutation_applied=False,
@@ -1199,7 +1220,7 @@ class AutonomousRepairController:
             )
         except Exception:
             pass
-        return SourceEditAdmission(
+        return _mirror_source_edit_admission(
             disposition=SourceEditAdmissionDisposition.ADMITTED_VALIDATION_PENDING,
             admitted=True,
             mutation_applied=False,

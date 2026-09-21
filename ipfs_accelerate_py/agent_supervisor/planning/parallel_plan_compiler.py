@@ -1715,6 +1715,23 @@ class ParallelPlanCompiler:
         plan = self._compile(compilation)
         if raise_on_rejection and not plan.admitted:
             raise ParallelPlanRejectedError(plan)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(plan, "repository_tree_id", "") or "")
+            record_ref = str(plan.plan_id or "parallel-execution-plan")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="parallel_execution_plan",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return plan
 
     compile_plan = compile

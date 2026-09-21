@@ -5649,6 +5649,36 @@ def test_mirror_compiler_runtime_and_token_surfaces(tmp_path, monkeypatch) -> No
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_proof_delta_retry_and_source_edit_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("code_contract_proof_context", "ctx:contract", "proof_cache", "obligation_ref"),
+        ("code_contract_proof_context_delta", "delta:contract", "proof_cache", "record_cid"),
+        ("runtime_decision_retry", "capsule:retry", "capsule", "record_cid"),
+        ("runtime_decision_expansion", "capsule:expand", "capsule", "record_cid"),
+        ("parallel_execution_plan", "plan:parallel", "metadata", "record_cid"),
+        ("source_edit_admission", "edit:path.py", "metadata", "path"),
+        ("current_context_compile", "locator:current", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
