@@ -2048,7 +2048,7 @@ def verify_mutant_incremental(
         broadening_policy=broadening_policy,
         require_production_terminal=require_production_terminal,
     )
-    return active.verify_mutant(
+    result = active.verify_mutant(
         mutant_id=mutant_id,
         repository_tree_cid=repository_tree_cid,
         units=units,
@@ -2067,6 +2067,22 @@ def verify_mutant_incremental(
         selection_policy=selection_policy,
         catalog=catalog,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.result_cid or result.mutant_id or "incremental-mutant")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="incremental_mutation_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def incremental_mutation_verifier_descriptor() -> Mapping[str, Any]:

@@ -4517,6 +4517,142 @@ def test_mirror_observation_profiles_hierarchy_and_refactor_compiles(tmp_path, m
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_protocol_smt_kit_and_steer_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    smt = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="smt_payload",
+        record_ref="obligation:smt",
+        subject_kind="record_cid",
+        subject_ref="obligation:smt",
+    )
+    remediation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="remediation_descriptor",
+        record_ref="evaluate_remediation@1",
+        subject_kind="record_cid",
+        subject_ref="evaluate_remediation@1",
+    )
+    protocol = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="protocol_suite_result",
+        record_ref="model:core",
+        subject_kind="record_cid",
+        subject_ref="model:core",
+    )
+    kit_bytes = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="kit_bytes",
+        record_ref="kit:bytes",
+        subject_kind="capsule_cid",
+        subject_ref="kit:bytes",
+    )
+    kit_root = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="kit_current_root",
+        record_ref="kit:root",
+        subject_kind="capsule_cid",
+        subject_ref="kit:root",
+    )
+    signature = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="receipt_signature_binding",
+        record_ref="key:1",
+        subject_kind="key_id",
+        subject_ref="key:1",
+    )
+    mutations = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="self_property_mutations",
+        record_ref="template:1",
+        subject_kind="record_cid",
+        subject_ref="template:1",
+    )
+    obligations = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="complete_obligations",
+        record_ref="owner:1",
+        subject_kind="record_cid",
+        subject_ref="owner:1",
+    )
+    traces = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="required_traces",
+        record_ref="trace:1",
+        subject_kind="record_cid",
+        subject_ref="trace:1",
+    )
+    benchmark = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="authoritative_benchmark_evidence",
+        record_ref="report:1",
+        subject_kind="record_cid",
+        subject_ref="report:1",
+    )
+    steer = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_steer_preview",
+        record_ref="request:steer",
+        subject_kind="record_cid",
+        subject_ref="request:steer",
+    )
+    ptr = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="ptr_current_tree_gate",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    mutant = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="incremental_mutation_verification",
+        record_ref="mutant:1",
+        subject_kind="record_cid",
+        subject_ref="mutant:1",
+    )
+    terminal = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="terminal_accepted_work_evidence",
+        record_ref="evidence:1",
+        subject_kind="record_cid",
+        subject_ref="evidence:1",
+    )
+    hard = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="hard_constraint_checks",
+        record_ref="owner:authority",
+        subject_kind="record_cid",
+        subject_ref="owner:authority",
+    )
+    for item in (
+        smt,
+        remediation,
+        protocol,
+        kit_bytes,
+        kit_root,
+        signature,
+        mutations,
+        obligations,
+        traces,
+        benchmark,
+        steer,
+        ptr,
+        mutant,
+        terminal,
+        hard,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

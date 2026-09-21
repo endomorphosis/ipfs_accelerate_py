@@ -1523,6 +1523,22 @@ def verify_persisted_current_tree_gate_bundle(
             raise ProofTestReuseCurrentTreeGateError(
                 "persisted gate bundle reason codes mismatch on replay"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(bundle.git_tree_id or bundle.repository_id or "ptr-current-tree-gate")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="ptr_current_tree_gate",
+            record_ref=record_ref,
+            tree_id=str(bundle.git_tree_id or ""),
+            subject_kind="tree_id" if bundle.git_tree_id else "record_cid",
+            subject_ref=str(bundle.git_tree_id or record_ref),
+        )
+    except Exception:
+        pass
     return replayed
 
 

@@ -5789,6 +5789,21 @@ def evaluate_supervisor_self_property_mutations(
                 f"self-property mutation cases failed for "
                 f"{spec.template_id!r}: {', '.join(sorted(failed))}"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(next(iter(outcomes), "") or "self-property-mutations")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="self_property_mutations",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return outcomes
 
 

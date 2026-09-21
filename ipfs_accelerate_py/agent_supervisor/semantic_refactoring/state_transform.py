@@ -1244,7 +1244,7 @@ def verify_complete_obligations(
         candidate_alias = _alias_id_of(candidate)
         if candidate_alias:
             alias_set_id = candidate_alias
-    return {
+    result = {
         "owner_id": owner_text,
         "uniqueness": uniqueness,
         "alias_set_id": alias_set_id,
@@ -1254,6 +1254,22 @@ def verify_complete_obligations(
         "admitted": True,
         "mutable": mutable,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(owner_text or alias_set_id or "complete-obligations")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="complete_obligations",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def verify_preimages(

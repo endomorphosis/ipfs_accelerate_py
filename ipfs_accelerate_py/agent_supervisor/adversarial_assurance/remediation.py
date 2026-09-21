@@ -1906,7 +1906,7 @@ def evaluate_remediation(
 def evaluate_remediation_descriptor() -> Mapping[str, Any]:
     """Return a static descriptor for the runtime evaluation interface."""
 
-    return MappingProxyType(
+    descriptor = MappingProxyType(
         {
             "interface_id": EVALUATE_REMEDIATION_INTERFACE,
             "run_interface": REMEDIATION_EVALUATION_RUN_INTERFACE,
@@ -1928,6 +1928,22 @@ def evaluate_remediation_descriptor() -> Mapping[str, Any]:
             "production_policy_change": False,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(descriptor.get("interface_id") or "evaluate-remediation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remediation_descriptor",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return descriptor
 
 
 def propose_gap_remediation_descriptor() -> Mapping[str, Any]:

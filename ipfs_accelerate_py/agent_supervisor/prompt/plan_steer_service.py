@@ -1798,7 +1798,7 @@ class PlanSteerService:
         existing = self._preview_by_request.get(request.request_cid)
         if existing is not None:
             # Restart-serializable idempotent return for identical request CID.
-            return existing
+            return _mirror_plan_steer_preview(existing)
 
         rejections: list[PlanSteerRejection] = []
         partition: PlanSteerPopulationPartition | None = None
@@ -1921,7 +1921,7 @@ class PlanSteerService:
                 "steer preview attempted a task-source write",
                 code=PlanSteerRejectionCode.WRITE_ATTEMPTED,
             )
-        return receipt
+        return _mirror_plan_steer_preview(receipt)
 
     # Alias used by the later PlanSupervisorService facade.
     preview = preview_steer
@@ -3125,6 +3125,25 @@ class PlanSteerService:
                 code=PlanSteerRejectionCode.SERVICE_ERROR,
             )
         put(receipt.content_id, record)
+
+
+def _mirror_plan_steer_preview(receipt: PlanSteerPreviewReceipt) -> PlanSteerPreviewReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.request_cid or receipt.candidate_plan_root or "plan-steer-preview")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_steer_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def preview_steer(

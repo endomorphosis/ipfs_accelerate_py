@@ -1008,6 +1008,21 @@ def verify_required_traces(
     missing = [item for item in required if item not in set(observed)]
     if missing:
         raise InitializationTransformError("required traces are missing")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(required[0] if required else "required-traces")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="required_traces",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return required
 
 

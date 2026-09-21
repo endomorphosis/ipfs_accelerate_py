@@ -1518,7 +1518,7 @@ def _authoritative_verification_result(
 ) -> dict[str, Any]:
     """Return a stable public projection; never return receipt bodies."""
 
-    return {
+    result = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "goal-tactician-authoritative-benchmark-verification@1"
@@ -1532,6 +1532,26 @@ def _authoritative_verification_result(
         "receipt_artifact_sha256": receipt_artifact_sha256,
         "trusted_commit": trusted_commit,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("authority_content_id")
+            or result.get("report_id")
+            or "authoritative-benchmark"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="authoritative_benchmark_evidence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def verify_authoritative_benchmark_evidence(

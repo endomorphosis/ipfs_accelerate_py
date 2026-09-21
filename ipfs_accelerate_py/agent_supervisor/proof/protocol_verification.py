@@ -2351,7 +2351,23 @@ def verify_protocol_model(
     adapters: Sequence[ProtocolToolAdapter] | None = None,
     capabilities: Sequence[ProtocolToolCapability] | None = None,
 ) -> ProtocolSuiteResult:
-    return ProtocolVerifier(adapters).verify(model, capabilities=capabilities)
+    result = ProtocolVerifier(adapters).verify(model, capabilities=capabilities)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.model_identity or result.model_id or "protocol-suite")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="protocol_suite_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Compatibility names used by the formal-verification package vocabulary.

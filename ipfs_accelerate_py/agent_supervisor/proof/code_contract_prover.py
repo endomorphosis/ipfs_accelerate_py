@@ -862,7 +862,7 @@ def compile_smt_payload_for_claim(
         # Consistency of the assumption set is required: assert them.
         # Theorem: premise => goal  which under asserted premises is goal.
         _ = premise
-    return {
+    payload = {
         "encoding": "smtlib2",
         "smt_logic": DEFAULT_SMT_LOGIC,
         "declarations": declarations,
@@ -876,6 +876,22 @@ def compile_smt_payload_for_claim(
             query_kind.value if isinstance(query_kind, QueryKind) else str(query_kind)
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(payload.get("obligation_id") or payload.get("claim_id") or "smt-payload")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="smt_payload",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
 
 
 def compile_backend_request(

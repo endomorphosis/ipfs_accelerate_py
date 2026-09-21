@@ -2965,7 +2965,29 @@ def evaluate_hard_constraints(draft: _Draft, view: _GraphView) -> tuple[HardCons
             node_ids=escaped,
         ),
     )
-    return tuple(checks)
+    checks_tuple = tuple(checks)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = checks_tuple[0] if checks_tuple else None
+        record_ref = str(
+            getattr(first, "content_identity", "")
+            or getattr(getattr(first, "kind", None), "value", "")
+            or draft.owner_id
+            or "hard-constraints"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="hard_constraint_checks",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return checks_tuple
 
 
 def _rejection_kind(failed: Sequence[HardConstraintCheck]) -> RejectionKind:

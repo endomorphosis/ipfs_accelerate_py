@@ -1253,6 +1253,21 @@ def verify_kit_bytes(
     actual = _text(pack_store.cid_for(data), "kit_cid")
     if claimed_cid is not None and validate_opaque_cid(claimed_cid, "kit_cid") != actual:
         raise ContextPackError("kit CID does not equal recomputed bytes CID")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(actual or "kit-bytes")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="kit_bytes",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return actual
 
 
@@ -1311,6 +1326,21 @@ def verify_kit_current_root(store: Any, kit_cid: str) -> Any:
             stale_fields=("tree",),
             reason_codes=("stale:current_root",),
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(pointer.seal_cid or expected or "kit-current-root")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="kit_current_root",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return pointer
 
 

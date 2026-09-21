@@ -1157,6 +1157,21 @@ def verify_receipt_signature_bindings(
             raise PromotionError(
                 f"{name}.action must be {expected!r}, got {binding.action!r}"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(binding.key_identity or binding.signer_identity or "receipt-signature")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="receipt_signature_binding",
+            record_ref=record_ref,
+            subject_kind="key_id" if binding.key_identity else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return binding
 
 

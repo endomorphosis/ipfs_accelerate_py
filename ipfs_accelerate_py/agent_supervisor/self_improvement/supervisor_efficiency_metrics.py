@@ -5634,6 +5634,21 @@ def verify_terminal_accepted_work_evidence(
             "terminal accepted-work evidence does not match the independently "
             "supplied source populations"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(verified.evidence_id or verified.requirement_id or "terminal-accepted-work")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="terminal_accepted_work_evidence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return verified
 
 
