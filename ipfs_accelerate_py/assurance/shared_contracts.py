@@ -700,6 +700,21 @@ def admit_shared_contract(name: str, payload: Mapping[str, Any]) -> dict[str, An
                 "ir_identity",
             } else _nfc_text(value, field)
     _ = canonical_json_bytes(admitted)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted.get("schema") or name or "shared-contract")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shared_contract",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return admitted
 
 

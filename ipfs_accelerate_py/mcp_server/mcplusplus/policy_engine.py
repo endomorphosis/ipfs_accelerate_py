@@ -106,6 +106,31 @@ class PolicyDecision:
         return result
 
 
+def _mirror_policy_decision(*args, **kwargs) -> PolicyDecision:
+    result = PolicyDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = getattr(result, "evidence", None) or {}
+        record_ref = str(
+            (evidence.get("decision_cid") if isinstance(evidence, dict) else None)
+            or getattr(result, "decision", "")
+            or "mcp-policy-decision"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mcp_policy_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def parse_policy_clauses(raw_clauses: Iterable[Dict[str, Any]]) -> List[PolicyClause]:
     """Parse raw policy clause payloads into typed rules."""
     clauses: List[PolicyClause] = []
@@ -173,14 +198,14 @@ def evaluate_policy(
             )
 
     if denial_reasons:
-        return PolicyDecision(
+        return _mirror_policy_decision(
             decision="deny",
             justification="; ".join(denial_reasons),
             obligations=[],
         )
 
     if has_permission and obligations:
-        return PolicyDecision(
+        return _mirror_policy_decision(
             decision="allow_with_obligations",
             justification=f"allowed with {len(obligations)} obligation(s)",
             obligations=obligations,
@@ -188,18 +213,18 @@ def evaluate_policy(
 
     if has_permission:
         if fulfilled_obligations:
-            return PolicyDecision(
+            return _mirror_policy_decision(
                 decision="allow",
                 justification=f"permission matched; {fulfilled_obligations} obligation(s) already fulfilled",
                 obligations=[],
             )
-        return PolicyDecision(
+        return _mirror_policy_decision(
             decision="allow",
             justification="permission matched",
             obligations=[],
         )
 
-    return PolicyDecision(
+    return _mirror_policy_decision(
         decision="deny",
         justification="no matching permission",
         obligations=[],
@@ -251,7 +276,7 @@ def evaluate_with_ipfs_datasets_policy(
             policy_text=policy_text,
             request_zkp_certificate=request_zkp_certificate,
         )
-        return PolicyDecision(
+        return _mirror_policy_decision(
             decision=str(result["decision"]),
             justification=str(result.get("justification") or ""),
             obligations=[
@@ -298,7 +323,7 @@ def evaluate_profile_d_execution_policy(
     request or is unavailable.
     """
     evaluate_execution_policy = _load_datasets_profile_d_evaluator()
-    return evaluate_execution_policy(
+    result = evaluate_execution_policy(
         actor=actor,
         action=action,
         resource=resource,
@@ -308,6 +333,29 @@ def evaluate_profile_d_execution_policy(
         intent_cid=intent_cid,
         request_zkp_certificate=request_zkp_certificate,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        payload = result if isinstance(result, dict) else {}
+        record_ref = str(
+            payload.get("decision_cid")
+            or payload.get("policy_cid")
+            or payload.get("intent_cid")
+            or intent_cid
+            or "profile-d-policy"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="profile_d_execution_policy",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _load_datasets_profile_d_evaluator():

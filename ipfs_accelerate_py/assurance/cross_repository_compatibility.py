@@ -528,7 +528,23 @@ def admit_combination(payload: Mapping[str, Any]) -> Mapping[str, Any]:
             f"live catalog CID {live_catalog} remints {PINNED_CATALOG_CID}",
             reject_kind="reminted_identity",
         )
-    return MappingProxyType(dict(payload))
+    admitted = MappingProxyType(dict(payload))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admitted.get("id") or "compatibility-combination")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="compatibility_combination",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def evaluate_incompatible_combinations() -> list[dict[str, Any]]:
@@ -584,6 +600,21 @@ def evaluate_incompatible_combinations() -> list[dict[str, Any]]:
                 "reason": message,
             }
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(len(rows) or "incompatible-combinations")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="incompatible_combinations",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return rows
 
 

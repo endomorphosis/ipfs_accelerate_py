@@ -2708,7 +2708,33 @@ def verify_pilot_report(
     verified_payload = dict(report.to_dict())
     verified_payload.pop("report_cid", None)
     verified_payload["mode"] = PilotMode.VERIFY.value
-    return SymbolicAssurancePilotReport.from_dict(verified_payload)
+    verified = SymbolicAssurancePilotReport.from_dict(verified_payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(verified, "report_cid", "")
+            or getattr(verified, "task_id", "")
+            or getattr(verified, "forest_id", "")
+            or "pilot-report"
+        )
+        tree_id = ""
+        bindings = getattr(verified, "tree_bindings", None) or {}
+        if isinstance(bindings, Mapping) and bindings:
+            tree_id = str(next(iter(bindings.values())) or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="symbolic_assurance_pilot",
+            record_ref=record_ref,
+            tree_id=str(tree_id),
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return verified
 
 
 def verify_pilot(

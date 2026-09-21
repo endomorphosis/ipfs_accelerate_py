@@ -4653,6 +4653,134 @@ def test_mirror_protocol_smt_kit_and_steer_surfaces(tmp_path, monkeypatch) -> No
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_mcp_policy_envelope_and_assurance_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    contract = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="shared_contract",
+        record_ref="SupervisorObjectiveIntent@1",
+        subject_kind="record_cid",
+        subject_ref="SupervisorObjectiveIntent@1",
+    )
+    negative = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="negative_vector",
+        record_ref="pcpr-042-stale-tree",
+        subject_kind="record_cid",
+        subject_ref="pcpr-042-stale-tree",
+    )
+    combination = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="compatibility_combination",
+        record_ref="pcpr-043-supported",
+        subject_kind="record_cid",
+        subject_ref="pcpr-043-supported",
+    )
+    incompatibles = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="incompatible_combinations",
+        record_ref="12",
+        subject_kind="record_cid",
+        subject_ref="12",
+    )
+    envelope = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="mcp_envelope",
+        record_ref="bafyenvelope",
+        subject_kind="capsule_cid",
+        subject_ref="bafyenvelope",
+    )
+    policy = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="mcp_policy_decision",
+        record_ref="allow",
+        subject_kind="record_cid",
+        subject_ref="allow",
+    )
+    profile_d = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="profile_d_execution_policy",
+        record_ref="decision:profile-d",
+        subject_kind="record_cid",
+        subject_ref="decision:profile-d",
+    )
+    provenance = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="provenance_verification",
+        record_ref="success",
+        subject_kind="record_cid",
+        subject_ref="success",
+    )
+    evidence = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_context_policy",
+        record_ref="policy:cid",
+        subject_kind="record_cid",
+        subject_ref="policy:cid",
+    )
+    adapter = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="adapter_result",
+        record_ref="task:adapter",
+        subject_kind="task_id",
+        subject_ref="task:adapter",
+    )
+    pilot = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="symbolic_assurance_pilot",
+        record_ref="pilot:report",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    alerts = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="alert_rule_evaluation",
+        record_ref="success",
+        subject_kind="record_cid",
+        subject_ref="success",
+    )
+    index_lifecycle = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="index_lifecycle",
+        record_ref="dataset:vectors",
+        subject_kind="record_cid",
+        subject_ref="dataset:vectors",
+    )
+    vectors = mirror_work_record(
+        catalog_kind="vector",
+        record_kind="vector_search_storage",
+        record_ref="vector-index",
+        subject_kind="record_cid",
+        subject_ref="vector-index",
+    )
+    for item in (
+        contract,
+        negative,
+        combination,
+        incompatibles,
+        envelope,
+        policy,
+        profile_d,
+        provenance,
+        evidence,
+        adapter,
+        pilot,
+        alerts,
+        index_lifecycle,
+        vectors,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

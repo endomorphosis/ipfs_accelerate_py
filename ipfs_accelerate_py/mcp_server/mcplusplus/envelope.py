@@ -548,6 +548,21 @@ def verify_envelope(
         result.errors.append(f"cid_compute_failed:{type(exc).__name__}:{exc}")
 
     result.ok = not result.errors
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.cid or result.metadata.get("task_id") or "envelope")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="mcp_envelope",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 

@@ -453,6 +453,29 @@ async def search_vector_index(
     return normalized
 
 
+def _mirror_vector_orchestration(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("index_id")
+            or payload.get("status")
+            or "vector-search-storage"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="vector_search_storage",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 async def orchestrate_vector_search_storage(
     vectors: List[List[float]],
     query_vector: List[float],
@@ -471,17 +494,25 @@ async def orchestrate_vector_search_storage(
     3) optionally persist an audit record via storage tools
     """
     if not isinstance(vectors, list) or not vectors:
-        return _error_result("vectors must be a non-empty list")
+        return _mirror_vector_orchestration(_error_result("vectors must be a non-empty list"))
     if not _is_numeric_vector(query_vector):
-        return _error_result("query_vector must be a non-empty list of numbers")
+        return _mirror_vector_orchestration(
+            _error_result("query_vector must be a non-empty list of numbers")
+        )
     try:
         normalized_top_k = int(top_k)
     except (TypeError, ValueError):
-        return _error_result("top_k must be a positive integer", top_k=top_k)
+        return _mirror_vector_orchestration(
+            _error_result("top_k must be a positive integer", top_k=top_k)
+        )
     if normalized_top_k <= 0:
-        return _error_result("top_k must be a positive integer", top_k=top_k)
+        return _mirror_vector_orchestration(
+            _error_result("top_k must be a positive integer", top_k=top_k)
+        )
     if not isinstance(persist_audit, bool):
-        return _error_result("persist_audit must be a boolean", persist_audit=persist_audit)
+        return _mirror_vector_orchestration(
+            _error_result("persist_audit must be a boolean", persist_audit=persist_audit)
+        )
 
     created = await create_vector_index(
         vectors=vectors,
@@ -490,7 +521,7 @@ async def orchestrate_vector_search_storage(
         index_id=index_id,
     )
     if created.get("status") == "error":
-        return created
+        return _mirror_vector_orchestration(created)
     resolved_index_id = str(created.get("index_id") or index_id or "").strip() or "vector-index"
 
     searched = await search_vector_index(
@@ -501,7 +532,7 @@ async def orchestrate_vector_search_storage(
         include_distances=True,
     )
     if searched.get("status") == "error":
-        return searched
+        return _mirror_vector_orchestration(searched)
 
     from ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools import (
         similarity_search,
@@ -515,7 +546,9 @@ async def orchestrate_vector_search_storage(
             collection=resolved_index_id or "default",
         )
     except Exception as exc:
-        return _error_result(f"similarity_search integration failed: {exc}")
+        return _mirror_vector_orchestration(
+            _error_result(f"similarity_search integration failed: {exc}")
+        )
 
     search_results = searched.get("results") if isinstance(searched, dict) else []
     result_count = len(search_results or [])
@@ -545,14 +578,16 @@ async def orchestrate_vector_search_storage(
                 tags=["vector", "search", "storage", "integration"],
             )
         except Exception as exc:
-            return _error_result(f"storage audit persistence failed: {exc}")
+            return _mirror_vector_orchestration(
+                _error_result(f"storage audit persistence failed: {exc}")
+            )
         storage_receipt = {
             "stored": bool(persisted.get("stored")),
             "collection": str(persisted.get("collection") or audit_collection),
             "item_id": persisted.get("item_id"),
         }
 
-    return {
+    return _mirror_vector_orchestration({
         "status": "success",
         "index_id": resolved_index_id,
         "metric": metric,
@@ -569,7 +604,7 @@ async def orchestrate_vector_search_storage(
             ),
         },
         "storage": storage_receipt,
-    }
+    })
 
 
 async def list_vector_indexes(backend: str = "all") -> Dict[str, Any]:

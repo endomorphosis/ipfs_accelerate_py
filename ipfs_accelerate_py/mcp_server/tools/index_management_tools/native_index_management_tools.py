@@ -317,6 +317,30 @@ async def manage_index_configuration(
     return payload
 
 
+def _mirror_index_lifecycle(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("dataset")
+            or payload.get("index_id")
+            or payload.get("phase")
+            or "index-lifecycle"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="index_lifecycle",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 async def orchestrate_index_lifecycle(
     dataset: str,
     action: str = "create",
@@ -327,30 +351,30 @@ async def orchestrate_index_lifecycle(
     """Run a deterministic create/optimize/status lifecycle orchestration for index management."""
     normalized_dataset = str(dataset or "").strip()
     if not normalized_dataset:
-        return {
+        return _mirror_index_lifecycle({
             "status": "error",
             "message": "dataset is required",
             "dataset": dataset,
-        }
+        })
 
     normalized_action = str(action or "").strip().lower()
     allowed_actions = {"create", "reload", "optimize"}
     if normalized_action not in allowed_actions:
-        return {
+        return _mirror_index_lifecycle({
             "status": "error",
             "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
             "action": action,
-        }
+        })
 
     load_action = "create" if normalized_action == "create" else "reload"
     load_result = await load_index(action=load_action, dataset=normalized_dataset)
     if load_result.get("status") == "error":
-        return {
+        return _mirror_index_lifecycle({
             "status": "error",
             "phase": "load_index",
             "message": "index load phase failed",
             "details": load_result,
-        }
+        })
 
     shard_result = await manage_shards(
         action="create_shards",
@@ -358,12 +382,12 @@ async def orchestrate_index_lifecycle(
         num_shards=num_shards,
     )
     if shard_result.get("status") == "error":
-        return {
+        return _mirror_index_lifecycle({
             "status": "error",
             "phase": "manage_shards",
             "message": "shard management phase failed",
             "details": shard_result,
-        }
+        })
 
     config_result = await manage_index_configuration(
         action="optimize_config" if normalized_action == "optimize" else "get_config",
@@ -371,12 +395,12 @@ async def orchestrate_index_lifecycle(
         optimization_level=optimization_level,
     )
     if config_result.get("status") == "error":
-        return {
+        return _mirror_index_lifecycle({
             "status": "error",
             "phase": "manage_index_configuration",
             "message": "configuration phase failed",
             "details": config_result,
-        }
+        })
 
     status_result: Optional[Dict[str, Any]] = None
     if include_status:
@@ -386,14 +410,14 @@ async def orchestrate_index_lifecycle(
             include_details=False,
         )
         if status_result.get("status") == "error":
-            return {
+            return _mirror_index_lifecycle({
                 "status": "error",
                 "phase": "monitor_index_status",
                 "message": "status phase failed",
                 "details": status_result,
-            }
+            })
 
-    return {
+    return _mirror_index_lifecycle({
         "status": "success",
         "dataset": normalized_dataset,
         "lifecycle_action": normalized_action,
@@ -401,7 +425,7 @@ async def orchestrate_index_lifecycle(
         "shards": shard_result,
         "configuration": config_result,
         "status_monitor": status_result,
-    }
+    })
 
 
 def register_native_index_management_tools(manager: Any) -> None:

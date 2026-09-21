@@ -264,6 +264,29 @@ async def record_provenance_batch(
     }
 
 
+def _mirror_provenance_verification(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("status")
+            or payload.get("verified_count")
+            or "provenance-verification"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provenance_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 async def verify_provenance_records(
     records: List[Dict[str, Any]],
     require_success_status: bool = True,
@@ -272,13 +295,13 @@ async def verify_provenance_records(
 ) -> Dict[str, Any]:
     """Verify provenance-record shape and status contracts deterministically."""
     if not isinstance(records, list) or not records:
-        return {
+        return _mirror_provenance_verification({
             "status": "error",
             "message": "records must be a non-empty array",
             "verification_results": [],
             "verified_count": 0,
             "failed_count": 0,
-        }
+        })
 
     verification_results: List[Dict[str, Any]] = []
     verified_count = 0
@@ -320,13 +343,13 @@ async def verify_provenance_records(
         else:
             failed_count += 1
 
-    return {
+    return _mirror_provenance_verification({
         "status": "success",
         "verification_results": verification_results,
         "verified_count": verified_count,
         "failed_count": failed_count,
         "all_valid": failed_count == 0,
-    }
+    })
 
 
 async def generate_provenance_report(

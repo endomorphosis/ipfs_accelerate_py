@@ -169,6 +169,29 @@ async def send_discord_message(
     return payload
 
 
+def _mirror_alert_evaluation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("status")
+            or payload.get("triggered_rules")
+            or "alert-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="alert_rule_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 async def evaluate_alert_rules(
     event: Dict[str, Any],
     rule_ids: Optional[List[str]] = None,
@@ -176,35 +199,35 @@ async def evaluate_alert_rules(
 ) -> Dict[str, Any]:
     """Evaluate alert rules against an event payload."""
     if not isinstance(event, dict):
-        return {
+        return _mirror_alert_evaluation({
             "status": "error",
             "message": "event must be an object",
             "event": event,
-        }
+        })
 
     normalized_rule_ids: Optional[List[str]] = None
     if rule_ids is not None:
         if not isinstance(rule_ids, list) or not all(isinstance(item, str) for item in rule_ids):
-            return {
+            return _mirror_alert_evaluation({
                 "status": "error",
                 "message": "rule_ids must be an array of strings when provided",
                 "rule_ids": rule_ids,
-            }
+            })
         normalized_rule_ids = [str(item).strip() for item in rule_ids]
         if any(not item for item in normalized_rule_ids):
-            return {
+            return _mirror_alert_evaluation({
                 "status": "error",
                 "message": "rule_ids cannot contain empty strings",
                 "rule_ids": rule_ids,
-            }
+            })
 
     normalized_config_file = str(config_file).strip() if config_file is not None else None
     if config_file is not None and not normalized_config_file:
-        return {
+        return _mirror_alert_evaluation({
             "status": "error",
             "message": "config_file must be a non-empty string when provided",
             "config_file": config_file,
-        }
+        })
 
     result = await _API["evaluate_alert_rules"](
         event=event,
@@ -216,7 +239,7 @@ async def evaluate_alert_rules(
     payload.setdefault("rule_ids", normalized_rule_ids or [])
     payload.setdefault("results", [])
     payload.setdefault("triggered_rules", len(payload.get("results") or []))
-    return payload
+    return _mirror_alert_evaluation(payload)
 
 
 async def list_alert_rules(

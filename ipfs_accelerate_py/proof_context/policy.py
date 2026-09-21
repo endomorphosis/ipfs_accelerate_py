@@ -800,7 +800,7 @@ def _build_result(
     per_mode["simulation"]["promotion_admitted"] = False
     watermark = SIMULATION_WATERMARK if watermarked or quality_class == "simulated" else None
     quality_claim = quality_class if mode in {"evaluation", "simulation"} else None
-    return PolicyResult(
+    result = PolicyResult(
         schema=POLICY_RESULT_SCHEMA,
         mode=mode,
         closed_modes=MODES,
@@ -818,6 +818,26 @@ def _build_result(
         per_mode=per_mode,
         quality_claim=quality_claim,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "policy_cid", "")
+            or getattr(result, "mode", "")
+            or "proof-context-policy"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_context_policy",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def admit_evidence(mode: Any, evidence: Any) -> PolicyResult:

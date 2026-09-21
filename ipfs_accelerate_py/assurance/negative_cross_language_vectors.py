@@ -492,7 +492,7 @@ def evaluate_negative_vector(recipe: Mapping[str, Any]) -> dict[str, Any]:
                 f"{recipe['id']} reversed and original reject kinds differ"
             )
         identical = True
-    return {
+    result = {
         "id": recipe["id"],
         "contract": recipe["contract"],
         "category": recipe["category"],
@@ -500,6 +500,22 @@ def evaluate_negative_vector(recipe: Mapping[str, Any]) -> dict[str, Any]:
         "rejected": True,
         "identical_reversed": identical,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("id") or result.get("contract") or "negative-vector")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="negative_vector",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluate_negative_vectors() -> tuple[dict[str, Any], ...]:

@@ -513,6 +513,25 @@ def admit_adapter_result(
     if len(result.patch_bytes) + len(result.log_bytes) > MAX_PROVIDER_OUTPUT_BYTES:
         raise BoundaryViolationError("provider output exceeds the frozen byte bound")
     _assert_patch_paths_match_declared(result.patch_bytes, proposal.declared_files)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(proposal, "task_id", "")
+            or getattr(invocation, "task_id", "")
+            or "adapter-result"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="adapter_result",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 
