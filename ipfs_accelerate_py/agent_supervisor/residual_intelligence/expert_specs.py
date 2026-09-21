@@ -766,7 +766,23 @@ def admit_expert_class(
         compared_class=compared_class,
         admission=admission,
     )
-    return expert_spec_for(family_spec.task_family, admitted)
+    spec = expert_spec_for(family_spec.task_family, admitted)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(spec.expert_id or spec.family_spec_id or "residual-expert")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_expert_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return spec
 
 
 def expert_spec_registry_payload() -> dict[str, Any]:

@@ -691,6 +691,24 @@ def build_frozen_benchmark(
     )
     cases = tuple(FrozenBenchmarkCase.from_dict(item) for item in contract["cases"])
     validate_frozen_benchmark(manifest, cases)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(source_tree or "")
+        freeze = manifest.benchmark_freeze if isinstance(manifest.benchmark_freeze, Mapping) else {}
+        record_ref = str(freeze.get("freeze_id") or source_commit or "frozen-residual-benchmark")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="frozen_residual_benchmark",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return manifest, cases
 
 

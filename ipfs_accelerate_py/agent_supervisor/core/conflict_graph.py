@@ -3133,7 +3133,23 @@ def materialize_task_conflict_graph(
 def build_conflict_graph(tasks: Sequence[Any], **kwargs: Any) -> TaskConflictGraph:
     """Compatibility alias for :func:`materialize_task_conflict_graph`."""
 
-    return materialize_task_conflict_graph(tasks, **kwargs)
+    graph = materialize_task_conflict_graph(tasks, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(graph, "graph_id", "") or "task-conflict-graph")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="task_conflict_graph",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return graph
 
 
 def color_conflict_graph(
@@ -3193,6 +3209,25 @@ class SemanticConflictError(ValueError):
     """LGSWF conflict-graph extension rejected an unsafe admission."""
 
 
+def _mirror_semantic_conflict(decision: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decision.get("scope") or decision.get("reason") or "semantic-conflict")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="semantic_conflict",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 def evaluate_semantic_conflict(left: Mapping[str, Any], right: Mapping[str, Any]) -> dict[str, Any]:
     """Extend the existing graph with typed semantic conflict scopes.
 
@@ -3204,42 +3239,42 @@ def evaluate_semantic_conflict(left: Mapping[str, Any], right: Mapping[str, Any]
     left_mode = str(left.get("mode") or "write")
     right_mode = str(right.get("mode") or "write")
     if left_mode == "read" and right_mode == "read":
-        return {
+        return _mirror_semantic_conflict({
             "conflict": False,
             "reason": "compatible-readers",
             "scope": "shared-read",
-        }
+        })
     if left_mode == "read" or right_mode == "read":
         if left.get("exclusive_resource") and left.get("exclusive_resource") == right.get(
             "exclusive_resource"
         ):
-            return {
+            return _mirror_semantic_conflict({
                 "conflict": True,
                 "reason": "exclusive-resource",
                 "scope": "exclusive_resource",
-            }
-        return {
+            })
+        return _mirror_semantic_conflict({
             "conflict": False,
             "reason": "compatible-reader-writer",
             "scope": "shared-read",
-        }
+        })
     for key in ("symbol", "interface", "schema", "generated", "effect", "exclusive_resource"):
         if left.get(key) and left.get(key) == right.get(key):
-            return {
+            return _mirror_semantic_conflict({
                 "conflict": True,
                 "reason": f"same-{key}",
                 "scope": "exact_symbol" if key == "symbol" else key,
-            }
+            })
     if left.get("opaque") or right.get("opaque"):
         scope = "opaque_file" if left.get("path") or right.get("path") else "opaque_repository"
-        return {
+        return _mirror_semantic_conflict({
             "conflict": True,
             "reason": "opaque-conservative-fallback",
             "scope": scope,
-        }
+        })
     if left.get("path") and left.get("path") == right.get("path"):
-        return {"conflict": True, "reason": "same-path", "scope": "predicted_path"}
-    return {"conflict": False, "reason": "disjoint-writes", "scope": "none"}
+        return _mirror_semantic_conflict({"conflict": True, "reason": "same-path", "scope": "predicted_path"})
+    return _mirror_semantic_conflict({"conflict": False, "reason": "disjoint-writes", "scope": "none"})
 
 
 def admit_conflict_free_frontier(tasks: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -3263,11 +3298,27 @@ def admit_conflict_free_frontier(tasks: Sequence[Mapping[str, Any]]) -> dict[str
         else:
             chosen.append(task)
             admitted.append(task_id)
-    return {
+    frontier = {
         "admitted": tuple(admitted),
         "rejected": tuple(rejected),
         "deterministic": True,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str((admitted[0] if admitted else "") or "conflict-free-frontier")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="conflict_free_frontier",
+            record_ref=record_ref,
+            subject_kind="task_id" if admitted else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return frontier
 
 
 __all__ = [

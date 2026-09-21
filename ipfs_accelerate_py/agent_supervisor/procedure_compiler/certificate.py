@@ -980,7 +980,28 @@ def verify_procedure_certificate(
     *,
     candidate: ProcedureCandidate | None = None,
 ) -> CertificateAdmission:
-    return verifier.verify(certificate, context, candidate=candidate)
+    admission = verifier.verify(certificate, context, candidate=candidate)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(admission, "certificate_id", "")
+            or getattr(admission, "content_id", "")
+            or getattr(certificate, "certificate_id", "")
+            or "procedure-certificate"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="procedure_certificate_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admission
 
 
 __all__ = [

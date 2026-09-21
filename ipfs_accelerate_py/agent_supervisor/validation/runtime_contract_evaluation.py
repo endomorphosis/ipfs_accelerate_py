@@ -562,6 +562,21 @@ def evaluate_runtime_contracts(
         llm_call_count=total_llm,
         extra=dict(extra or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "report_id", "") or root or "runtime-contract-evaluation")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="runtime_contract_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

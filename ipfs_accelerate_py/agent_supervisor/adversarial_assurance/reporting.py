@@ -857,6 +857,21 @@ def build_assurance_report(
             "population_kinds": list(METRICS_POPULATION_KINDS),
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.plan_cid or report.result_cid or report.plan_id or "assurance-report")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

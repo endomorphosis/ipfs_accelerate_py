@@ -1951,6 +1951,25 @@ def build_program_behavior(
     # snapshot.  Re-check all exact inputs before returning an authorization
     # identity so post-hash edits cannot inherit the old root.
     behavior.verify_unchanged()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(behavior.repository, "snapshot_id", "")
+            or getattr(analysis, "program_root", "")
+            or "program-behavior"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_behavior",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return behavior
 
 

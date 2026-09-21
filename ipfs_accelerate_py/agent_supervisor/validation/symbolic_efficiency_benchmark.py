@@ -2001,6 +2001,21 @@ def evaluate_symbolic_efficiency(
     )
     if len(_canonical_bytes(report.to_dict())) > policy.max_report_bytes:
         raise SymbolicBenchmarkError("benchmark report exceeds byte bound")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.population_id or report.profile_identity_id or "symbolic-efficiency")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_efficiency_benchmark",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

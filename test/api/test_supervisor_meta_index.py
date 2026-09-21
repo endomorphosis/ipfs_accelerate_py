@@ -3070,6 +3070,190 @@ def test_mirror_cache_keys_forests_conflicts_and_source_snapshots(tmp_path, monk
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_assurance_conflict_handoff_and_validation_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    mutation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="mutation_admission",
+        record_ref="identity:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    promotion = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="assurance_promotion_gate",
+        record_ref="candidate:2",
+        subject_kind="record_cid",
+        subject_ref="candidate:2",
+    )
+    report = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="assurance_report",
+        record_ref="plan:1",
+        subject_kind="record_cid",
+        subject_ref="plan:1",
+    )
+    baseline = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="execution_baseline_gate",
+        record_ref="baseline:1",
+        subject_kind="record_cid",
+        subject_ref="baseline:1",
+    )
+    reuse = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_unit_cache_reuse",
+        record_ref="unit:1",
+        subject_kind="record_cid",
+        subject_ref="unit:1",
+    )
+    graph = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="task_conflict_graph",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="graph:1",
+    )
+    conflict = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="semantic_conflict",
+        record_ref="shared-read",
+        subject_kind="record_cid",
+        subject_ref="shared-read",
+    )
+    frontier = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="conflict_free_frontier",
+        record_ref="SAWM-039",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    behavior = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_behavior",
+        record_ref="snapshot:1",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    handoff = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="handoff_admission",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="session:1",
+    )
+    procedure = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="procedure_verification",
+        record_ref="procedure:1",
+        subject_kind="record_cid",
+        subject_ref="procedure:1",
+    )
+    certificate = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="procedure_certificate_admission",
+        record_ref="cert:1",
+        subject_kind="record_cid",
+        subject_ref="cert:1",
+    )
+    transfer = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="procedure_transfer_decision",
+        record_ref="transfer:1",
+        subject_kind="record_cid",
+        subject_ref="transfer:1",
+    )
+    frozen = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="frozen_residual_benchmark",
+        record_ref="freeze:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    expert = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="residual_expert_admission",
+        record_ref="expert:1",
+        subject_kind="record_cid",
+        subject_ref="expert:1",
+    )
+    candidate = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="repair_candidate_decision",
+        record_ref="candidate:3",
+        subject_kind="record_cid",
+        subject_ref="candidate:3",
+    )
+    runtime = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="runtime_contract_evaluation",
+        record_ref="root:1",
+        subject_kind="record_cid",
+        subject_ref="root:1",
+    )
+    post_repair = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="post_repair_validation",
+        record_ref="epoch:1",
+        subject_kind="record_cid",
+        subject_ref="epoch:1",
+    )
+    derived = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="derived_population_admission",
+        record_ref="admission:1",
+        subject_kind="record_cid",
+        subject_ref="admission:1",
+    )
+    efficiency = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="symbolic_efficiency_benchmark",
+        record_ref="population:1",
+        subject_kind="record_cid",
+        subject_ref="population:1",
+    )
+    gate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="tactician_plan_gate",
+        record_ref="plan:2",
+        subject_kind="record_cid",
+        subject_ref="plan:2",
+    )
+    for item in (
+        mutation,
+        promotion,
+        report,
+        baseline,
+        reuse,
+        graph,
+        conflict,
+        frontier,
+        behavior,
+        handoff,
+        procedure,
+        certificate,
+        transfer,
+        frozen,
+        expert,
+        candidate,
+        runtime,
+        post_repair,
+        derived,
+        efficiency,
+        gate,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

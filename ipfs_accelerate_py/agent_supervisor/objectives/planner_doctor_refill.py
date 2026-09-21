@@ -2490,7 +2490,7 @@ def admit_compiled_population(
         "self_authorization": False,
         "producer_id": PRODUCER_ID,
     }
-    return DerivedAdmissionReceipt(
+    receipt = DerivedAdmissionReceipt(
         admitted=admitted,
         admission_receipt_cid=content_identity(body),
         compilation=compilation,
@@ -2499,6 +2499,22 @@ def admit_compiled_population(
         open_task_count=open_task_count + (len(tasks) if admitted else 0),
         stop_policy=policy.stop_policy,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.admission_receipt_cid or compilation.formal_plan_id or "derived-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="derived_population_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 # ---------------------------------------------------------------------------

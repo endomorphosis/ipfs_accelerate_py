@@ -2423,7 +2423,28 @@ def create_repair_candidate_portfolio(
 def select_repair_candidate(request: PortfolioRequest) -> RepairCandidateDecision:
     """Module-level convenience for the default portfolio selector."""
 
-    return create_repair_candidate_portfolio().evaluate(request)
+    decision = create_repair_candidate_portfolio().evaluate(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "content_id", "")
+            or getattr(decision, "candidate_id", "")
+            or getattr(request, "candidate_id", "")
+            or "repair-candidate"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_candidate_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def evaluate_repair_candidate_portfolio(

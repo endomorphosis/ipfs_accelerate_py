@@ -1438,7 +1438,7 @@ def admit_mutation(
             lease_id=lease,
             fence=fence_i,
         )
-        return MutationAdmissionResult(
+        result = MutationAdmissionResult(
             disposition=disposition.value,
             reason_codes=tuple(reason_codes),
             candidate_id=sealed_candidate.candidate_id,
@@ -1460,6 +1460,22 @@ def admit_mutation(
             diagnostic=_clip(diagnostic),
             metadata=meta,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.identity_cid or result.candidate_id or "mutation-admission")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="mutation_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=str(result.candidate_cid or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     # --- 1. owned disposable worktree ---
     record, wt_reasons, wt_diag = _validate_owned_disposable_worktree(

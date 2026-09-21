@@ -2122,7 +2122,7 @@ def gate_tactician_plan(
     extra_payload: Mapping[str, Any] | None = None,
 ) -> TacticianPlanGateReceipt:
     """Module-level convenience entry point for the plan security gate."""
-    return TacticianPlanGate(bounds=bounds).evaluate(
+    receipt = TacticianPlanGate(bounds=bounds).evaluate(
         plan=plan,
         goals=goals,
         candidates=candidates,
@@ -2134,6 +2134,26 @@ def gate_tactician_plan(
         score_override_attempt=score_override_attempt,
         extra_payload=extra_payload,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "content_id", "")
+            or getattr(receipt, "plan_id", "")
+            or "tactician-plan-gate"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="tactician_plan_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 __all__ = (

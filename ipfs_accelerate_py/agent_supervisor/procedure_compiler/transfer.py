@@ -1467,4 +1467,24 @@ def evaluate_transfer(
 ) -> TransferDecision:
     """Module-level transfer check.  Unsafe transfers are never admitted."""
 
-    return ProcedureTransferGate().evaluate(request, emitted_at_ms=emitted_at_ms)
+    decision = ProcedureTransferGate().evaluate(request, emitted_at_ms=emitted_at_ms)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "content_id", "")
+            or getattr(request, "procedure_id", "")
+            or "procedure-transfer"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="procedure_transfer_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision

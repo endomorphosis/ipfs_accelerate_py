@@ -529,6 +529,27 @@ class ExecutionBaseline:
         )
 
 
+def _mirror_baseline_gate(
+    sealed: ExecutionBaseline, reasons: tuple[str, ...]
+) -> tuple[ExecutionBaseline, tuple[str, ...]]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(sealed, "baseline_id", "") or reasons[0] if reasons else "execution-baseline")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="execution_baseline_gate",
+            record_ref=str(record_ref or "execution-baseline"),
+            subject_kind="record_cid",
+            subject_ref=str(record_ref or "execution-baseline"),
+        )
+    except Exception:
+        pass
+    return sealed, reasons
+
+
 def evaluate_baseline_gate(
     baseline: ExecutionBaseline | Mapping[str, Any],
 ) -> tuple[ExecutionBaseline, tuple[str, ...]]:
@@ -540,9 +561,9 @@ def evaluate_baseline_gate(
 
     sealed = ExecutionBaseline.from_value(baseline)
     if sealed.is_green:
-        return sealed, (REASON_BASELINE_GREEN,)
+        return _mirror_baseline_gate(sealed, (REASON_BASELINE_GREEN,))
     if sealed.is_blocked:
-        return sealed, (REASON_BASELINE_BLOCKED,)
+        return _mirror_baseline_gate(sealed, (REASON_BASELINE_BLOCKED,))
     raise BaselineGateError(
         "baseline must be green or explicitly blocked",
         reason_code=REASON_BASELINE_MISSING,

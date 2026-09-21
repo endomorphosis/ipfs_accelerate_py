@@ -1373,7 +1373,23 @@ def evaluate_cache_reuse(
             )
         )
     out.sort(key=lambda item: item.unit_id)
-    return tuple(out)
+    decisions = tuple(out)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decisions[0].unit_id if decisions else "cache-reuse")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_unit_cache_reuse",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decisions
 
 
 def resolve_broadening_mode(

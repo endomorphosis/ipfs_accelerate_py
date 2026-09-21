@@ -1133,7 +1133,28 @@ def verify_procedure(
     *,
     now_ms: int = 0,
 ) -> ProcedureVerification:
-    return ProcedureVerifier().verify(candidate, evidence, policy, now_ms=now_ms)
+    verification = ProcedureVerifier().verify(candidate, evidence, policy, now_ms=now_ms)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(verification, "receipt_id", "")
+            or getattr(verification, "content_id", "")
+            or getattr(candidate, "procedure_id", "")
+            or "procedure-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="procedure_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verification
 
 
 __all__ = [

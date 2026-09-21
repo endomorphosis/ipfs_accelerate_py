@@ -126,6 +126,21 @@ def admit_handoff(
     )
     if receipt.completion_eligible and not trust.may_satisfy_completion:
         raise HandoffAdmissionError("completion eligibility requires reverified trust")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.request_id or receipt.session_id or "handoff-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="handoff_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(receipt.session_id or record_ref),
+        )
+    except Exception:
+        pass
     return receipt
 
 

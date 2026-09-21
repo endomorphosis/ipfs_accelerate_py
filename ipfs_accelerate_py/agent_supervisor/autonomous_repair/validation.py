@@ -217,15 +217,40 @@ class PostRepairValidationRequest:
     cancelled: bool = False
 
 
+def _mirror_repair_proof_transition(transition: RepairProofTransition) -> RepairProofTransition:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(transition.after_roots, "epoch_cid", "")
+            or getattr(transition.disposition, "value", transition.disposition)
+            or "repair-proof-transition"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="post_repair_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return transition
+
+
 def _failure(
     request: PostRepairValidationRequest, disposition: PostRepairDisposition, *reasons: str
 ) -> RepairProofTransition:
-    return RepairProofTransition(
-        disposition=disposition,
-        reason_codes=tuple(sorted(set(reasons))),
-        before_roots=request.before_roots,
-        after_roots=request.after_roots,
-        detector_receipt_cids=(),
+    return _mirror_repair_proof_transition(
+        RepairProofTransition(
+            disposition=disposition,
+            reason_codes=tuple(sorted(set(reasons))),
+            before_roots=request.before_roots,
+            after_roots=request.after_roots,
+            detector_receipt_cids=(),
+        )
     )
 
 
@@ -286,12 +311,14 @@ def evaluate_post_repair_validation(request: PostRepairValidationRequest) -> Rep
         # Current DCR-070 and DCR-072 runtime integrations remain unavailable.
         # Thus even structurally passing typed fixtures cannot mint DCR-002
         # validation/reproof envelopes, publish, merge, or complete anything.
-        return RepairProofTransition(
-            disposition=PostRepairDisposition.INTEGRATION_PENDING,
-            reason_codes=("dcr070_dcr072_runtime_integration_pending",),
-            before_roots=request.before_roots,
-            after_roots=request.after_roots,
-            detector_receipt_cids=tuple(sorted(item.receipt_cid for item in by_kind.values())),
+        return _mirror_repair_proof_transition(
+            RepairProofTransition(
+                disposition=PostRepairDisposition.INTEGRATION_PENDING,
+                reason_codes=("dcr070_dcr072_runtime_integration_pending",),
+                before_roots=request.before_roots,
+                after_roots=request.after_roots,
+                detector_receipt_cids=tuple(sorted(item.receipt_cid for item in by_kind.values())),
+            )
         )
     except PostRepairValidationError as exc:
         return _failure(request, PostRepairDisposition.REFUTED, str(exc))
