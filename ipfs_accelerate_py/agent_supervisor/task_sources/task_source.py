@@ -5125,7 +5125,7 @@ def evaluate_projection_authority(
         reasons.append("file_watch_disabled")
     if not policy.file_write_enabled or policy.export_only:
         reasons.append("runtime_file_write_disabled")
-    return ProjectionAuthorityDecision(
+    result = ProjectionAuthorityDecision(
         mode=selected,
         projection_kind=kind or "unknown",
         authoritative=False,
@@ -5133,6 +5133,26 @@ def evaluate_projection_authority(
         influences_lifecycle=False,
         reason_codes=tuple(dict.fromkeys(reasons)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "projection_kind", "")
+            or getattr(getattr(result, "mode", None), "value", "")
+            or "projection-authority"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="projection_authority",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)
@@ -5198,6 +5218,35 @@ def _mapping_view(value: Mapping[str, Any] | None) -> dict[str, Any]:
     return {str(key): member for key, member in value.items()}
 
 
+def _mirror_schedule_authority(*args, **kwargs) -> ScheduleAuthorityDecision:
+    if len(args) == 1 and not kwargs and isinstance(args[0], ScheduleAuthorityDecision):
+        result = args[0]
+    else:
+        result = ScheduleAuthorityDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mode = getattr(result, "mode", None)
+        record_ref = str(
+            getattr(mode, "value", "")
+            or mode
+            or getattr(getattr(result, "scheduling_source", None), "value", "")
+            or "schedule-authority"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schedule_authority",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_schedule_authority(
     mode: StateAuthorityMode | str,
     *,
@@ -5235,7 +5284,7 @@ def evaluate_schedule_authority(
         reasons.append("explicit_legacy_import_accepted")
         schedule = dict(files.get("schedule") or files or db_schedule)
         lifecycle = dict(files.get("lifecycle") or db_lifecycle)
-        return ScheduleAuthorityDecision(
+        return _mirror_schedule_authority(
             mode=selected,
             availability=AuthorityAvailability.AVAILABLE,
             recovery_required=False,
@@ -5252,7 +5301,7 @@ def evaluate_schedule_authority(
 
     if selected is StateAuthorityMode.EXPORT_ONLY:
         reasons.append("export_only_no_schedule_authority")
-        return ScheduleAuthorityDecision(
+        return _mirror_schedule_authority(
             mode=selected,
             availability=AuthorityAvailability.AVAILABLE,
             recovery_required=False,
@@ -5304,7 +5353,7 @@ def evaluate_schedule_authority(
                 recovery_required=True,
                 reason_codes=decision.reason_codes,
             )
-        return decision
+        return _mirror_schedule_authority(decision)
 
     if files:
         reasons.append("legacy_projections_ignored_for_schedule")
@@ -5316,7 +5365,7 @@ def evaluate_schedule_authority(
     else:
         reasons.append("embedded_database_authority")
 
-    return ScheduleAuthorityDecision(
+    return _mirror_schedule_authority(
         mode=selected,
         availability=AuthorityAvailability.AVAILABLE,
         recovery_required=False,

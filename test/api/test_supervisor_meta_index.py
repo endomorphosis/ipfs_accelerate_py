@@ -4980,6 +4980,69 @@ def test_mirror_recovery_sealed_fd_and_vacuity_surfaces(tmp_path, monkeypatch) -
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_spar_preimage_authority_and_v2_publication(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    preimage = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="spar_preimage",
+        record_ref="bafypreimage",
+        subject_kind="capsule_cid",
+        subject_ref="bafypreimage",
+    )
+    sealed_fd = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="sealed_native_fd",
+        record_ref="sha256:native",
+        subject_kind="capsule_cid",
+        subject_ref="sha256:native",
+    )
+    projection = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="projection_authority",
+        record_ref="markdown",
+        subject_kind="record_cid",
+        subject_ref="markdown",
+    )
+    schedule = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="schedule_authority",
+        record_ref="embedded_maintenance",
+        subject_kind="record_cid",
+        subject_ref="embedded_maintenance",
+    )
+    result = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="proof_context_result",
+        record_ref="task:result",
+        subject_kind="task_id",
+        subject_ref="task:result",
+    )
+    publication = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="test_execution_certificate_v2_publication",
+        record_ref="verified",
+        subject_kind="record_cid",
+        subject_ref="verified",
+    )
+    for item in (
+        preimage,
+        sealed_fd,
+        projection,
+        schedule,
+        result,
+        publication,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

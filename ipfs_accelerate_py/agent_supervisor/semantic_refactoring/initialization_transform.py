@@ -979,6 +979,23 @@ def verify_preimages(
         )
         if set(claimed_sources) != set(resolved.preimage.source_cids):
             raise InitializationTransformError("preimage does not verify")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(preimage_cid or "spar-preimage")
+        tree_id = str(getattr(resolved, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="spar_preimage",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return preimage_cid
 
 

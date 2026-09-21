@@ -653,17 +653,40 @@ def admit_result(value: Any) -> ResultRecord:
     """Admit a typed result. Generic success dictionaries are rejected."""
 
     if isinstance(value, ResultRecord):
-        return value
-    if isinstance(value, ProofContextError):
-        raise MalformedError("errors are not result records")
-    if not isinstance(value, Mapping):
-        raise MalformedError("result must be a ResultRecord or mapping")
-    if any(key in value for key in ("ok", "success", "passed", "failed")) and "status" not in value:
-        raise MalformedError("generic success dictionaries are not admitted")
-    if value.get("ok") is True or value.get("success") is True or value.get("passed") is True:
-        if value.get("status") != "succeeded":
-            raise BoundaryViolationError("generic success dictionaries are not admitted")
-    return ResultRecord.from_mapping(value)
+        admitted = value
+    else:
+        if isinstance(value, ProofContextError):
+            raise MalformedError("errors are not result records")
+        if not isinstance(value, Mapping):
+            raise MalformedError("result must be a ResultRecord or mapping")
+        if any(key in value for key in ("ok", "success", "passed", "failed")) and "status" not in value:
+            raise MalformedError("generic success dictionaries are not admitted")
+        if value.get("ok") is True or value.get("success") is True or value.get("passed") is True:
+            if value.get("status") != "succeeded":
+                raise BoundaryViolationError("generic success dictionaries are not admitted")
+        admitted = ResultRecord.from_mapping(value)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identities = getattr(admitted, "identities", None)
+        record_ref = str(
+            getattr(identities, "task_id", "")
+            or getattr(identities, "run_id", "")
+            or getattr(admitted, "status", "")
+            or "proof-context-result"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_context_result",
+            record_ref=record_ref,
+            subject_kind="task_id" if getattr(identities, "task_id", "") else "record_cid",
+            subject_ref=str(getattr(identities, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 def result_from_error(

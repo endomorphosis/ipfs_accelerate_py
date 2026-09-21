@@ -1230,6 +1230,25 @@ def _resolve_publication_backend(
         return None, "production_backend_resolution_failed"
 
 
+def _mirror_v2_publication(ok: bool, reason: str, extra: Any = None) -> tuple[bool, str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(reason or "v2-publication")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="test_execution_certificate_v2_publication",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok, reason, extra
+
+
 def verify_test_execution_certificate_v2_for_publication(
     certificate: Mapping[str, Any] | Any,
     *,
@@ -1248,15 +1267,15 @@ def verify_test_execution_certificate_v2_for_publication(
 
     try:
         if not _bindings_usable_for_publication(bindings):
-            return False, "artifact_provenance_unready", None
+            return _mirror_v2_publication(False, "artifact_provenance_unready")
         if controller_context is None or not controller_context.is_complete:
-            return False, "controller_v2_context_incomplete", None
+            return _mirror_v2_publication(False, "controller_v2_context_incomplete")
         expected_cid = (
             controller_context.expected_candidate_context_cid
             or controller_context.candidate_context_cid
         )
         if not expected_cid:
-            return False, "expected_candidate_context_missing", None
+            return _mirror_v2_publication(False, "expected_candidate_context_missing")
 
         # Pin agreement: certificate identity must match controller + bindings.
         cert_map = _mapping_of(certificate) or {}
@@ -1268,26 +1287,26 @@ def verify_test_execution_certificate_v2_for_publication(
             or getattr(certificate, "verifying_key_cid", "")
         )
         if cert_circuit and cert_circuit != bindings.circuit_cid:
-            return False, "circuit_cid_mismatch", None
+            return _mirror_v2_publication(False, "circuit_cid_mismatch")
         if cert_vk and cert_vk != bindings.verifying_key_cid:
-            return False, "verifying_key_cid_mismatch", None
+            return _mirror_v2_publication(False, "verifying_key_cid_mismatch")
         if controller_context.circuit_cid != bindings.circuit_cid:
-            return False, "controller_circuit_pin_mismatch", None
+            return _mirror_v2_publication(False, "controller_circuit_pin_mismatch")
         if controller_context.verifying_key_cid != bindings.verifying_key_cid:
-            return False, "controller_verifying_key_pin_mismatch", None
+            return _mirror_v2_publication(False, "controller_verifying_key_pin_mismatch")
 
         surface = _import_datasets_v2_surface(
             module_provenance_validator=module_provenance_validator,
         )
         if surface is None:
-            return False, "datasets_v2_surface_unavailable", None
+            return _mirror_v2_publication(False, "datasets_v2_surface_unavailable")
         verifier_module, binding_module, zkp_module, _ready = surface
 
         status_enum = getattr(verifier_module, "CertificateVerificationStatus", None)
         verify_v2 = getattr(verifier_module, "verify_test_execution_certificate_v2", None)
         binding_cls = getattr(binding_module, "TestPassCircuitBinding", None)
         if status_enum is None or not callable(verify_v2) or binding_cls is None:
-            return False, "datasets_v2_symbols_unavailable", None
+            return _mirror_v2_publication(False, "datasets_v2_symbols_unavailable")
 
         public_inputs = dict(controller_context.public_inputs or {})
         statement_obj = getattr(controller_context, "statement", None)
@@ -1301,7 +1320,7 @@ def verify_test_execution_certificate_v2_for_publication(
                 except Exception:
                     public_inputs = {}
         if not public_inputs and statement_obj is None:
-            return False, "controller_public_inputs_missing", None
+            return _mirror_v2_publication(False, "controller_public_inputs_missing")
         # Force controller-owned pins over any certificate-supplied inputs.
         if public_inputs:
             public_inputs.update(
@@ -1380,7 +1399,7 @@ def verify_test_execution_certificate_v2_for_publication(
                     envelope["ruleset_id"] = statement_level["ruleset_id"]
                 binding = binding_cls(envelope, **binding_kwargs)
         except Exception:
-            return False, "test_pass_circuit_binding_failed", None
+            return _mirror_v2_publication(False, "test_pass_circuit_binding_failed")
 
         is_test_only = (
             controller_context.is_test_only_disposable
@@ -1392,7 +1411,9 @@ def verify_test_execution_certificate_v2_for_publication(
             is_test_only=is_test_only,
         )
         if backend is None:
-            return False, backend_reason or "verification_backend_unavailable", None
+            return _mirror_v2_publication(
+                False, backend_reason or "verification_backend_unavailable"
+            )
 
         # Prefer include_proof certificate mapping when available.
         cert_payload: Any = certificate
@@ -1422,7 +1443,7 @@ def verify_test_execution_certificate_v2_for_publication(
                 expected_candidate_context_cid=expected_cid,
             )
         except Exception:
-            return False, "exact_v2_verify_exception", None
+            return _mirror_v2_publication(False, "exact_v2_verify_exception")
 
         # Only the exhaustive VERIFIED status is authority.  Booleans, self
         # claims, and alternate result shapes are rejected.
@@ -1433,15 +1454,17 @@ def verify_test_execution_certificate_v2_for_publication(
                 reason = "verified"
                 if is_test_only or backend_reason == "test_only_disposable_backend":
                     reason = "verified_test_only_disposable"
-                return True, reason, result
+                return _mirror_v2_publication(True, reason, result)
         status_text = _status_text(getattr(status, "value", status))
         detail = _bounded_text(
             getattr(result, "reason", None) or getattr(result, "detail", None) or "",
             max_chars=96,
         )
-        return False, detail or status_text or "exact_v2_not_verified", result
+        return _mirror_v2_publication(
+            False, detail or status_text or "exact_v2_not_verified", result
+        )
     except Exception:
-        return False, "exact_v2_verification_exception", None
+        return _mirror_v2_publication(False, "exact_v2_verification_exception")
 
 
 def _local_verify_certificate(
