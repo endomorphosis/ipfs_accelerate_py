@@ -654,7 +654,7 @@ def verify_semantic_context_pack_files(start: Path | None = None) -> dict[str, A
             binding_ok = json.loads(path.read_text(encoding="utf-8")) == binding
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": not missing and binding_ok and readme_ok,
         "missing": missing,
         "binding_ok": binding_ok,
@@ -668,6 +668,22 @@ def verify_semantic_context_pack_files(start: Path | None = None) -> dict[str, A
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("pack_cid") or result.get("binding_cid") or "semantic-pack")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_context_pack_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def current_head_static_probes(

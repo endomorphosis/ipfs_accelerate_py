@@ -864,7 +864,7 @@ def verify_branch_and_release_gate_files(
             gate_ok = json.loads(path.read_text(encoding="utf-8")) == release_gate
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": not missing and branch_ok and gate_ok and readme_ok,
         "missing": missing,
         "branch_ok": branch_ok,
@@ -883,6 +883,24 @@ def verify_branch_and_release_gate_files(
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("branch_policy_cid") or result.get("release_gate_cid") or "branch-gates"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="branch_release_gate_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def current_head_static_probes(

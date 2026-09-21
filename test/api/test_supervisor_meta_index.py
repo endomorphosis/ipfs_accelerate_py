@@ -5570,6 +5570,51 @@ def test_mirror_ownership_skills_and_assurance_file_surfaces(tmp_path, monkeypat
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_remaining_assurance_file_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("branch_release_gate_files", "bafygate"),
+        ("objective_identity_parity_files", "bafyparity"),
+        ("relevant_interface_change_files", "bafyiface"),
+        ("release_candidate_gate_files", "bafyrelgate"),
+        ("context_pack_storage_files", "bafystorage"),
+        ("portfolio_compatibility_lock_files", "bafyportlock"),
+        ("python_external_client_files", "bafypyclient"),
+        ("deterministic_first_route_files", "bafyroute"),
+        ("recovery_and_idempotency_files", "bafyrecovery"),
+        ("reference_objective_files", "bafyobjective"),
+        ("bounded_patch_files", "bafypatch"),
+        ("authority_bypass_files", "bafybypass"),
+        ("semantic_context_pack_files", "bafysempack"),
+        ("selected_tests_and_proofs_files", "bafyrun"),
+        ("safe_reuse_files", "bafyreuse"),
+        ("next_bounded_pilot_files", "bafypilot"),
+        ("state_owner_restart_files", "bafyrestart"),
+        ("residual_gap_report_files", "bafygap"),
+        ("generic_mcp_client_files", "bafymcp"),
+        ("unrelated_state_change_files", "bafyunrelated"),
+        ("dependency_lock_files", "bafylock"),
+        ("promotion_or_non_promotion_files", "bafypromote"),
+    )
+    for record_kind, record_ref in kinds:
+        item = mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -1162,7 +1162,7 @@ def verify_safe_reuse_files(start: Path | None = None) -> dict[str, Any]:
             catalog_ok = json.loads(path.read_text(encoding="utf-8")) == catalog
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": not missing and document_ok and catalog_ok and readme_ok,
         "missing": missing,
         "document_ok": document_ok,
@@ -1185,6 +1185,22 @@ def verify_safe_reuse_files(start: Path | None = None) -> dict[str, Any]:
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("reuse_cid") or result.get("document_cid") or "safe-reuse")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="safe_reuse_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def current_head_static_probes(

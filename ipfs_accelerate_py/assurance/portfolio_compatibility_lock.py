@@ -866,7 +866,7 @@ def verify_portfolio_compatibility_lock_files(
             lock_ok = json.loads(path.read_text(encoding="utf-8")) == lock
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": not missing and lock_ok and readme_ok,
         "missing": missing,
         "lock_ok": lock_ok,
@@ -878,6 +878,22 @@ def verify_portfolio_compatibility_lock_files(
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("lock_cid") or "portfolio-lock")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="portfolio_compatibility_lock_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _accelerate_generated_cids(root: Path) -> dict[str, str]:

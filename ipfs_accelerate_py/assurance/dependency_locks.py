@@ -769,7 +769,7 @@ def verify_lock_files(start: Path | None = None) -> dict[str, Any]:
         if paths["txt"].is_file()
         else "unavailable"
     )
-    return {
+    result = {
         "ok": not missing and json_ok and txt_ok and readme_ok,
         "missing": missing,
         "json_ok": json_ok,
@@ -779,6 +779,22 @@ def verify_lock_files(start: Path | None = None) -> dict[str, Any]:
         "json_sha256": json_sha,
         "txt_sha256": txt_sha,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("lock_cid") or "dependency-lock")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dependency_lock_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _sibling_lock_identity(path: Path, relative_path: str) -> dict[str, Any]:

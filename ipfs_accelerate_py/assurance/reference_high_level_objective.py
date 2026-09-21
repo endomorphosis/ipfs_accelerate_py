@@ -1045,7 +1045,7 @@ def verify_reference_objective_files(start: Path | None = None) -> dict[str, Any
             objective_ok = json.loads(path.read_text(encoding="utf-8")) == objective
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": not missing and objective_ok and readme_ok,
         "missing": missing,
         "objective_ok": objective_ok,
@@ -1058,6 +1058,22 @@ def verify_reference_objective_files(start: Path | None = None) -> dict[str, Any
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("objective_cid") or "reference-objective")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reference_objective_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def current_head_static_probes(
