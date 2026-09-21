@@ -5802,6 +5802,27 @@ class ProductionParallelPlanAdapter:
                 for index, task_id in enumerate(first_wave)
             ),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(plan, "repository_tree_id", "") or "")
+            record_ref = str(
+                getattr(manifest, "compiler_plan_id", "")
+                or getattr(plan, "plan_id", "")
+                or "execution-wave"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="execution_wave",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return plan, manifest
 
     def publish_wave(

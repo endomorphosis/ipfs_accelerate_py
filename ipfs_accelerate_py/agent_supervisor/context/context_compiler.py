@@ -4695,12 +4695,30 @@ class ContextCompiler:
             ),
             evidence_digest=capsule.evidence_digest,
         )
-        return PrefixContextResult(
+        result = PrefixContextResult(
             context_result=context_result,
             capsule=capsule,
             receipt=receipt,
             verifier=self,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(result.receipt, "tree_id", "") or "")
+            record_ref = str(getattr(result.receipt, "capsule_id", "") or "prefix-context")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="prefix_context",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     compile_prefix = compile_prefix_context
 
@@ -5000,12 +5018,30 @@ class ContextCompiler:
             decisions=ordered_decisions,
             evidence=witness,
         )
-        return ContextCompileResult(
+        result = ContextCompileResult(
             capsule,
             receipt,
             ordered_decisions,
             self,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(result.receipt, "tree_id", "") or "")
+            record_ref = str(getattr(result.receipt, "capsule_id", "") or "context-capsule")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="context_capsule",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     compile_context = compile
 
@@ -5229,6 +5265,25 @@ class ContextCompiler:
             ordered_decisions,
             self,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(result.receipt, "tree_id", "") or "")
+            record_ref = str(
+                getattr(result.receipt, "delta_capsule_id", "") or "context-delta"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="context_delta",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     compile_retry = compile_delta
@@ -6385,8 +6440,30 @@ class DecisionContextCompiler:
         capsule = DecisionContextRetryCapsule(
             **capsule_args, delta_input_tokens=delta_tokens
         )
-        result = DecisionContextRetryResult(parent, capsule, target, self)
-        return self.verify_retry(result)
+        result = self.verify_retry(DecisionContextRetryResult(parent, capsule, target, self))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            capsule_obj = getattr(result, "retry_capsule", None) or getattr(result, "capsule", None)
+            record_ref = str(
+                getattr(capsule_obj, "content_id", "")
+                or getattr(capsule_obj, "capsule_id", "")
+                or "decision-context-retry"
+            )
+            tree_id = str(getattr(capsule_obj, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="decision_context_retry",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     compile_decision_context_retry = compile_retry
 
@@ -6931,18 +7008,40 @@ class DecisionContextCompiler:
                 raise DecisionContextOverflowError(
                     "final mandatory context exceeds the serialized-byte budget"
                 )
-        result = DecisionContextCompilation(
-            contexts=tuple(contexts),
-            witness=witness,
-            complete_input_tokens=sum(
-                item.provider_input_tokens for item in contexts
-            ),
-            provider_tokenizer=self.estimator.name,
-            overflow_behavior=behavior,
-            required_nodes_participated_in_value_selection=False,
-            verifier=self,
+        result = self.verify(
+            DecisionContextCompilation(
+                contexts=tuple(contexts),
+                witness=witness,
+                complete_input_tokens=sum(
+                    item.provider_input_tokens for item in contexts
+                ),
+                provider_tokenizer=self.estimator.name,
+                overflow_behavior=behavior,
+                required_nodes_participated_in_value_selection=False,
+                verifier=self,
+            )
         )
-        return self.verify(result)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            witness_obj = getattr(result, "witness", None)
+            record_ref = str(
+                getattr(witness_obj, "content_id", "") or "decision-context"
+            )
+            tree_id = str(getattr(witness_obj, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="decision_context",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def compile_decision_context(

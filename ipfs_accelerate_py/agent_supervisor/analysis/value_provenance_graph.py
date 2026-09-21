@@ -2025,9 +2025,26 @@ class ValueProvenanceCompiler:
             procedures.extend(self._extract_procedures(path, tree))
         if len(procedures) > DEFAULT_MAX_PROCEDURES:
             raise ValueProvenanceBoundsError("procedure count exceeds hard bound")
-        return self._compile_procedures(
+        graph = self._compile_procedures(
             procedures, memory_safety_facets=memory_safety_facets or {}
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(getattr(graph, "roots", None), "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="knowledge_graph",
+                record_kind="value_provenance_graph",
+                record_ref=str(graph.graph_id),
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or str(graph.graph_id),
+            )
+        except Exception:
+            pass
+        return graph
 
     def compile_procedure(
         self,

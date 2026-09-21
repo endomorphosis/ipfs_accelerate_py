@@ -1296,6 +1296,28 @@ class DecisionRuntime:
             overflow_behavior=overflow_behavior,
         )
         self._check_cancelled("context")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            witness = getattr(result, "witness", None)
+            record_ref = str(
+                getattr(witness, "content_id", "")
+                or getattr(result, "stable_core_id", "")
+                or "runtime-decision-context"
+            )
+            tree_id = str(getattr(witness, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="runtime_decision_context",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def retry_context(self, compiler: Any, parent: Any, /, **changes: Any) -> Any:
@@ -2127,6 +2149,21 @@ class DecisionRuntime:
         )
         with self._lock:
             self._effect_receipts.append(receipt)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(receipt.receipt_id or receipt.decision_receipt_id or "effect-observation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="observed_effects",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return receipt
 
     def authorize_mutation(

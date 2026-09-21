@@ -829,6 +829,26 @@ class RuntimePolicyIR:
         }
 
 
+def _mirror_token_decision(*args: Any, **kwargs: Any) -> AdmissionDecision:
+    result = AdmissionDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.token_id or getattr(result.verdict, "value", "") or "admission-token")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="admission_token_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _mirror_policy_ir(ir: RuntimePolicyIR) -> RuntimePolicyIR:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1318,7 +1338,7 @@ class EffectAdmissionKernel:
                 else AdmissionToken.from_dict(token)
             )
         except AdmissionError as exc:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=exc.code,
                 message=str(exc),
@@ -1329,35 +1349,35 @@ class EffectAdmissionKernel:
         arg = _text(argument_cid, "argument_cid")
 
         if parsed.issuer != KERNEL_ISSUER:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.NON_KERNEL_TOKEN_ISSUER,
                 message=f"issuer {parsed.issuer!r} is not the effect admission kernel",
                 token_id=parsed.token_id,
             )
         if parsed.operation_id != op:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.OPERATION_MISMATCH,
                 message="operation_id does not match call",
                 token_id=parsed.token_id,
             )
         if parsed.argument_cid != arg:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.ARGUMENT_MISMATCH,
                 message="argument_cid does not match call",
                 token_id=parsed.token_id,
             )
         if parsed.not_before and now < parsed.not_before:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.NOT_YET_VALID,
                 message="token is not yet valid",
                 token_id=parsed.token_id,
             )
         if now >= parsed.not_after:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.EXPIRED_TOKEN,
                 message="token expired",
@@ -1366,14 +1386,14 @@ class EffectAdmissionKernel:
 
         with self._lock:
             if parsed.token_id in self._revoked_token_ids:
-                return AdmissionDecision(
+                return _mirror_token_decision(
                     verdict=AdmissionVerdict.DENY,
                     code=AdmissionErrorCode.REVOKED_TOKEN,
                     message="token revoked",
                     token_id=parsed.token_id,
                 )
             if parsed.nonce in self._used_nonces:
-                return AdmissionDecision(
+                return _mirror_token_decision(
                     verdict=AdmissionVerdict.DENY,
                     code=AdmissionErrorCode.REPLAYED_TOKEN,
                     message="token nonce replayed",
@@ -1390,7 +1410,7 @@ class EffectAdmissionKernel:
         )
         have = frozenset(parsed.satisfied_obligations)
         if not required.issubset(have):
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.TOKEN_OBLIGATION_MISMATCH,
                 message=f"token missing obligations: {sorted(required - have)}",
@@ -1401,14 +1421,14 @@ class EffectAdmissionKernel:
             try:
                 self.consume(parsed)
             except AdmissionError as exc:
-                return AdmissionDecision(
+                return _mirror_token_decision(
                     verdict=AdmissionVerdict.DENY,
                     code=exc.code,
                     message=str(exc),
                     token_id=parsed.token_id,
                 )
 
-        return AdmissionDecision(
+        return _mirror_token_decision(
             verdict=AdmissionVerdict.ADMIT,
             code=None,
             message="token admitted",
@@ -1436,31 +1456,31 @@ class EffectAdmissionKernel:
         state = _text(typestate, "typestate")
         if view.effect_class == "pure":
             if token is not None:
-                return AdmissionDecision(
+                return _mirror_token_decision(
                     verdict=AdmissionVerdict.DENY,
                     code=AdmissionErrorCode.PURE_TOKEN_FORBIDDEN,
                     message="pure handlers must not carry AdmissionTokens",
                 )
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.HANDLER_NOT_UNLOCKED,
                 message="pure handlers do not unlock via AdmissionToken",
             )
 
         if state not in HANDLER_UNLOCK_TYPESTATES:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.HANDLER_NOT_UNLOCKED,
                 message=f"typestate {state!r} does not unlock handlers",
             )
         if terminal is not None:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.HANDLER_NOT_UNLOCKED,
                 message="terminal typestate marker forbids unlock",
             )
         if token is None:
-            return AdmissionDecision(
+            return _mirror_token_decision(
                 verdict=AdmissionVerdict.DENY,
                 code=AdmissionErrorCode.HANDLER_NOT_UNLOCKED,
                 message="effectful handler requires a kernel-issued token",
@@ -1477,7 +1497,7 @@ class EffectAdmissionKernel:
         )
         if decision.verdict is not AdmissionVerdict.ADMIT:
             return decision
-        return AdmissionDecision(
+        return _mirror_token_decision(
             verdict=AdmissionVerdict.ADMIT,
             code=None,
             message="handler unlocked",

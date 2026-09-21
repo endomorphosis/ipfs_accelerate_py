@@ -675,6 +675,28 @@ class CompiledHoleContext:
         )
 
 
+def _mirror_hole_context(*args: Any, **kwargs: Any) -> CompiledHoleContext:
+    result = CompiledHoleContext(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.capsule_id or result.receipt_cid or "hole-context")
+        tree_id = str(result.tree_id or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="hole_context",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _normalize_hole_type(value: Any) -> HoleType:
     if isinstance(value, HoleType):
         if value.value in FORBIDDEN_HOLE_TYPES:
@@ -1580,7 +1602,7 @@ class HoleResolver:
                 "selected_reference_ids": selected,
             }
         )
-        return CompiledHoleContext(
+        return _mirror_hole_context(
             repository_id=result.receipt.repository_id,
             tree_id=result.receipt.tree_id,
             capsule_id=result.capsule.capsule_id,
