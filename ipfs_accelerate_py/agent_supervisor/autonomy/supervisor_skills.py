@@ -95,6 +95,30 @@ class SkillStepAdmission:
         )
 
 
+def _mirror_skill_step(*args, **kwargs) -> SkillStepAdmission:
+    result = SkillStepAdmission(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(getattr(result, "step", None), "value", "")
+            or getattr(getattr(result, "status", None), "value", "")
+            or "skill-step"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="skill_step_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class SkillExecutionReceipt:
     SCHEMA: ClassVar[str] = SKILL_EXECUTION_SCHEMA
@@ -241,19 +265,19 @@ class SupervisorSkillRegistry:
         cancelled: bool = False,
     ) -> SkillStepAdmission:
         if cancelled:
-            return SkillStepAdmission(
+            return _mirror_skill_step(
                 step=step,
                 status=SkillStepStatus.CANCELLED,
                 reason="skill execution cancelled",
             )
         if step not in ALLOWLISTED_OPERATIONS:
-            return SkillStepAdmission(
+            return _mirror_skill_step(
                 step=step,
                 status=SkillStepStatus.REJECTED,
                 reason="operation is not allowlisted",
             )
         if step not in skill.steps and step != skill.fallback:
-            return SkillStepAdmission(
+            return _mirror_skill_step(
                 step=step,
                 status=SkillStepStatus.REJECTED,
                 reason="operation is outside the skill program",
@@ -264,7 +288,7 @@ class SupervisorSkillRegistry:
             if item not in set(admitted_preconditions)
         ]
         if missing:
-            return SkillStepAdmission(
+            return _mirror_skill_step(
                 step=step,
                 status=SkillStepStatus.REJECTED,
                 reason="preconditions are not independently admitted",
@@ -272,12 +296,12 @@ class SupervisorSkillRegistry:
         if skill.scope_paths and not all(
             _in_scope(path, allowed_paths) for path in skill.scope_paths
         ):
-            return SkillStepAdmission(
+            return _mirror_skill_step(
                 step=step,
                 status=SkillStepStatus.REJECTED,
                 reason="skill scope is outside the admitted envelope",
             )
-        return SkillStepAdmission(step=step, status=SkillStepStatus.ADMITTED)
+        return _mirror_skill_step(step=step, status=SkillStepStatus.ADMITTED)
 
     def execute(
         self,

@@ -817,7 +817,7 @@ def verify_sbom_and_provenance_files(start: Path | None = None) -> dict[str, Any
             provenance_readme_ok = (
                 path.read_text(encoding="utf-8") == expected_provenance_readme
             )
-    return {
+    result = {
         "ok": (
             not missing
             and sbom_ok
@@ -844,6 +844,22 @@ def verify_sbom_and_provenance_files(start: Path | None = None) -> dict[str, Any
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("sbom_cid") or result.get("provenance_cid") or "sbom-files")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="sbom_provenance_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _sibling_sbom_identity(path: Path, relative_path: str) -> dict[str, Any]:

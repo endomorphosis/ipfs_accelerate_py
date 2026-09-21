@@ -237,9 +237,29 @@ def join_running_evidence(
     joined = not reasons
     if joined:
         reasons = ("joined_running",)
-    return JoinedRunningEvidence(
+    evidence = JoinedRunningEvidence(
         snapshot=snapshot, joined=joined, reason_codes=tuple(reasons)
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(evidence, "content_id", "")
+            or getattr(snapshot, "run_id", "")
+            or "joined-running"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="joined_running_evidence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evidence
 
 
 @dataclass(frozen=True)

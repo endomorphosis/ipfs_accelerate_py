@@ -394,6 +394,30 @@ def admit_result(result: Mapping[str, Any]) -> dict[str, Any]:
     )
     if result["exit_code"] != admitted["exit_code"]:
         raise MalformedError("exit_code does not match canonical status/provenance")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identities = admitted.get("identities") if isinstance(admitted, Mapping) else {}
+        record_ref = str(
+            (identities.get("task_id") if isinstance(identities, Mapping) else "")
+            or admitted.get("correlation_id")
+            or admitted.get("command")
+            or "command-result"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="command_result",
+            record_ref=record_ref,
+            subject_kind="task_id" if isinstance(identities, Mapping) and identities.get("task_id") else "record_cid",
+            subject_ref=str(
+                (identities.get("task_id") if isinstance(identities, Mapping) else "")
+                or record_ref
+            ),
+        )
+    except Exception:
+        pass
     return admitted
 
 

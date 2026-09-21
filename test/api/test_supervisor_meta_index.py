@@ -5451,6 +5451,125 @@ def test_mirror_rollout_and_report_verification_surfaces(tmp_path, monkeypatch) 
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_ownership_skills_and_assurance_file_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    command = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="command_result",
+        record_ref="task:cmd",
+        subject_kind="task_id",
+        subject_ref="task:cmd",
+    )
+    ownership = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="root_ownership_write",
+        record_ref="receipt:root",
+        subject_kind="record_cid",
+        subject_ref="receipt:root",
+    )
+    pin = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="submodule_pin_admission",
+        record_ref="receipt:pin",
+        subject_kind="record_cid",
+        subject_ref="receipt:pin",
+    )
+    skill = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="skill_step_admission",
+        record_ref="admitted",
+        subject_kind="record_cid",
+        subject_ref="admitted",
+    )
+    pinned = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="pinned_artifact_bytes",
+        record_ref="bafyartifact",
+        subject_kind="content_cid",
+        subject_ref="bafyartifact",
+    )
+    running = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="joined_running_evidence",
+        record_ref="run:1",
+        subject_kind="record_cid",
+        subject_ref="run:1",
+    )
+    sbom = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="sbom_provenance_files",
+        record_ref="bafysbom",
+        subject_kind="record_cid",
+        subject_ref="bafysbom",
+    )
+    signed = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="signed_tags_files",
+        record_ref="bafytag",
+        subject_kind="record_cid",
+        subject_ref="bafytag",
+    )
+    chain = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="final_receipt_chain_files",
+        record_ref="bafychain",
+        subject_kind="record_cid",
+        subject_ref="bafychain",
+    )
+    tcb = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="tcb_inventory_files",
+        record_ref="bafytcb",
+        subject_kind="record_cid",
+        subject_ref="bafytcb",
+    )
+    threat = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="threat_model_files",
+        record_ref="bafythreat",
+        subject_kind="record_cid",
+        subject_ref="bafythreat",
+    )
+    stale = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="stale_rejection_files",
+        record_ref="bafydelta",
+        subject_kind="record_cid",
+        subject_ref="bafydelta",
+    )
+    audit = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="audit_package_files",
+        record_ref="bafyaudit",
+        subject_kind="record_cid",
+        subject_ref="bafyaudit",
+    )
+    for item in (
+        command,
+        ownership,
+        pin,
+        skill,
+        pinned,
+        running,
+        sbom,
+        signed,
+        chain,
+        tcb,
+        threat,
+        stale,
+        audit,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

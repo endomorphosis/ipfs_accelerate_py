@@ -497,13 +497,30 @@ class RepairRootOwnership:
             "schema": ROOT_OWNERSHIP_RECEIPT_SCHEMA,
             "write_paths": sorted(canonical_paths),
         }
-        return RootOwnershipReceipt(
+        receipt = RootOwnershipReceipt(
             claimed_root_id=target.root_id,
             defect_root_id=defect.root_id,
             write_paths=tuple(body["write_paths"]),
             bindings=ordered_bindings,
             receipt_id=_receipt_id(body),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(receipt.receipt_id or receipt.claimed_root_id or "root-ownership")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="root_ownership_write",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+                paths=tuple(receipt.write_paths)[:16],
+            )
+        except Exception:
+            pass
+        return receipt
 
     admit = admit_write
 
@@ -629,7 +646,7 @@ class SubmodulePinAdmission:
             "target_root_id": target.root_id,
             "validation_receipt_id": validation_id,
         }
-        return SubmodulePinReceipt(
+        pin = SubmodulePinReceipt(
             target_root_id=target.root_id,
             pin_path=target.pin_path,
             predecessor=predecessor,
@@ -638,6 +655,23 @@ class SubmodulePinAdmission:
             validation_receipt_id=validation_id,
             receipt_id=_receipt_id(body),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(pin.receipt_id or pin.successor or "submodule-pin")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="submodule_pin_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+                paths=(pin.pin_path,) if pin.pin_path else (),
+            )
+        except Exception:
+            pass
+        return pin
 
     admit = admit_pin_update
 

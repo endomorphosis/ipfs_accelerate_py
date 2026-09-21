@@ -623,17 +623,65 @@ class PinnedArtifactRef(_DecisionCanonicalContract):
         """Verify byte count, canonical JSON encoding, CID, and digest."""
 
         if not isinstance(value, bytes) or len(value) != self.size_bytes:
-            return False
+            accepted = False
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(self.cid_v1 or self.artifact_kind or "pinned-artifact")
+                mirror_work_record(
+                    catalog_kind="capsule",
+                    record_kind="pinned_artifact_bytes",
+                    record_ref=record_ref,
+                    subject_kind="content_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return accepted
         try:
             decoded = json.loads(value)
             canonical = canonical_artifact_bytes(decoded)
         except (DecisionContractError, json.JSONDecodeError, UnicodeDecodeError):
-            return False
-        return (
+            accepted = False
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(self.cid_v1 or self.artifact_kind or "pinned-artifact")
+                mirror_work_record(
+                    catalog_kind="capsule",
+                    record_kind="pinned_artifact_bytes",
+                    record_ref=record_ref,
+                    subject_kind="content_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return accepted
+        accepted = (
             canonical == value
             and cidv1_for_canonical_bytes(value) == self.cid_v1
             and supervisor_digest_for_bytes(value) == self.supervisor_digest
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.cid_v1 or self.artifact_kind or "pinned-artifact")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="pinned_artifact_bytes",
+                record_ref=record_ref,
+                subject_kind="content_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     verify = verify_canonical_bytes
 

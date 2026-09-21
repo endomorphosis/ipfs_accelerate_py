@@ -677,7 +677,7 @@ def verify_signed_tags_and_artifacts_files(
             sha256sums_ok = path.read_text(encoding="utf-8") == expected_sums
         elif name == "readme":
             readme_ok = path.read_text(encoding="utf-8") == expected_readme
-    return {
+    result = {
         "ok": (
             not missing
             and tag_ok
@@ -706,6 +706,22 @@ def verify_signed_tags_and_artifacts_files(
             else "unavailable"
         ),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("tag_policy_cid") or result.get("checksums_cid") or "signed-tags")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="signed_tags_files",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _sibling_signed_identity(path: Path, relative_path: str, cid_field: str) -> dict[str, Any]:
