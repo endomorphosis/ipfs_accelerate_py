@@ -1269,7 +1269,30 @@ def build_worker_evidence_view(
     factory = build_worker_evidence_factory(
         write_alias=str(kwargs.pop("write_alias", DEFAULT_WRITE_ALIAS)),
     )
-    return factory.build(checkout_root, **kwargs)
+    view = factory.build(checkout_root, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(view.forest_binding.git_tree_id or "")
+        record_ref = str(
+            view.graph_cid
+            or view.forest_binding.repository_forest_cid
+            or tree_id
+            or "worker-evidence-view"
+        )
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="worker_evidence_view",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return view
 
 
 __all__ = [

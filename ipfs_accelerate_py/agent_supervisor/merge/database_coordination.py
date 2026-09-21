@@ -4447,7 +4447,28 @@ class DatabaseCoordinator:
 
     def admit_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
         from .unresolved_interruption_barrier import admit
-        return admit(self, claim, **kwargs)
+        result = admit(self, claim, **kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("record_id")
+                or result.get("admission_receipt_id")
+                or result.get("reservation_receipt_id")
+                or "unresolved-interruption"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="unresolved_interruption_admission",
+                record_ref=record_ref,
+                subject_kind="task_id" if result.get("task_cid") else "record_cid",
+                subject_ref=str(result.get("task_cid") or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     def get_unresolved_interruption(self, claim: Any, reservation_receipt_id: str) -> dict[str, Any] | None:
         from .unresolved_interruption_barrier import get

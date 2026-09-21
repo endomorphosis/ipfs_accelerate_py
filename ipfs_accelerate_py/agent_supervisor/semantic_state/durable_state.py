@@ -528,7 +528,7 @@ def verify_durable_root_cas_result(
         )
     ):
         raise DurableStateIntegrityError("immutable CAS transition does not match request")
-    return DurableRootCasReceipt(
+    receipt = DurableRootCasReceipt(
         repository_id=namespace,
         expected=expected,
         published=RootRef(root_cid=after_cid, generation=after_revision),
@@ -536,6 +536,22 @@ def verify_durable_root_cas_result(
         transition_cid=transition_cid,
         idempotent_replay=status == "unchanged",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.transition_cid or receipt.operation_id or "durable-root-cas")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="durable_root_cas_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(receipt.repository_id or record_ref),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def open_local_durable_state(

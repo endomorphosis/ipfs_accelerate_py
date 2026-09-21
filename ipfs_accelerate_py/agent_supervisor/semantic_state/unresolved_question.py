@@ -335,7 +335,23 @@ def build_unresolved_question(**fields: Any) -> UnresolvedQuestion:
     if provided is not None and provided != identity:
         raise HarnessError("provided question_id does not match canonical question")
     normalized["question_id"] = identity
-    return UnresolvedQuestion(**normalized)
+    question = UnresolvedQuestion(**normalized)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(question.question_id or identity or "unresolved-question")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="unresolved_question",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return question
 
 
 def validate_unresolved_question(payload: Mapping[str, Any]) -> UnresolvedQuestion:

@@ -2310,7 +2310,7 @@ def build_datasets_content_identity_capability(
             entry["module_file"] = os.path.basename(str(entry["module_file"]))
         providers_payload.append(entry)
 
-    return {
+    capability = {
         "schema": DATASETS_CONTENT_IDENTITY_SCHEMA,
         "schema_version": DATASETS_CONTENT_IDENTITY_SCHEMA_VERSION,
         "capability_id": DATASETS_CONTENT_IDENTITY_CAPABILITY_ID,
@@ -2353,6 +2353,24 @@ def build_datasets_content_identity_capability(
             "cid_required_operations_fail_closed": True,
         },
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        capability_ref = str(
+            capability.get("capability_id") or capability.get("task_id") or "datasets-content-identity"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="datasets_content_identity_capability",
+            record_ref=capability_ref,
+            subject_kind="record_cid",
+            subject_ref=capability_ref,
+        )
+    except Exception:
+        pass
+    return capability
 
 
 def write_datasets_content_identity_capability(

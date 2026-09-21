@@ -1021,7 +1021,7 @@ def build_goal_development_request(
 ) -> GoalDevelopmentRequest:
     """Build the frozen GoalDevelopmentRequest from identifier-only data."""
 
-    return GoalDevelopmentRequest(
+    request = GoalDevelopmentRequest(
         root_goal_id=identifiers.root_goal_id,
         root_goal_content_id=identifiers.root_goal_content_id,
         satisfaction_formula_id=identifiers.satisfaction_formula_id,
@@ -1034,6 +1034,24 @@ def build_goal_development_request(
         policy_digest=policy.policy_digest,
         mode=policy.mode,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(request.repository_tree_id or "")
+        record_ref = str(request.root_goal_id or request.root_goal_content_id or "goal-development-request")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="goal_development_request",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return request
 
 
 def build_formalized_leanstral_invocation(
@@ -1084,7 +1102,7 @@ def build_formalized_leanstral_invocation(
                     f"formalized invocation cannot expose {forbidden} to Leanstral"
                 )
 
-    return LeanstralGoalDevelopmentInvocation(
+    invocation = LeanstralGoalDevelopmentInvocation(
         request=goal_request,
         policy=policy,
         context=context,
@@ -1092,6 +1110,24 @@ def build_formalized_leanstral_invocation(
         network_allowed=request.network_allowed,
         deadline_unix_ms=request.deadline_unix_ms,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(goal_request.repository_tree_id or "")
+        record_ref = str(goal_request.root_goal_id or "formalized-leanstral-invocation")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="formalized_leanstral_invocation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return invocation
 
 
 class FormalizedGoalDevelopmentRoute:

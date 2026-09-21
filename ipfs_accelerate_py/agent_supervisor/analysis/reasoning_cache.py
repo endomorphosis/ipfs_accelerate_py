@@ -698,7 +698,7 @@ def build_reasoning_cache_key(
                 )
         return first if first is not None else second
 
-    return ReasoningComputationKey(
+    key = ReasoningComputationKey(
         operation=operation,
         property=choose("property", property, property_id),
         repository_forest=choose(
@@ -719,6 +719,22 @@ def build_reasoning_cache_key(
         bounds=choose("bounds", bounds, resource_bounds),
         dependencies=tuple(dependencies),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or "reasoning-cache-key")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reasoning_cache_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 build_semantic_computation_key = build_reasoning_cache_key
@@ -2063,6 +2079,38 @@ class ReasoningCacheCoordinator:
     coordinate = get_or_compute
 
     def verify_use_receipt(
+        self,
+        receipt: CacheUseReceipt | Mapping[str, Any],
+        key: ReasoningComputationKey | Mapping[str, Any],
+        *,
+        current_run_id: str | None = None,
+    ) -> CacheUseVerification:
+        verification = self._verify_use_receipt(
+            receipt, key, current_run_id=current_run_id
+        )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(key, "key_id", "")
+                or (key.get("key_id") if isinstance(key, Mapping) else "")
+                or verification.reason_code
+                or "cache-use-verification"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="reasoning_cache_use_verification",
+                record_ref=str(record_ref),
+                subject_kind="key_id",
+                subject_ref=str(record_ref),
+            )
+        except Exception:
+            pass
+        return verification
+
+    def _verify_use_receipt(
         self,
         receipt: CacheUseReceipt | Mapping[str, Any],
         key: ReasoningComputationKey | Mapping[str, Any],

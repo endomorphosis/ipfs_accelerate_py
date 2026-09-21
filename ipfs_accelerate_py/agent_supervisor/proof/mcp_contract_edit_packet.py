@@ -1345,7 +1345,7 @@ def build_contract_edit_retry(
         "proof_delta": labeled,
     }
     tokens = _measure_tokens(provider_payload, tokenizer)
-    return ContractEditRetryPacket(
+    retry = ContractEditRetryPacket(
         parent_packet_id=parent.packet_id,
         snapshot_id=parent.snapshot_id,
         task_id=parent.task_id,
@@ -1353,6 +1353,22 @@ def build_contract_edit_retry(
         proof_delta=delta,
         input_tokens=tokens,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(retry.parent_packet_id or retry.task_id or "contract-edit-retry")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_edit_retry",
+            record_ref=record_ref,
+            subject_kind="task_id" if retry.task_id else "record_cid",
+            subject_ref=str(retry.task_id or record_ref),
+        )
+    except Exception:
+        pass
+    return retry
 
 
 def packet_token_median(

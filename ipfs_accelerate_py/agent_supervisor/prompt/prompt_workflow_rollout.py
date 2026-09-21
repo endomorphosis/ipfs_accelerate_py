@@ -649,7 +649,7 @@ def evaluate_prompt_workflow_rollout(
         PromptWorkflowRolloutMode.ASSIST,
         PromptWorkflowRolloutMode.AUTOMATIC,
     }
-    return PromptWorkflowRolloutDecision(
+    decision = PromptWorkflowRolloutDecision(
         binding=binding,
         policy=policy,
         desired_mode=desired,
@@ -664,6 +664,26 @@ def evaluate_prompt_workflow_rollout(
         automatic_ready=automatic_ready,
         rollback_applied=rollback,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            decision.qualification_evaluation_id
+            or getattr(binding, "behavior_id", "")
+            or "prompt-workflow-rollout"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_workflow_rollout",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def verify_prompt_workflow_rollout(

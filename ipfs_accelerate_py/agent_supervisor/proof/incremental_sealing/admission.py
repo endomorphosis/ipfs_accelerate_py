@@ -851,9 +851,30 @@ def verify_for_admission(
     :class:`CacheAdmissionRecord` is present only when ``admitted`` is True.
     """
 
-    return EvidenceVerifier(policy=policy, verifier=verifier).verify_for_admission(
+    decision = EvidenceVerifier(policy=policy, verifier=verifier).verify_for_admission(
         candidate
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            decision.proof_unit_id
+            or decision.public_input_cid
+            or decision.reason_code
+            or "seal-admission"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="incremental_seal_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(decision.public_input_cid or record_ref),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def issue_cache_admission_record(

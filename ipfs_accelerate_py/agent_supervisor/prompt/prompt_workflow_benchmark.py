@@ -1237,7 +1237,25 @@ def build_frozen_prompt_workflow_benchmark(
             )
         )
 
-    return PromptWorkflowBenchmark(tuple(receipts))
+    benchmark = PromptWorkflowBenchmark(tuple(receipts))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bound_tree = str(tree_id or "")
+        record_ref = str(observation_label or bound_tree or "frozen-prompt-workflow-benchmark")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="frozen_prompt_workflow_benchmark",
+            record_ref=record_ref,
+            tree_id=bound_tree,
+            subject_kind="tree_id" if bound_tree else "record_cid",
+            subject_ref=bound_tree or record_ref,
+        )
+    except Exception:
+        pass
+    return benchmark
 
 
 __all__ = (

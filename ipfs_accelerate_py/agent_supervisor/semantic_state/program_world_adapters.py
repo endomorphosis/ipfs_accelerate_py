@@ -1189,7 +1189,27 @@ class SemanticWorldOperationalAdapters:
     def compile_execution_transition(
         self, query: Any, **kwargs: Any
     ) -> ExecutionTransitionCompilation:
-        return self.compiler.compile(query, **kwargs)
+        compilation = self.compiler.compile(query, **kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(compilation, "query_cid", "")
+                or getattr(compilation, "subject_cid", "")
+                or "execution-transition"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="execution_transition_compilation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return compilation
 
     def request_root_publication(
         self, semantic_world_root: Any, **kwargs: Any

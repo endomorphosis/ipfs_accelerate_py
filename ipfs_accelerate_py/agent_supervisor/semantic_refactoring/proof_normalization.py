@@ -1785,24 +1785,55 @@ def proof_normalization_capabilities() -> tuple[EqualitySaturationCapability, ..
     return (*available, *unavailable)
 
 
+def _mirror_normalization_record(record: Any, record_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(record, "tree_id", "") or "")
+        record_ref = str(
+            getattr(record, "expression_id", "")
+            or getattr(record, "rewrite_id", "")
+            or getattr(record, "interpolant_id", "")
+            or getattr(record, "refinement_id", "")
+            or getattr(record, "summary_id", "")
+            or getattr(record, "content_id", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 def compile_suitable_expression(**fields: Any) -> SuitableExpression:
-    return SuitableExpression(**fields)
+    return _mirror_normalization_record(SuitableExpression(**fields), "suitable_expression")
 
 
 def compile_equality_rewrite(**fields: Any) -> EqualityRewrite:
-    return EqualityRewrite(**fields)
+    return _mirror_normalization_record(EqualityRewrite(**fields), "equality_rewrite")
 
 
 def compile_interpolant(**fields: Any) -> Interpolant:
-    return Interpolant(**fields)
+    return _mirror_normalization_record(Interpolant(**fields), "interpolant")
 
 
 def compile_abstraction_refinement(**fields: Any) -> AbstractionRefinement:
-    return AbstractionRefinement(**fields)
+    return _mirror_normalization_record(
+        AbstractionRefinement(**fields), "abstraction_refinement"
+    )
 
 
 def compile_boundary_summary(**fields: Any) -> BoundarySummary:
-    return BoundarySummary(**fields)
+    return _mirror_normalization_record(BoundarySummary(**fields), "boundary_summary")
 
 
 def _coerce_expression(

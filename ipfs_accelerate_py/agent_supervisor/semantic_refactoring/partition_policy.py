@@ -1477,7 +1477,7 @@ def evaluate_partition_candidate(
     hard_cut_count = sum(
         1 for edge in resolved.cut_edges if edge.constraint_class == "hard"
     )
-    return PartitionObjectiveBreakdown(
+    breakdown = PartitionObjectiveBreakdown(
         tree_id=resolved.tree_id,
         candidate_cid=resolved.candidate_cid,
         hard_results=hard_results,
@@ -1488,6 +1488,24 @@ def evaluate_partition_candidate(
         advisory=advisory,
         evidence_class=resolved.evidence_class,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(breakdown.tree_id or "")
+        record_ref = str(breakdown.candidate_cid or tree_id or "partition-candidate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="partition_candidate_evaluation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return breakdown
 
 
 @dataclass(frozen=True, slots=True)

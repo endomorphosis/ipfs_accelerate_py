@@ -1446,7 +1446,26 @@ def build_planning_analysis_view(
         repository_allowlist=allowlist,
         **kwargs,
     )
-    return factory.analyze(checkout_root)
+    view = factory.analyze(checkout_root)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(view.reasoning_snapshot, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(tree_id or view.completeness or "planning-analysis-view")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="planning_analysis_view",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return view
 
 
 __all__ = [

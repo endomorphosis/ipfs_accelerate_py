@@ -210,7 +210,23 @@ def build_analyzer_health(
     """Build a byte-stable receipt; callers must provide the current forest ID."""
 
     index = RepositoryIndex(forest_identity, tuple(tracked_paths), tuple(records))
-    return AnalyzerHealth(index, mandatory_parser_states, stored_baseline_parser_failures)
+    health = AnalyzerHealth(index, mandatory_parser_states, stored_baseline_parser_failures)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(forest_identity or "analyzer-health")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="deterministic_analyzer_health",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return health
 
 
 __all__ = [

@@ -107,11 +107,37 @@ class CandidatePortfolio:
     network_call_count: int = 0
 
 
+def _mirror_candidate_portfolio(portfolio: CandidatePortfolio) -> CandidatePortfolio:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            portfolio.portfolio_cid
+            or portfolio.selected_candidate_cid
+            or portfolio.disposition.value
+            or "candidate-portfolio"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="deterministic_candidate_portfolio",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return portfolio
+
+
 def build_deterministic_candidate_portfolio(request: Any) -> CandidatePortfolio:
     """Score only closed facts; all live readiness stays explicitly pending."""
     if not isinstance(request, CandidatePortfolioRequest):
-        return CandidatePortfolio(
-            CandidatePortfolioDisposition.REJECTED, ("typed_request_required",)
+        return _mirror_candidate_portfolio(
+            CandidatePortfolio(
+                CandidatePortfolioDisposition.REJECTED, ("typed_request_required",)
+            )
         )
     reasons: list[str] = []
     if not isinstance(request.transform, DoctorTransformBinding):
@@ -164,8 +190,10 @@ def build_deterministic_candidate_portfolio(request: Any) -> CandidatePortfolio:
             ):
                 reasons.append("candidate_fact_identity_or_node_set_invalid")
     if reasons:
-        return CandidatePortfolio(
-            CandidatePortfolioDisposition.REJECTED, tuple(sorted(set(reasons)))
+        return _mirror_candidate_portfolio(
+            CandidatePortfolio(
+                CandidatePortfolioDisposition.REJECTED, tuple(sorted(set(reasons)))
+            )
         )
     ordered = tuple(sorted(candidates, key=lambda item: (item.score, item.content_id)))
     cids = tuple(item.content_id for item in ordered)
@@ -181,17 +209,21 @@ def build_deterministic_candidate_portfolio(request: Any) -> CandidatePortfolio:
     # Equal numeric score is intentionally ambiguous.  CID canonical ordering
     # gives byte-stable output only; it never silently chooses a repair.
     if len(ordered) > 1 and ordered[0].score == ordered[1].score:
-        return CandidatePortfolio(
-            CandidatePortfolioDisposition.ABSTAINED,
-            ("top_candidate_score_ambiguous",),
+        return _mirror_candidate_portfolio(
+            CandidatePortfolio(
+                CandidatePortfolioDisposition.ABSTAINED,
+                ("top_candidate_score_ambiguous",),
+                repair_evidence_cid(body),
+                cids,
+            )
+        )
+    return _mirror_candidate_portfolio(
+        CandidatePortfolio(
+            CandidatePortfolioDisposition.INTEGRATION_PENDING,
+            ("integration_pending_dcr052_dcr060_dcr061_live_evidence",),
             repair_evidence_cid(body),
             cids,
         )
-    return CandidatePortfolio(
-        CandidatePortfolioDisposition.INTEGRATION_PENDING,
-        ("integration_pending_dcr052_dcr060_dcr061_live_evidence",),
-        repair_evidence_cid(body),
-        cids,
     )
 
 

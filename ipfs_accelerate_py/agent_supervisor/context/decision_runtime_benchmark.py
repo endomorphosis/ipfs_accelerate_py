@@ -909,7 +909,27 @@ def build_proof_dependency_scaling_report(
         if isinstance(receipts, DecisionRuntimeBenchmark)
         else DecisionRuntimeBenchmark(tuple(receipts))
     )
-    return recompute_proof_dependency_scaling(benchmark)
+    report = recompute_proof_dependency_scaling(benchmark)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "report_id", "")
+            or getattr(report, "content_id", "")
+            or "proof-dependency-scaling"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_dependency_scaling_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def verify_proof_dependency_scaling_report(
@@ -1182,7 +1202,25 @@ def build_frozen_decision_runtime_benchmark(
                 lazy_discovery=True,
             )
         )
-    return DecisionRuntimeBenchmark(tuple(receipts))
+    benchmark = DecisionRuntimeBenchmark(tuple(receipts))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(tree_id or "")
+        record_ref = str(observation_label or tree_id or "frozen-decision-runtime-benchmark")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="frozen_decision_runtime_benchmark",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return benchmark
 
 
 __all__ = (

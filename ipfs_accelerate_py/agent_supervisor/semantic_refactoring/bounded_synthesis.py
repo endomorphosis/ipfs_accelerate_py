@@ -1694,24 +1694,56 @@ def _coerce_abstraction(
     raise BoundedSynthesisError("abstractions items must be objects")
 
 
+def _mirror_synthesis_record(record: Any, record_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(record, "tree_id", "") or "")
+        record_ref = str(
+            getattr(record, "example_id", "")
+            or getattr(record, "obligation_id", "")
+            or getattr(record, "predicate_id", "")
+            or getattr(record, "example_cid", "")
+            or getattr(record, "source_cid", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 def compile_synthesis_example(**fields: Any) -> SynthesisExample:
     _reject_forbidden_bodies(fields, "synthesis example")
-    return SynthesisExample(**fields)
+    return _mirror_synthesis_record(SynthesisExample(**fields), "synthesis_example")
 
 
 def compile_synthesis_counterexample(**fields: Any) -> SynthesisCounterexample:
     _reject_forbidden_bodies(fields, "synthesis counterexample")
-    return SynthesisCounterexample(**fields)
+    return _mirror_synthesis_record(
+        SynthesisCounterexample(**fields), "synthesis_counterexample"
+    )
 
 
 def compile_synthesis_obligation(**fields: Any) -> SynthesisObligation:
     _reject_forbidden_bodies(fields, "synthesis obligation")
-    return SynthesisObligation(**fields)
+    return _mirror_synthesis_record(SynthesisObligation(**fields), "synthesis_obligation")
 
 
 def compile_abstraction_predicate(**fields: Any) -> AbstractionPredicate:
     _reject_forbidden_bodies(fields, "abstraction predicate")
-    return AbstractionPredicate(**fields)
+    return _mirror_synthesis_record(
+        AbstractionPredicate(**fields), "abstraction_predicate"
+    )
 
 
 def enumerate_templates() -> tuple[Mapping[str, Any], ...]:
