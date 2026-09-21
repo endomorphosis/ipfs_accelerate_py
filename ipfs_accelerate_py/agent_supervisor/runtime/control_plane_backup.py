@@ -749,6 +749,26 @@ class BackupVerification:
         }
 
 
+def _mirror_backup_verification(*args: Any, **kwargs: Any) -> BackupVerification:
+    result = BackupVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.backup_id or result.artifact_digest or "backup-verification")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="backup_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class RetentionManifest:
     """Retention decision for the backup archive."""
@@ -1354,7 +1374,7 @@ class ControlPlaneBackup:
             )
             digest_ok = bound == snapshot.artifact_digest
             verified = bool(verification.verified and digest_ok)
-            return BackupVerification(
+            return _mirror_backup_verification(
                 backup_id=snapshot.backup_id,
                 verified=verified,
                 artifact_digest=snapshot.artifact_digest,
@@ -1385,7 +1405,7 @@ class ControlPlaneBackup:
         path = Path(body_path)
         checks: dict[str, Any] = {"body_path": str(path)}
         if not path.is_file():
-            return BackupVerification(
+            return _mirror_backup_verification(
                 backup_id=backup_id,
                 verified=False,
                 artifact_digest=str(expected_digest or ""),
@@ -1398,7 +1418,7 @@ class ControlPlaneBackup:
         try:
             observed_digest = _sha256_file(path)
         except OSError as exc:
-            return BackupVerification(
+            return _mirror_backup_verification(
                 backup_id=backup_id,
                 verified=False,
                 artifact_digest=str(expected_digest or ""),
@@ -1441,7 +1461,7 @@ class ControlPlaneBackup:
             reason = "digest_mismatch"
         elif root_reason:
             reason = root_reason
-        return BackupVerification(
+        return _mirror_backup_verification(
             backup_id=backup_id,
             verified=verified,
             artifact_digest=str(expected_digest or observed_digest),
@@ -2148,13 +2168,29 @@ class ControlPlaneBackup:
             if not results.get(name, {}).get("ok", False):
                 preserved = False
 
-        return CrashMatrixReport(
+        result = CrashMatrixReport(
             scenarios=MappingProxyType(
                 {key: MappingProxyType(dict(value)) for key, value in results.items()}
             ),
             accepted_state_preserved=preserved,
             generated_at=_utc_iso(self._clock()),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.generated_at or "crash-matrix")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="crash_matrix_report",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # -- internal ------------------------------------------------------------
 

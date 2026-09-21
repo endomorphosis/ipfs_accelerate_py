@@ -1411,6 +1411,21 @@ class DatabaseEventLog:
             raise DatabaseEventLogIntegrityError(
                 "integrity checkpoint event count mismatch"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(selected.checkpoint_id or selected.stream_id or "integrity-checkpoint")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="integrity_checkpoint",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return True
 
     def _compute_chain_digest(self, stream_id: str) -> dict[str, Any]:

@@ -1624,6 +1624,31 @@ class ReuseDecision:
         }
 
 
+def _mirror_reuse_decision(*args: Any, **kwargs: Any) -> ReuseDecision:
+    result = ReuseDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        worktree = result.worktree
+        record_ref = str(
+            getattr(worktree, "worktree_id", "")
+            or result.reason
+            or "worktree-reuse"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worktree_reuse_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -3043,7 +3068,7 @@ class DatabaseWorktreeRegistry:
             connection = self._require()
             worktree = self._load_worktree_by_path_locked(connection, path)
             if worktree is None:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="worktree_not_registered",
                     lease_matched=False,
@@ -3070,7 +3095,7 @@ class DatabaseWorktreeRegistry:
                 except Exception:
                     self._rollback_if_open(connection)
                     raise
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="lease_mismatch",
                     worktree=worktree,
@@ -3078,7 +3103,7 @@ class DatabaseWorktreeRegistry:
                     observation_matched=False,
                 )
             if worktree.lease_expires_at_ms and now > int(worktree.lease_expires_at_ms):
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="lease_expired",
                     worktree=worktree,
@@ -3089,7 +3114,7 @@ class DatabaseWorktreeRegistry:
             if obs is None and self._git_observer is not None:
                 obs = self._git_observer(path)
             if obs is None:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="git_observation_required",
                     worktree=worktree,
@@ -3098,7 +3123,7 @@ class DatabaseWorktreeRegistry:
                 )
             matched, reason = self._observations_match(worktree, obs)
             if not matched:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason=reason,
                     worktree=worktree,
@@ -3106,14 +3131,14 @@ class DatabaseWorktreeRegistry:
                     observation_matched=False,
                 )
             if worktree.lifecycle_state is WorktreeLifecycleState.TERMINAL:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="worktree_terminal",
                     worktree=worktree,
                     lease_matched=True,
                     observation_matched=True,
                 )
-            return ReuseDecision(
+            return _mirror_reuse_decision(
                 disposition=ReuseDisposition.ALLOW,
                 reason="lease_and_git_observation_match",
                 worktree=worktree,
@@ -3144,17 +3169,17 @@ class DatabaseWorktreeRegistry:
                 if obs is None and self._git_observer is not None:
                     obs = self._git_observer(path)
                 if obs is None:
-                    return ReuseDecision(
+                    return _mirror_reuse_decision(
                         disposition=ReuseDisposition.DENY,
                         reason="unregistered_requires_git_observation",
                     )
                 if not obs.path_exists:
-                    return ReuseDecision(
+                    return _mirror_reuse_decision(
                         disposition=ReuseDisposition.ALLOW,
                         reason="unregistered_path_absent",
                         observation_matched=True,
                     )
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="unregistered_path_present",
                     observation_matched=True,
@@ -3164,7 +3189,7 @@ class DatabaseWorktreeRegistry:
             if obs is None and self._git_observer is not None:
                 obs = self._git_observer(path)
             if obs is None:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="git_observation_required",
                     worktree=worktree,
@@ -3186,7 +3211,7 @@ class DatabaseWorktreeRegistry:
                 if worktree.lifecycle_state is WorktreeLifecycleState.TERMINAL or (
                     not obs.path_exists
                 ):
-                    return ReuseDecision(
+                    return _mirror_reuse_decision(
                         disposition=ReuseDisposition.ALLOW,
                         reason="matching_lease_and_git_observation",
                         worktree=worktree,
@@ -3195,14 +3220,14 @@ class DatabaseWorktreeRegistry:
                     )
                 # Active lease holder may settle then clean.
                 if worktree.lifecycle_state is WorktreeLifecycleState.SETTLING:
-                    return ReuseDecision(
+                    return _mirror_reuse_decision(
                         disposition=ReuseDisposition.ALLOW,
                         reason="matching_lease_settling",
                         worktree=worktree,
                         lease_matched=True,
                         observation_matched=True,
                     )
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="active_lease_not_terminal",
                     worktree=worktree,
@@ -3213,7 +3238,7 @@ class DatabaseWorktreeRegistry:
             # No matching lease: allow reclaim-then-clean only for dead owners.
             owner = worktree.owner_process_birth
             if owner is None:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="lease_mismatch_no_owner",
                     worktree=worktree,
@@ -3222,7 +3247,7 @@ class DatabaseWorktreeRegistry:
                 )
             live = self._liveness(owner)
             if live is OwnerLiveness.DEAD:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.RECLAIM_THEN_ALLOW,
                     reason="dead_owner_reclaim_then_cleanup",
                     worktree=worktree,
@@ -3230,14 +3255,14 @@ class DatabaseWorktreeRegistry:
                     observation_matched=True,
                 )
             if live is OwnerLiveness.UNKNOWN:
-                return ReuseDecision(
+                return _mirror_reuse_decision(
                     disposition=ReuseDisposition.DENY,
                     reason="owner_liveness_unknown",
                     worktree=worktree,
                     lease_matched=False,
                     observation_matched=True,
                 )
-            return ReuseDecision(
+            return _mirror_reuse_decision(
                 disposition=ReuseDisposition.DENY,
                 reason="live_owner_lease_mismatch",
                 worktree=worktree,

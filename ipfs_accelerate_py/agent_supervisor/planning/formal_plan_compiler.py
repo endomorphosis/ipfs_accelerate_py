@@ -1247,6 +1247,31 @@ def _normalize_bundle(payload: Mapping[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _mirror_plan_compilation(*args: Any, **kwargs: Any) -> PlanCompilationResult:
+    result = PlanCompilationResult(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = ""
+        if result.plan is not None:
+            plan_id = str(getattr(result.plan, "plan_id", "") or "")
+        tree_id = str(getattr(result.plan, "repository_tree_id", "") or "")
+        record_ref = str(plan_id or result.source_identity or "formal-plan")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _failure_result(
     status: CompilationStatus,
     issues: Iterable[CompilationIssue],
@@ -1254,7 +1279,7 @@ def _failure_result(
     source_identity: str = "",
     graph: PlanGraphProjection | None = None,
 ) -> PlanCompilationResult:
-    return PlanCompilationResult(
+    return _mirror_plan_compilation(
         status=status,
         issues=tuple(issues),
         source_identity=source_identity,
@@ -3003,7 +3028,7 @@ class FormalPlanCompiler:
             ),
             evidence_records=evidence_records,
         )
-        return PlanCompilationResult(
+        return _mirror_plan_compilation(
             status=CompilationStatus.COMPILED,
             plan=plan,
             formulas=tuple(formulae.values()),

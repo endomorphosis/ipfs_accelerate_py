@@ -180,6 +180,34 @@ class CleanupDecision:
         }
 
 
+def _mirror_cleanup_decision(*args: Any, **kwargs: Any) -> CleanupDecision:
+    result = CleanupDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record = result.record
+        record_ref = str(
+            getattr(record, "workspace_path", "")
+            or getattr(record, "task_id", "")
+            or result.reason
+            or "cleanup-decision"
+        )
+        path = str(getattr(record, "workspace_path", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worktree_cleanup_decision",
+            record_ref=record_ref,
+            subject_kind="path" if path else "record_cid",
+            subject_ref=path or record_ref,
+            paths=(path,) if path else (),
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class WorkspaceLifecycleRecord:
     """Durable fenced ownership record for one managed worktree attempt."""
@@ -596,7 +624,7 @@ def _validate_closed_json(value: Any) -> None:
 def classify_lifecycle_race(reason: str) -> CleanupDecision:
     """Return a no-provider, no-retry decision for internal lifecycle races."""
 
-    return CleanupDecision(
+    return _mirror_cleanup_decision(
         disposition=CleanupDisposition.DENY,
         reason=reason,
         failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
@@ -2664,7 +2692,7 @@ class WorktreeLifecycleStore:
             quarantined_record = WorkspaceLifecycleRecord.from_dict(
                 quarantine["lifecycle_record"]
             )
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.DENY,
                 reason="quarantined_worktree_retained",
                 record=quarantined_record,
@@ -2674,14 +2702,14 @@ class WorktreeLifecycleStore:
             )
 
         if record is None:
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="no_lifecycle_record",
                 record=None,
             )
 
         if record.is_terminal:
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="terminal_record",
                 record=record,
@@ -2689,7 +2717,7 @@ class WorktreeLifecycleStore:
 
         # Owner may always settle/dispose its own workspace.
         if caller_lease_id and caller_lease_id == record.lease_id:
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="caller_is_record_owner",
                 record=record,
@@ -2697,7 +2725,7 @@ class WorktreeLifecycleStore:
 
         liveness = owner_liveness(record.owner, proc_root=self.proc_root)
         if liveness is OwnerLiveness.ALIVE:
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.DENY,
                 reason=f"nonterminal_{record.state.value}_owner_alive",
                 record=record,
@@ -2707,7 +2735,7 @@ class WorktreeLifecycleStore:
             )
 
         if liveness is OwnerLiveness.UNKNOWN:
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.DENY,
                 reason="process_inspection_unavailable",
                 record=record,
@@ -2728,7 +2756,7 @@ class WorktreeLifecycleStore:
                 record.state is WorkspaceLifecycleState.PREPARING
                 and age < self.startup_grace_seconds
             ):
-                return CleanupDecision(
+                return _mirror_cleanup_decision(
                     disposition=CleanupDisposition.DENY,
                     reason="preparing_startup_grace",
                     record=record,
@@ -2737,7 +2765,7 @@ class WorktreeLifecycleStore:
                     attempt_consumed=False,
                 )
             if same_lane:
-                return CleanupDecision(
+                return _mirror_cleanup_decision(
                     disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
                     reason="owner_dead_same_lane_reclaim",
                     record=record,
@@ -2745,7 +2773,7 @@ class WorktreeLifecycleStore:
                     provider_call_allowed=False,
                     attempt_consumed=False,
                 )
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.DENY,
                 reason="owner_dead_lease_unexpired",
                 record=record,
@@ -2754,7 +2782,7 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        return CleanupDecision(
+        return _mirror_cleanup_decision(
             disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
             reason="stale_owner_lease_expired",
             record=record,
@@ -3005,7 +3033,7 @@ class WorktreeLifecycleStore:
                     # Re-evaluation still requires an authoritative reclaim.
                     # Never expose that unresolved intermediate disposition as
                     # mutation authority to the caller.
-                    return CleanupDecision(
+                    return _mirror_cleanup_decision(
                         disposition=CleanupDisposition.DENY,
                         reason="stale_reclaim_race_unresolved",
                         record=refreshed.record,
@@ -3014,7 +3042,7 @@ class WorktreeLifecycleStore:
                         attempt_consumed=False,
                     )
                 return refreshed
-            return CleanupDecision(
+            return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.ALLOW,
                 reason=(
                     "reclaimed_dead_same_lane_owner"

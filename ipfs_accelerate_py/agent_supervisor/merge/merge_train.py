@@ -2391,6 +2391,30 @@ class MergeTrain:
             return 0, f"distributed_publication_{name}_invalid"
         return int(value), ""
 
+    def _mirror_distributed_admission(self, result: Mapping[str, Any]) -> dict[str, Any]:
+        payload = dict(result)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                payload.get("publication_id")
+                or payload.get("request_id")
+                or payload.get("status")
+                or "distributed-admission"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="distributed_publication_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return payload
+
     def _reject_distributed_publication(
         self,
         request: MergeRequest,
@@ -2460,7 +2484,7 @@ class MergeTrain:
                 f"distributed-{result['status']}-{request.request_id}",
                 result,
             )
-            return result
+            return self._mirror_distributed_admission(result)
         try:
             if cancelled:
                 cancel = getattr(self.queue, "cancel", None)
@@ -2508,7 +2532,7 @@ class MergeTrain:
             f"distributed-{result['status']}-{request.request_id}",
             result,
         )
-        return result
+        return self._mirror_distributed_admission(result)
 
     def admit_distributed_publication(
         self,
@@ -2528,13 +2552,13 @@ class MergeTrain:
         raw = metadata.get(_DISTRIBUTED_PUBLICATION_METADATA_KEY)
         if raw is None:
             if not self.distributed_publication_required:
-                return {
+                return self._mirror_distributed_admission({
                     "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
                     "status": "local",
                     "admitted": True,
                     "distributed": False,
                     "request_id": request.request_id,
-                }
+                })
             return self._reject_distributed_publication(
                 request,
                 reason="distributed_publication_missing",
@@ -2754,7 +2778,7 @@ class MergeTrain:
                     reason="distributed_publication_id_conflict",
                     publication=publication,
                 )
-            return {
+            return self._mirror_distributed_admission({
                 "schema": DISTRIBUTED_LANE_ADMISSION_SCHEMA,
                 "status": "duplicate",
                 "admitted": True,
@@ -2766,7 +2790,7 @@ class MergeTrain:
                 "fencing_token": fencing_token,
                 "logical_epoch": logical_epoch,
                 "fencing_epoch": fencing_epoch,
-            }
+            })
 
         prior_task = tasks.get(task_cid)
         if prior_task is not None and not isinstance(
@@ -2866,7 +2890,7 @@ class MergeTrain:
             f"distributed-admission-{publication_id}",
             admission,
         )
-        return admission
+        return self._mirror_distributed_admission(admission)
 
     # Adapter spelling used by remote dispatchers.
     submit_distributed_result = admit_distributed_publication
