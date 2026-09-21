@@ -273,6 +273,21 @@ def verify_prompt_planning_policy(
         )
     except (InvalidSignature, ValueError, TypeError) as exc:
         raise PlanningPolicyError("planning-policy signature is invalid") from exc
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(policy.content_id or policy.policy_id or "prompt-planning-policy")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_planning_policy",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return policy
 
 

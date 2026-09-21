@@ -3909,6 +3909,126 @@ def test_mirror_v2_rollout_scheduler_previews_and_release(tmp_path, monkeypatch)
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_rollback_routes_and_independent_verification(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    change_rollback = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="change_propagation_rollback",
+        record_ref="rpr-rollback:1",
+        subject_kind="record_cid",
+        subject_ref="rpr-rollback:1",
+    )
+    logic_rollback = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="logic_repair_rollback",
+        record_ref="lpr-rollback:1",
+        subject_kind="record_cid",
+        subject_ref="lpr-rollback:1",
+    )
+    route = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="provider_route_evaluation",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    dcr = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="dcr_release_verification",
+        record_ref="dcr-103",
+        subject_kind="record_cid",
+        subject_ref="dcr-103",
+    )
+    network = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="worker_network_authorization",
+        record_ref="auth:1",
+        subject_kind="record_cid",
+        subject_ref="auth:1",
+    )
+    attempt = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="worker_network_attempt_authority",
+        record_ref="attempt:1",
+        subject_kind="record_cid",
+        subject_ref="attempt:1",
+    )
+    native = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="native_dependency_admission",
+        record_ref="admission:1",
+        subject_kind="record_cid",
+        subject_ref="admission:1",
+    )
+    planning = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="prompt_planning_policy",
+        record_ref="policy:plan",
+        subject_kind="record_cid",
+        subject_ref="policy:plan",
+    )
+    ladder = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="receipt_to_human_ladder",
+        record_ref="cached_receipt",
+        subject_kind="record_cid",
+        subject_ref="cached_receipt",
+    )
+    intent = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="intent_conformance",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    state = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="explicit_state_object_receipt",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    zkp = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="program_zkp_independent_verification",
+        record_ref="circuit:1",
+        subject_kind="record_cid",
+        subject_ref="circuit:1",
+    )
+    packet = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="compiled_repair_packet",
+        record_ref="packet:repair",
+        subject_kind="record_cid",
+        subject_ref="packet:repair",
+    )
+    for item in (
+        change_rollback,
+        logic_rollback,
+        route,
+        dcr,
+        network,
+        attempt,
+        native,
+        planning,
+        ladder,
+        intent,
+        state,
+        zkp,
+        packet,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

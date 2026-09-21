@@ -508,6 +508,21 @@ def verify_worker_network_attempt_authority(
         )
     if tuple(observed_names) != requested or tuple(sorted(result)) != requested:
         raise ValueError("worker-network attempt providers are not canonical")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(authority.get("authority_cid") or next(iter(result), "") or "worker-network-attempt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worker_network_attempt_authority",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 

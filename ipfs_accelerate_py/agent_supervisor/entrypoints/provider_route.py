@@ -105,6 +105,24 @@ class IndependentReviewContinuation:
 class ProviderRouteEvaluation:
     policy_cid: str; selected_provider: ProviderSelection; selected_model_id: str; selected_reasoning_effort: str; fallback_reason: ProviderFallbackReason; admitted: bool; reason_code: str; fallback_receipt_cid: str=""; attempt_template: Mapping[str, Any] | None=None
 
+def _mirror_provider_route(evaluation: ProviderRouteEvaluation) -> ProviderRouteEvaluation:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(evaluation.policy_cid or evaluation.reason_code or "provider-route")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_route_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
+
 def classify_preferred_failure(raw_reason: str | PreferredFailureClass) -> PreferredFailureClass:
     if isinstance(raw_reason, PreferredFailureClass): return raw_reason
     normalized=str(raw_reason or "").strip().casefold().replace("-","_").replace(" ","_")
@@ -117,9 +135,9 @@ def assert_model_identities(*, preferred_model_id: str, fallback_model_id: str, 
 
 def evaluate_preferred_route(policy: ProviderRoutePolicy | None=None, *, preferred_healthy: bool=True, preferred_failure: PreferredFailureClass | str | None=None) -> ProviderRouteEvaluation:
     policy=policy or default_provider_route_policy()
-    if preferred_healthy and preferred_failure is None: return ProviderRouteEvaluation(policy.content_id,ProviderSelection.GROK,PRIMARY_MODEL_ID,"",ProviderFallbackReason.NONE,True,"admitted:grok-implement")
+    if preferred_healthy and preferred_failure is None: return _mirror_provider_route(ProviderRouteEvaluation(policy.content_id,ProviderSelection.GROK,PRIMARY_MODEL_ID,"",ProviderFallbackReason.NONE,True,"admitted:grok-implement"))
     failure=classify_preferred_failure(preferred_failure or PreferredFailureClass.UNAVAILABLE)
-    return ProviderRouteEvaluation(policy.content_id,ProviderSelection.UNAVAILABLE,"","",ProviderFallbackReason.PREFERRED_UNAVAILABLE if failure is PreferredFailureClass.UNAVAILABLE else ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,False,"fail_closed:"+failure.value)
+    return _mirror_provider_route(ProviderRouteEvaluation(policy.content_id,ProviderSelection.UNAVAILABLE,"","",ProviderFallbackReason.PREFERRED_UNAVAILABLE if failure is PreferredFailureClass.UNAVAILABLE else ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,False,"fail_closed:"+failure.value))
 
 def evaluate_quota_fallback(policy: ProviderRoutePolicy | None=None, *, quota_evidence: QuotaExhaustionEvidence, repository_effect_observed: bool=False, prior_fallback_dispatches: int=0, prompt_selected_fallback: bool=False, fallback_model_id: str=FALLBACK_MODEL_ID, fallback_reasoning_effort: str=FALLBACK_REASONING_EFFORT, scope_widened: bool=False, attempt: ProviderAttemptReceipt | None=None, now_ms: int | None=None, max_age_ms: int=300_000) -> ProviderRouteEvaluation:
     policy=policy or default_provider_route_policy()
@@ -135,7 +153,7 @@ def evaluate_quota_fallback(policy: ProviderRoutePolicy | None=None, *, quota_ev
         for field in ("task_revision_cid","worktree_cid","budget_cid","scope_cid"):
             evidence_value=getattr(quota_evidence,field); attempt_value=getattr(attempt,field)
             if not evidence_value or not attempt_value or evidence_value != attempt_value: raise ProviderRouteError("fallback bindings must exactly match evidence",reason_code="binding_mismatch")
-    return ProviderRouteEvaluation(policy.content_id,ProviderSelection.CODEX,FALLBACK_MODEL_ID,FALLBACK_REASONING_EFFORT,ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED,True,"admitted:codex-quota-fallback")
+    return _mirror_provider_route(ProviderRouteEvaluation(policy.content_id,ProviderSelection.CODEX,FALLBACK_MODEL_ID,FALLBACK_REASONING_EFFORT,ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED,True,"admitted:codex-quota-fallback"))
 
 def build_fallback_receipt(*, policy: ProviderRoutePolicy | None=None, quota_evidence: QuotaExhaustionEvidence, task_revision_cid: str, budget_cid: str, attempt_id: str, worktree_cid: str, implementer_process_identity: str, review_authorization: str, scope_cid: str="") -> ProviderFallbackReceipt:
     evaluate_quota_fallback(policy, quota_evidence=quota_evidence)

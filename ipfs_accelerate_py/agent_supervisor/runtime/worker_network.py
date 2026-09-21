@@ -670,19 +670,38 @@ def verify_worker_network_authorization(
     except (OSError, ValueError) as exc:
         message = str(exc).strip().lower().replace(" ", "_")
         blocker = re.sub(r"[^a-z0-9_]+", "_", message).strip("_")
-        return WorkerNetworkAuthorizationDecision(
+        decision = WorkerNetworkAuthorizationDecision(
             valid=False,
             blockers=(blocker or "worker_network_authorization_invalid",),
             authorization_cid="",
             reviewer_did=str(getattr(invocation_binding, "reviewer_identity", "")),
         )
-    return WorkerNetworkAuthorizationDecision(
-        valid=True,
-        blockers=(),
-        authorization_cid=authorization.authorization_id,
-        reviewer_did=authorization.signer_did,
-        authorization=authorization,
-    )
+    else:
+        decision = WorkerNetworkAuthorizationDecision(
+            valid=True,
+            blockers=(),
+            authorization_cid=authorization.authorization_id,
+            reviewer_did=authorization.signer_did,
+            authorization=authorization,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            decision.authorization_cid or decision.reviewer_did or "worker-network-authorization"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worker_network_authorization",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 @dataclass(frozen=True)

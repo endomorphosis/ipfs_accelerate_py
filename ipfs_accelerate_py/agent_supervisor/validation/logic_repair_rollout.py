@@ -994,6 +994,30 @@ def _demotion_target(current: RolloutMode) -> RolloutMode:
     }.get(current, RolloutMode.SHADOW)
 
 
+def _mirror_logic_repair_rollback(receipt: RollbackReceipt) -> RollbackReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt.receipt_id
+            or receipt.policy_binding_id
+            or getattr(receipt.reason, "value", "")
+            or "logic-repair-rollback"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logic_repair_rollback",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_rollback(
     policy: LogicRepairRolloutPolicy, *, metrics: LogicRepairMetrics | None = None,
     capability_regression: Sequence[str] = (), stale_roots: Sequence[str] = (),
@@ -1010,11 +1034,13 @@ def evaluate_rollback(
     def _receipt(reason: RollbackReason, *, detail: str, metric_breaches: Sequence[str] = (),
                  capability_ids: Sequence[str] = (), roots: Sequence[str] = (),
                  extra_codes: Sequence[str] = ()) -> RollbackReceipt:
-        return RollbackReceipt(
-            reason=reason, from_mode=current, to_mode=target, detail=detail,
-            metric_breaches=tuple(metric_breaches), capability_ids=tuple(sorted(set(capability_ids))),
-            stale_roots=tuple(sorted(set(roots))), reason_codes=tuple(sorted({*codes, *extra_codes})),
-            policy_binding_id=policy.policy_binding_id,
+        return _mirror_logic_repair_rollback(
+            RollbackReceipt(
+                reason=reason, from_mode=current, to_mode=target, detail=detail,
+                metric_breaches=tuple(metric_breaches), capability_ids=tuple(sorted(set(capability_ids))),
+                stale_roots=tuple(sorted(set(roots))), reason_codes=tuple(sorted({*codes, *extra_codes})),
+                policy_binding_id=policy.policy_binding_id,
+            )
         )
 
     if policy.rollback_on_capability_regression and capability_regression:

@@ -2577,7 +2577,7 @@ def evaluate_intent_conformance(
         if any(item.code in invalid_codes for item in ordered)
         else IntentConformanceVerdict.NONCONFORMANT
     )
-    return IntentConformanceResult(
+    result = IntentConformanceResult(
         request_id=request.request_id,
         constraint_set_id=constraint_set.constraint_set_id,
         candidate_plan_id=candidate_id,
@@ -2588,6 +2588,22 @@ def evaluate_intent_conformance(
             item.obligation_id for item in constraint_set.proof_obligations
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.request_id or result.candidate_plan_id or "intent-conformance")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="intent_conformance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_intent_constraints(

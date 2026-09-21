@@ -247,12 +247,28 @@ def verify_release(
     }:
         errors.append("invalid_auto_safe_boundary")
     ok = not errors and bool(payload.get("passed", False))
-    return {
+    result = {
         "ok": ok,
         "errors": errors,
         "release_id": payload.get("release_id"),
         "runtime_model_calls": 0,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("release_id") or "dcr-release")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dcr_release_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _ops_markdown(release: DeterministicRepairRelease) -> str:

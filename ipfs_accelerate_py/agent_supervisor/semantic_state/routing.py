@@ -1088,13 +1088,29 @@ def evaluate_receipt_to_human_ladder(
     if selected is None:
         raise HarnessError("ladder traversal failed to select a stage")
 
-    return LadderDecision(
+    decision = LadderDecision(
         stages=tuple(records),
         selected_stage=selected.value,
         selected_route=ladder_stage_to_model_route(selected),
         resolved_by_deterministic_evidence=selected in DETERMINISTIC_LADDER_STAGES,
         evidence=evidence_obj,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decision.selected_stage or decision.selected_route or "receipt-to-human-ladder")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="receipt_to_human_ladder",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def evaluate_identity_bound_deterministic_ladder(**kwargs: Any) -> LadderDecision:

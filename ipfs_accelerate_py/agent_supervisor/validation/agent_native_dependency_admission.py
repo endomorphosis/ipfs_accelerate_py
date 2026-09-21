@@ -406,11 +406,27 @@ def verify_agent_supervisor_native_dependency_admission(
         raise AgentSupervisorNativeDependencyAdmissionError(
             "native dependency admission does not bind the exact pin"
         )
-    return VerifiedAgentSupervisorNativeDependencyAdmission(
+    verified = VerifiedAgentSupervisorNativeDependencyAdmission(
         _VERIFIED_TOKEN,
         admitted,
         observed_pin,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(verified.admission_cid or "native-dependency-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="native_dependency_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verified
 
 
 def _duplicate_rejecting_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

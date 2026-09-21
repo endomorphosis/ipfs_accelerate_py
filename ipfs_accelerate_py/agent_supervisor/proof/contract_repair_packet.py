@@ -2312,11 +2312,28 @@ def compile_repair_packet(
         incomplete_reasons=packet.incomplete_reasons,
         decision_id=decision_id,
     )
-    return CompiledRepairPacket(
+    compiled = CompiledRepairPacket(
         packet=packet,
         receipt=receipt,
         request_id=request.request_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(compiled.packet_id or compiled.request_id or "repair-packet")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compiled_repair_packet",
+            record_ref=record_ref,
+            tree_id=str(getattr(compiled.packet, "tree_id", "") or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 def compile_repair_packet_delta(

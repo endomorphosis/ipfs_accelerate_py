@@ -1379,6 +1379,30 @@ def _demotion_target(current: RolloutMode) -> RolloutMode:
     return demotion.get(current, RolloutMode.SHADOW)
 
 
+def _mirror_change_propagation_rollback(receipt: RollbackReceipt) -> RollbackReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt.receipt_id
+            or receipt.policy_binding_id
+            or getattr(receipt.reason, "value", "")
+            or "change-propagation-rollback"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="change_propagation_rollback",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_rollback(
     policy: ChangePropagationRolloutPolicy,
     *,
@@ -1414,16 +1438,18 @@ def evaluate_rollback(
         roots: Sequence[str] = (),
         extra_codes: Sequence[str] = (),
     ) -> RollbackReceipt:
-        return RollbackReceipt(
-            reason=reason,
-            from_mode=current,
-            to_mode=target,
-            detail=detail,
-            metric_breaches=tuple(metric_breaches),
-            capability_ids=tuple(sorted(set(capability_ids))),
-            stale_roots=tuple(sorted(set(roots))),
-            reason_codes=tuple(sorted({*codes, *extra_codes})),
-            policy_binding_id=policy.policy_binding_id,
+        return _mirror_change_propagation_rollback(
+            RollbackReceipt(
+                reason=reason,
+                from_mode=current,
+                to_mode=target,
+                detail=detail,
+                metric_breaches=tuple(metric_breaches),
+                capability_ids=tuple(sorted(set(capability_ids))),
+                stale_roots=tuple(sorted(set(roots))),
+                reason_codes=tuple(sorted({*codes, *extra_codes})),
+                policy_binding_id=policy.policy_binding_id,
+            )
         )
 
     if policy.rollback_on_capability_regression and capability_regression:

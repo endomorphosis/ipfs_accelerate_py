@@ -3804,7 +3804,7 @@ def verify_program_zkp_independently(
         verified = True
 
     verdict = ProgramZkpVerdict.VERIFIED if verified else ProgramZkpVerdict.REJECTED
-    return ProgramZkpVerificationReceipt(
+    receipt = ProgramZkpVerificationReceipt(
         statement=envelope.statement,
         verdict=verdict,
         verifier_id=verifier_id,
@@ -3818,6 +3818,27 @@ def verify_program_zkp_independently(
         capability_production_eligible=bool(production and verified),
         independent_verifier=True,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "content_id", "")
+            or receipt.public_input_digest
+            or receipt.circuit_id
+            or "program-zkp-independent"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="program_zkp_independent_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def record_production_program_zkp_verification(
