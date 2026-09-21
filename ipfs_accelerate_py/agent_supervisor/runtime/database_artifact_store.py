@@ -934,6 +934,21 @@ class DatabaseArtifactStore:
             raise DatabaseArtifactStoreIntegrityError(
                 "blob digest or size verification failed"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(reference.digest or reference.blob_id or "db-blob")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="database_blob_verification",
+                record_ref=record_ref,
+                subject_kind="content_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return payload
 
     def _blob_from_row(self, row: Mapping[str, Any]) -> BlobReference:

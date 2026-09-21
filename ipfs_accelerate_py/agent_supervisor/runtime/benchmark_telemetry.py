@@ -1817,6 +1817,21 @@ class BenchmarkTelemetrySession:
                 "task span is missing causal task identity"
             )
         self._admitted_usage_span_ids.add(registered.span_id)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(registered.span_id or registered.task_id or "task-span")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="benchmark_task_span",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(registered.task_id or record_ref),
+            )
+        except Exception:
+            pass
         return registered
 
     def admit_verifier(
@@ -1836,6 +1851,20 @@ class BenchmarkTelemetrySession:
                 f"verifier {verifier_id!r} is already admitted with a different receipt"
             )
         self._admitted_verifiers[verifier_id] = cid
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="benchmark_verifier_admission",
+                record_ref=str(cid or verifier_id),
+                subject_kind="record_cid",
+                subject_ref=str(cid or verifier_id),
+            )
+        except Exception:
+            pass
         return verifier_id, cid
 
     def record_provider_response(

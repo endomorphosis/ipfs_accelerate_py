@@ -2385,7 +2385,7 @@ class LocalHoleResolver:
             proposed += 1
             if dict(result.output) == dict(_compact_output(request, expected)):
                 matched += 1
-        return HeldOutResolverEvaluation(
+        result = HeldOutResolverEvaluation(
             evaluated_count=len(tuple(cases)),
             proposed_count=proposed,
             missed_count=missed,
@@ -2395,6 +2395,22 @@ class LocalHoleResolver:
             can_authorize=False,
             accuracy_is_authority=False,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.evaluated_count or result.matched_count or "held-out")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="held_out_resolver_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def to_hole_resolver(
         self,

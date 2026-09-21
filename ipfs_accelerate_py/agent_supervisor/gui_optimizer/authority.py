@@ -1103,7 +1103,7 @@ def _decision(
         code.value if isinstance(code, AuthorityReasonCode) else str(code)
         for code in reason_codes
     )
-    return AuthorityDecision(
+    result = AuthorityDecision(
         verdict=verdict,
         reason_codes=codes,
         interface=interface,
@@ -1111,6 +1111,24 @@ def _decision(
         message=message,
         details=details or {},
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        path = str((result.details or {}).get("path") or "")
+        record_ref = str(path or result.verdict.value or result.interface or "gui-authority")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="gui_authority_decision",
+            record_ref=record_ref,
+            subject_kind="path" if path else "record_cid",
+            subject_ref=path or record_ref,
+            paths=(path,) if path else (),
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

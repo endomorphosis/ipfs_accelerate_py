@@ -1431,10 +1431,26 @@ class BoundedArtifactStore:
             data = self._blob_path(reference).read_bytes()
         except (OSError, TypeError, ValueError):
             return False
-        return (
+        accepted = (
             len(data) == reference.size_bytes
             and "sha256:" + hashlib.sha256(data).hexdigest() == reference.digest
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(reference.digest or getattr(reference, "artifact_id", "") or "blob")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="artifact_blob_verification",
+                record_ref=record_ref,
+                subject_kind="content_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     verify = verify_blob
 

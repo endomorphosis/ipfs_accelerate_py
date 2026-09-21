@@ -885,6 +885,26 @@ class ChurnDecision:
         }
 
 
+def _mirror_churn_decision(*args: Any, **kwargs: Any) -> ChurnDecision:
+    result = ChurnDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.call_key or result.prior_call_id or result.reason or "churn-decision")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_churn_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class UsageCharge:
     """Usage charge row for accepted, rejected, abandoned, or retry outcomes."""
@@ -1480,7 +1500,7 @@ class ProviderCallLedger:
             existing = self._get_call_row(connection, call_key=call_key)
             if existing is not None:
                 prior = self._call_from_row(existing)
-                return ChurnDecision(
+                return _mirror_churn_decision(
                     call_key=call_key,
                     action=ChurnAction.REUSE_PRIOR,
                     reason="exact_duplicate_call_key",
@@ -1503,7 +1523,7 @@ class ProviderCallLedger:
                 evidence_digest=evidence,
             )
             if semantic is not None:
-                return ChurnDecision(
+                return _mirror_churn_decision(
                     call_key=call_key,
                     action=ChurnAction.REUSE_PRIOR,
                     reason="semantic_duplicate",
@@ -1522,7 +1542,7 @@ class ProviderCallLedger:
                 action = ChurnAction.coerce(
                     suppression.get("action") or ChurnAction.SUPPRESS_REPLAY.value
                 )
-                return ChurnDecision(
+                return _mirror_churn_decision(
                     call_key=call_key,
                     action=action,
                     reason=str(suppression.get("reason") or "replay_suppressed"),
@@ -1538,7 +1558,7 @@ class ProviderCallLedger:
                 connection, call_key, evidence
             )
             if exhausted is not None:
-                return ChurnDecision(
+                return _mirror_churn_decision(
                     call_key=call_key,
                     action=ChurnAction.SUPPRESS_REPLAY,
                     reason="policy_exhausted_unchanged_evidence",
@@ -1549,7 +1569,7 @@ class ProviderCallLedger:
                     recorded_at=stamp,
                 )
 
-            return ChurnDecision(
+            return _mirror_churn_decision(
                 call_key=call_key,
                 action=ChurnAction.DISPATCH,
                 reason="no_suppression",
@@ -1696,7 +1716,7 @@ class ProviderCallLedger:
             existing = self._get_call_row(connection, call_key=call_key)
             if existing is not None:
                 prior = self._call_from_row(existing)
-                reuse = ChurnDecision(
+                reuse = _mirror_churn_decision(
                     call_key=call_key,
                     action=ChurnAction.REUSE_PRIOR,
                     reason="exact_duplicate_call_key",
@@ -1786,7 +1806,7 @@ class ProviderCallLedger:
             self._commit_if_idle(connection)
             final_decision = decision
             if not decision.may_dispatch:
-                final_decision = ChurnDecision(
+                final_decision = _mirror_churn_decision(
                     call_key=call_key,
                     action=decision.action
                     if decision.action is not ChurnAction.DISPATCH

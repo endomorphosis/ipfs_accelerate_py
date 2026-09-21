@@ -1959,7 +1959,7 @@ def _scope_decision(
         else str(code)
         for code in reason_codes
     )
-    return GuiPatchScopeDecision(
+    result = GuiPatchScopeDecision(
         verdict=verdict,
         reason_codes=codes,
         message=message,
@@ -1968,6 +1968,30 @@ def _scope_decision(
         observed_paths=tuple(observed_paths),
         undeclared_paths=tuple(undeclared_paths),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        details_map = dict(result.details or {})
+        record_ref = str(
+            details_map.get("proposal_id")
+            or details_map.get("application_id")
+            or result.verdict.value
+            or "patch-scope"
+        )
+        paths = tuple(result.observed_paths or result.declared_paths)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="gui_patch_scope_decision",
+            record_ref=record_ref,
+            subject_kind="path" if paths else "record_cid",
+            subject_ref=paths[0] if paths else record_ref,
+            paths=paths,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------
