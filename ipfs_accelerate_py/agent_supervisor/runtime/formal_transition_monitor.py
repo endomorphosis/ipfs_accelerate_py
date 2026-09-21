@@ -1939,7 +1939,7 @@ def evaluate_all_normative_vectors(
                         "verdict": verdict.to_dict(),
                     }
                 )
-    return {
+    report = {
         "schema": SCHEMA,
         "task_id": TASK_ID,
         "goal_id": GOAL_ID,
@@ -1953,6 +1953,22 @@ def evaluate_all_normative_vectors(
         "exact_match": not failures
         and accepted_ok + rejected_ok == len(corpus),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.get("goal_id") or report.get("task_id") or "normative-vectors")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="normative_vector_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 # ---------------------------------------------------------------------------

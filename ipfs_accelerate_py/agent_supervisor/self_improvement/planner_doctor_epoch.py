@@ -2262,7 +2262,7 @@ def build_planner_doctor_epoch_binding(
         protected_paths=protected_paths,
         frozen_at=observed_at,
     )
-    return PlannerDoctorEpochBinding(
+    binding = PlannerDoctorEpochBinding(
         repository_id=repository_id,
         tree_id=tree_id,
         policy=resolved_policy,
@@ -2274,6 +2274,23 @@ def build_planner_doctor_epoch_binding(
         epoch_index=epoch_index,
         observed_at=_timestamp(observed_at),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(binding.tree_id or binding.repository_id or "planner-doctor-epoch")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_epoch_binding",
+            record_ref=record_ref,
+            tree_id=str(binding.tree_id or ""),
+            subject_kind="tree_id" if binding.tree_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return binding
 
 
 def run_planner_doctor_epoch(

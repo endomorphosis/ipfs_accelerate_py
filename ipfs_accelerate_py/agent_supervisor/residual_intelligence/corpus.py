@@ -342,6 +342,31 @@ class ResidualDistillationCorpus:
         return result
 
 
+def _mirror_distillation_corpus(
+    corpus: ResidualDistillationCorpus, record_kind: str
+) -> ResidualDistillationCorpus:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(corpus.admission, "admission_id", "")
+            or getattr(corpus, "content_id", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind=record_kind.replace("-", "_"),
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return corpus
+
+
 def build_first_party_trajectory_corpus(
     *,
     admission: TrainingCorpusAdmission,
@@ -352,7 +377,10 @@ def build_first_party_trajectory_corpus(
     examples = tuple(ResidualDistillationExample.from_dict(row) for row in rows)
     if any(item.source_kind is not CorpusSourceKind.FIRST_PARTY_TRAJECTORY for item in examples):
         raise ResidualIntelligenceError("first-party builder received a non-first-party row")
-    return ResidualDistillationCorpus(admission=admission, examples=examples)
+    return _mirror_distillation_corpus(
+        ResidualDistillationCorpus(admission=admission, examples=examples),
+        "first-party-trajectory-corpus",
+    )
 
 
 def build_synthetic_adversarial_corpus(
@@ -370,7 +398,10 @@ def build_synthetic_adversarial_corpus(
     }
     if any(item.source_kind not in allowed for item in examples):
         raise ResidualIntelligenceError("synthetic builder received an unauthorized source kind")
-    return ResidualDistillationCorpus(admission=admission, examples=examples)
+    return _mirror_distillation_corpus(
+        ResidualDistillationCorpus(admission=admission, examples=examples),
+        "synthetic-adversarial-corpus",
+    )
 
 
 __all__ = (

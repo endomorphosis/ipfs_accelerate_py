@@ -108,6 +108,25 @@ class ContextAdmission:
         )
 
 
+def _mirror_untrusted_admission(admission: ContextAdmission) -> ContextAdmission:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(admission.domain, "value", admission.domain) or "untrusted-context")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="untrusted_context_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admission
+
+
 def admit_untrusted_text(
     text: str,
     *,
@@ -125,11 +144,13 @@ def admit_untrusted_text(
     if unknown:
         raise UntrustedContextError(f"unknown protected domain: {unknown[0]}")
     if domain is TrustDomain.OPERATOR_POLICY:
-        return ContextAdmission(
-            domain=domain,
-            admitted=True,
-            stripped_text=str(text),
-            blocked_domains=(),
+        return _mirror_untrusted_admission(
+            ContextAdmission(
+                domain=domain,
+                admitted=True,
+                stripped_text=str(text),
+                blocked_domains=(),
+            )
         )
     if requested:
         raise TrustDomainError(
@@ -140,12 +161,14 @@ def admit_untrusted_text(
     if contains_policy_override(text):
         stripped = ""
         reason = "policy_override_stripped"
-    return ContextAdmission(
-        domain=domain,
-        admitted=True,
-        stripped_text=stripped,
-        rejected_reason=reason,
-        blocked_domains=tuple(PROTECTED_DOMAINS),
+    return _mirror_untrusted_admission(
+        ContextAdmission(
+            domain=domain,
+            admitted=True,
+            stripped_text=stripped,
+            rejected_reason=reason,
+            blocked_domains=tuple(PROTECTED_DOMAINS),
+        )
     )
 
 

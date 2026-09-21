@@ -2125,6 +2125,31 @@ def _observation_scan_receipts(
     return tuple(receipts)
 
 
+def _mirror_self_improvement_epoch(
+    receipt: SelfImprovementEpochReceipt,
+) -> SelfImprovementEpochReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt.binding, "epoch_id", "")
+            or getattr(receipt.status, "value", "")
+            or "self-improvement-epoch"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="self_improvement_epoch",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_self_improvement_epoch(
     *,
     binding: SelfImprovementEpochBinding,
@@ -2205,22 +2230,26 @@ def evaluate_self_improvement_epoch(
     # blockers always outrank an actionable classification.  Otherwise a
     # foreign regression could become write authority merely by being severe.
     if blockers:
-        return SelfImprovementEpochReceipt(
-            binding=binding,
-            status=SelfImprovementEpochStatus.INELIGIBLE,
-            observed_at=now,
-            observation_receipt_ids=observation_ids,
-            blocker_codes=tuple(blockers),
-            actionable_dimensions=actionable,
+        return _mirror_self_improvement_epoch(
+            SelfImprovementEpochReceipt(
+                binding=binding,
+                status=SelfImprovementEpochStatus.INELIGIBLE,
+                observed_at=now,
+                observation_receipt_ids=observation_ids,
+                blocker_codes=tuple(blockers),
+                actionable_dimensions=actionable,
+            )
         )
     if actionable:
-        return SelfImprovementEpochReceipt(
-            binding=binding,
-            status=SelfImprovementEpochStatus.ACTIONABLE,
-            observed_at=now,
-            observation_receipt_ids=observation_ids,
-            blocker_codes=tuple(blockers),
-            actionable_dimensions=actionable,
+        return _mirror_self_improvement_epoch(
+            SelfImprovementEpochReceipt(
+                binding=binding,
+                status=SelfImprovementEpochStatus.ACTIONABLE,
+                observed_at=now,
+                observation_receipt_ids=observation_ids,
+                blocker_codes=tuple(blockers),
+                actionable_dimensions=actionable,
+            )
         )
     scan_receipts = _observation_scan_receipts(normalized, binding=binding, observed_at=now)
     exact_binding = ExhaustionBinding(
@@ -2236,12 +2265,14 @@ def evaluate_self_improvement_epoch(
         required_members=policy.required_independent_channels,
     )
     if not quorum.satisfied:
-        return SelfImprovementEpochReceipt(
-            binding=binding,
-            status=SelfImprovementEpochStatus.INELIGIBLE,
-            observed_at=now,
-            observation_receipt_ids=observation_ids,
-            blocker_codes=("exhaustion_quorum_unsatisfied",),
+        return _mirror_self_improvement_epoch(
+            SelfImprovementEpochReceipt(
+                binding=binding,
+                status=SelfImprovementEpochStatus.INELIGIBLE,
+                observed_at=now,
+                observation_receipt_ids=observation_ids,
+                blocker_codes=("exhaustion_quorum_unsatisfied",),
+            )
         )
     evidence = HealthyExhaustionEvidence(
         binding=binding,
@@ -2256,12 +2287,14 @@ def evaluate_self_improvement_epoch(
         observed_at=now,
         next_triggers=policy.next_triggers,
     )
-    return SelfImprovementEpochReceipt(
-        binding=binding,
-        status=SelfImprovementEpochStatus.HEALTHY_EXHAUSTED,
-        observed_at=now,
-        observation_receipt_ids=observation_ids,
-        evidence=evidence,
+    return _mirror_self_improvement_epoch(
+        SelfImprovementEpochReceipt(
+            binding=binding,
+            status=SelfImprovementEpochStatus.HEALTHY_EXHAUSTED,
+            observed_at=now,
+            observation_receipt_ids=observation_ids,
+            evidence=evidence,
+        )
     )
 
 

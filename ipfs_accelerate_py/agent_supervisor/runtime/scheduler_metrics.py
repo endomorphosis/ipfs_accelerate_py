@@ -2807,7 +2807,23 @@ def build_scheduler_snapshot(
     now: datetime | str | None = None,
     defaults: Mapping[str, Any] | None = None,
 ) -> SchedulerSnapshot:
-    return scheduler_snapshot(events, now=now, defaults=defaults)
+    snapshot = scheduler_snapshot(events, now=now, defaults=defaults)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(snapshot, "snapshot_id", "") or getattr(snapshot, "content_id", "") or "scheduler-snapshot")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="scheduler_snapshot",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return snapshot
 
 
 derive_scheduler_snapshot = build_scheduler_snapshot

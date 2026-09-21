@@ -839,7 +839,7 @@ def evaluate_dcr_adversarial(
     else:
         reasons.append("adversarial_conformance_failed")
 
-    return DcrAdversarialReport(
+    report = DcrAdversarialReport(
         passed=passed,
         positive_control_ok=positive_ok,
         mutation_score=score,
@@ -849,6 +849,22 @@ def evaluate_dcr_adversarial(
         rollback_verification=MappingProxyType(rollback),
         reason_codes=tuple(dict.fromkeys(reasons)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "content_id", "") or "dcr-adversarial-report")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="dcr_adversarial_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def materialize_adversarial_report(

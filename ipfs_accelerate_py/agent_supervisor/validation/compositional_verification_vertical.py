@@ -1591,13 +1591,29 @@ def verify_compositional_artifact(
         "issues": sorted(issues),
         "verifier": VERTICAL_ARTIFACT_VERIFIER_INTERFACE,
     }
-    return ArtifactVerificationResult(
+    result = ArtifactVerificationResult(
         disposition="validated" if not issues else "rejected",
         artifact_cid=artifact.artifact_cid,
         replay_receipt_cid=content_identity(replay_payload),
         issues=tuple(sorted(issues)),
         checks=checks,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.artifact_cid or result.replay_receipt_cid or "compositional-artifact")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compositional_artifact_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:

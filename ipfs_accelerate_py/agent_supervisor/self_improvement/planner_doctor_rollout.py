@@ -2193,7 +2193,7 @@ def evaluate_planner_doctor_rollout(
         and rollback_reasons
     )
 
-    return PlannerDoctorPromotionReceipt(
+    receipt = PlannerDoctorPromotionReceipt(
         binding=normalized_binding,
         policy=normalized_policy,
         desired_mode=desired,
@@ -2210,6 +2210,24 @@ def evaluate_planner_doctor_rollout(
         rollback_applied=rollback_applied,
         kill_switch_override=kill_switch,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(normalized_binding, "tree_id", "") or "")
+        record_ref = str(getattr(normalized_binding, "behavior_id", "") or tree_id or "planner-doctor-rollout")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_rollout",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def verify_planner_doctor_promotion_receipt(

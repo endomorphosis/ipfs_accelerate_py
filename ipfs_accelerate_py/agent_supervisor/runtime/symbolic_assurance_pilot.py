@@ -1495,7 +1495,7 @@ def build_coverage_manifest(
         "complete": all(item["exhaustive"] for item in repo_coverage)
         and all(item["omitted_entry_count"] == 0 for item in repo_coverage),
     }
-    return {
+    payload = {
         "manifest": manifest,
         "coverage": coverage,
         "manifest_cid": _identity(manifest),
@@ -1503,6 +1503,22 @@ def build_coverage_manifest(
         "primary_file_count": primary_count,
         "closure_file_count": closure_count,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(payload["manifest_cid"] or forest.forest_id or "coverage-manifest")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="symbolic_assurance_coverage_manifest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
 
 
 def _read_entry_text(

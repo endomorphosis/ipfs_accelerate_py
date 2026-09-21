@@ -2030,7 +2030,7 @@ def build_work_proposal(
         "proposal only; no mutation authority",
     )
 
-    return ObjectiveWorkProposal(
+    proposal = ObjectiveWorkProposal(
         kind=ObjectiveWorkKind.TASK,
         title=title,
         parent_goal_id=residual.parent_goal_id or policy.parent_goal_id,
@@ -2077,6 +2077,22 @@ def build_work_proposal(
         merge_fate="",
         rejection_reasons=(),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(proposal.canonical_id or residual.residual_id or residual.issue_id or "doctor-work-proposal")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_plan_work_proposal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return proposal
 
 
 # ---------------------------------------------------------------------------

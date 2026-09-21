@@ -127,10 +127,48 @@ def prepare_program_world_training(
 def evaluate_program_world_checkpoint(
     family: str, *, foundry: ProgramWorldResidualFoundry | None = None
 ) -> Mapping[str, Any]:
-    return (foundry or ProgramWorldResidualFoundry()).evaluate_program_world_checkpoint(family)
+    evaluation = (foundry or ProgramWorldResidualFoundry()).evaluate_program_world_checkpoint(family)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        checkpoint_id = evaluation.get("checkpoint_id") if isinstance(evaluation, Mapping) else ""
+        record_ref = str(checkpoint_id or family or "program-world-checkpoint")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_checkpoint_evaluation",
+            record_ref=str(record_ref),
+            subject_kind="record_cid",
+            subject_ref=str(record_ref),
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 def admit_program_world_checkpoint(
     family: str, *, foundry: ProgramWorldResidualFoundry | None = None
 ) -> ProgramWorldCheckpointAdmission:
-    return (foundry or ProgramWorldResidualFoundry()).admit_program_world_checkpoint(family)
+    admission = (foundry or ProgramWorldResidualFoundry()).admit_program_world_checkpoint(family)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(admission, "checkpoint_id", "")
+            or getattr(admission, "content_id", "")
+            or family
+            or "program-world-checkpoint-admission"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_checkpoint_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admission

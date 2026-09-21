@@ -1267,7 +1267,7 @@ def evaluate_benchmark_gates(
 ) -> tuple[GateResult, ...]:
     """Evaluate the closed PTR-100 acceptance gates."""
 
-    return (
+    gates = (
         GateResult(
             name=GateName.FALSE_ADMISSIONS_ZERO,
             passed=false_admissions == 0,
@@ -1314,6 +1314,22 @@ def evaluate_benchmark_gates(
             detail={"receipt_reproducible": bool(receipt_reproducible)},
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = "proof-reuse-benchmark-gates"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_reuse_benchmark_gates",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return gates
 
 
 @dataclass

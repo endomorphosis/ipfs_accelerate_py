@@ -1733,6 +1733,21 @@ def evaluate_corpus(
         results.append(evaluate_fixture(case, policy=policy))
         if len(results) > policy.max_cases:
             raise DeterministicDoctorBenchmarkError("case population exceeds policy bound")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(results[0].case_id if results else "doctor-benchmark-corpus")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_benchmark_corpus",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return results
 
 

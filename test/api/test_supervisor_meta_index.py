@@ -3594,6 +3594,185 @@ def test_mirror_efficiency_security_policy_and_runtime_admission(tmp_path, monke
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_self_improvement_security_corpus_and_rollout(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    procedure = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_world_procedure_candidate",
+        record_ref="procedure:1",
+        subject_kind="record_cid",
+        subject_ref="procedure:1",
+    )
+    checkpoint = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_world_checkpoint_evaluation",
+        record_ref="family:1",
+        subject_kind="record_cid",
+        subject_ref="family:1",
+    )
+    admitted = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_world_checkpoint_admission",
+        record_ref="family:1",
+        subject_kind="record_cid",
+        subject_ref="family:1",
+    )
+    gates = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_reuse_benchmark_gates",
+        record_ref="proof-reuse-benchmark-gates",
+        subject_kind="record_cid",
+        subject_ref="proof-reuse-benchmark-gates",
+    )
+    epoch_bind = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planner_doctor_epoch_binding",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    untrusted = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="untrusted_context_admission",
+        record_ref="operator_policy",
+        subject_kind="record_cid",
+        subject_ref="operator_policy",
+    )
+    first_party = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="first_party_trajectory_corpus",
+        record_ref="admission:1",
+        subject_kind="record_cid",
+        subject_ref="admission:1",
+    )
+    synthetic = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="synthetic_adversarial_corpus",
+        record_ref="admission:2",
+        subject_kind="record_cid",
+        subject_ref="admission:2",
+    )
+    artifact = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="compositional_artifact_verification",
+        record_ref="artifact:1",
+        subject_kind="record_cid",
+        subject_ref="artifact:1",
+    )
+    scheduler = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="scheduler_snapshot",
+        record_ref="snapshot:1",
+        subject_kind="record_cid",
+        subject_ref="snapshot:1",
+    )
+    paired = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="supervisor_usage_paired_report",
+        record_ref="qualification",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    usage = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="supervisor_usage_rollout",
+        record_ref="eval:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    rollout = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planner_doctor_rollout",
+        record_ref="behavior:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    adversarial = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="dcr_adversarial_report",
+        record_ref="dcr-093",
+        subject_kind="record_cid",
+        subject_ref="dcr-093",
+    )
+    proposal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_plan_work_proposal",
+        record_ref="residual:1",
+        subject_kind="record_cid",
+        subject_ref="residual:1",
+    )
+    corpus = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_benchmark_corpus",
+        record_ref="case:1",
+        subject_kind="record_cid",
+        subject_ref="case:1",
+    )
+    coverage = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="symbolic_assurance_coverage_manifest",
+        record_ref="manifest:1",
+        subject_kind="record_cid",
+        subject_ref="manifest:1",
+    )
+    epoch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="self_improvement_epoch",
+        record_ref="healthy_exhausted",
+        subject_kind="record_cid",
+        subject_ref="healthy_exhausted",
+    )
+    matrix = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="governor_matrix_checks",
+        record_ref="bundle:1",
+        subject_kind="record_cid",
+        subject_ref="bundle:1",
+    )
+    vectors = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="normative_vector_evaluation",
+        record_ref="goal:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    for item in (
+        procedure,
+        checkpoint,
+        admitted,
+        gates,
+        epoch_bind,
+        untrusted,
+        first_party,
+        synthetic,
+        artifact,
+        scheduler,
+        paired,
+        usage,
+        rollout,
+        adversarial,
+        proposal,
+        corpus,
+        coverage,
+        epoch,
+        matrix,
+        vectors,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

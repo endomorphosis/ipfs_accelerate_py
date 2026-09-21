@@ -528,7 +528,23 @@ def evaluate_matrix_checks(
             else:
                 missing.append(check)
 
-    return required, tuple(satisfied), tuple(missing), tuple(failed)
+    matrix = (required, tuple(satisfied), tuple(missing), tuple(failed))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(bundle, "bundle_id", "") or getattr(bundle, "content_id", "") or "matrix-checks")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="governor_matrix_checks",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return matrix
 
 
 def detect_conflict_signals(

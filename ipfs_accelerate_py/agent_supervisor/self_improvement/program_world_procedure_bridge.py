@@ -237,9 +237,29 @@ def compile_program_world_procedure_candidate(
     trajectories: Sequence[Mapping[str, Any] | NormalizedTrajectory],
     **kwargs: Any,
 ) -> ProcedureCandidate:
-    return ProgramWorldProcedureBridge().compile_program_world_procedure_candidate(
+    candidate = ProgramWorldProcedureBridge().compile_program_world_procedure_candidate(
         trajectories, **kwargs
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(candidate, "procedure_id", "")
+            or getattr(candidate, "content_id", "")
+            or "program-world-procedure"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_procedure_candidate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return candidate
 
 
 def match_program_world_procedure(
