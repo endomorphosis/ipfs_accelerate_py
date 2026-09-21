@@ -1835,6 +1835,21 @@ def verify_governor_seal(
         ):
             raise SealingError(REASON_BINDING_MISMATCH)
 
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(recomputed or getattr(artifact, "seal_cid", "") or "governor-seal")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="governor_seal_verification",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return recomputed
 
 

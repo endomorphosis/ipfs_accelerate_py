@@ -373,7 +373,7 @@ def preview_taskboard_materialization(
         "candidate_board_revision": candidate_revision,
         "entries": [item.to_dict() for item in normalized],
     }
-    return TaskboardMaterializationPreview(
+    preview = TaskboardMaterializationPreview(
         base_text=board_text,
         candidate_text=candidate_text,
         entries=normalized,
@@ -381,6 +381,22 @@ def preview_taskboard_materialization(
         candidate_board_revision=candidate_revision,
         preview_id=_content_id("taskboard-materialization-preview", identity_payload),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(preview.preview_id or preview.candidate_board_revision or "taskboard-preview")
+        mirror_work_record(
+            catalog_kind="taskboard",
+            record_kind="taskboard_materialization_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return preview
 
 
 class TaskboardMaterializationTransactionState(str, Enum):

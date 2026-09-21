@@ -575,7 +575,7 @@ def admit_production_execution(
     else:
         assessed = assess_ladder(report)
         backend = str(report.get("backend") or report.get("name") or "")
-    return {
+    result = {
         "admitted": False,
         "backend": backend,
         "production_authorized": False,
@@ -591,6 +591,27 @@ def admit_production_execution(
         "task_id": CONSOLIDATION_TASK_ID,
         "ladder_assessment": dict(assessed),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("backend")
+            or result.get("task_id")
+            or result.get("code")
+            or "production-execution"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_execution_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def refused_production_execution(

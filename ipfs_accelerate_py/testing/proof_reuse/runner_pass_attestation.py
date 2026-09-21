@@ -429,6 +429,31 @@ class AttestationVerification:
     signed_receipt: SignedTestPassReceiptV2 | None = None
 
 
+def _mirror_attestation_verification(*args, **kwargs) -> AttestationVerification:
+    result = AttestationVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "signed_receipt", None)
+        record_ref = str(
+            getattr(receipt, "receipt_cid", "")
+            or getattr(result, "reason", "")
+            or "runner-pass-attestation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="runner_pass_attestation",
+            record_ref=record_ref,
+            subject_kind="receipt_id" if getattr(receipt, "receipt_cid", "") else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def attest_test_pass_receipt(
     receipt: TestPassReceipt,
     *,
@@ -508,11 +533,11 @@ def verify_runner_pass_attestation(
         if public.cid != candidate.signer_key_cid:
             raise RunnerAttestationError("pinned key record has inconsistent key material")
         Ed25519PublicKey.from_public_bytes(public.raw_key).verify(candidate.signature, _digest_message(candidate.unsigned_bytes()))
-        return AttestationVerification(True, "verified", SignedTestPassReceiptV2(candidate.receipt_cid, candidate.execution_key_cid, candidate.candidate_context_cid, candidate.cid, candidate.policy_cid, candidate.signer_key_cid, candidate.trust_domain, candidate.key_epoch))
+        return _mirror_attestation_verification(True, "verified", SignedTestPassReceiptV2(candidate.receipt_cid, candidate.execution_key_cid, candidate.candidate_context_cid, candidate.cid, candidate.policy_cid, candidate.signer_key_cid, candidate.trust_domain, candidate.key_epoch))
     except RunnerAttestationError as exc:
-        return AttestationVerification(False, str(exc))
+        return _mirror_attestation_verification(False, str(exc))
     except Exception:
-        return AttestationVerification(False, "attestation verification failed")
+        return _mirror_attestation_verification(False, "attestation verification failed")
 
 
 def verify_runner_pass_attestation_with_key(
@@ -543,11 +568,11 @@ def verify_runner_pass_attestation_with_key(
             return precheck
         return precheck
     except InvalidSignature:
-        return AttestationVerification(False, "invalid Ed25519 signature")
+        return _mirror_attestation_verification(False, "invalid Ed25519 signature")
     except RunnerAttestationError as exc:
-        return AttestationVerification(False, str(exc))
+        return _mirror_attestation_verification(False, str(exc))
     except Exception:
-        return AttestationVerification(False, "attestation verification failed")
+        return _mirror_attestation_verification(False, "attestation verification failed")
 
 
 __all__ = [

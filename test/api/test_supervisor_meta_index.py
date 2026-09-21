@@ -4781,6 +4781,117 @@ def test_mirror_mcp_policy_envelope_and_assurance_surfaces(tmp_path, monkeypatch
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_dispatch_witness_boundary_and_archive_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    witness = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="profile_lifecycle_witness",
+        record_ref="profile:1",
+        subject_kind="record_cid",
+        subject_ref="profile:1",
+    )
+    production = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="production_execution_admission",
+        record_ref="cpu",
+        subject_kind="record_cid",
+        subject_ref="cpu",
+    )
+    campaign = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="campaign_outcome",
+        record_ref="succeeded",
+        subject_kind="record_cid",
+        subject_ref="succeeded",
+    )
+    preview = mirror_work_record(
+        catalog_kind="taskboard",
+        record_kind="taskboard_materialization_preview",
+        record_ref="preview:1",
+        subject_kind="record_cid",
+        subject_ref="preview:1",
+    )
+    invocation = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="invocation_binding",
+        record_ref="invoke:1",
+        subject_kind="task_id",
+        subject_ref="task:1",
+    )
+    dispatch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_runtime_dispatch",
+        record_ref="task:dispatch",
+        subject_kind="task_id",
+        subject_ref="task:dispatch",
+    )
+    attestation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="runner_pass_attestation",
+        record_ref="receipt:pass",
+        subject_kind="receipt_id",
+        subject_ref="receipt:pass",
+    )
+    boundary = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="content_addressed_boundary",
+        record_ref="bafyboundary",
+        subject_kind="content_cid",
+        subject_ref="bafyboundary",
+    )
+    archive = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="ipwb_archive_verification",
+        record_ref="/tmp/index.cdxj",
+        subject_kind="path",
+        subject_ref="/tmp/index.cdxj",
+    )
+    non_meterable = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="non_meterable_admission",
+        record_ref="consumer:1",
+        subject_kind="record_cid",
+        subject_ref="consumer:1",
+    )
+    seal = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="governor_seal_verification",
+        record_ref="seal:1",
+        subject_kind="capsule_cid",
+        subject_ref="seal:1",
+    )
+    progress = mirror_work_record(
+        catalog_kind="taskboard",
+        record_kind="task_head_progress",
+        record_ref="progress:1",
+        subject_kind="record_cid",
+        subject_ref="progress:1",
+    )
+    for item in (
+        witness,
+        production,
+        campaign,
+        preview,
+        invocation,
+        dispatch,
+        attestation,
+        boundary,
+        archive,
+        non_meterable,
+        seal,
+        progress,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

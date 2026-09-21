@@ -1376,6 +1376,30 @@ async def get_ipwb_content(
     return result
 
 
+def _mirror_ipwb_archive(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("cdxj_path")
+            or payload.get("status")
+            or payload.get("error")
+            or "ipwb-archive"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ipwb_archive_verification",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 async def verify_ipwb_archive(
     cdxj_path: str,
     ipfs_endpoint: Optional[str] = None,
@@ -1384,10 +1408,12 @@ async def verify_ipwb_archive(
     """Verify integrity of indexed IPWB archive content."""
     normalized_path = str(cdxj_path or "").strip()
     if not normalized_path:
-        return {"status": "error", "error": "'cdxj_path' is required."}
+        return _mirror_ipwb_archive({"status": "error", "error": "'cdxj_path' is required."})
     normalized_sample_size = int(sample_size)
     if normalized_sample_size <= 0:
-        return {"status": "error", "error": "'sample_size' must be greater than 0."}
+        return _mirror_ipwb_archive(
+            {"status": "error", "error": "'sample_size' must be greater than 0."}
+        )
 
     result = _API["verify_ipwb_archive"](
         cdxj_path=normalized_path,
@@ -1395,8 +1421,13 @@ async def verify_ipwb_archive(
         sample_size=normalized_sample_size,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = await result
+    else:
+        payload = result
+    if isinstance(payload, dict):
+        payload.setdefault("cdxj_path", normalized_path)
+        return _mirror_ipwb_archive(payload)
+    return _mirror_ipwb_archive({"status": "success", "cdxj_path": normalized_path, "result": payload})
 
 
 async def search_common_crawl(

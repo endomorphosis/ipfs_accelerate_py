@@ -158,8 +158,24 @@ def verify_task_head_progress(
         "anchor_heads": [original[cid] for cid in sorted(original)],
         "observed_heads": [observed[cid] for cid in sorted(observed)],
     }
-    return {
+    result = {
         "schema": "ipfs_accelerate_py/intent-task-head-progress@1",
         **material, "progress_cid": content_identity(material),
         "task_completion_authority": False, "launch_authority": False,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("progress_cid") or "task-head-progress")
+        mirror_work_record(
+            catalog_kind="taskboard",
+            record_kind="task_head_progress",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result

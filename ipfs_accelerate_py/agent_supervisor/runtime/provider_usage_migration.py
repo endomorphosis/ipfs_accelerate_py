@@ -751,6 +751,30 @@ def non_meterable_from_child(
     )
 
 
+def _mirror_non_meterable(result: NonMeterableProviderResult) -> NonMeterableProviderResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "consumer_id", "")
+            or getattr(result, "provider_id", "")
+            or getattr(result, "reason_code", "")
+            or "non-meterable"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="non_meterable_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def admit_non_meterable(
     result: NonMeterableProviderResult,
     *,
@@ -760,7 +784,7 @@ def admit_non_meterable(
     """Enforce mode admits non-meterable results only under a reviewed ceiling."""
 
     if not mode_admits_non_meterable_under_ceiling(mode):
-        return result
+        return _mirror_non_meterable(result)
     ceiling = min(
         max(1, int(reviewed_ceiling)),
         MAX_NON_METERABLE_ENFORCE_CEILING_REQUESTS,
@@ -770,7 +794,7 @@ def admit_non_meterable(
             "non-meterable result exceeds reviewed enforce ceiling",
             reason_codes=("non_meterable_ceiling_exceeded",),
         )
-    return result
+    return _mirror_non_meterable(result)
 
 
 def build_consumer_call_context(

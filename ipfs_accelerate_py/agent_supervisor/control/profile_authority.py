@@ -2362,6 +2362,26 @@ def verify_local_profile_lifecycle_witness(
         )
     ).hexdigest():
         raise LocalProfileTampered("lifecycle witness identity is invalid")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(profile, "content_id", "")
+            or getattr(profile, "profile_id", "")
+            or getattr(profile, "identity_did", "")
+            or "lifecycle-witness"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="profile_lifecycle_witness",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return profile
 
 

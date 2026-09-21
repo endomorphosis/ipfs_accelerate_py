@@ -613,6 +613,31 @@ class ContentAddressedBoundaryAdmission(CanonicalContract):
         return result
 
 
+def _mirror_boundary_admission(*args, **kwargs) -> ContentAddressedBoundaryAdmission:
+    result = ContentAddressedBoundaryAdmission(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "claimed_cid", "")
+            or getattr(result, "actual_cid", "")
+            or getattr(result, "reason_code", "")
+            or "content-addressed-boundary"
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="content_addressed_boundary",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def admit_content_addressed_boundary(
     *,
     role: ArtifactRole | str,
@@ -634,7 +659,7 @@ def admit_content_addressed_boundary(
     )
     claimed = _bounded_text(claimed_cid, field_name="claimed_cid")
     if type(canonical_bytes) is not bytes:
-        return ContentAddressedBoundaryAdmission(
+        return _mirror_boundary_admission(
             role=role_value,
             claimed_cid=claimed,
             admitted=False,
@@ -642,7 +667,7 @@ def admit_content_addressed_boundary(
             diagnostics={"stage": "type_check"},
         )
     if not claimed:
-        return ContentAddressedBoundaryAdmission(
+        return _mirror_boundary_admission(
             role=role_value,
             claimed_cid="",
             admitted=False,
@@ -653,7 +678,7 @@ def admit_content_addressed_boundary(
     try:
         actual = rehash_retained_canonical_bytes(canonical_bytes)
     except ActivationContractError as exc:
-        return ContentAddressedBoundaryAdmission(
+        return _mirror_boundary_admission(
             role=role_value,
             claimed_cid=claimed,
             admitted=False,
@@ -665,7 +690,7 @@ def admit_content_addressed_boundary(
             },
         )
     if actual != claimed:
-        return ContentAddressedBoundaryAdmission(
+        return _mirror_boundary_admission(
             role=role_value,
             claimed_cid=claimed,
             actual_cid=actual,
@@ -674,7 +699,7 @@ def admit_content_addressed_boundary(
             reason_code="candidate_integrity_failed",
             diagnostics={"stage": "cid_mismatch"},
         )
-    return ContentAddressedBoundaryAdmission(
+    return _mirror_boundary_admission(
         role=role_value,
         claimed_cid=claimed,
         actual_cid=actual,

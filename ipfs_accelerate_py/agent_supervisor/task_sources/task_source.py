@@ -4407,6 +4407,26 @@ class PlanRuntimeDispatchDecision:
         }
 
 
+def _mirror_plan_runtime_dispatch(*args, **kwargs) -> PlanRuntimeDispatchDecision:
+    result = PlanRuntimeDispatchDecision(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "task_id", "") or getattr(result, "reason", "") or "plan-dispatch")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_runtime_dispatch",
+            record_ref=record_ref,
+            subject_kind="task_id" if getattr(result, "task_id", "") else "record_cid",
+            subject_ref=str(getattr(result, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_plan_runtime_dispatch(
     binding: ActivePlanBinding,
     *,
@@ -4444,7 +4464,7 @@ def evaluate_plan_runtime_dispatch(
             binding=binding,
         )
         if readiness and readiness.get(task_id, "ready") != "ready":
-            return PlanRuntimeDispatchDecision(
+            return _mirror_plan_runtime_dispatch(
                 admitted=False,
                 task_id=task_id,
                 reason=f"not_ready:{readiness.get(task_id, 'unknown')}",
@@ -4452,7 +4472,7 @@ def evaluate_plan_runtime_dispatch(
                 readiness=readiness,
             )
         if task_status and str(task_status).strip().lower() in _TERMINAL_STATUSES:
-            return PlanRuntimeDispatchDecision(
+            return _mirror_plan_runtime_dispatch(
                 admitted=False,
                 task_id=task_id,
                 reason=f"terminal_status:{task_status}",
@@ -4486,7 +4506,7 @@ def evaluate_plan_runtime_dispatch(
             claim_revision_cid=binding.revision_cid,
             current_status=task_status or readiness.get(task_id, ""),
         )
-        return PlanRuntimeDispatchDecision(
+        return _mirror_plan_runtime_dispatch(
             admitted=True,
             task_id=task_id,
             reason="admitted",
@@ -4502,7 +4522,7 @@ def evaluate_plan_runtime_dispatch(
             },
         )
     except ActivePlanRevisionError as exc:
-        return PlanRuntimeDispatchDecision(
+        return _mirror_plan_runtime_dispatch(
             admitted=False,
             task_id=task_id,
             reason=exc.reason,

@@ -8439,6 +8439,27 @@ def verify_agent_implementation_invocation_binding(
         != parsed.fallback_reasoning_effort
     ):
         raise ValueError("signed invocation profile lifecycle is no longer current")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(parsed, "invocation_id", "")
+            or getattr(parsed, "task_id", "")
+            or "invocation-binding"
+        )
+        tree_id = str(getattr(parsed, "worktree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="invocation_binding",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="task_id" if getattr(parsed, "task_id", "") else "record_cid",
+            subject_ref=str(getattr(parsed, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
     return parsed
 
 
