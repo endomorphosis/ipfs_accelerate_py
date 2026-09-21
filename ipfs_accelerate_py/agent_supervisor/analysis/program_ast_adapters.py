@@ -3452,7 +3452,23 @@ def build_program_evidence_index(
         path_records,
         previous=previous.analysis_index if previous is not None else None,
     )
-    return ProgramEvidenceIndex(analysis_index=index, results=results)
+    evidence = ProgramEvidenceIndex(analysis_index=index, results=results)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        index_id = str(getattr(index, "index_id", "") or "")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="program_evidence_index",
+            record_ref=index_id or "program-evidence-index",
+            subject_kind="record_cid",
+            subject_ref=index_id or "program-evidence-index",
+        )
+    except Exception:
+        pass
+    return evidence
 
 
 def build_inventory_program_evidence_receipt(
@@ -3561,13 +3577,28 @@ def build_inventory_program_evidence_receipt(
         max_facts=max_facts,
     )
     expected_paths = tuple(sorted(by_canonical))
-    return InventoryProgramEvidenceReceipt(
+    receipt = InventoryProgramEvidenceReceipt(
         program_index=program_index,
         inventory_cid=inventory.inventory_cid,
         inventory_exhaustive=inventory.exhaustive,
         expected_paths=expected_paths,
         missing_paths=tuple(sorted(set(expected_paths).difference(seen))),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="inventory_program_evidence",
+            record_ref=str(receipt.inventory_cid or "inventory-program-evidence"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.inventory_cid or "inventory-program-evidence"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 # Compatibility-oriented name retained from the original VFS-063 bridge.
@@ -3583,7 +3614,24 @@ def build_program_ast_blob_record(
     :func:`adapt_program_source`, whose result never hides that status.
     """
 
-    return adapt_program_source(source, path=path, language=language, **kwargs).ast_record
+    record = adapt_program_source(source, path=path, language=language, **kwargs).ast_record
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record is not None:
+            mirror_work_record(
+                catalog_kind="ast",
+                record_kind="program_ast_blob",
+                record_ref=str(getattr(record, "record_id", "") or record.blob_identity or record.source_sha256 or "program-ast"),
+                subject_kind="path" if path else "record_cid",
+                subject_ref=str(path or record.blob_identity or "program-ast"),
+                paths=(path,) if path else (),
+            )
+    except Exception:
+        pass
+    return record
 
 
 # Friendly aliases for evidence-oriented and incremental callers.

@@ -2126,6 +2126,186 @@ def test_mirror_lean_attestation_and_refactor_receipts(tmp_path, monkeypatch) ->
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_ast_forest_proof_verify_and_world_model(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    polyglot = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="polyglot_ast_blob",
+        record_ref="blob:1",
+        subject_kind="record_cid",
+        subject_ref="blob:1",
+    )
+    schema = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="structured_schema_ast_blob",
+        record_ref="blob:2",
+        subject_kind="record_cid",
+        subject_ref="blob:2",
+    )
+    evidence = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="program_evidence_index",
+        record_ref="index:1",
+        subject_kind="record_cid",
+        subject_ref="index:1",
+    )
+    inventory = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="inventory_program_evidence",
+        record_ref="inventory:1",
+        subject_kind="record_cid",
+        subject_ref="inventory:1",
+    )
+    program_ast = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="program_ast_blob",
+        record_ref="blob:3",
+        subject_kind="path",
+        subject_ref="src/a.py",
+    )
+    forest = mirror_work_record(
+        catalog_kind="filesystem_mtime",
+        record_kind="repository_forest",
+        record_ref="forest:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    language = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="language_health",
+        record_ref="python",
+        subject_kind="record_cid",
+        subject_ref="python",
+    )
+    health = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="polyglot_ast_health",
+        record_ref="health:1",
+        subject_kind="record_cid",
+        subject_ref="health:1",
+    )
+    consumers = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="change_consumer_inventory",
+        record_ref="ledger:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    premises = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="program_logic_premise_corpus",
+        record_ref="corpus:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    stages = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="deterministic_stages",
+        record_ref="deterministic-stages",
+        subject_kind="record_cid",
+        subject_ref="deterministic-stages",
+    )
+    ir_art = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="ir_artifact_verification",
+        record_ref="ir:1",
+        subject_kind="record_cid",
+        subject_ref="ir:1",
+    )
+    kernel = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="kernel_proof_receipt",
+        record_ref="receipt:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    authority = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_authority",
+        record_ref="claim:1",
+        subject_kind="record_cid",
+        subject_ref="claim:1",
+    )
+    reuse = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_world_reuse",
+        record_ref="key:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    differential = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="differential_execution_receipt",
+        record_ref="packet:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    resources = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="prover_resource_admission",
+        record_ref="task:1",
+        subject_kind="record_cid",
+        subject_ref="task:1",
+    )
+    schema_impact = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="schema_protocol_impact",
+        record_ref="delta:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    runtime = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="runtime_component_catalog",
+        record_ref="catalog:1",
+        subject_kind="record_cid",
+        subject_ref="catalog:1",
+    )
+    planner_inv = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="planner_doctor_capability_inventory",
+        record_ref="HEAD",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (
+        polyglot,
+        schema,
+        evidence,
+        inventory,
+        program_ast,
+        forest,
+        language,
+        health,
+        consumers,
+        premises,
+        stages,
+        ir_art,
+        kernel,
+        authority,
+        reuse,
+        differential,
+        resources,
+        schema_impact,
+        runtime,
+        planner_inv,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

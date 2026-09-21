@@ -414,7 +414,22 @@ def evaluate_deterministic_stages(
         medium_model_available=tail.medium_model_available, frontier_model_available=tail.frontier_model_available,
         human_review_required=tail.human_review_required,
     )
-    return DeterministicStageDecision(receipts=receipts, evidence=evidence)
+    decision = DeterministicStageDecision(receipts=receipts, evidence=evidence)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="deterministic_stages",
+            record_ref=str(getattr(decision, "decision_id", "") or "deterministic-stages"),
+            subject_kind="record_cid",
+            subject_ref="deterministic-stages",
+        )
+    except Exception:
+        pass
+    return decision
 
 
 __all__ = [

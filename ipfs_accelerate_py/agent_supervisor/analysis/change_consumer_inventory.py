@@ -1904,13 +1904,30 @@ def build_change_consumer_inventory(
     inventory = ChangeConsumerInventory(
         roots=roots or delta.roots, graph=graph, resolver=resolver
     )
-    return inventory.inventory(
+    ledger = inventory.inventory(
         delta,
         call_sites,
         discover_from_graph=discover_from_graph,
         excluded_consumer_ids=excluded_consumer_ids,
         evidence_refs=evidence_refs,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(ledger, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="change_consumer_inventory",
+            record_ref=str(ledger.ledger_id or ledger.delta_id or "change-consumer-inventory"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(ledger.delta_id or "change-consumer-inventory"),
+        )
+    except Exception:
+        pass
+    return ledger
 
 
 def required_caller_kinds() -> frozenset[str]:

@@ -1607,9 +1607,29 @@ def execute_differential_pair(
 def compile_differential_receipt(
     receipt: DifferentialExecutionReceipt | Mapping[str, Any],
 ) -> DifferentialExecutionReceipt:
-    if isinstance(receipt, DifferentialExecutionReceipt):
-        return receipt
-    return DifferentialExecutionReceipt.from_dict(receipt)
+    resolved = (
+        receipt
+        if isinstance(receipt, DifferentialExecutionReceipt)
+        else DifferentialExecutionReceipt.from_dict(receipt)
+    )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(resolved.tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="differential_execution_receipt",
+            record_ref=str(getattr(resolved, "receipt_cid", "") or resolved.packet_cid or "differential-receipt"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(resolved.packet_cid or "differential-receipt"),
+            paths=tuple(resolved.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return resolved
 
 
 def encode_canonical_receipt(receipt: DifferentialExecutionReceipt) -> dict[str, Any]:

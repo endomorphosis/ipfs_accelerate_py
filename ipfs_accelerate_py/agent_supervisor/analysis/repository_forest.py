@@ -2069,13 +2069,28 @@ def build_repository_forest(
     profile = forest_policy.analyzer_profile
     if not isinstance(profile, AnalyzerProfile):
         profile = AnalyzerProfile.from_dict(profile or {})
-    return RepositoryForest(
+    forest = RepositoryForest(
         descriptors=tuple(descriptors),
         sole_write_alias=forest_policy.sole_write_alias,
         policy_cid=forest_policy.policy_cid,
         analyzer_profile=profile,
         reason_codes=tuple(dict.fromkeys(reasons)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="repository_forest",
+            record_ref=str(forest.forest_id or forest.policy_cid or "repository-forest"),
+            subject_kind="record_cid",
+            subject_ref=str(forest.forest_id or forest.policy_cid or "repository-forest"),
+        )
+    except Exception:
+        pass
+    return forest
 
 
 def repository_descriptor_evidence_terms() -> tuple[str, ...]:

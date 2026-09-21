@@ -220,8 +220,24 @@ def admit_portfolio_lane(
     """Admit one portfolio lane against the current shared resource lease."""
 
     if lease is None:
-        return ResourceAdmission(True, request.task_id), None
-    return lease.try_acquire(request)
+        admission, child = ResourceAdmission(True, request.task_id), None
+    else:
+        admission, child = lease.try_acquire(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="prover_resource_admission",
+            record_ref=str(getattr(request, "task_id", "") or "prover-resource"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(request, "task_id", "") or "prover-resource"),
+        )
+    except Exception:
+        pass
+    return admission, child
 
 
 def admit_hammer_portfolio(

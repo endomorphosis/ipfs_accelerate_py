@@ -417,7 +417,7 @@ def evaluate_proof_authority(
     if _contains_marker(selected.payload, REMOTE_CODE_MARKERS):
         reasons.append(ProofAuthorityReason.REMOTE_CODE_PAYLOAD.value)
     unique = tuple(dict.fromkeys(reasons))
-    return ProofAuthorityReceipt(
+    receipt = ProofAuthorityReceipt(
         decision=(
             ProofAuthorityDecision.REJECT
             if unique
@@ -428,6 +428,21 @@ def evaluate_proof_authority(
         reasons=unique,
         independently_checked=selected.independently_checked,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_authority",
+            record_ref=str(receipt.claim_id or "proof-authority"),
+            subject_kind="record_cid",
+            subject_ref=str(receipt.claim_id or "proof-authority"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 __all__ = (

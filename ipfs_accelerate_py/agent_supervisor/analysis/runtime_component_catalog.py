@@ -670,12 +670,27 @@ def build_runtime_component_catalog(
                 reason_code="normalized_routes_mismatch",
             )
 
-    return RuntimeComponentCatalog(
+    catalog = RuntimeComponentCatalog(
         components=components,
         route_profiles=profiles,
         routes=tuple(normalized),
         catalog_cid=catalog_cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_component_catalog",
+            record_ref=str(catalog.catalog_cid or "runtime-component-catalog"),
+            subject_kind="record_cid",
+            subject_ref=str(catalog.catalog_cid or "runtime-component-catalog"),
+        )
+    except Exception:
+        pass
+    return catalog
 
 
 def materialize_runtime_component_catalog(

@@ -2387,7 +2387,24 @@ def build_program_logic_premise_corpus(
             builder.add_tombstone(**dict(item))
     for item in conflict_receipts:
         builder.add_conflict_receipt(item)
-    return builder.build()
+    corpus = builder.build()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(corpus, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="program_logic_premise_corpus",
+            record_ref=str(getattr(corpus, "content_id", "") or corpus.graph_identity or corpus.index_identity or "program-logic-premises"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(corpus.graph_identity or "program-logic-premises"),
+        )
+    except Exception:
+        pass
+    return corpus
 
 
 def is_expectation_source_class(source_class: PremiseSourceClass | str) -> bool:

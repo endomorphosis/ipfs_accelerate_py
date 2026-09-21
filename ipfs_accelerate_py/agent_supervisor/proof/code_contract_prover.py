@@ -2766,6 +2766,20 @@ def verify_kernel_proof_receipt(
             NonConclusiveReason.FORGED_AUTHORITY,
             "portfolio summary is bound to a different validation receipt",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="kernel_proof_receipt",
+            record_ref=str(getattr(recomputed, "receipt_id", "") or "kernel-proof-receipt"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(recomputed, "receipt_id", "") or "kernel-proof-receipt"),
+        )
+    except Exception:
+        pass
     return recomputed
 
 

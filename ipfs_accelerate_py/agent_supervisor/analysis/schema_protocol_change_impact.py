@@ -2927,13 +2927,30 @@ def build_schema_protocol_impact(
     ast_report: Any | None = None,
 ) -> SchemaProtocolImpact:
     """Functional façade over :class:`SchemaProtocolChangeAnalyzer`."""
-    return SchemaProtocolChangeAnalyzer(roots=roots or delta.roots).analyze(
+    impact = SchemaProtocolChangeAnalyzer(roots=roots or delta.roots).analyze(
         delta,
         consumers,
         field_changes=field_changes,
         evidence_refs=evidence_refs,
         ast_report=ast_report,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(impact, "roots", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schema_protocol_impact",
+            record_ref=str(impact.delta_id or impact.subject_symbol_id or "schema-protocol-impact"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(impact.delta_id or "schema-protocol-impact"),
+        )
+    except Exception:
+        pass
+    return impact
 
 
 def require_ast_before_schema_protocol_analysis(report: Any | None) -> tuple[str, ...]:

@@ -1146,7 +1146,7 @@ def evaluate_language_health(
         status = AnalyzerHealthStatus.HEALTHY
         reasons = ()
 
-    return LanguageHealthReport(
+    report = LanguageHealthReport(
         language=language_name,
         eligible_count=eligible_count,
         success_count=success,
@@ -1158,6 +1158,21 @@ def evaluate_language_health(
         authority=authority,
         thresholds=policy,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="language_health",
+            record_ref=str(report.language or "language-health"),
+            subject_kind="record_cid",
+            subject_ref=str(report.language or "language-health"),
+        )
+    except Exception:
+        pass
+    return report
 
 
 # Deterministic in-memory canary sources.  They never leave this module in a
@@ -1880,6 +1895,20 @@ def build_health_report_from_coverage(
     )
     if output_path is not None:
         write_polyglot_ast_health_report(report, output_path)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="polyglot_ast_health",
+            record_ref=str(getattr(report, "report_id", "") or getattr(report, "evidence_id", "") or str(report.status) or "polyglot-ast-health"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(report, "evidence_id", "") or "polyglot-ast-health"),
+        )
+    except Exception:
+        pass
     return report
 
 

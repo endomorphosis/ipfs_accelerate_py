@@ -418,7 +418,22 @@ def evaluate_program_world_reuse(
     **kwargs: Any,
 ) -> ProgramWorldReuseDecision:
     evaluator = gate if gate is not None else ProgramWorldReuseGate()
-    return evaluator.evaluate_program_world_reuse(query, **kwargs)
+    decision = evaluator.evaluate_program_world_reuse(query, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_reuse",
+            record_ref=str(getattr(query, "key_cid", "") or getattr(decision, "state_cid", "") or "program-world-reuse"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(query, "goal_cid", "") or getattr(query, "key_cid", "") or "program-world-reuse"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def explain_program_world_reuse(

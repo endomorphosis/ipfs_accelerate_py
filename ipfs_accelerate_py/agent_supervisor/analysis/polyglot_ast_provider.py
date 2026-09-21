@@ -1027,12 +1027,27 @@ def build_polyglot_ast_blob_record(
 ) -> ASTBlobRecord:
     """Convenience adapter that preserves the canonical record interface."""
 
-    return (provider or PolyglotASTProvider()).extract(
+    record = (provider or PolyglotASTProvider()).extract(
         source,
         language,
         blob_identity=blob_identity,
         source_sha256=source_sha256,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="polyglot_ast_blob",
+            record_ref=str(getattr(record, "record_id", "") or record.blob_identity or record.source_sha256 or "polyglot-ast"),
+            subject_kind="record_cid",
+            subject_ref=str(record.blob_identity or record.source_sha256 or "polyglot-ast"),
+        )
+    except Exception:
+        pass
+    return record
 
 
 def build_structured_schema_ast_blob_record(
@@ -1044,12 +1059,27 @@ def build_structured_schema_ast_blob_record(
 ) -> ASTBlobRecord:
     """Build deterministic facts for a JSON Schema or JSON OpenAPI document."""
 
-    return PolyglotASTProvider().extract(
+    record = PolyglotASTProvider().extract(
         source,
         language,
         blob_identity=blob_identity,
         source_sha256=source_sha256,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="structured_schema_ast_blob",
+            record_ref=str(getattr(record, "record_id", "") or record.blob_identity or record.source_sha256 or "schema-ast"),
+            subject_kind="record_cid",
+            subject_ref=str(record.blob_identity or record.source_sha256 or "schema-ast"),
+        )
+    except Exception:
+        pass
+    return record
 
 
 __all__ = [

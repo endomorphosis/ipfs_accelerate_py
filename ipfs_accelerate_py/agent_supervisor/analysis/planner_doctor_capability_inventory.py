@@ -2709,7 +2709,7 @@ def build_planner_doctor_capability_inventory(
             "repository changed during capability inventory"
         )
 
-    return PlannerDoctorCapabilityInventory(
+    inventory = PlannerDoctorCapabilityInventory(
         audited_baseline=audited,
         current_checkout=current,
         control_status=control,
@@ -2718,6 +2718,23 @@ def build_planner_doctor_capability_inventory(
         configurations=configurations,
         tool_health=tools,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(getattr(inventory, "current_checkout", None), "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_capability_inventory",
+            record_ref=str(getattr(inventory, "inventory_cid", "") or audited_ref or "planner-doctor-inventory"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(audited_ref or "planner-doctor-inventory"),
+        )
+    except Exception:
+        pass
+    return inventory
 
 
 # Taskboard wording uses "inventory" as the operation; retain a concise alias.

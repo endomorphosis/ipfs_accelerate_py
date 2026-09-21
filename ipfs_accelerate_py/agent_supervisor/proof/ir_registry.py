@@ -1547,7 +1547,28 @@ def verify_ir_artifact(request: IRLoadRequest, canonical_bytes: bytes) -> IRLoad
         # Verification still returns a typed quarantined result instead of
         # failing during fixture registration.
         return registry._verify(request, canonical_bytes, provider_id="caller-supplied-ir")
-    return registry.load(replace(request, provider_id="supervisor-local-ir"))
+    result = registry.load(replace(request, provider_id="supervisor-local-ir"))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        artifact = result.artifact
+        record_ref = str(
+            getattr(artifact, "artifact_id", "")
+            or getattr(getattr(request, "reference", None), "artifact_id", "")
+            or "ir-artifact"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="ir_artifact_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [
