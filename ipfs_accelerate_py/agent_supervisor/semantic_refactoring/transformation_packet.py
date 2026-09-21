@@ -2100,7 +2100,26 @@ def compile_transformation_packet_receipt(
         if isinstance(packet, RefactorTransformationPacket)
         else RefactorTransformationPacket.from_dict(packet)
     )
-    return TransformationPacketReceipt(tree_id=resolved.tree_id, packet=resolved)
+    receipt = TransformationPacketReceipt(tree_id=resolved.tree_id, packet=resolved)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        packet_cid = str(getattr(resolved, "packet_cid", "") or "")
+        record_ref = str(packet_cid or tree_id or "transformation-packet-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="transformation_packet_receipt",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def dry_run_transformation_packet(

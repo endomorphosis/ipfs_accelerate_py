@@ -946,7 +946,7 @@ def _decision(
     excluded_matches: tuple[str, ...] = (),
     principal_content_id: str = "",
 ) -> DisclosureDecision:
-    return DisclosureDecision(
+    decision = DisclosureDecision(
         policy_id=policy.policy_id,
         policy_content_id=policy.content_id,
         context_pack_content_id=context_pack_content_id,
@@ -960,6 +960,27 @@ def _decision(
         excluded_matches=excluded_matches,
         principal_content_id=principal_content_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            decision.policy_content_id
+            or decision.context_pack_content_id
+            or decision.policy_id
+            or "source-disclosure"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="source_disclosure_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def evaluate_disclosure(

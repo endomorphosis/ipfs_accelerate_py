@@ -357,7 +357,7 @@ def evaluate_mutation(
         reasons.append("mock_evidence_authority")
         outcome = DetectionOutcome.FALSE_AUTHORITY
 
-    return MutationObservation(
+    observation = MutationObservation(
         case_id=case.case_id,
         outcome=outcome,
         authority_granted=bool(authority_granted)
@@ -367,6 +367,22 @@ def evaluate_mutation(
         provider_call_count=0,
         llm_call_count=0,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(observation.case_id or "runtime-mutation")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="runtime_mutation_observation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return observation
 
 
 def evaluate_zk_attestation(attempt: ZkAttestationAttempt) -> ZkAttestationResult:
@@ -413,12 +429,28 @@ def evaluate_zk_attestation(attempt: ZkAttestationAttempt) -> ZkAttestationResul
             attested = True
             reasons.append("real_zk_verified_receipt")
 
-    return ZkAttestationResult(
+    result = ZkAttestationResult(
         attested=attested,
         blocks_release=blocks,
         reason_codes=tuple(dict.fromkeys(reasons)),
         attempt=attempt,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(attempt.receipt_root or attempt.predicate or "zk-attestation")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="zk_attestation_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def aggregate_release(

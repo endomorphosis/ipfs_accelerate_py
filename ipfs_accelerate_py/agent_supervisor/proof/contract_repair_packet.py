@@ -2336,6 +2336,26 @@ def compile_repair_packet(
     return compiled
 
 
+def _mirror_repair_packet_delta(delta: RepairPacketDelta) -> RepairPacketDelta:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(delta.parent_packet_id or delta.parent_decision_id or "repair-packet-delta")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_packet_delta",
+            record_ref=record_ref,
+            tree_id=str(delta.parent_tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return delta
+
+
 def compile_repair_packet_delta(
     parent: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
     *,
@@ -2377,22 +2397,24 @@ def compile_repair_packet_delta(
         or current_forest != parent_packet.forest_id
         or current_policy != parent_packet.policy_id
     ):
-        return RepairPacketDelta(
-            parent_packet_id=parent_packet.packet_id,
-            parent_decision_id=parent_decision,
-            parent_tree_id=parent_packet.tree_id,
-            parent_forest_id=parent_packet.forest_id,
-            parent_policy_id=parent_packet.policy_id,
-            changed_evidence=(),
-            requested_evidence=(),
-            expansion_handles=(),
-            status=RepairPacketStatus.INVALIDATED,
-            incomplete_reasons=("stale_parent_binding",),
-            metadata={
-                "observed_tree_id": current_tree,
-                "observed_forest_id": current_forest,
-                "observed_policy_id": current_policy,
-            },
+        return _mirror_repair_packet_delta(
+            RepairPacketDelta(
+                parent_packet_id=parent_packet.packet_id,
+                parent_decision_id=parent_decision,
+                parent_tree_id=parent_packet.tree_id,
+                parent_forest_id=parent_packet.forest_id,
+                parent_policy_id=parent_packet.policy_id,
+                changed_evidence=(),
+                requested_evidence=(),
+                expansion_handles=(),
+                status=RepairPacketStatus.INVALIDATED,
+                incomplete_reasons=("stale_parent_binding",),
+                metadata={
+                    "observed_tree_id": current_tree,
+                    "observed_forest_id": current_forest,
+                    "observed_policy_id": current_policy,
+                },
+            )
         )
 
     changed: list[DeltaEvidenceItem] = []
@@ -2451,16 +2473,18 @@ def compile_repair_packet_delta(
             "or expansion handles"
         )
 
-    return RepairPacketDelta(
-        parent_packet_id=parent_packet.packet_id,
-        parent_decision_id=parent_decision,
-        parent_tree_id=parent_packet.tree_id,
-        parent_forest_id=parent_packet.forest_id,
-        parent_policy_id=parent_packet.policy_id,
-        changed_evidence=tuple(changed),
-        requested_evidence=tuple(requested),
-        expansion_handles=tuple(handles),
-        status=RepairPacketStatus.COMPLETE,
+    return _mirror_repair_packet_delta(
+        RepairPacketDelta(
+            parent_packet_id=parent_packet.packet_id,
+            parent_decision_id=parent_decision,
+            parent_tree_id=parent_packet.tree_id,
+            parent_forest_id=parent_packet.forest_id,
+            parent_policy_id=parent_packet.policy_id,
+            changed_evidence=tuple(changed),
+            requested_evidence=tuple(requested),
+            expansion_handles=tuple(handles),
+            status=RepairPacketStatus.COMPLETE,
+        )
     )
 
 

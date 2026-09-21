@@ -1680,7 +1680,7 @@ def evaluate_fixture(
     }
 
     del raw  # retained only for symmetry with typed construction
-    return CaseResult(
+    result = CaseResult(
         fixture_id=fixture_id,
         scenario=scenario,
         family=family,
@@ -1714,6 +1714,22 @@ def evaluate_fixture(
         receipt=receipt,
         snapshot=snapshot,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.fixture_id or result.scenario or "doctor-fixture")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_fixture_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

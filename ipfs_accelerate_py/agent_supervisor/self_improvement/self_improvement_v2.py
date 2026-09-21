@@ -3395,7 +3395,7 @@ def preview_v2_refill_epoch(
         reasons = tuple(dict.fromkeys((*reasons, "objective_goal_mapping_mismatch")))
     if taskboard_preview.goal_task_mappings != expected_task_mappings:
         reasons = tuple(dict.fromkeys((*reasons, "taskboard_goal_mapping_mismatch")))
-    return V2RefillEpochPreview(
+    preview = V2RefillEpochPreview(
         binding=binding,
         admission_id=selected.admission_id,
         goal_task_mappings=mappings,
@@ -3409,6 +3409,22 @@ def preview_v2_refill_epoch(
         taskboard_preview=taskboard_preview,
         reason_codes=reasons,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(preview.admission_id or getattr(preview.binding, "epoch_id", "") or "v2-refill-epoch")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_refill_epoch_preview",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return preview
 
 
 def _evaluate_v2_healthy_exhaustion(

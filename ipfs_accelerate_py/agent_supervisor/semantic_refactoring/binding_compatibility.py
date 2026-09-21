@@ -1486,7 +1486,7 @@ def compile_binding_compatibility_receipt(
         resolved, claimed_preimage_cid=kwargs.get("claimed_preimage_cid") or ""
     )
     plan = compile_binding_compatibility_plan(resolved, **kwargs)
-    return BindingCompatibilityReceipt(
+    receipt = BindingCompatibilityReceipt(
         tree_id=resolved.tree_id,
         packet_cid=resolved.packet_cid,
         preimage_cid=preimage_cid,
@@ -1497,6 +1497,25 @@ def compile_binding_compatibility_receipt(
         inventory_cid=plan.inventory_cid,
         preserve_binding=plan.preserve_binding,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        record_ref = str(receipt.packet_cid or receipt.plan_cid or "binding-compatibility-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="binding_compatibility_receipt",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(receipt.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def execute_binding_compatibility_adapters(

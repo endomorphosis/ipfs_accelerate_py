@@ -581,10 +581,26 @@ def verify_plan_r2_remote_owner_admission(
         )
     _canonical_bytes(value, noun="remote Plan-R2 capability")
     detached = json.loads(_canonical_bytes(value, noun="remote Plan-R2 verified admission"))
-    return VerifiedPlanR2RemoteOwnerAdmission(
+    verified = VerifiedPlanR2RemoteOwnerAdmission(
         _VERIFIED_REMOTE_OWNER_ADMISSION_TOKEN,
         detached,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(verified.capability_cid or "plan-r2-remote-owner-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_remote_owner_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verified
 
 
 __all__ = (

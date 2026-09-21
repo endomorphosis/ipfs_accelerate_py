@@ -1332,7 +1332,7 @@ def compile_contract_claim(
         policy_id=policy,
         required_assurance=required,
     )
-    return McpContractObligation(
+    obligation = McpContractObligation(
         logic_view=logic_view,
         code_obligation=code_obligation,
         code_claim=code_claim,
@@ -1344,6 +1344,22 @@ def compile_contract_claim(
         policy_id=policy,
         invalidators=invalidators,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(obligation.compiled_obligation_id or obligation.contract_id or "mcp-contract-claim")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcp_contract_claim",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return obligation
 
 
 def compile_contract_claims(

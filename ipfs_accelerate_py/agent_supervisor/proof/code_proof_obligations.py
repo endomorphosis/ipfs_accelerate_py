@@ -1535,7 +1535,7 @@ def compile_candidate_proof_scopes(
                     )
                 )
 
-    return CodeProofScopeSet(
+    scope_set = CodeProofScopeSet(
         scopes=tuple(scopes),
         changed_paths=tuple(changed_paths),
         source_hashes=tuple(source_hashes),
@@ -1548,6 +1548,23 @@ def compile_candidate_proof_scopes(
             conservative_entry_count=conservative_count,
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(scope_set.scope_set_id or "code-proof-scope-set")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="code_proof_scope_set",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(scope_set.changed_paths)[:16],
+        )
+    except Exception:
+        pass
+    return scope_set
 
 
 def compile_candidate_diff_scopes(

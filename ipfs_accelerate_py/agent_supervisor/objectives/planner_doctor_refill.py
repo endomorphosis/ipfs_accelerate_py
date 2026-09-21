@@ -2406,7 +2406,7 @@ def compile_independent_gates(
         parallel_outcome = "skipped"
         parallel_admitted = True
 
-    return DerivedCompilationReceipt(
+    receipt = DerivedCompilationReceipt(
         formal_plan_id=formal_result.plan_id,
         source_identity=formal_result.source_identity,
         plan_root_cid=formal_result.plan_id,
@@ -2420,6 +2420,23 @@ def compile_independent_gates(
         admitted_for_parallel=parallel_admitted,
         formal_input=formal_input,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.formal_plan_id or receipt.source_identity or "derived-compilation")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="derived_compilation_receipt",
+            record_ref=record_ref,
+            tree_id=str(repository_tree_id or ""),
+            subject_kind="tree_id" if repository_tree_id else "record_cid",
+            subject_ref=str(repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def admit_compiled_population(

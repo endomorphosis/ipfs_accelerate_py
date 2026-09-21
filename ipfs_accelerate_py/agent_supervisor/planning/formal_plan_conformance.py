@@ -2447,13 +2447,30 @@ def evaluate_requires_proof_preconditions(
 
     # Plans with no requires_proof preconditions admit vacuously.
     admitted = not any(not item.admitted for item in checks)
-    return RequiresProofAdmissionResult(
+    result = RequiresProofAdmissionResult(
         admitted=admitted,
         plan_id=plan_id,
         repository_tree_id=repository_tree_id,
         checks=tuple(checks),
         reason_codes=tuple(dict.fromkeys(aggregate_reasons)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.plan_id or result.repository_tree_id or "requires-proof-admission")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="requires_proof_admission",
+            record_ref=record_ref,
+            tree_id=str(result.repository_tree_id or ""),
+            subject_kind="tree_id" if result.repository_tree_id else "record_cid",
+            subject_ref=str(result.repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Compatibility aliases used by callers/tests.

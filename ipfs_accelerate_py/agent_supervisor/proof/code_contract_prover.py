@@ -904,7 +904,7 @@ def compile_backend_request(
     )
     if payload_overrides:
         payload = {**payload, **dict(payload_overrides)}
-    return BackendRequest(
+    request = BackendRequest(
         request_id=_text(request_id, "request_id"),
         claim_id=claim.claim_id,
         declaration_id=claim.declaration_id or claim.claim_id,
@@ -924,6 +924,22 @@ def compile_backend_request(
         payload=FrozenMap(payload),
         requested_backend_id=requested_backend_id or "",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(request.request_id or request.obligation_id or request.claim_id or "backend-request")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_contract_backend_request",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return request
 
 
 def compile_obligation_requests(

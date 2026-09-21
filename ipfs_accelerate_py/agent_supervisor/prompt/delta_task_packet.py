@@ -2526,6 +2526,24 @@ def evaluate_deterministic_first(
     4. Otherwise residual remains → ``dispatch_provider``
     """
 
+    def _mirror_deterministic_first(decision: DeterministicFirstDecision) -> DeterministicFirstDecision:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(decision.decision_id or decision.cache_key or decision.reason or "deterministic-first")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="deterministic_first_decision",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return decision
+
     requirements = ValidationProofRequirements(
         validation_commands=_normalize_commands(request.validations),
         proof_obligations=_normalize_ids(
@@ -2554,28 +2572,32 @@ def evaluate_deterministic_first(
             now_ms=now_ms,
         )
         if circuit is not None and circuit.is_active(now_ms=now_ms):
-            return DeterministicFirstDecision(
-                action=DeterministicAction.SUPPRESS_REPLAY,
-                reason="unchanged_failure_circuit_open",
-                source=DecisionSource.CIRCUIT,
-                cache_key=cache_key,
-                circuit_id=circuit.circuit_id,
-                may_dispatch_provider=False,
-                preserves_validation_proof=True,
-                evidence_digest=evidence,
+            return _mirror_deterministic_first(
+                DeterministicFirstDecision(
+                    action=DeterministicAction.SUPPRESS_REPLAY,
+                    reason="unchanged_failure_circuit_open",
+                    source=DecisionSource.CIRCUIT,
+                    cache_key=cache_key,
+                    circuit_id=circuit.circuit_id,
+                    may_dispatch_provider=False,
+                    preserves_validation_proof=True,
+                    evidence_digest=evidence,
+                )
             )
     elif (
         request.prior_failure_count > request.retry_budget
         and request.failure_signature_id
     ):
-        return DeterministicFirstDecision(
-            action=DeterministicAction.SUPPRESS_REPLAY,
-            reason="policy_exhausted_unchanged_evidence",
-            source=DecisionSource.POLICY,
-            cache_key=cache_key,
-            may_dispatch_provider=False,
-            preserves_validation_proof=True,
-            evidence_digest=evidence,
+        return _mirror_deterministic_first(
+            DeterministicFirstDecision(
+                action=DeterministicAction.SUPPRESS_REPLAY,
+                reason="policy_exhausted_unchanged_evidence",
+                source=DecisionSource.POLICY,
+                cache_key=cache_key,
+                may_dispatch_provider=False,
+                preserves_validation_proof=True,
+                evidence_digest=evidence,
+            )
         )
 
     # 2) Decision cache hit.
@@ -2592,16 +2614,18 @@ def evaluate_deterministic_first(
                     for item in resolution.get("resolved_item_ids", ())
                     if str(item).strip()
                 )
-                return DeterministicFirstDecision(
-                    action=DeterministicAction.RESOLVE_HIT,
-                    reason="decision_cache_hit",
-                    source=DecisionSource.DECISION_CACHE,
-                    cache_key=cache_key,
-                    resolved_item_ids=resolved_ids,
-                    residual_item_ids=(),
-                    may_dispatch_provider=False,
-                    preserves_validation_proof=True,
-                    evidence_digest=evidence,
+                return _mirror_deterministic_first(
+                    DeterministicFirstDecision(
+                        action=DeterministicAction.RESOLVE_HIT,
+                        reason="decision_cache_hit",
+                        source=DecisionSource.DECISION_CACHE,
+                        cache_key=cache_key,
+                        resolved_item_ids=resolved_ids,
+                        residual_item_ids=(),
+                        may_dispatch_provider=False,
+                        preserves_validation_proof=True,
+                        evidence_digest=evidence,
+                    )
                 )
 
     # 3) Operator / query resolutions.
@@ -2662,29 +2686,33 @@ def evaluate_deterministic_first(
             if request.deterministic_resolutions
             else "query_found_no_unresolved_residual"
         )
-        return DeterministicFirstDecision(
-            action=DeterministicAction.RESOLVE_HIT,
-            reason=reason,
-            source=source,
-            cache_key=cache_key,
-            resolved_item_ids=tuple(resolved_ids),
-            residual_item_ids=(),
-            may_dispatch_provider=False,
-            preserves_validation_proof=True,
-            evidence_digest=evidence,
+        return _mirror_deterministic_first(
+            DeterministicFirstDecision(
+                action=DeterministicAction.RESOLVE_HIT,
+                reason=reason,
+                source=source,
+                cache_key=cache_key,
+                resolved_item_ids=tuple(resolved_ids),
+                residual_item_ids=(),
+                may_dispatch_provider=False,
+                preserves_validation_proof=True,
+                evidence_digest=evidence,
+            )
         )
 
     # 4) Cache miss / residual remains → provider dispatch for bounded delta.
-    return DeterministicFirstDecision(
-        action=DeterministicAction.DISPATCH_PROVIDER,
-        reason="cache_miss_unresolved_residual",
-        source=DecisionSource.RESIDUAL,
-        cache_key=cache_key,
-        resolved_item_ids=tuple(resolved_ids),
-        residual_item_ids=tuple(residual_ids),
-        may_dispatch_provider=True,
-        preserves_validation_proof=True,
-        evidence_digest=evidence,
+    return _mirror_deterministic_first(
+        DeterministicFirstDecision(
+            action=DeterministicAction.DISPATCH_PROVIDER,
+            reason="cache_miss_unresolved_residual",
+            source=DecisionSource.RESIDUAL,
+            cache_key=cache_key,
+            resolved_item_ids=tuple(resolved_ids),
+            residual_item_ids=tuple(residual_ids),
+            may_dispatch_provider=True,
+            preserves_validation_proof=True,
+            evidence_digest=evidence,
+        )
     )
 
 

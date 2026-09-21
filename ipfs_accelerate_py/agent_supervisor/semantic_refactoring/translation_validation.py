@@ -1991,13 +1991,31 @@ def compile_equivalence_claim(
         for item in resolved.verdicts
         if item.required and item.status == DimensionStatus.PASS.value
     )
-    return RefactorEquivalenceClaim(
+    claim = RefactorEquivalenceClaim(
         tree_id=resolved.tree_id,
         result_cid=resolved.result_cid,
         request_cid=resolved.request_cid,
         equivalent_under_profile=resolved.conjunction_passed,
         per_dimension_evidence=per_dimension,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(claim.tree_id or "")
+        record_ref = str(claim.result_cid or claim.request_cid or "refactor-equivalence-claim")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="refactor_equivalence_claim",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return claim
 
 
 def encode_canonical_request(request: TranslationValidationRequest) -> dict[str, Any]:

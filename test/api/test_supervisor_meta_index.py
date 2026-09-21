@@ -4029,6 +4029,163 @@ def test_mirror_rollback_routes_and_independent_verification(tmp_path, monkeypat
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_refactor_receipts_disclosure_and_proof_scopes(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    binding = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="binding_compatibility_receipt",
+        record_ref="packet:bind",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    transform = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="transformation_packet_receipt",
+        record_ref="packet:transform",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    init = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="initialization_rewrite_receipt",
+        record_ref="packet:init",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    equivalence = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="refactor_equivalence_claim",
+        record_ref="result:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    delta = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="repair_packet_delta",
+        record_ref="parent:1",
+        subject_kind="record_cid",
+        subject_ref="parent:1",
+    )
+    scopes = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="code_proof_scope_set",
+        record_ref="scope-set:1",
+        subject_kind="record_cid",
+        subject_ref="scope-set:1",
+    )
+    claim = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="mcp_contract_claim",
+        record_ref="obligation:1",
+        subject_kind="record_cid",
+        subject_ref="obligation:1",
+    )
+    backend = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_contract_backend_request",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="request:1",
+    )
+    refill = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_refill_epoch_preview",
+        record_ref="admission:v2",
+        subject_kind="record_cid",
+        subject_ref="admission:v2",
+    )
+    compilation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="derived_compilation_receipt",
+        record_ref="plan:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    disclosure = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="source_disclosure_decision",
+        record_ref="policy:disc",
+        subject_kind="record_cid",
+        subject_ref="policy:disc",
+    )
+    first = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="deterministic_first_decision",
+        record_ref="cache:1",
+        subject_kind="record_cid",
+        subject_ref="cache:1",
+    )
+    proof_gate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="requires_proof_admission",
+        record_ref="plan:proof",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    mutation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="runtime_mutation_observation",
+        record_ref="case:1",
+        subject_kind="record_cid",
+        subject_ref="case:1",
+    )
+    zk = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="zk_attestation_result",
+        record_ref="receipt-root:1",
+        subject_kind="record_cid",
+        subject_ref="receipt-root:1",
+    )
+    remote = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_remote_owner_admission",
+        record_ref="capability:1",
+        subject_kind="record_cid",
+        subject_ref="capability:1",
+    )
+    fixture = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_fixture_result",
+        record_ref="fixture:1",
+        subject_kind="record_cid",
+        subject_ref="fixture:1",
+    )
+    for item in (
+        binding,
+        transform,
+        init,
+        equivalence,
+        delta,
+        scopes,
+        claim,
+        backend,
+        refill,
+        compilation,
+        disclosure,
+        first,
+        proof_gate,
+        mutation,
+        zk,
+        remote,
+        fixture,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -1387,7 +1387,7 @@ def compile_initialization_rewrite_receipt(
         resolved, claimed_preimage_cid=kwargs.get("claimed_preimage_cid") or ""
     )
     plan = compile_initialization_rewrite_plan(resolved, **kwargs)
-    return InitializationRewriteReceipt(
+    receipt = InitializationRewriteReceipt(
         tree_id=resolved.tree_id,
         packet_cid=resolved.packet_cid,
         preimage_cid=preimage_cid,
@@ -1396,6 +1396,25 @@ def compile_initialization_rewrite_receipt(
         write_paths=resolved.effect_scope.write_paths,
         required_trace_cids=plan.required_trace_cids,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.tree_id or "")
+        record_ref = str(receipt.packet_cid or receipt.plan_cid or "initialization-rewrite-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="initialization_rewrite_receipt",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(receipt.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def execute_initialization_rewrites(
