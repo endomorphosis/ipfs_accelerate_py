@@ -4186,6 +4186,162 @@ def test_mirror_refactor_receipts_disclosure_and_proof_scopes(tmp_path, monkeypa
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_kernel_closure_stages_and_portfolio(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    stage = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="deterministic_stage_receipt",
+        record_ref="stage:cache",
+        subject_kind="record_cid",
+        subject_ref="stage:cache",
+    )
+    kernel = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="kernel_verification",
+        record_ref="reconstruction:1",
+        subject_kind="record_cid",
+        subject_ref="reconstruction:1",
+    )
+    self_props = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="supervisor_self_properties",
+        record_ref="scope-set:self",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    closure = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="verifier_backed_closure",
+        record_ref="cex:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    pda = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="planner_doctor_verification",
+        record_ref="run:1",
+        subject_kind="record_cid",
+        subject_ref="run:1",
+    )
+    lane = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="repair_portfolio_lane",
+        record_ref="lane:mutation",
+        subject_kind="record_cid",
+        subject_ref="lane:mutation",
+    )
+    candidate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="repair_candidate_evaluation",
+        record_ref="candidate:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    wave = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="extraction_wave_rollback",
+        record_ref="rollback:1",
+        subject_kind="record_cid",
+        subject_ref="rollback:1",
+    )
+    transition = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="refactor_transition",
+        record_ref="transition:1",
+        subject_kind="record_cid",
+        subject_ref="transition:1",
+    )
+    plan = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_candidate",
+        record_ref="candidate:plan",
+        subject_kind="record_cid",
+        subject_ref="candidate:plan",
+    )
+    clauses = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="spar_clause_admission",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    anchor = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="endpoint_anchor",
+        record_ref="op:1",
+        subject_kind="record_cid",
+        subject_ref="op:1",
+    )
+    observed = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="observed_package_contract",
+        record_ref="contract:1",
+        subject_kind="record_cid",
+        subject_ref="contract:1",
+    )
+    voi = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="evidence_value_fixtures",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    authz = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="plan_r2_transition_authorization",
+        record_ref="authz:1",
+        subject_kind="record_cid",
+        subject_ref="authz:1",
+    )
+    merge = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="external_merge_loop_receipt",
+        record_ref="receipt:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    post_merge = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="post_merge_evidence",
+        record_ref="merge:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    for item in (
+        stage,
+        kernel,
+        self_props,
+        closure,
+        pda,
+        lane,
+        candidate,
+        wave,
+        transition,
+        plan,
+        clauses,
+        anchor,
+        observed,
+        voi,
+        authz,
+        merge,
+        post_merge,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

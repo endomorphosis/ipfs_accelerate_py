@@ -870,7 +870,29 @@ class RefactorTransition:
 def compile_refactor_transition(**fields: Any) -> RefactorTransition:
     """Compile one RefactorTransition@1 episode or fail closed."""
 
-    return RefactorTransition(**fields)
+    transition = RefactorTransition(**fields)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(transition, "transition_cid", "")
+            or transition.packet_cid
+            or transition.wave_receipt_cid
+            or "refactor-transition"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refactor_transition",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(transition.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return transition
 
 
 @dataclass(frozen=True, slots=True)

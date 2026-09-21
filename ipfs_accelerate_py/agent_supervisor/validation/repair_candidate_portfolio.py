@@ -1666,6 +1666,30 @@ def _resolve_hard_lanes(
     return frozenset(required)
 
 
+def _mirror_lane_result(*args: Any, **kwargs: Any) -> LaneResult:
+    result = LaneResult(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.evidence_id
+            or getattr(result.lane, "value", "")
+            or "portfolio-lane"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_portfolio_lane",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_lane(
     *,
     lane: PortfolioLane,
@@ -1696,7 +1720,7 @@ def evaluate_lane(
                 "reason": "capability_unavailable",
             }
         )
-        return LaneResult(
+        return _mirror_lane_result(
             lane=lane,
             outcome=outcome,
             hard=hard,
@@ -1720,7 +1744,7 @@ def evaluate_lane(
                 "reason": PortfolioReason.SELF_AUTHORED_TEST.value,
             }
         )
-        return LaneResult(
+        return _mirror_lane_result(
             lane=lane,
             outcome=LaneOutcome.FAIL,
             hard=hard,
@@ -1743,7 +1767,7 @@ def evaluate_lane(
                 "reason": PortfolioReason.CANDIDATE_AS_ORACLE.value,
             }
         )
-        return LaneResult(
+        return _mirror_lane_result(
             lane=lane,
             outcome=LaneOutcome.FAIL,
             hard=hard,
@@ -1770,7 +1794,7 @@ def evaluate_lane(
                     "reason": PortfolioReason.CANDIDATE_AS_ORACLE.value,
                 }
             )
-            return LaneResult(
+            return _mirror_lane_result(
                 lane=lane,
                 outcome=LaneOutcome.FAIL,
                 hard=hard,
@@ -1794,7 +1818,7 @@ def evaluate_lane(
                     "reason": PortfolioReason.MISSING_ORACLE.value,
                 }
             )
-            return LaneResult(
+            return _mirror_lane_result(
                 lane=lane,
                 outcome=LaneOutcome.FAIL,
                 hard=hard,
@@ -1816,7 +1840,7 @@ def evaluate_lane(
                     "required_oracle": oracle.oracle_id,
                 }
             )
-            return LaneResult(
+            return _mirror_lane_result(
                 lane=lane,
                 outcome=LaneOutcome.FAIL,
                 hard=hard,
@@ -1842,7 +1866,7 @@ def evaluate_lane(
                     "overlap": sorted(overlap),
                 }
             )
-            return LaneResult(
+            return _mirror_lane_result(
                 lane=lane,
                 outcome=LaneOutcome.FAIL,
                 hard=hard,
@@ -1870,7 +1894,7 @@ def evaluate_lane(
                 "reason": "lane_unsupported",
             }
         )
-        return LaneResult(
+        return _mirror_lane_result(
             lane=lane,
             outcome=outcome,
             hard=hard,
@@ -1896,7 +1920,7 @@ def evaluate_lane(
                 "cap": cap,
             }
         )
-        return LaneResult(
+        return _mirror_lane_result(
             lane=lane,
             outcome=outcome,
             hard=hard,
@@ -1956,7 +1980,7 @@ def evaluate_lane(
             # soft_score intentionally excluded from evidence authority binding
         }
     )
-    return LaneResult(
+    return _mirror_lane_result(
         lane=lane,
         outcome=outcome,
         hard=hard,
@@ -1969,6 +1993,25 @@ def evaluate_lane(
             oracle.oracle_id if lane is PortfolioLane.MUTATION else ""
         ),
     )
+
+
+def _mirror_candidate_evaluation(evaluation: CandidateEvaluation) -> CandidateEvaluation:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(evaluation.candidate_id or "repair-candidate")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_candidate_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 def evaluate_candidate(
@@ -1984,19 +2027,21 @@ def evaluate_candidate(
     hard_lanes = _resolve_hard_lanes(hard_obligations)
     # Resource-cost budget at candidate level.
     if candidate.resource_cost > budget.max_resource_cost:
-        return CandidateEvaluation(
-            candidate_id=candidate.candidate_id,
-            hard_admissible=False,
-            blast_radius=candidate.blast_radius,
-            resource_cost=candidate.resource_cost,
-            lane_results=(),
-            hard_failures=(PortfolioReason.BUDGET_EXCEEDED.value,),
-            rejection_reasons=(PortfolioReason.BUDGET_EXCEEDED.value,),
-            ranking_key=(
-                candidate.blast_radius,
-                candidate.resource_cost,
-                candidate.candidate_id,
-            ),
+        return _mirror_candidate_evaluation(
+            CandidateEvaluation(
+                candidate_id=candidate.candidate_id,
+                hard_admissible=False,
+                blast_radius=candidate.blast_radius,
+                resource_cost=candidate.resource_cost,
+                lane_results=(),
+                hard_failures=(PortfolioReason.BUDGET_EXCEEDED.value,),
+                rejection_reasons=(PortfolioReason.BUDGET_EXCEEDED.value,),
+                ranking_key=(
+                    candidate.blast_radius,
+                    candidate.resource_cost,
+                    candidate.candidate_id,
+                ),
+            )
         )
 
     results: list[LaneResult] = []
@@ -2087,22 +2132,24 @@ def evaluate_candidate(
         for code in rejection
     )
 
-    return CandidateEvaluation(
-        candidate_id=candidate.candidate_id,
-        hard_admissible=hard_admissible,
-        blast_radius=candidate.blast_radius,
-        resource_cost=candidate.resource_cost,
-        lane_results=tuple(results),
-        hard_failures=tuple(hard_failures),
-        flaky_lanes=tuple(flaky),
-        unavailable_lanes=tuple(unavailable),
-        rejection_reasons=tuple(rejection),
-        soft_debt=tuple(soft_debt),
-        ranking_key=(
-            candidate.blast_radius,
-            candidate.resource_cost,
-            candidate.candidate_id,
-        ),
+    return _mirror_candidate_evaluation(
+        CandidateEvaluation(
+            candidate_id=candidate.candidate_id,
+            hard_admissible=hard_admissible,
+            blast_radius=candidate.blast_radius,
+            resource_cost=candidate.resource_cost,
+            lane_results=tuple(results),
+            hard_failures=tuple(hard_failures),
+            flaky_lanes=tuple(flaky),
+            unavailable_lanes=tuple(unavailable),
+            rejection_reasons=tuple(rejection),
+            soft_debt=tuple(soft_debt),
+            ranking_key=(
+                candidate.blast_radius,
+                candidate.resource_cost,
+                candidate.candidate_id,
+            ),
+        )
     )
 
 
@@ -2391,22 +2438,24 @@ def _aggregate_results(
         }
         for code in rejection
     )
-    return CandidateEvaluation(
-        candidate_id=candidate.candidate_id,
-        hard_admissible=hard_admissible,
-        blast_radius=candidate.blast_radius,
-        resource_cost=candidate.resource_cost,
-        lane_results=tuple(results),
-        hard_failures=tuple(hard_failures),
-        flaky_lanes=tuple(flaky),
-        unavailable_lanes=tuple(unavailable),
-        rejection_reasons=tuple(rejection),
-        soft_debt=tuple(soft_debt),
-        ranking_key=(
-            candidate.blast_radius,
-            candidate.resource_cost,
-            candidate.candidate_id,
-        ),
+    return _mirror_candidate_evaluation(
+        CandidateEvaluation(
+            candidate_id=candidate.candidate_id,
+            hard_admissible=hard_admissible,
+            blast_radius=candidate.blast_radius,
+            resource_cost=candidate.resource_cost,
+            lane_results=tuple(results),
+            hard_failures=tuple(hard_failures),
+            flaky_lanes=tuple(flaky),
+            unavailable_lanes=tuple(unavailable),
+            rejection_reasons=tuple(rejection),
+            soft_debt=tuple(soft_debt),
+            ranking_key=(
+                candidate.blast_radius,
+                candidate.resource_cost,
+                candidate.candidate_id,
+            ),
+        )
     )
 
 

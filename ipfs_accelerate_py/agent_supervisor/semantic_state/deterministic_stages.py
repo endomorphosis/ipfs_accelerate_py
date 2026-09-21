@@ -173,13 +173,29 @@ def _receipt(
     reasons: Sequence[str],
     subject: Mapping[str, Any],
 ) -> DeterministicStageReceipt:
-    return DeterministicStageReceipt(
+    receipt = DeterministicStageReceipt(
         stage=stage,
         disposition=disposition.value,
         decisive=disposition is DeterministicDisposition.RESOLVES,
         reason_codes=tuple(reasons),
         subject=subject,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.receipt_id or receipt.stage or "deterministic-stage")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="deterministic_stage_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def evaluate_exact_receipt_freshness(

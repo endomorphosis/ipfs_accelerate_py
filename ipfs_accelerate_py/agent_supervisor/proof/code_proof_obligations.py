@@ -5816,6 +5816,33 @@ def _self_property_compile_requests(
     return requests
 
 
+def _mirror_self_property_compilation(
+    compilation: CodeProofObligationCompilation,
+) -> CodeProofObligationCompilation:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            compilation.scope_set_id
+            or compilation.task_id
+            or compilation.repository_tree_id
+            or "supervisor-self-properties"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="supervisor_self_properties",
+            record_ref=record_ref,
+            tree_id=str(compilation.repository_tree_id or ""),
+            subject_kind="tree_id" if compilation.repository_tree_id else "record_cid",
+            subject_ref=str(compilation.repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return compilation
+
+
 def compile_supervisor_self_properties(
     scope_set: CodeProofScopeSet | None = None,
     *,
@@ -5904,23 +5931,25 @@ def compile_supervisor_self_properties(
         tree_id = str(repository_tree_id or "").strip()
         if not tree_id:
             raise ValueError("repository_tree_id is required")
-        return CodeProofObligationCompilation(
-            repository_id=str(repository_id or "").strip(),
-            repository_tree_id=tree_id,
-            catalog_version=str(getattr(catalog, "catalog_version", "") or ""),
-            catalog_id=str(getattr(catalog, "catalog_id", "") or ""),
-            scope_set_id=scope_set.scope_set_id,
-            items=(),
-            premise_digest=premise_set_digest(normalize_premise_ids(premise_ids)),
-            assumption_digest=assumption_set_digest(normalize_assumption_ids(assumption_ids)),
-            premise_ids=normalize_premise_ids(premise_ids),
-            assumption_ids=normalize_assumption_ids(assumption_ids),
-            plan_effect_ids=_normalize_plan_effect_ids(formal_plan_effects),
-            residual_ref_ids=normalize_residual_refs(residual_refs),
-            toolchain_id=str(toolchain_id or "").strip(),
-            policy_id=str(policy_id or "").strip(),
-            task_id=str(task_id or "").strip(),
-            metadata=meta,
+        return _mirror_self_property_compilation(
+            CodeProofObligationCompilation(
+                repository_id=str(repository_id or "").strip(),
+                repository_tree_id=tree_id,
+                catalog_version=str(getattr(catalog, "catalog_version", "") or ""),
+                catalog_id=str(getattr(catalog, "catalog_id", "") or ""),
+                scope_set_id=scope_set.scope_set_id,
+                items=(),
+                premise_digest=premise_set_digest(normalize_premise_ids(premise_ids)),
+                assumption_digest=assumption_set_digest(normalize_assumption_ids(assumption_ids)),
+                premise_ids=normalize_premise_ids(premise_ids),
+                assumption_ids=normalize_assumption_ids(assumption_ids),
+                plan_effect_ids=_normalize_plan_effect_ids(formal_plan_effects),
+                residual_ref_ids=normalize_residual_refs(residual_refs),
+                toolchain_id=str(toolchain_id or "").strip(),
+                policy_id=str(policy_id or "").strip(),
+                task_id=str(task_id or "").strip(),
+                metadata=meta,
+            )
         )
 
     compilation = compile_code_proof_obligations(
@@ -5969,7 +5998,7 @@ def compile_supervisor_self_properties(
                     f"self-property {spec.property_id!r} bound shape "
                     f"{bound_shape!r}, expected exact {spec.code_shape!r}"
                 )
-    return compilation
+    return _mirror_self_property_compilation(compilation)
 
 
 def prove_supervisor_self_properties(

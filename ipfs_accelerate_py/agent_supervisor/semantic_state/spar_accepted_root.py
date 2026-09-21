@@ -334,6 +334,27 @@ def admit_current_bound_clause_records(
         outcomes[name] = _admit_clause_record(name, subject, row)
     if not all(row.get("accepted") is True for row in outcomes.values()):
         return None
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            subject.get("tree_id")
+            or subject.get("accepted_root_id")
+            or next(iter(outcomes), "")
+            or "spar-clause-records"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="spar_clause_admission",
+            record_ref=record_ref,
+            tree_id=str(subject.get("tree_id") or ""),
+            subject_kind="tree_id" if subject.get("tree_id") else "record_cid",
+            subject_ref=str(subject.get("tree_id") or record_ref),
+        )
+    except Exception:
+        pass
     return outcomes
 
 

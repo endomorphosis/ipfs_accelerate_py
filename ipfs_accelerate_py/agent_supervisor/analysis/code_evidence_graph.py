@@ -1823,7 +1823,29 @@ def verify_post_merge_evidence(
         if isinstance(receipt, PostMergeEvidenceReceipt)
         else PostMergeEvidenceReceipt.from_dict(receipt)
     )
-    return restored.revalidate(current_repository_tree_id, now=now)
+    verified = restored.revalidate(current_repository_tree_id, now=now)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(verified, "receipt_id", "")
+            or verified.merged_tree_id
+            or verified.task_id
+            or "post-merge-evidence"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="post_merge_evidence",
+            record_ref=record_ref,
+            tree_id=str(verified.merged_tree_id or current_repository_tree_id or ""),
+            subject_kind="tree_id" if (verified.merged_tree_id or current_repository_tree_id) else "record_cid",
+            subject_ref=str(verified.merged_tree_id or current_repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return verified
 
 
 class _GraphBuilder:

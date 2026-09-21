@@ -684,6 +684,32 @@ def _closure_binding(
     }
 
 
+def _mirror_verifier_closure(
+    closure: VerifierBackedRepairClosure,
+) -> VerifierBackedRepairClosure:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            closure.verifier_receipt_id
+            or closure.counterexample_id
+            or "verifier-backed-closure"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="verifier_backed_closure",
+            record_ref=record_ref,
+            tree_id=str(closure.repository_tree_id or ""),
+            subject_kind="tree_id" if closure.repository_tree_id else "record_cid",
+            subject_ref=str(closure.repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return closure
+
+
 def evaluate_verifier_backed_closure(
     *,
     counterexample_id: str,
@@ -725,20 +751,22 @@ def evaluate_verifier_backed_closure(
         status: WitnessClosureStatus = WitnessClosureStatus.OPEN,
         receipt_id: str = "",
     ) -> VerifierBackedRepairClosure:
-        return VerifierBackedRepairClosure(
-            counterexample_id=cid,
-            status=status,
-            open_counterexamples=1,
-            structural_addressed=bool(structural_addressed),
-            reason_code=reason,
-            verifier_receipt_id=receipt_id,
-            repository_tree_id=binding["repository_tree_id"],
-            property_id=binding["property_id"],
-            assumption_ids=assumptions,
-            bound_digest=binding["bound_digest"],
-            tool_id=binding["tool_id"],
-            policy_id=binding["policy_id"],
-            repaired_plan_id=binding["repaired_plan_id"],
+        return _mirror_verifier_closure(
+            VerifierBackedRepairClosure(
+                counterexample_id=cid,
+                status=status,
+                open_counterexamples=1,
+                structural_addressed=bool(structural_addressed),
+                reason_code=reason,
+                verifier_receipt_id=receipt_id,
+                repository_tree_id=binding["repository_tree_id"],
+                property_id=binding["property_id"],
+                assumption_ids=assumptions,
+                bound_digest=binding["bound_digest"],
+                tool_id=binding["tool_id"],
+                policy_id=binding["policy_id"],
+                repaired_plan_id=binding["repaired_plan_id"],
+            )
         )
 
     if not structural_addressed:
@@ -849,20 +877,22 @@ def evaluate_verifier_backed_closure(
             status=WitnessClosureStatus.UNKNOWN,
         )
 
-    return VerifierBackedRepairClosure(
-        counterexample_id=cid,
-        status=WitnessClosureStatus.CLOSED,
-        open_counterexamples=0,
-        structural_addressed=True,
-        reason_code="fresh_matching_verifier_receipt",
-        verifier_receipt_id=claimed.receipt_id,
-        repository_tree_id=binding["repository_tree_id"],
-        property_id=binding["property_id"],
-        assumption_ids=assumptions,
-        bound_digest=binding["bound_digest"],
-        tool_id=binding["tool_id"],
-        policy_id=binding["policy_id"],
-        repaired_plan_id=binding["repaired_plan_id"],
+    return _mirror_verifier_closure(
+        VerifierBackedRepairClosure(
+            counterexample_id=cid,
+            status=WitnessClosureStatus.CLOSED,
+            open_counterexamples=0,
+            structural_addressed=True,
+            reason_code="fresh_matching_verifier_receipt",
+            verifier_receipt_id=claimed.receipt_id,
+            repository_tree_id=binding["repository_tree_id"],
+            property_id=binding["property_id"],
+            assumption_ids=assumptions,
+            bound_digest=binding["bound_digest"],
+            tool_id=binding["tool_id"],
+            policy_id=binding["policy_id"],
+            repaired_plan_id=binding["repaired_plan_id"],
+        )
     )
 
 

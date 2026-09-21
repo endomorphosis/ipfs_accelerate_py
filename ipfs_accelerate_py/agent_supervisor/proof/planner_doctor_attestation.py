@@ -1971,6 +1971,33 @@ class PlannerDoctorVerification(CanonicalContract):
         return public
 
 
+def _mirror_planner_doctor_verification(
+    *args: Any, **kwargs: Any
+) -> PlannerDoctorVerification:
+    result = PlannerDoctorVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or result.expected_run_id
+            or result.verifier_id
+            or "planner-doctor-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="planner_doctor_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_planner_doctor_attestation(
     envelope: PlannerDoctorAttestation,
     *,
@@ -2004,7 +2031,7 @@ def verify_planner_doctor_attestation(
     run_ok = envelope.public_inputs.run_id == expected_run_id
 
     if envelope.backend_mode is PlannerDoctorBackendMode.UNAVAILABLE:
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.ERROR,
             verifier_id=verifier_id,
@@ -2018,7 +2045,7 @@ def verify_planner_doctor_attestation(
         PlannerDoctorAttestationStatus.FAILED,
         PlannerDoctorAttestationStatus.ERROR,
     ):
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.ERROR,
             verifier_id=verifier_id,
@@ -2029,7 +2056,7 @@ def verify_planner_doctor_attestation(
             diagnostic_code="backend_failed",
         )
     if not (digest_ok and root_ok and run_ok):
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.REJECTED,
             verifier_id=verifier_id,
@@ -2043,7 +2070,7 @@ def verify_planner_doctor_attestation(
         # Simulated proofs may be structure-checked for tests when the caller
         # opts in, but still never become authoritative / ATTESTED.
         if not accept_simulated:
-            return PlannerDoctorVerification(
+            return _mirror_planner_doctor_verification(
                 envelope=envelope,
                 verdict=AttestationVerificationVerdict.REJECTED,
                 verifier_id=verifier_id,
@@ -2053,7 +2080,7 @@ def verify_planner_doctor_attestation(
                 expected_run_id=expected_run_id,
                 diagnostic_code="simulated_rejected",
             )
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.VERIFIED,
             verifier_id=verifier_id,
@@ -2064,7 +2091,7 @@ def verify_planner_doctor_attestation(
             diagnostic_code="simulated_non_authoritative",
         )
     if envelope.backend_mode is PlannerDoctorBackendMode.SHADOW:
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.VERIFIED,
             verifier_id=verifier_id,
@@ -2080,7 +2107,7 @@ def verify_planner_doctor_attestation(
         # explicit sealing step after a real backend verifies.
         if envelope.status is PlannerDoctorAttestationStatus.ATTESTED:
             if not envelope.production_eligible:
-                return PlannerDoctorVerification(
+                return _mirror_planner_doctor_verification(
                     envelope=envelope,
                     verdict=AttestationVerificationVerdict.REJECTED,
                     verifier_id=verifier_id,
@@ -2090,7 +2117,7 @@ def verify_planner_doctor_attestation(
                     expected_run_id=expected_run_id,
                     diagnostic_code="not_production_eligible",
                 )
-            return PlannerDoctorVerification(
+            return _mirror_planner_doctor_verification(
                 envelope=envelope,
                 verdict=AttestationVerificationVerdict.VERIFIED,
                 verifier_id=verifier_id,
@@ -2100,7 +2127,7 @@ def verify_planner_doctor_attestation(
                 expected_run_id=expected_run_id,
                 diagnostic_code="cryptographic_verified",
             )
-        return PlannerDoctorVerification(
+        return _mirror_planner_doctor_verification(
             envelope=envelope,
             verdict=AttestationVerificationVerdict.VERIFIED,
             verifier_id=verifier_id,
@@ -2110,7 +2137,7 @@ def verify_planner_doctor_attestation(
             expected_run_id=expected_run_id,
             diagnostic_code="cryptographic_candidate",
         )
-    return PlannerDoctorVerification(
+    return _mirror_planner_doctor_verification(
         envelope=envelope,
         verdict=AttestationVerificationVerdict.ERROR,
         verifier_id=verifier_id,

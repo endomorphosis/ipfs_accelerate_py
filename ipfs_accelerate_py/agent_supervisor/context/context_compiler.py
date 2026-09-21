@@ -3107,7 +3107,7 @@ def evaluate_evidence_value_fixtures(
 ) -> ValueOfInformationEvidence:
     """Evaluate and bind one complete paired evidence-selection population."""
 
-    return ValueOfInformationEvidence(
+    evidence = ValueOfInformationEvidence(
         repository_id=repository_id,
         tree_id=tree_id,
         policy_id=policy_id,
@@ -3121,6 +3121,23 @@ def evaluate_evidence_value_fixtures(
             for item in fixtures
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(evidence.tree_id or evidence.policy_id or "evidence-value-fixtures")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="evidence_value_fixtures",
+            record_ref=record_ref,
+            tree_id=str(evidence.tree_id or ""),
+            subject_kind="tree_id" if evidence.tree_id else "record_cid",
+            subject_ref=str(evidence.tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return evidence
 
 
 @dataclass(frozen=True)

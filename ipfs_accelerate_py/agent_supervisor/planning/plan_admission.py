@@ -314,21 +314,38 @@ def compile_candidate(
     """Normalize a candidate mapping or work plan into a PlanCandidate."""
 
     if isinstance(payload, PlanCandidate):
-        return payload
-    if isinstance(payload, ExternalWorkPlan):
-        return PlanCandidate(plan=payload, candidate_id=payload.content_id)
-    if not isinstance(payload, Mapping):
+        candidate = payload
+    elif isinstance(payload, ExternalWorkPlan):
+        candidate = PlanCandidate(plan=payload, candidate_id=payload.content_id)
+    elif not isinstance(payload, Mapping):
         raise PlanAdmissionError("candidate must be a plan or object")
-    plan_payload = payload.get("plan") if "plan" in payload else payload
-    return PlanCandidate(
-        plan=_compile_plan(plan_payload),
-        candidate_id=str(payload.get("candidate_id") or payload.get("id") or ""),
-        model_cost=_nonneg_int(payload.get("model_cost"), "model_cost"),
-        proof_cost=_nonneg_int(payload.get("proof_cost"), "proof_cost"),
-        uncertainty=_nonneg_int(payload.get("uncertainty"), "uncertainty"),
-        prior_success=_nonneg_int(payload.get("prior_success"), "prior_success"),
-        cache_locality=_nonneg_int(payload.get("cache_locality"), "cache_locality"),
-    )
+    else:
+        plan_payload = payload.get("plan") if "plan" in payload else payload
+        candidate = PlanCandidate(
+            plan=_compile_plan(plan_payload),
+            candidate_id=str(payload.get("candidate_id") or payload.get("id") or ""),
+            model_cost=_nonneg_int(payload.get("model_cost"), "model_cost"),
+            proof_cost=_nonneg_int(payload.get("proof_cost"), "proof_cost"),
+            uncertainty=_nonneg_int(payload.get("uncertainty"), "uncertainty"),
+            prior_success=_nonneg_int(payload.get("prior_success"), "prior_success"),
+            cache_locality=_nonneg_int(payload.get("cache_locality"), "cache_locality"),
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(candidate.candidate_id or getattr(candidate.plan, "content_id", "") or "plan-candidate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_candidate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return candidate
 
 
 def _cache_hits(plan: ExternalWorkPlan, cache_keys: Sequence[str]) -> int:

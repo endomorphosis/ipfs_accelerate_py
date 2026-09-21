@@ -1017,6 +1017,21 @@ def verify_plan_r2_transition_authorization(
         "process_started": False,
     }
     report["verification_cid"] = _cid(report)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.get("authorization_cid") or report.get("verification_cid") or "plan-r2-authorization")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_r2_transition_authorization",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

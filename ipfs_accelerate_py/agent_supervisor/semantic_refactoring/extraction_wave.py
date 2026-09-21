@@ -987,12 +987,32 @@ def compile_wave_rollback(
         sources.extend(packet.preimage.source_cids)
         packet_rollbacks.append(packet.rollback.rollback_cid)
         negative.extend(packet.negative_evidence_cids)
-    return RollbackPlan(
+    plan = RollbackPlan(
         restore_source_cids=tuple(sorted(set(sources))),
         packet_rollback_cids=tuple(sorted(set(packet_rollbacks))),
         negative_evidence_cids=tuple(sorted(set(negative))),
         worktree_id=worktree_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            next(iter(plan.packet_rollback_cids), "")
+            or plan.worktree_id
+            or "wave-rollback"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_rollback",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return plan
 
 
 @dataclass(frozen=True, slots=True)

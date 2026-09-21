@@ -1353,6 +1353,21 @@ def compile_endpoint_anchor(
         supported=True,
         measured=True,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(anchor.operation_id or anchor.source_node_id or "endpoint-anchor")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="endpoint_anchor",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return anchor, tuple(findings)
 
 
@@ -1665,6 +1680,25 @@ def compile_observed_package_contract(
             },
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            observed.get("observed_contract_id")
+            or observed.get("operation_id")
+            or "observed-package-contract"
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="observed_package_contract",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return observed, tuple(findings)
 
 

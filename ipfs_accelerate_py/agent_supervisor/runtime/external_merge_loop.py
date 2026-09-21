@@ -179,7 +179,28 @@ def verify_receipt(receipt: object, *, kind: str = "") -> dict[str, Any]:
             f"unknown receipt kind: {observed_kind}",
             reason_code="malformed",
         )
-    return dict(body)
+    verified_receipt = dict(body)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            verified_receipt.get("content_id")
+            or verified_receipt.get("cid")
+            or observed_kind
+            or "merge-loop-receipt"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="external_merge_loop_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verified_receipt
 
 
 def verify_receipts(receipts: object) -> dict[str, dict[str, Any]]:

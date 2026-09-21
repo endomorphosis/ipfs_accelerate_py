@@ -1016,24 +1016,50 @@ def _failed_result(
             "bindings_verified": False,
         },
     )
-    return KernelVerificationResult(
-        target=target,
-        status=status,
-        failure_code=failure_code,
-        reason_codes=(failure_code.value,),
-        obligation_id=bindings.obligation_id,
-        request_id=bindings.request_id,
-        candidate_id=bindings.candidate_id,
-        reconstruction_id=reconstruction_id,
-        kernel_id=bindings.kernel_id,
-        toolchain_id=bindings.toolchain_id,
-        environment_lock_id=environment_lock_id,
-        checked_source_digest=checked_source_digest,
-        kernel_output_digest=output_digest,
-        evidence=proof_evidence,
-        provider_status=provider_status,
-        diagnostics={"message": reason[:4096]},
+    return _mirror_kernel_verification(
+        KernelVerificationResult(
+            target=target,
+            status=status,
+            failure_code=failure_code,
+            reason_codes=(failure_code.value,),
+            obligation_id=bindings.obligation_id,
+            request_id=bindings.request_id,
+            candidate_id=bindings.candidate_id,
+            reconstruction_id=reconstruction_id,
+            kernel_id=bindings.kernel_id,
+            toolchain_id=bindings.toolchain_id,
+            environment_lock_id=environment_lock_id,
+            checked_source_digest=checked_source_digest,
+            kernel_output_digest=output_digest,
+            evidence=proof_evidence,
+            provider_status=provider_status,
+            diagnostics={"message": reason[:4096]},
+        )
     )
+
+
+def _mirror_kernel_verification(result: KernelVerificationResult) -> KernelVerificationResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.reconstruction_id
+            or result.obligation_id
+            or result.request_id
+            or "kernel-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="kernel_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def verify_kernel_reconstruction(
@@ -1540,27 +1566,29 @@ def verify_kernel_reconstruction(
             "toolchain_id": bindings.toolchain_id,
         },
     )
-    return KernelVerificationResult(
-        target=target,
-        status=KernelVerificationStatus.ACCEPTED,
-        failure_code=KernelFailureCode.NONE,
-        reason_codes=("independent_kernel_acceptance",),
-        obligation_id=bindings.obligation_id,
-        request_id=bindings.request_id,
-        candidate_id=bindings.candidate_id,
-        reconstruction_id=reconstruction_id,
-        kernel_id=bindings.kernel_id,
-        toolchain_id=bindings.toolchain_id,
-        environment_lock_id=environment_lock_id,
-        checked_source_digest=claimed_source_digest,
-        kernel_output_digest=claimed_raw_digest,
-        evidence=proof_evidence,
-        provider_status=_text(provider_status, field_name="provider_status"),
-        diagnostics={
-            "kernel_returncode": returncode,
-            "kernel_timed_out": False,
-            "target": target.value,
-        },
+    return _mirror_kernel_verification(
+        KernelVerificationResult(
+            target=target,
+            status=KernelVerificationStatus.ACCEPTED,
+            failure_code=KernelFailureCode.NONE,
+            reason_codes=("independent_kernel_acceptance",),
+            obligation_id=bindings.obligation_id,
+            request_id=bindings.request_id,
+            candidate_id=bindings.candidate_id,
+            reconstruction_id=reconstruction_id,
+            kernel_id=bindings.kernel_id,
+            toolchain_id=bindings.toolchain_id,
+            environment_lock_id=environment_lock_id,
+            checked_source_digest=claimed_source_digest,
+            kernel_output_digest=claimed_raw_digest,
+            evidence=proof_evidence,
+            provider_status=_text(provider_status, field_name="provider_status"),
+            diagnostics={
+                "kernel_returncode": returncode,
+                "kernel_timed_out": False,
+                "target": target.value,
+            },
+        )
     )
 
 
