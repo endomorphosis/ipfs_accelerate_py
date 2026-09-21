@@ -639,7 +639,7 @@ def evaluate_decision_runtime_rollout(
         DecisionRuntimeRolloutMode.ASSIST,
         DecisionRuntimeRolloutMode.AUTOMATIC,
     }
-    return DecisionRuntimeRolloutDecision(
+    decision = DecisionRuntimeRolloutDecision(
         binding=binding,
         policy=policy,
         desired_mode=desired,
@@ -654,6 +654,21 @@ def evaluate_decision_runtime_rollout(
         automatic_ready=automatic_ready,
         rollback_applied=rollback,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision_runtime_rollout",
+            record_ref=str(decision.qualification_evaluation_id or decision.qualification_report_id or "decision-runtime-rollout"),
+            subject_kind="record_cid",
+            subject_ref=str(decision.qualification_evaluation_id or "decision-runtime-rollout"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 # Compatibility name matching the objective's requested decision verb.

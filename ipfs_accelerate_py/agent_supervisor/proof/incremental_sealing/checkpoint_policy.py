@@ -659,7 +659,7 @@ def evaluate_checkpoint_policy(
     # prefer_incremental is recorded but never honored against a trigger.
     override_attempted = bool(observed.prefer_incremental and require_full)
 
-    return CheckpointDecision(
+    decision = CheckpointDecision(
         schema=DECISION_SCHEMA,
         evidence_subset=EVIDENCE_SUBSET,
         mode=(
@@ -685,6 +685,21 @@ def evaluate_checkpoint_policy(
         max_delta_chain_depth=active.max_delta_chain_depth,
         min_reuse_ratio_basis_points=active.min_reuse_ratio_basis_points,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="checkpoint_policy",
+            record_ref=str(decision.policy_cid or decision.policy_id or "checkpoint-policy"),
+            subject_kind="record_cid",
+            subject_ref=str(decision.policy_id or decision.policy_cid or "checkpoint-policy"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def decide_checkpoint(

@@ -1307,9 +1307,24 @@ def evaluate_ladder_for_routing_inputs(
 ) -> LadderDecision:
     """Traverse the canonical ladder for ModelRouting@1 scoring inputs."""
 
-    return evaluate_receipt_to_human_ladder(
+    decision = evaluate_receipt_to_human_ladder(
         ladder_evidence_from_routing_inputs(inputs, policy)
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="routing_ladder",
+            record_ref=str(getattr(decision, "selected_route", "") or getattr(decision, "selected_stage", "") or "routing-ladder"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(decision, "selected_route", "") or "routing-ladder"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def _assert_ladder_agrees_with_route(

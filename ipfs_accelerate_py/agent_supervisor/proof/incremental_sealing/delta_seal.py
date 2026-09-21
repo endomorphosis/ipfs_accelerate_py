@@ -1437,13 +1437,28 @@ def build_delta_seal(
 ) -> DeltaSeal:
     """Public facade matching the plan document's delta-seal construction."""
 
-    return DeltaSealBuilder().build(
+    seal = DeltaSealBuilder().build(
         parent,
         new_repository_state,
         verification_policy,
         transition,
         units=units,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="delta_seal",
+            record_ref=str(getattr(seal, "seal_cid", "") or "delta-seal"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(seal, "seal_cid", "") or "delta-seal"),
+        )
+    except Exception:
+        pass
+    return seal
 
 
 __all__ = (

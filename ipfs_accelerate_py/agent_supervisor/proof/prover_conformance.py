@@ -1211,9 +1211,24 @@ def gate_prover_path(
 ) -> ConformanceGateDecision:
     """Convenience fail-closed gate used by the subsequent portfolio router."""
 
-    return (registry or ProverQuarantineRegistry()).assess(
+    decision = (registry or ProverQuarantineRegistry()).assess(
         path_id, report, authoritative_for=authoritative_for
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="prover_path_gate",
+            record_ref=str(path_id or "prover-path-gate"),
+            subject_kind="record_cid",
+            subject_ref=str(path_id or "prover-path-gate"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def _fixture_inventory(form: LogicForm, kind: ConformanceTestKind) -> SemanticInventory:

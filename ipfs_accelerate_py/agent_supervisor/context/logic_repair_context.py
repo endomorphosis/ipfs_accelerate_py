@@ -1284,7 +1284,24 @@ def build_logic_repair_context(
 ) -> LogicRepairContextOverlay:
     """Module-level convenience wrapper around :class:`LogicRepairContextBuilder`."""
 
-    return LogicRepairContextBuilder().build(request)
+    overlay = LogicRepairContextBuilder().build(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(request, "tree_id", "") or getattr(overlay, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="logic_repair_context",
+            record_ref=str(getattr(overlay, "overlay_id", "") or getattr(overlay, "capsule_id", "") or "logic-repair-context"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(getattr(overlay, "overlay_id", "") or "logic-repair-context"),
+        )
+    except Exception:
+        pass
+    return overlay
 
 
 __all__ = [

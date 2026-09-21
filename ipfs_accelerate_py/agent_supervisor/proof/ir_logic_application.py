@@ -1926,12 +1926,27 @@ def evaluate_required_ir_logic_gate(
             else IrLogicRequiredGateDisposition.REJECTED
         )
     )
-    return IrLogicRequiredGateResult(
+    result = IrLogicRequiredGateResult(
         disposition=disposition,
         reason_codes=tuple(sorted(set(reasons))),
         required_identity_cids=expected,
         receipt_ids=tuple(receipt_ids),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="ir_logic_required_gate",
+            record_ref=str(getattr(result, "disposition", "") or "ir-logic-gate"),
+            subject_kind="record_cid",
+            subject_ref=str((result.receipt_ids[0] if result.receipt_ids else "") or "ir-logic-gate"),
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

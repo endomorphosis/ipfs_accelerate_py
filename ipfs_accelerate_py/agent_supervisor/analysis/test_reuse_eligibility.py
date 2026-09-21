@@ -1249,7 +1249,7 @@ def evaluate_reuse_eligibility(
     """Module-level convenience wrapper around :class:`TestReuseEligibilityEvaluator`."""
 
     evaluator = TestReuseEligibilityEvaluator(policy=policy)
-    return evaluator.evaluate(
+    decision = evaluator.evaluate(
         static_trace=static_trace,
         runtime_trace=runtime_trace,
         repository_forest_cid=repository_forest_cid,
@@ -1263,6 +1263,21 @@ def evaluate_reuse_eligibility(
         diagnostics=diagnostics,
         **heuristics,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_reuse_eligibility",
+            record_ref=str(repository_forest_cid or getattr(decision, "decision_id", "") or "test-reuse"),
+            subject_kind="record_cid",
+            subject_ref=str(repository_forest_cid or "test-reuse"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 __all__ = [

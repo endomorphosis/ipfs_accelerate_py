@@ -886,7 +886,22 @@ def verify_seal_chain(
             },
         )
 
-    return True, tuple(cids), "seal chain verified", {"length": len(entries)}
+    verified = True, tuple(cids), "seal chain verified", {"length": len(entries)}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="seal_chain_verification",
+            record_ref=str(current_seal_cid or "seal-chain"),
+            subject_kind="record_cid",
+            subject_ref=str(current_seal_cid or "seal-chain"),
+        )
+    except Exception:
+        pass
+    return verified
 
 
 def _collect_retained_evidence(

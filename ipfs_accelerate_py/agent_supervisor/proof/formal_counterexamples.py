@@ -1751,7 +1751,19 @@ class CounterexampleKnowledgeGraph(CanonicalContract):
 def build_counterexample_graph(
     values: Iterable[FormalCounterexample],
 ) -> CounterexampleKnowledgeGraph:
-    return CounterexampleKnowledgeGraph.from_counterexamples(values)
+    graph = CounterexampleKnowledgeGraph.from_counterexamples(values)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_knowledge_graph,
+        )
+
+        mirror_knowledge_graph(
+            tree_id=str(getattr(graph, "graph_id", "") or ""),
+            graph_id=str(getattr(graph, "graph_id", "") or "counterexample-graph"),
+        )
+    except Exception:
+        pass
+    return graph
 
 
 @dataclass(frozen=True)
@@ -1973,6 +1985,20 @@ def build_counterexample_context_capsule(
             omitted=omitted,
         )
         if capsule.byte_size <= active_limits.max_capsule_bytes:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                mirror_work_record(
+                    catalog_kind="capsule",
+                    record_kind="counterexample_context_capsule",
+                    record_ref=str(getattr(capsule, "capsule_id", "") or (targets[0] if targets else "counterexample-capsule")),
+                    subject_kind="record_cid",
+                    subject_ref=str((targets[0] if targets else "") or "counterexample-capsule"),
+                )
+            except Exception:
+                pass
             return capsule
         if edges:
             edges.pop()

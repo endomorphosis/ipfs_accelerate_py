@@ -719,13 +719,28 @@ def build_code_proof_query(
 ) -> CodeProofQuery:
     """Factory for :class:`CodeProofQuery`."""
 
-    return CodeProofQuery(
+    query = CodeProofQuery(
         claims=tuple(claims),
         compilation=compilation,
         cache=cache,
         impact_index=impact_index,
         graph=graph,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_proof_query",
+            record_ref=str(getattr(query, "query_id", "") or getattr(compilation, "scope_set_id", "") or "code-proof-query"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(compilation, "repository_tree_id", "") or "code-proof-query"),
+        )
+    except Exception:
+        pass
+    return query
 
 
 # Explicit re-export of cache-miss doctrine for callers/tests.

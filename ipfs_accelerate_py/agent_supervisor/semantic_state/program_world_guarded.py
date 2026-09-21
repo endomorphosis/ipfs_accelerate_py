@@ -83,4 +83,19 @@ class ProgramWorldGuardedGate:
 def evaluate_guarded_program_world_influence(
     request: Mapping[str, Any],
 ) -> GuardedInfluenceDecision:
-    return ProgramWorldGuardedGate().evaluate_guarded_program_world_influence(request)
+    decision = ProgramWorldGuardedGate().evaluate_guarded_program_world_influence(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="guarded_program_world_influence",
+            record_ref=str(decision.reason_code or "guarded-influence"),
+            subject_kind="record_cid",
+            subject_ref=str(request.get("kind") or decision.reason_code or "guarded-influence"),
+        )
+    except Exception:
+        pass
+    return decision

@@ -1635,10 +1635,25 @@ def verify_execution_permit(
     is the preferred stateful boundary.
     """
 
-    return ExecutionPermitVerifier(
+    receipt = ExecutionPermitVerifier(
         ledger=ledger,
         trusted_permit_ids=trusted_permit_ids,
     ).verify(permit, attempt)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="execution_permit",
+            record_ref=str(getattr(permit, "permit_id", "") or getattr(receipt, "receipt_id", "") or "execution-permit"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(permit, "permit_id", "") or "execution-permit"),
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def verify_cve_execution_permit(

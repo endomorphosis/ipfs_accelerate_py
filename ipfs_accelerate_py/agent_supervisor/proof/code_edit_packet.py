@@ -731,7 +731,7 @@ def build_code_edit_packet(
         explicit_reasons=force_non_implementable,
     )
 
-    return CodeEditPacket(
+    packet = CodeEditPacket(
         repository_tree_id=repository_tree_id,
         claim_ids=tuple(claim_ids),
         obligation_ids=tuple(obligation_ids),
@@ -752,6 +752,24 @@ def build_code_edit_packet(
         plateau_packet_id=plateau_packet_id,
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(packet.repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_edit_packet",
+            record_ref=str(getattr(packet, "packet_id", "") or packet.task_id or tree_id or "code-edit-packet"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(packet.task_id or "code-edit-packet"),
+            paths=tuple(packet.predicted_files)[:16],
+        )
+    except Exception:
+        pass
+    return packet
 
 
 __all__ = [

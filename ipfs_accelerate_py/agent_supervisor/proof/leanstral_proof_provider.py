@@ -1275,13 +1275,28 @@ def verify_leanstral_draft(
         admission=admission,
         kernel_verification=verification,
     )
-    return replace(
+    gated = replace(
         result,
         proof_attempt_trace=capture_leanstral_proof_attempt_trace(
             draft=model_artifact,
             gate=result,
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="leanstral_draft_gate",
+            record_ref=str(getattr(model_artifact, "request_id", "") or getattr(gated, "status", "") or "leanstral-draft"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(fixed, "obligation_id", "") or "leanstral-draft"),
+        )
+    except Exception:
+        pass
+    return gated
 
 
 @dataclass(frozen=True)

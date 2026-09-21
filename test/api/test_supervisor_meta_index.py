@@ -2306,6 +2306,201 @@ def test_mirror_ast_forest_proof_verify_and_world_model(tmp_path, monkeypatch) -
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_proof_scope_counterexamples_permits_and_world_gates(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    query = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_proof_query",
+        record_ref="query:1",
+        subject_kind="record_cid",
+        subject_ref="tree:work",
+    )
+    conformance = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="conformance_receipt",
+        record_ref="receipt:1",
+        subject_kind="record_cid",
+        subject_ref="receipt:1",
+    )
+    delta = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="delta_seal",
+        record_ref="seal:1",
+        subject_kind="record_cid",
+        subject_ref="seal:1",
+    )
+    gate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="prover_path_gate",
+        record_ref="path:1",
+        subject_kind="record_cid",
+        subject_ref="path:1",
+    )
+    graph = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="counterexample_graph",
+        record_ref="graph:1",
+        subject_kind="record_cid",
+        subject_ref="graph:1",
+    )
+    permit = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="execution_permit",
+        record_ref="permit:1",
+        subject_kind="record_cid",
+        subject_ref="permit:1",
+    )
+    guarded = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="guarded_program_world_influence",
+        record_ref="exact_current_state_hit",
+        subject_kind="record_cid",
+        subject_ref="exact_hit",
+    )
+    shadow = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="program_world_shadow_read",
+        record_ref="query:2",
+        subject_kind="record_cid",
+        subject_ref="query:2",
+    )
+    ladder = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="routing_ladder",
+        record_ref="deterministic_only",
+        subject_kind="record_cid",
+        subject_ref="deterministic_only",
+    )
+    repair = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="logic_repair_context",
+        record_ref="overlay:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    reuse = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="test_reuse_eligibility",
+        record_ref="forest:1",
+        subject_kind="record_cid",
+        subject_ref="forest:1",
+    )
+    triage = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="parser_failure_triage",
+        record_ref="index:1",
+        subject_kind="record_cid",
+        subject_ref="index:1",
+    )
+    scopes = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_scope_index",
+        record_ref="index:2",
+        subject_kind="record_cid",
+        subject_ref="root:1",
+    )
+    leanstral = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="leanstral_draft_gate",
+        record_ref="request:1",
+        subject_kind="record_cid",
+        subject_ref="obligation:1",
+    )
+    ir_gate = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="ir_logic_required_gate",
+        record_ref="PASSING",
+        subject_kind="record_cid",
+        subject_ref="receipt:2",
+    )
+    security = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="fixed_point_security",
+        record_ref="tree:work",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    chain = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="seal_chain_verification",
+        record_ref="seal:2",
+        subject_kind="record_cid",
+        subject_ref="seal:2",
+    )
+    freshness = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="context_pack_freshness",
+        record_ref="pack:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    edit = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_edit_packet",
+        record_ref="task:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    checkpoint = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="checkpoint_policy",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    rollout = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="decision_runtime_rollout",
+        record_ref="eval:1",
+        subject_kind="record_cid",
+        subject_ref="eval:1",
+    )
+    cex = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="counterexample_context_capsule",
+        record_ref="cex:1",
+        subject_kind="record_cid",
+        subject_ref="cex:1",
+    )
+    for item in (
+        query,
+        conformance,
+        delta,
+        gate,
+        graph,
+        permit,
+        guarded,
+        shadow,
+        ladder,
+        repair,
+        reuse,
+        triage,
+        scopes,
+        leanstral,
+        ir_gate,
+        security,
+        chain,
+        freshness,
+        edit,
+        checkpoint,
+        rollout,
+        cex,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

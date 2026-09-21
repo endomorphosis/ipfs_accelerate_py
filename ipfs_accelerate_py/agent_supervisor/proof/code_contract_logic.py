@@ -2435,6 +2435,20 @@ def verify_conformance_receipt(
             RejectionCode.ROUND_TRIP_FAILURE,
             "translated receipt is not round-trip verified",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="conformance_receipt",
+            record_ref=str(getattr(receipt, "receipt_id", "") or receipt.translator_identity or "conformance-receipt"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(receipt, "receipt_id", "") or receipt.translator_identity or "conformance-receipt"),
+        )
+    except Exception:
+        pass
     return receipt
 
 

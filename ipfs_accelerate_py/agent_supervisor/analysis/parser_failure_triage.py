@@ -1885,6 +1885,20 @@ def build_triage_from_index(
     )
     if output_path is not None:
         write_parser_failure_triage_report(report, output_path)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="parser_failure_triage",
+            record_ref=str(getattr(report, "report_id", "") or getattr(report, "source_index_id", "") or "parser-triage"),
+            subject_kind="record_cid",
+            subject_ref=str(getattr(report, "source_index_id", "") or "parser-triage"),
+        )
+    except Exception:
+        pass
     return report
 
 

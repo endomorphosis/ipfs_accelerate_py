@@ -64,4 +64,19 @@ class ProgramWorldShadowReader:
 
 
 def evaluate_program_world_shadow_reads(request: Mapping[str, Any]) -> dict[str, Any]:
-    return ProgramWorldShadowReader().evaluate_program_world_shadow_reads(request)
+    result = ProgramWorldShadowReader().evaluate_program_world_shadow_reads(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="program_world_shadow_read",
+            record_ref=str(request.get("query") or result.get("reason_code") or "shadow-read"),
+            subject_kind="record_cid",
+            subject_ref=str(request.get("query") or "shadow-read"),
+        )
+    except Exception:
+        pass
+    return result

@@ -1369,13 +1369,30 @@ def evaluate_exact_freshness(
     stale_fields = _dedupe_sorted(stale, "stale_fields")
     masquerade_reasons = _dedupe_sorted(masquerade, "masquerade_reasons")
     fresh = not stale_fields and not masquerade_reasons
-    return FreshnessVerdict(
+    verdict = FreshnessVerdict(
         fresh=fresh,
         stale_fields=stale_fields,
         pack_cid=pack_cid,
         identity_kind=identity_kind,
         masquerade_reasons=masquerade_reasons,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(current, "tree", "") or "")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context_pack_freshness",
+            record_ref=str(verdict.pack_cid or "context-pack-freshness"),
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or str(verdict.pack_cid or "context-pack-freshness"),
+        )
+    except Exception:
+        pass
+    return verdict
 
 
 def require_exact_freshness(

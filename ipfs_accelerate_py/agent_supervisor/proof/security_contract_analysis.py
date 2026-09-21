@@ -2824,7 +2824,7 @@ def evaluate_fixed_point_security(
         reasons.extend(f"hyperproperty_missing:{hid}" for hid in missing_hyper)
 
     all_passed = not reasons
-    return FixedPointSecurityReceipt(
+    receipt = FixedPointSecurityReceipt(
         candidate_tree_id=tree,
         code_facts=facts,
         forbidden=forbidden,
@@ -2837,6 +2837,23 @@ def evaluate_fixed_point_security(
         all_passed=all_passed,
         reason_codes=tuple(sorted(set(reasons))),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.candidate_tree_id or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="fixed_point_security",
+            record_ref=tree_id or "fixed-point-security",
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or "fixed-point-security",
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 # ---------------------------------------------------------------------------

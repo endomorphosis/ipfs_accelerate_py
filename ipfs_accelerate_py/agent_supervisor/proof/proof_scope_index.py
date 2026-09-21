@@ -3186,6 +3186,20 @@ def build_proof_scope_index(
             explicit_changes,
             max_reason_chain=maximum,
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_scope_index",
+            record_ref=str(getattr(result, "index_id", "") or resolved_root or "proof-scope-index"),
+            subject_kind="record_cid",
+            subject_ref=str(resolved_root or getattr(result, "index_id", "") or "proof-scope-index"),
+        )
+    except Exception:
+        pass
     return result
 
 
