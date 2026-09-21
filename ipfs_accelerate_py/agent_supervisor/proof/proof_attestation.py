@@ -1812,12 +1812,32 @@ def build_persisted_attestation_record(
 ) -> PersistedAttestationRecord:
     """Bind a verified public envelope beside its immutable kernel receipt."""
 
-    return PersistedAttestationRecord(
+    record = PersistedAttestationRecord(
         receipt=receipt,
         verification=verification,
         created_at=created_at,
         expires_at=expires_at,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt_id = str(
+            getattr(record, "proof_receipt_id", "")
+            or getattr(receipt, "receipt_id", "")
+            or "persisted-attestation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="persisted_attestation_record",
+            record_ref=receipt_id,
+            subject_kind="receipt_id",
+            subject_ref=receipt_id,
+        )
+    except Exception:
+        pass
+    return record
 
 
 bind_attestation_record = build_persisted_attestation_record
@@ -2044,13 +2064,29 @@ def evaluate_backend_health(
                 diagnostic_code=normalized_diagnostics.get(case, ""),
             )
         )
-    return BackendHealthReport(
+    report = BackendHealthReport(
         policy=checked_policy,
         configured=configured,
         available=available,
         test_results=tuple(results),
         evaluated_at=evaluated_at,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        policy_id = str(getattr(checked_policy, "policy_id", "") or "attestation-backend-health")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="attestation_backend_health",
+            record_ref=policy_id,
+            subject_kind="record_cid",
+            subject_ref=policy_id,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def run_backend_self_tests(

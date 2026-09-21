@@ -2455,6 +2455,20 @@ def build_surface_views(
     for kind in policy.surface_kinds():
         if kind not in views:
             views[kind] = SurfaceView.absent(kind, tool_name=tool_name)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="interface_surface_views",
+            record_ref=str(tool_name or "interface-surface-views"),
+            subject_kind="record_cid",
+            subject_ref=str(tool_name or "interface-surface-views"),
+        )
+    except Exception:
+        pass
     return views
 
 

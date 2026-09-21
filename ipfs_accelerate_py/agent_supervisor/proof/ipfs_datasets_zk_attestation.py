@@ -835,7 +835,7 @@ def build_datasets_zk_setup_identity(
         if vk_candidate.is_file():
             vk_id = "vk:" + _sha256_file(vk_candidate).removeprefix("sha256:")
 
-    return DatasetsZkSetupIdentity(
+    identity = DatasetsZkSetupIdentity(
         backend_family=family,
         backend_mode=mode,
         executable_path=exe,
@@ -853,6 +853,27 @@ def build_datasets_zk_setup_identity(
         verifier_id=verifier_id or ("verifier:datasets:%s" % family),
         verification_key_expires_at=verification_key_expires_at,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        setup_ref = str(
+            getattr(identity, "content_id", "")
+            or identity.circuit_id
+            or identity.backend_family
+            or "datasets-zk-setup"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="datasets_zk_setup_identity",
+            record_ref=setup_ref,
+            subject_kind="record_cid",
+            subject_ref=setup_ref,
+        )
+    except Exception:
+        pass
+    return identity
 
 
 def probe_datasets_zk_backend(

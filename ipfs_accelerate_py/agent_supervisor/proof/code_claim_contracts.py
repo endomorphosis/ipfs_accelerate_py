@@ -1323,6 +1323,27 @@ def mark_claim_stale(
     )
 
 
+def _mirror_claim_invalidation(claim: CodeClaimRecord) -> CodeClaimRecord:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(claim.repository_tree_id or "")
+        record_ref = str(claim.claim_id or claim.property_id or "code-claim")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_claim_invalidation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def evaluate_invalidation(
     claim: CodeClaimRecord,
     *,
@@ -1375,8 +1396,8 @@ def evaluate_invalidation(
         ):
             reasons.append(selector.reason_code or "changed_assumptions")
     if not reasons:
-        return claim
-    return mark_claim_stale(claim, reason_code=reasons[0])
+        return _mirror_claim_invalidation(claim)
+    return _mirror_claim_invalidation(mark_claim_stale(claim, reason_code=reasons[0]))
 
 
 def reject_natural_language_claim(
@@ -1437,7 +1458,7 @@ def build_open_claim(
         producer_id=producer_id,
         required_assurance=required_assurance,
     )
-    return CodeClaimRecord(
+    claim = CodeClaimRecord(
         claim_family=family,
         status=ClaimStatus.OPEN,
         property_id=prop,
@@ -1458,6 +1479,24 @@ def build_open_claim(
         template_id=template_id,
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(claim.repository_tree_id or "")
+        record_ref = str(claim.claim_id or claim.property_id or "open-claim")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_claim_record",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return claim
 
 
 __all__ = [

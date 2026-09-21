@@ -1538,7 +1538,7 @@ def evaluate_codebase_proof_benchmark(
         live_summary["channel_id"] = suite.live_model_channel.channel_id
         live_summary["provider_reference"] = suite.live_model_channel.provider_reference
 
-    return CodebaseProofBenchmarkReport(
+    report = CodebaseProofBenchmarkReport(
         suite_id=suite.suite_id,
         corpus_version=suite.corpus_version,
         channel=ResultChannel.DETERMINISTIC_FIXTURE,
@@ -1593,6 +1593,22 @@ def evaluate_codebase_proof_benchmark(
         efficiency_report=efficiency,
         live_model_summary=live_summary,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        suite_ref = str(report.suite_id or report.corpus_version or "codebase-proof-benchmark")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="codebase_proof_benchmark",
+            record_ref=suite_ref,
+            subject_kind="record_cid",
+            subject_ref=suite_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def _evaluate_gates(

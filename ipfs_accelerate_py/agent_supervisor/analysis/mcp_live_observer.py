@@ -324,7 +324,7 @@ def build_mcp_observation_epoch(
                 )
             )
     checks.sort(key=canonical_json_bytes)
-    return McpObservationEpoch(
+    epoch = McpObservationEpoch(
         graph_cid=graph_cid,
         semantic_roots=semantic,
         snapshot_roots=snapshot,
@@ -333,6 +333,22 @@ def build_mcp_observation_epoch(
         checks=tuple(checks),
         valid=bool(checks) and all(item["status"] == "passed" for item in checks),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        epoch_ref = str(epoch.epoch_cid or epoch.graph_cid or "mcp-observation-epoch")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mcp_observation_epoch",
+            record_ref=epoch_ref,
+            subject_kind="record_cid",
+            subject_ref=str(epoch.graph_cid or epoch_ref),
+        )
+    except Exception:
+        pass
+    return epoch
 
 
 def is_current_mcp_observation_epoch(

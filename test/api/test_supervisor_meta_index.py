@@ -2501,6 +2501,180 @@ def test_mirror_proof_scope_counterexamples_permits_and_world_gates(tmp_path, mo
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_zk_attestation_proof_metrics_mcp_and_baseline(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    setup = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="datasets_zk_setup_identity",
+        record_ref="setup:1",
+        subject_kind="record_cid",
+        subject_ref="setup:1",
+    )
+    eligibility = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="provekit_attestation_eligibility",
+        record_ref="receipt:1",
+        subject_kind="receipt_id",
+        subject_ref="receipt:1",
+    )
+    provekit = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="provekit_setup_report",
+        record_ref="setup:2",
+        subject_kind="record_cid",
+        subject_ref="setup:2",
+    )
+    protocol = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="protocol_suite_result",
+        record_ref="model:1",
+        subject_kind="record_cid",
+        subject_ref="model:1",
+    )
+    benchmark = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="proof_benchmark_report",
+        record_ref="report:1",
+        subject_kind="record_cid",
+        subject_ref="report:1",
+    )
+    attestation = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="persisted_attestation_record",
+        record_ref="receipt:2",
+        subject_kind="receipt_id",
+        subject_ref="receipt:2",
+    )
+    health = mirror_work_record(
+        catalog_kind="proof_certificate",
+        record_kind="attestation_backend_health",
+        record_ref="policy:1",
+        subject_kind="record_cid",
+        subject_ref="policy:1",
+    )
+    codebase = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="codebase_proof_benchmark",
+        record_ref="suite:1",
+        subject_kind="record_cid",
+        subject_ref="suite:1",
+    )
+    tactician = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="goal_tactician_benchmark",
+        record_ref="FVT-G063",
+        subject_kind="record_cid",
+        subject_ref="FVT-033",
+    )
+    structural = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="structural_admission",
+        record_ref="receipt:3",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    invalidation = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_claim_invalidation",
+        record_ref="claim:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    finding = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="contract_finding",
+        record_ref="finding:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    claim = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="code_claim_record",
+        record_ref="claim:2",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    epoch = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="mcp_observation_epoch",
+        record_ref="epoch:1",
+        subject_kind="record_cid",
+        subject_ref="graph:1",
+    )
+    identity = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="runtime_service_identity",
+        record_ref="authority:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    surfaces = mirror_work_record(
+        catalog_kind="ast",
+        record_kind="interface_surface_views",
+        record_ref="tool:1",
+        subject_kind="record_cid",
+        subject_ref="tool:1",
+    )
+    baseline = mirror_work_record(
+        catalog_kind="world_model",
+        record_kind="semantic_baseline_manifest",
+        record_ref="manifest:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    residual = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="srt_residual_catalog",
+        record_ref="catalog:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    leanstral = mirror_work_record(
+        catalog_kind="capsule",
+        record_kind="leanstral_goal_development_context",
+        record_ref="goal:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    for item in (
+        setup,
+        eligibility,
+        provekit,
+        protocol,
+        benchmark,
+        attestation,
+        health,
+        codebase,
+        tactician,
+        structural,
+        invalidation,
+        finding,
+        claim,
+        epoch,
+        identity,
+        surfaces,
+        baseline,
+        residual,
+        leanstral,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

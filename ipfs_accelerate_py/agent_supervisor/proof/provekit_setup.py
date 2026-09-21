@@ -757,6 +757,35 @@ def probe_provekit_setup(
     )
 
 
+def _mirror_provekit_eligibility(
+    result: ProveKitAttestationEligibility,
+) -> ProveKitAttestationEligibility:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        setup = result.setup
+        record_ref = str(
+            result.kernel_receipt_id
+            or getattr(setup, "setup_identity", "")
+            or result.predicate_id
+            or "provekit-eligibility"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="provekit_attestation_eligibility",
+            record_ref=record_ref,
+            subject_kind="receipt_id" if result.kernel_receipt_id else "record_cid",
+            subject_ref=str(
+                result.kernel_receipt_id or result.predicate_id or record_ref
+            ),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_provekit_attestation_eligibility(
     setup: ProveKitSetupReceipt,
     *,
@@ -777,80 +806,92 @@ def evaluate_provekit_attestation_eligibility(
     receipt = str(kernel_receipt_id or "").strip()
 
     if setup.simulated:
-        return ProveKitAttestationEligibility(
-            eligible=False,
-            predicate_id=predicate,
-            setup=setup,
-            kernel_verified=False,
-            kernel_receipt_id="",
-            reason_code="simulated_non_attested",
-            reason="simulated/hash-commitment ZK cannot be attested",
-            attested=False,
+        return _mirror_provekit_eligibility(
+            ProveKitAttestationEligibility(
+                eligible=False,
+                predicate_id=predicate,
+                setup=setup,
+                kernel_verified=False,
+                kernel_receipt_id="",
+                reason_code="simulated_non_attested",
+                reason="simulated/hash-commitment ZK cannot be attested",
+                attested=False,
+            )
         )
     if not setup.production_eligible:
-        return ProveKitAttestationEligibility(
-            eligible=False,
-            predicate_id=predicate,
-            setup=setup,
-            kernel_verified=bool(kernel_verified),
-            kernel_receipt_id=receipt,
-            reason_code="setup_not_production_eligible",
-            reason=(
-                "ProveKit setup is not production eligible: " + setup.reason
-            ),
-            attested=False,
+        return _mirror_provekit_eligibility(
+            ProveKitAttestationEligibility(
+                eligible=False,
+                predicate_id=predicate,
+                setup=setup,
+                kernel_verified=bool(kernel_verified),
+                kernel_receipt_id=receipt,
+                reason_code="setup_not_production_eligible",
+                reason=(
+                    "ProveKit setup is not production eligible: " + setup.reason
+                ),
+                attested=False,
+            )
         )
     if predicate not in APPROVED_VERIFIED_RECEIPT_PREDICATES:
-        return ProveKitAttestationEligibility(
-            eligible=False,
-            predicate_id=predicate,
-            setup=setup,
-            kernel_verified=bool(kernel_verified),
-            kernel_receipt_id=receipt,
-            reason_code="predicate_not_approved",
-            reason=(
-                "real ZK attests only an approved verified-receipt predicate; "
-                f"got {predicate!r}"
-            ),
-            attested=False,
+        return _mirror_provekit_eligibility(
+            ProveKitAttestationEligibility(
+                eligible=False,
+                predicate_id=predicate,
+                setup=setup,
+                kernel_verified=bool(kernel_verified),
+                kernel_receipt_id=receipt,
+                reason_code="predicate_not_approved",
+                reason=(
+                    "real ZK attests only an approved verified-receipt predicate; "
+                    f"got {predicate!r}"
+                ),
+                attested=False,
+            )
         )
     if not kernel_verified:
-        return ProveKitAttestationEligibility(
-            eligible=False,
-            predicate_id=predicate,
-            setup=setup,
-            kernel_verified=False,
-            kernel_receipt_id=receipt,
-            reason_code="kernel_verification_required",
-            reason=(
-                "only an already kernel-verified approved receipt predicate is "
-                "eligible for ProveKit attestation"
-            ),
-            attested=False,
+        return _mirror_provekit_eligibility(
+            ProveKitAttestationEligibility(
+                eligible=False,
+                predicate_id=predicate,
+                setup=setup,
+                kernel_verified=False,
+                kernel_receipt_id=receipt,
+                reason_code="kernel_verification_required",
+                reason=(
+                    "only an already kernel-verified approved receipt predicate is "
+                    "eligible for ProveKit attestation"
+                ),
+                attested=False,
+            )
         )
     if not receipt:
-        return ProveKitAttestationEligibility(
-            eligible=False,
+        return _mirror_provekit_eligibility(
+            ProveKitAttestationEligibility(
+                eligible=False,
+                predicate_id=predicate,
+                setup=setup,
+                kernel_verified=True,
+                kernel_receipt_id="",
+                reason_code="kernel_receipt_missing",
+                reason="kernel-verified attestation requires a kernel receipt id",
+                attested=False,
+            )
+        )
+    return _mirror_provekit_eligibility(
+        ProveKitAttestationEligibility(
+            eligible=True,
             predicate_id=predicate,
             setup=setup,
             kernel_verified=True,
-            kernel_receipt_id="",
-            reason_code="kernel_receipt_missing",
-            reason="kernel-verified attestation requires a kernel receipt id",
+            kernel_receipt_id=receipt,
+            reason_code="eligible_verified_receipt_predicate",
+            reason=(
+                "ProveKit setup is production eligible and the predicate is an "
+                "approved kernel-verified receipt"
+            ),
             attested=False,
         )
-    return ProveKitAttestationEligibility(
-        eligible=True,
-        predicate_id=predicate,
-        setup=setup,
-        kernel_verified=True,
-        kernel_receipt_id=receipt,
-        reason_code="eligible_verified_receipt_predicate",
-        reason=(
-            "ProveKit setup is production eligible and the predicate is an "
-            "approved kernel-verified receipt"
-        ),
-        attested=False,
     )
 
 
@@ -859,7 +900,7 @@ def build_provekit_setup_report(
 ) -> dict[str, Any]:
     """Public report envelope for operators and production composition."""
 
-    return {
+    report = {
         "schema": PROVEKIT_SETUP_REPORT_SCHEMA,
         "version": PROVEKIT_SETUP_VERSION,
         "receipt": receipt.to_dict(),
@@ -871,6 +912,22 @@ def build_provekit_setup_report(
             "coverage": list(SCAEV180PROOFREADY_COVERAGE),
         },
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        setup_ref = str(receipt.setup_identity or receipt.status.value or "provekit-setup-report")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="provekit_setup_report",
+            record_ref=setup_ref,
+            subject_kind="record_cid",
+            subject_ref=setup_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 __all__ = [

@@ -1967,13 +1967,29 @@ class ProtocolVerifier:
             verdict = ProtocolVerdict.INCONCLUSIVE
         else:
             verdict = ProtocolVerdict.UNAVAILABLE
-        return ProtocolSuiteResult(
+        result = ProtocolSuiteResult(
             model_id=model.model_id,
             model_identity=model.content_id,
             lane_results=lane_tuple,
             verdict=verdict,
             complete=complete,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            model_ref = str(result.model_id or result.model_identity or "protocol-suite")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="protocol_suite_result",
+                record_ref=model_ref,
+                subject_kind="record_cid",
+                subject_ref=str(result.model_identity or model_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     def verify_all(
         self,

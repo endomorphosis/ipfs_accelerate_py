@@ -118,6 +118,23 @@ def build_baseline_manifest(workspace: Path) -> dict[str, Any]:
     manifest["manifest_cid"] = _sha256_text(
         json.dumps(manifest, sort_keys=True, separators=(",", ":"))
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(manifest.get("repository_tree") or "")
+        manifest_ref = str(manifest.get("manifest_cid") or tree_id or "semantic-baseline")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="semantic_baseline_manifest",
+            record_ref=manifest_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or manifest_ref,
+        )
+    except Exception:
+        pass
     return manifest
 
 

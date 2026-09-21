@@ -917,6 +917,21 @@ def build_leanstral_goal_development_context(
         max_records_per_kind=max_records_per_kind,
     )
     context.validate_request(frozen_request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        goal_id = str(getattr(context.goal, "goal_id", "") or frozen_request.root_goal_id or "leanstral-goal-context")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="leanstral_goal_development_context",
+            record_ref=goal_id,
+            subject_kind="record_cid",
+            subject_ref=goal_id,
+        )
+    except Exception:
+        pass
     return context
 
 

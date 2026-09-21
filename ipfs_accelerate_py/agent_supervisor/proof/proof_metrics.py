@@ -2093,7 +2093,23 @@ def build_proof_benchmark_report(
     report_id = hashlib.sha256(
         json.dumps(identity_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return ProofBenchmarkReport({**material, "report_id": report_id})
+    report = ProofBenchmarkReport({**material, "report_id": report_id})
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        report_ref = str(report.get("report_id") if hasattr(report, "get") else report_id) or report_id
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_benchmark_report",
+            record_ref=report_ref,
+            subject_kind="record_cid",
+            subject_ref=report_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def build_proof_metrics_snapshot(

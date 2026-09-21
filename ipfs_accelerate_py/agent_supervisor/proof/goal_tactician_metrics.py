@@ -1350,7 +1350,29 @@ def build_goal_tactician_benchmark_report(
         "contains_proof_transcripts": False,
         "contains_private_witnesses": False,
     }
-    return GoalTacticianBenchmarkReport(payload)
+    report = GoalTacticianBenchmarkReport(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        report_ref = str(
+            (report.get("goal_id") if hasattr(report, "get") else payload.get("goal_id"))
+            or "goal-tactician-benchmark"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="goal_tactician_benchmark",
+            record_ref=report_ref,
+            subject_kind="record_cid",
+            subject_ref=str(
+                (report.get("task_id") if hasattr(report, "get") else payload.get("task_id"))
+                or report_ref
+            ),
+        )
+    except Exception:
+        pass
+    return report
 
 
 def architecture_benchmark_document(

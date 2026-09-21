@@ -921,7 +921,7 @@ def build_runtime_service_identity(
         "authority_cid_bound",
         "interface_cid_bound",
     ]
-    return RuntimeServiceIdentity(
+    identity = RuntimeServiceIdentity(
         passed=True,
         service_id=str(auth["service_id"]),
         commit=git["commit"],
@@ -933,6 +933,24 @@ def build_runtime_service_identity(
         endpoints=tuple(endpoints),
         reason_codes=tuple(reason_codes),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(identity.tree or "")
+        identity_ref = str(identity.authority_cid or identity.service_id or tree_id or "runtime-service-identity")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_service_identity",
+            record_ref=identity_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or identity_ref,
+        )
+    except Exception:
+        pass
+    return identity
 
 
 def write_service_identity_receipt(

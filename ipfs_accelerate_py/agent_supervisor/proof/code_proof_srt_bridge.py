@@ -500,7 +500,7 @@ def build_structural_admission(
 ) -> StructuralAdmission:
     """Build a StructuralAdmission@1 receipt (semantic_authority forced false)."""
 
-    return StructuralAdmission(
+    admission = StructuralAdmission(
         residual_ref_ids=tuple(residual_ref_ids),
         structural_tags=tuple(structural_tags),
         disposition=disposition,  # type: ignore[arg-type]
@@ -514,6 +514,29 @@ def build_structural_admission(
         semantic_authority=False,
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(admission.repository_tree_id or "")
+        record_ref = str(
+            admission.receipt_id
+            or getattr(admission, "content_id", "")
+            or tree_id
+            or "structural-admission"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="structural_admission",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return admission
 
 
 # ---------------------------------------------------------------------------
@@ -744,13 +767,31 @@ def build_srt_residual_catalog(
             normalized.append(ResidualCatalogEntry.from_dict(item))
         else:
             raise CodeProofSrtBridgeError("entries must be ResidualCatalogEntry or mappings")
-    return SrtResidualCatalog(
+    catalog = SrtResidualCatalog(
         entries=tuple(normalized),
         repository_tree_id=repository_tree_id,
         repository_id=repository_id,
         plateau_packet_id=plateau_packet_id,
         metadata=dict(metadata or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(catalog.repository_tree_id or "")
+        catalog_ref = str(catalog.catalog_id or tree_id or catalog.plateau_packet_id or "srt-residual-catalog")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="srt_residual_catalog",
+            record_ref=catalog_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or catalog_ref,
+        )
+    except Exception:
+        pass
+    return catalog
 
 
 # ---------------------------------------------------------------------------

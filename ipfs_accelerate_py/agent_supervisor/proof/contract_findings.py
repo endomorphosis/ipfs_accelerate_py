@@ -2221,7 +2221,7 @@ def build_contract_finding(
     else:
         versions = AnalyzerVersions(versions=analyzer_versions)  # type: ignore[arg-type]
 
-    return ContractFindingRecord(
+    finding = ContractFindingRecord(
         claim_level=claim_level,
         status=status,
         severity=severity,
@@ -2253,6 +2253,24 @@ def build_contract_finding(
         partial=partial,
         allow_poisoned_severity=allow_poisoned_severity,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bound_tree = str(finding.tree_id or "")
+        finding_ref = str(finding.finding_id or finding.content_id or bound_tree or "contract-finding")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_finding",
+            record_ref=finding_ref,
+            tree_id=bound_tree,
+            subject_kind="tree_id" if bound_tree else "record_cid",
+            subject_ref=bound_tree or finding_ref,
+        )
+    except Exception:
+        pass
+    return finding
 
 
 def _atomic_write_json(path: Path, payload: Any) -> None:
