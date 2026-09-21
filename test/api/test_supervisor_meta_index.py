@@ -3418,6 +3418,182 @@ def test_mirror_repair_objectives_receipts_and_governor_surfaces(tmp_path, monke
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_efficiency_security_policy_and_runtime_admission(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    ledger = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="supervisor_token_ledger",
+        record_ref="ledger:1",
+        subject_kind="record_cid",
+        subject_ref="ledger:1",
+    )
+    v2 = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_benchmark_report",
+        record_ref="corpus:1",
+        subject_kind="record_cid",
+        subject_ref="corpus:1",
+    )
+    self_imp = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="v2_self_improvement_evaluation",
+        record_ref="eval:1",
+        subject_kind="record_cid",
+        subject_ref="eval:1",
+    )
+    paired = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="paired_efficiency_report",
+        record_ref="task:1",
+        subject_kind="record_cid",
+        subject_ref="task:1",
+    )
+    security = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="integrated_security_receipt",
+        record_ref="dataset_intake",
+        subject_kind="record_cid",
+        subject_ref="dataset_intake",
+    )
+    doctor_policy = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="doctor_policy_decision",
+        record_ref="inspect",
+        subject_kind="record_cid",
+        subject_ref="inspect",
+    )
+    stage = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="stage_backpressure_admission",
+        record_ref="prove",
+        subject_kind="record_cid",
+        subject_ref="prove",
+    )
+    frontier = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="resource_frontier_admission",
+        record_ref="SAWM-039",
+        subject_kind="task_id",
+        subject_ref="SAWM-039",
+    )
+    lane = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="distributed_lane_evidence",
+        record_ref="digest:1",
+        tree_id="tree:work",
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+    )
+    quality = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="objective_goal_quality_report",
+        record_ref="heap:1",
+        subject_kind="record_cid",
+        subject_ref="heap:1",
+    )
+    thought = mirror_work_record(
+        catalog_kind="knowledge_graph",
+        record_kind="objective_thought_graph",
+        record_ref="goal:1",
+        subject_kind="record_cid",
+        subject_ref="goal:1",
+    )
+    val_key = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="validation_cache_key",
+        record_ref="digest:2",
+        subject_kind="key_id",
+        subject_ref="digest:2",
+    )
+    proposal = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="body_free_doctor_proposal",
+        record_ref="register_tool",
+        subject_kind="record_cid",
+        subject_ref="register_tool",
+    )
+    guard = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="controller_guard_evaluation",
+        record_ref="ok",
+        subject_kind="record_cid",
+        subject_ref="ok",
+    )
+    promo = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="governor_promotion_gate",
+        record_ref="candidate:1",
+        subject_kind="record_cid",
+        subject_ref="candidate:1",
+    )
+    rule = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="rule_evaluation_report",
+        record_ref="report:1",
+        subject_kind="record_cid",
+        subject_ref="report:1",
+    )
+    baseline = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="baseline_prediction_evaluation",
+        record_ref="eval:2",
+        subject_kind="record_cid",
+        subject_ref="eval:2",
+    )
+    refill = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="codebase_refill_admission",
+        record_ref="finding:1",
+        subject_kind="record_cid",
+        subject_ref="finding:1",
+    )
+    fixed = mirror_work_record(
+        catalog_kind="proof_cache",
+        record_kind="doctor_fixed_point_result",
+        record_ref="finding:2",
+        subject_kind="record_cid",
+        subject_ref="finding:2",
+    )
+    local = mirror_work_record(
+        catalog_kind="metadata",
+        record_kind="local_expert_evaluation",
+        record_ref="group:1",
+        subject_kind="record_cid",
+        subject_ref="group:1",
+    )
+    for item in (
+        ledger,
+        v2,
+        self_imp,
+        paired,
+        security,
+        doctor_policy,
+        stage,
+        frontier,
+        lane,
+        quality,
+        thought,
+        val_key,
+        proposal,
+        guard,
+        promo,
+        rule,
+        baseline,
+        refill,
+        fixed,
+        local,
+    ):
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

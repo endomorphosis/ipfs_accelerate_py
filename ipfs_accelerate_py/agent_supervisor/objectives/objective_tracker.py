@@ -766,7 +766,7 @@ def build_objective_goal_quality_report(
     for goal in goals:
         for parent_id in goal.parent_goal_ids:
             child_counts[parent_id] = child_counts.get(parent_id, 0) + 1
-    return ObjectiveGoalQualityReport(
+    report = ObjectiveGoalQualityReport(
         objective_heap_id=objective_heap_content_id(objective_text),
         quality_records=tuple(
             objective_goal_quality_record(
@@ -777,6 +777,22 @@ def build_objective_goal_quality_report(
             for goal in goals
         ),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.objective_heap_id or "objective-goal-quality")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_goal_quality_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def write_objective_goal_quality_report(
@@ -6888,13 +6904,30 @@ def build_objective_thought_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, A
                 )
                 add_edge(interop_node, mcp_node, "uses_mcp_descriptor")
 
-    return {
+    graph = {
         "schema": "ipfs_accelerate_py.agent_supervisor.objective_thought_graph",
         "node_count": len(nodes),
         "edge_count": len(edges),
         "nodes": [nodes[node_id] for node_id in sorted(nodes)],
         "edges": edges,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first_goal = next((goal.goal_id for goal in goals), "")
+        record_ref = str(first_goal or "objective-thought-graph")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="objective_thought_graph",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return graph
 
 
 def write_objective_graph_artifact(

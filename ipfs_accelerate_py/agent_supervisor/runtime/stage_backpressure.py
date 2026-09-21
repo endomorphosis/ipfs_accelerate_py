@@ -18,8 +18,24 @@ def admit_stage(stage: str, inflight: int, limit: int) -> Mapping[str, Any]:
     if type(limit) is not int or limit < 0:
         raise BackpressureError("limit must be a non-negative int")
     if inflight >= limit:
-        return MappingProxyType({"admitted": False, "reason": "stage-backpressure", "stage": stage})
-    return MappingProxyType({"admitted": True, "reason": "", "stage": stage})
+        decision = MappingProxyType({"admitted": False, "reason": "stage-backpressure", "stage": stage})
+    else:
+        decision = MappingProxyType({"admitted": True, "reason": "", "stage": stage})
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="stage_backpressure_admission",
+            record_ref=str(stage or "stage-backpressure"),
+            subject_kind="record_cid",
+            subject_ref=str(stage or "stage-backpressure"),
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def preempt(record: Mapping[str, Any]) -> Mapping[str, Any]:

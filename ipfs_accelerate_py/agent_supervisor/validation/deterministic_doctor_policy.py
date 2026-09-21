@@ -1129,7 +1129,27 @@ def evaluate_doctor_operation(
     """Convenience entry point for policy evaluation."""
 
     resolved = load_deterministic_doctor_policy(policy)
-    return resolved.evaluate(operation=operation, **kwargs)
+    decision = resolved.evaluate(operation=operation, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "content_id", "")
+            or getattr(operation, "value", operation)
+            or "doctor-policy-decision"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_policy_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 __all__ = [

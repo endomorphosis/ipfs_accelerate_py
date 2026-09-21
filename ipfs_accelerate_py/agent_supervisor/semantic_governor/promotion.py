@@ -1171,7 +1171,23 @@ def evaluate_promotion_gates(
         if reason not in seen:
             seen.add(reason)
             ordered.append(reason)
-    return tuple(ordered)
+    gated = tuple(ordered)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(cand, "candidate_cid", "") or "governor-promotion-gate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="governor_promotion_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return gated
 
 
 # ---------------------------------------------------------------------------

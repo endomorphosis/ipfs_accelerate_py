@@ -1296,6 +1296,21 @@ def evaluate_rule_candidate(
             f"failed to construct RuleEvaluationReport: {exc}"
         ) from exc
 
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.report_id or report.candidate_cid or "rule-evaluation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="rule_evaluation_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return report
 
 

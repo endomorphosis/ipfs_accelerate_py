@@ -2019,13 +2019,33 @@ def build_token_ledger(
 ) -> SupervisorTokenLedger:
     """Construct and reconcile a population-complete supervisor token ledger."""
 
-    return SupervisorTokenLedger(
+    ledger = SupervisorTokenLedger(
         binding=binding,
         lifecycle_events=tuple(lifecycle_events),  # type: ignore[arg-type]
         terminal_attributions=tuple(terminal_attributions),  # type: ignore[arg-type]
         attributions=tuple(attributions),  # type: ignore[arg-type]
         calibrations=tuple(calibrations),  # type: ignore[arg-type]
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(binding, "binding_id", "")
+            or getattr(ledger, "content_id", "")
+            or "supervisor-token-ledger"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="supervisor_token_ledger",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ledger
 
 
 def _v1_validation_result(receipt: Any) -> ValidationResult:

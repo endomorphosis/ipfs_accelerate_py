@@ -936,7 +936,25 @@ def evaluate_distributed_lane_evidence(
         content_id="",
         _producer_seal=_DISTRIBUTED_LANE_EVIDENCE_SEAL,
     )
-    return replace(receipt, content_id=_distributed_lane_digest(receipt._content()))
+    receipt = replace(receipt, content_id=_distributed_lane_digest(receipt._content()))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(receipt.repository_tree or "")
+        record_ref = str(receipt.content_id or tree_id or "distributed-lane-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="distributed_lane_evidence",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def _taskboard_sha256(path: Path) -> str:

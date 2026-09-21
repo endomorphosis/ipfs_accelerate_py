@@ -5495,12 +5495,32 @@ def build_paired_efficiency_report(
                 candidate_covered_evidence_references=candidate_covered,
             )
         )
-    return PairedEfficiencyReport(
+    report = PairedEfficiencyReport(
         cases=tuple(cases),
         baseline_unpaired_accepted_task_references=tuple(baseline_tasks - candidate_tasks),
         candidate_unpaired_accepted_task_references=tuple(candidate_tasks - baseline_tasks),
         minimum_input_token_reduction_bps=(minimum_input_token_reduction_bps),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "content_id", "")
+            or (report.cases[0].task_reference if report.cases else "")
+            or "paired-efficiency-report"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="paired_efficiency_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def build_terminal_accepted_work_evidence(

@@ -90,6 +90,27 @@ def _default_reproof_commands(domain: str) -> tuple[str, ...]:
     return tuple(cmds)
 
 
+def _mirror_doctor_proposal(payload: dict[str, Any], operation: str) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        proposal = payload.get("proposal")
+        proposal_id = proposal.get("proposal_id") if isinstance(proposal, Mapping) else ""
+        record_ref = str(proposal_id or operation or "body-free-doctor-proposal")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="body_free_doctor_proposal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 def build_body_free_doctor_proposal(
     *,
     operation: str,
@@ -141,7 +162,7 @@ def build_body_free_doctor_proposal(
                 proof_admitted=False,
             )
         receipt = registry.evaluate(proposal)
-        return {
+        proposal_payload = {
             "proposal": proposal.to_dict()
             if hasattr(proposal, "to_dict")
             else {"proposal_id": getattr(proposal, "proposal_id", "")},
@@ -155,13 +176,17 @@ def build_body_free_doctor_proposal(
             "sca_doctor_operator": doctor_operator,
             "note": "proposal is body-free; render_admitted requires proof_admitted + span hash",
         }
+        return _mirror_doctor_proposal(proposal_payload, operation)
     except Exception as exc:  # noqa: BLE001
-        return {
-            "error": f"{type(exc).__name__}: {exc}",
-            "body_free": True,
-            "proof_admitted": False,
-            "sca_doctor_operator": doctor_operator,
-        }
+        return _mirror_doctor_proposal(
+            {
+                "error": f"{type(exc).__name__}: {exc}",
+                "body_free": True,
+                "proof_admitted": False,
+                "sca_doctor_operator": doctor_operator,
+            },
+            operation,
+        )
 
 
 def materialize_admitted_edit_plan(

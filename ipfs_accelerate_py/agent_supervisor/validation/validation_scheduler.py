@@ -647,7 +647,7 @@ def build_validation_cache_key(
         policy="successful-exact-result-only@1",
         schema_version=CACHE_SCHEMA,
     )
-    return ValidationCacheKey(
+    key = ValidationCacheKey(
         target_commit=payload["target_commit"],
         command=normalized_command,
         environment=tuple(environment_subset.items()),
@@ -655,6 +655,22 @@ def build_validation_cache_key(
         digest=_sha256_bytes(_canonical_json(payload).encode("utf-8")),
         semantic_key=semantic_key,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.digest or key.target_commit or "validation-cache-key")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="validation_cache_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
 
 
 class ValidationResultCache:

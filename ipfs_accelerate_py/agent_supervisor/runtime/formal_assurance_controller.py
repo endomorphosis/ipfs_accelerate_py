@@ -1642,6 +1642,25 @@ def build_default_grammar(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_controller_guard(ok: bool, reason: str) -> tuple[bool, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(reason or ("ok" if ok else "guard-denied"))
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="controller_guard_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok, reason
+
+
 def evaluate_guard(
     guard: ControllerGuard,
     observation: ControllerObservation,
@@ -1649,40 +1668,40 @@ def evaluate_guard(
     bounds: ControllerBounds,
 ) -> tuple[bool, str]:
     if guard.forbid_shutdown and observation.shutdown_latched:
-        return False, "shutdown latched"
+        return _mirror_controller_guard(False, "shutdown latched")
     if guard.require_lease and not observation.lease_held:
-        return False, "lease required"
+        return _mirror_controller_guard(False, "lease required")
     if guard.require_confirmation and not (
         observation.confirmation_present and not observation.confirmation_spent
     ):
-        return False, "confirmation required"
+        return _mirror_controller_guard(False, "confirmation required")
     if guard.forbid_unknown_pending and observation.unknown_pending:
-        return False, "unknown_pending forbidden"
+        return _mirror_controller_guard(False, "unknown_pending forbidden")
     max_retries = (
         bounds.max_retries if guard.max_retries is None else guard.max_retries
     )
     if observation.retry_count > max_retries:
-        return False, "retry bound exceeded"
+        return _mirror_controller_guard(False, "retry bound exceeded")
     max_parallel = (
         bounds.max_parallel if guard.max_parallel is None else guard.max_parallel
     )
     if observation.parallel_count > max_parallel:
-        return False, "parallelism bound exceeded"
+        return _mirror_controller_guard(False, "parallelism bound exceeded")
     if guard.allowed_reversibility and (
         observation.reversibility not in guard.allowed_reversibility
     ):
-        return False, "reversibility not allowed"
+        return _mirror_controller_guard(False, "reversibility not allowed")
     auth = authority_rank(observation.authority_class)
     if auth < authority_rank(guard.min_authority) or auth > authority_rank(
         guard.max_authority
     ):
-        return False, "authority class out of guard range"
+        return _mirror_controller_guard(False, "authority class out of guard range")
     evid = evidence_rank(observation.evidence_class)
     if evid < evidence_rank(guard.min_evidence) or evid > evidence_rank(
         guard.max_evidence
     ):
-        return False, "evidence class out of guard range"
-    return True, "ok"
+        return _mirror_controller_guard(False, "evidence class out of guard range")
+    return _mirror_controller_guard(True, "ok")
 
 
 def _fallback_preserves(

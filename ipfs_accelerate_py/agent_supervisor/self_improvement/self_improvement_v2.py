@@ -2817,9 +2817,30 @@ def evaluate_v2_self_improvement(
 ) -> V2SelfEvaluationReport:
     """Evaluate the exact population and return a fail-closed Pareto report."""
 
-    return V2SelfImprovementEvaluator(policy_id=policy_id).evaluate(
+    report = V2SelfImprovementEvaluator(policy_id=policy_id).evaluate(
         corpus, producer_receipts, ablation_receipts
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(report, "report_id", "")
+            or getattr(corpus, "corpus_id", "")
+            or policy_id
+            or "v2-self-improvement"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_self_improvement_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def verify_v2_self_evaluation_report(

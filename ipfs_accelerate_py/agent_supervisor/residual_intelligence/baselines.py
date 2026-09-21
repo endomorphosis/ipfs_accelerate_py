@@ -1474,7 +1474,7 @@ def evaluate_predictions(
             if case.critical:
                 critical_false_accept += 1
     n_examples = len(cases)
-    return BaselineEvaluation(
+    evaluation = BaselineEvaluation(
         example_count=n_examples,
         exact_lookup_count=exact,
         procedure_count=procedure,
@@ -1502,6 +1502,22 @@ def evaluate_predictions(
         ),
         abstention_rate_ppm=(abstain * MAX_SCORE_PPM) // n_examples,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(evaluation, "evaluation_id", "") or "baseline-evaluation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="baseline_prediction_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 def _rank_candidates(

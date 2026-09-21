@@ -1357,7 +1357,7 @@ def build_v2_benchmark_report(
     population_complete = corpus.fixture_population_ids == expected_population
     paired = all(item.pair_integrity_passed for item in corpus.cases)
     safety_passed = not any(failures.values())
-    return V2BenchmarkReport(
+    report = V2BenchmarkReport(
         corpus_id=corpus.corpus_id,
         fixture_population_ids=corpus.fixture_population_ids,
         case_ids=tuple(item.case_id for item in corpus.cases),
@@ -1372,6 +1372,22 @@ def build_v2_benchmark_report(
         non_compensable_safety_passed=safety_passed,
         passed=population_complete and paired and safety_passed,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(report.corpus_id or "v2-benchmark-report")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_benchmark_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def verify_v2_benchmark_report(

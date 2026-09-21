@@ -33,7 +33,7 @@ def admit_frontier(
         for key, need in demand.items():
             used[key] = used.get(key, 0) + need
         accepted.append(str(task.get("task_id")))
-    return MappingProxyType(
+    frontier = MappingProxyType(
         {
             "accepted": tuple(accepted),
             "rejected": tuple(rejected),
@@ -41,3 +41,19 @@ def admit_frontier(
             "dispatched": False,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str((accepted[0] if accepted else "") or "resource-frontier")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="resource_frontier_admission",
+            record_ref=record_ref,
+            subject_kind="task_id" if accepted else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return frontier

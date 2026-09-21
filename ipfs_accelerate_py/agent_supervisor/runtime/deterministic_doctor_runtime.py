@@ -1182,7 +1182,7 @@ def _dcr053_result(
     roots_cid: str = "",
     states: Sequence[DoctorFixedPointState] = (),
 ) -> DoctorFixedPointResult:
-    return DoctorFixedPointResult(
+    result = DoctorFixedPointResult(
         disposition=disposition,
         reason_code=reason_code,
         finding_id=finding_id,
@@ -1190,6 +1190,22 @@ def _dcr053_result(
         roots_cid=roots_cid,
         state_ids=tuple(item.state_id for item in states),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.finding_id or result.roots_cid or result.reason_code or "doctor-fixed-point")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="doctor_fixed_point_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluate_deterministic_doctor_fixed_point(

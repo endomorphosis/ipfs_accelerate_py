@@ -1494,7 +1494,7 @@ def evaluate_local_predictions(
             if case.critical:
                 critical_false_accept += 1
     n_examples = len(cases)
-    return ExpertEvaluation(
+    evaluation = ExpertEvaluation(
         example_count=n_examples,
         held_out_count=held_out,
         adversarial_count=adversarial,
@@ -1528,6 +1528,22 @@ def evaluate_local_predictions(
         abstention_rate_ppm=(abstain * MAX_SCORE_PPM) // n_examples,
         group_key=group_key,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(evaluation.group_key or "local-expert-evaluation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="local_expert_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evaluation
 
 
 @dataclass(frozen=True)

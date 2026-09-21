@@ -3343,6 +3343,29 @@ def scan_codebase_findings(
     return inventory if return_inventory else inventory.findings
 
 
+def _mirror_codebase_refill(admission: CodebaseRefillAdmission) -> CodebaseRefillAdmission:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(admission, "content_id", "")
+            or (admission.findings[0].fingerprint if admission.findings else "")
+            or "codebase-refill-admission"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="codebase_refill_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return admission
+
+
 def admit_codebase_refill_candidates(
     inventory: CodebaseScanInventory,
     *,
@@ -3397,12 +3420,14 @@ def admit_codebase_refill_candidates(
     if policy_errors:
         reason_code = str(policy_errors[0]["reason_code"])
         rejections.extend(rejection(finding, reason_code) for finding in inventory.findings)
-        return CodebaseRefillAdmission(
-            findings=(),
-            rejections=tuple(rejections),
-            policy_errors=tuple(policy_errors),
-            allow_unscoped=allow_unscoped,
-            max_findings=max_findings,
+        return _mirror_codebase_refill(
+            CodebaseRefillAdmission(
+                findings=(),
+                rejections=tuple(rejections),
+                policy_errors=tuple(policy_errors),
+                allow_unscoped=allow_unscoped,
+                max_findings=max_findings,
+            )
         )
 
     for finding in inventory.findings:
@@ -3421,12 +3446,14 @@ def admit_codebase_refill_candidates(
             rejections.append(rejection(admitted, "admission_limit"))
             continue
         admitted_findings.append(admitted)
-    return CodebaseRefillAdmission(
-        findings=tuple(admitted_findings),
-        rejections=tuple(rejections),
-        policy_errors=(),
-        allow_unscoped=allow_unscoped,
-        max_findings=max_findings,
+    return _mirror_codebase_refill(
+        CodebaseRefillAdmission(
+            findings=tuple(admitted_findings),
+            rejections=tuple(rejections),
+            policy_errors=(),
+            allow_unscoped=allow_unscoped,
+            max_findings=max_findings,
+        )
     )
 
 

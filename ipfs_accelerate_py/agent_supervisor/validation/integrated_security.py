@@ -637,13 +637,33 @@ def evaluate_integrated_security(
     else:
         reasons = _promotion_reasons(payload, test_mode=selected.test_mode)
     unique = tuple(dict.fromkeys(reasons))
-    return IntegratedSecurityReceipt(
+    receipt = IntegratedSecurityReceipt(
         decision=SecurityDecision.REJECT if unique else SecurityDecision.ADMIT,
         quadrant=selected.quadrant,
         stage=selected.stage,
         reasons=unique,
         evidence_ids=selected.evidence_ids,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt.stage, "value", receipt.stage)
+            or getattr(receipt, "content_id", "")
+            or "integrated-security"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="integrated_security_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def admitted_fixture(stage: SecurityStage | str, **overrides: Any) -> dict[str, Any]:
