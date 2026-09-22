@@ -455,6 +455,32 @@ _ASPECT_KIND: Final[dict[SemanticAspect, ObligationKind]] = {
 }
 
 
+def _mirror_obligation_compilation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "candidate_id", "")
+            or getattr(result, "trace_id", "")
+            or "contract-repair-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_repair_obligation_compilation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairObligationCompiler:
     """Compile all mandatory obligations without ranking or admitting a candidate."""
 
@@ -488,7 +514,11 @@ class ContractRepairObligationCompiler:
             obligations.extend(self._placement(trace, comparison, candidate, context))
         else:
             raise ContractRepairObligationError("reject and ambiguous candidates cannot receive proof obligations")
-        return ContractRepairObligationCompilation(trace.roots, trace.content_id, candidate.content_id, tuple(obligations))
+        return _mirror_obligation_compilation(
+            ContractRepairObligationCompilation(
+                trace.roots, trace.content_id, candidate.content_id, tuple(obligations)
+            )
+        )
 
     compile_candidate = compile
 

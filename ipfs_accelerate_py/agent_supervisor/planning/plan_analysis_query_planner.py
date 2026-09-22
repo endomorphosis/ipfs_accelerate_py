@@ -1075,6 +1075,32 @@ _REQUIRED_CLAIM_AUTHORITIES: Final[
 )
 
 
+def _mirror_query_plan(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        scope = getattr(result, "scope", None)
+        tree_id = str(getattr(scope, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "plan_id", "")
+            or getattr(result, "request_id", "")
+            or "reasoning-query-plan"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reasoning_query_plan",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class PlanAnalysisQueryPlanner:
     """Compile fixed mandatory queries and independently recheck coverage."""
 
@@ -1208,7 +1234,7 @@ class PlanAnalysisQueryPlanner:
                 )
             )
 
-        return ReasoningQueryPlan(
+        return _mirror_query_plan(ReasoningQueryPlan(
             input_kind=kind,
             request_id=request_id,
             scope=scope,
@@ -1219,7 +1245,7 @@ class PlanAnalysisQueryPlanner:
                 QueryPlanDecision.BLOCKED if blockers else QueryPlanDecision.READY
             ),
             blockers=tuple(blockers),
-        )
+        ))
 
     compile_create = compile
     compile_steer = compile

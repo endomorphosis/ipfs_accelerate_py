@@ -2132,7 +2132,7 @@ def dry_run_transformation_packet(
         if isinstance(packet, RefactorTransformationPacket)
         else RefactorTransformationPacket.from_dict(packet)
     )
-    return DryRunReceipt(
+    result = DryRunReceipt(
         packet_cid=resolved.packet_cid,
         tree_id=resolved.tree_id,
         edit_cids=tuple(item.edit_cid for item in resolved.edits),
@@ -2140,6 +2140,25 @@ def dry_run_transformation_packet(
         mutated=False,
         deterministic=True,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.packet_cid or tree_id or "transformation-packet-dry-run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="transformation_packet_dry_run",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(result.write_paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 def encode_canonical_packet(packet: RefactorTransformationPacket) -> dict[str, Any]:

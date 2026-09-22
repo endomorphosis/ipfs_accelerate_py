@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final
+from typing import Any, Final
 
 from ..proof.program_contracts import (
     CapabilityMode,
@@ -417,6 +417,37 @@ def _fallback(sender: ExpectedProgramContract, receiver: ExpectedProgramContract
     return _clause(aspect, ClauseDisposition.SATISFIED, "receiver preserves required fallback behavior")
 
 
+def _mirror_contract_half(result: Any, record_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        call = getattr(result, "call_requirement", None)
+        contract = getattr(result, "contract", None)
+        roots = getattr(call, "roots", None) or getattr(contract, "roots", None)
+        symbol = getattr(contract, "symbol", None)
+        tree_id = str(
+            getattr(roots, "tree_id", "") or getattr(symbol, "tree_id", "") or ""
+        )
+        record_ref = str(
+            getattr(call, "content_id", "")
+            or getattr(contract, "content_id", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SenderRequirementCompiler:
     """Build the caller/consumer half of a trace-bound requirement contract."""
 
@@ -434,7 +465,9 @@ class SenderRequirementCompiler:
             evidence_refs=evidence,
             unsupported_clause_refs=tuple(item.unsupported_id for item in expected.unsupported),
         )
-        return SenderRequirement(expected, requirement)
+        return _mirror_contract_half(
+            SenderRequirement(expected, requirement), "sender_requirement"
+        )
 
     compile_sender = compile
 
@@ -455,7 +488,9 @@ class ReceiverGuaranteeCompiler:
             for source in expected.sources
         ):
             raise SenderReceiverContractError("receiver guarantee requires reviewed expectation evidence")
-        return ReceiverGuarantee(expected, observed)
+        return _mirror_contract_half(
+            ReceiverGuarantee(expected, observed), "receiver_guarantee"
+        )
 
     compile_receiver = compile
 
