@@ -1234,6 +1234,38 @@ class ContractRepairValidator:
         protocol rather than inventing a second completion receipt.
         """
 
+        def _mirror(outcome: Any) -> Any:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                if isinstance(outcome, Mapping):
+                    repair = outcome.get("contract_repair")
+                    receipt = getattr(repair, "receipt", None)
+                    record_ref = str(
+                        getattr(receipt, "receipt_id", "")
+                        or getattr(receipt, "completion_id", "")
+                        or "contract-logic-fixed-point"
+                    )
+                else:
+                    receipt = getattr(outcome, "receipt", None)
+                    record_ref = str(
+                        getattr(receipt, "receipt_id", "")
+                        or getattr(receipt, "completion_id", "")
+                        or "contract-logic-fixed-point"
+                    )
+                mirror_work_record(
+                    catalog_kind="proof_cache",
+                    record_kind="contract_logic_fixed_point",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return outcome
+
         base = self.validate(
             packet,
             decision,
@@ -1251,9 +1283,9 @@ class ContractRepairValidator:
             or program_evidence is None
             or logic_evidence is None
         ):
-            return base
+            return _mirror(base)
         if not base.complete or base.receipt is None:
-            return base
+            return _mirror(base)
 
         completion_id = getattr(base.receipt, "receipt_id", "") or getattr(
             base.receipt, "completion_id", ""
@@ -1269,17 +1301,19 @@ class ContractRepairValidator:
             checkpoint=checkpoint,
             contract_repair_completion_id=str(completion_id or ""),
         )
-        return {
-            "contract_repair": base,
-            "logic_fixed_point": logic_outcome,
-            "complete": bool(base.complete and logic_outcome.complete),
-            "logic_attachment": logic_outcome.logic_attachment,
-            "finalize": logic_outcome.finalize,
-            "compensating_rollback": logic_outcome.compensating_rollback,
-            "rolled_back": logic_outcome.rolled_back,
-            "partial_merge_allowed": False,
-            "provider_success_is_not_completion": True,
-        }
+        return _mirror(
+            {
+                "contract_repair": base,
+                "logic_fixed_point": logic_outcome,
+                "complete": bool(base.complete and logic_outcome.complete),
+                "logic_attachment": logic_outcome.logic_attachment,
+                "finalize": logic_outcome.finalize,
+                "compensating_rollback": logic_outcome.compensating_rollback,
+                "rolled_back": logic_outcome.rolled_back,
+                "partial_merge_allowed": False,
+                "provider_success_is_not_completion": True,
+            }
+        )
 
     def validate(
         self,

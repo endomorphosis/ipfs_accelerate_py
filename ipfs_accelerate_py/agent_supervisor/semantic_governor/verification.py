@@ -329,20 +329,37 @@ def reject_unknown_check_kinds(declared: Sequence[str] | None) -> tuple[str, ...
     """Reject any check kind outside the closed matrix vocabulary."""
 
     if declared is None:
-        return ()
-    if not isinstance(declared, (list, tuple)):
-        raise GovernorVerificationBridgeError(
-            "declared checks must be a sequence",
-            reason_code="unknown_check_mapping",
+        known = ()
+    else:
+        if not isinstance(declared, (list, tuple)):
+            raise GovernorVerificationBridgeError(
+                "declared checks must be a sequence",
+                reason_code="unknown_check_mapping",
+            )
+        unknown = [str(item) for item in declared if str(item) not in KNOWN_CHECK_KINDS]
+        if unknown:
+            raise GovernorVerificationBridgeError(
+                f"unknown task-class check mapping: {', '.join(unknown)}",
+                reason_code="unknown_check_mapping",
+                details={"unknown": unknown},
+            )
+        known = tuple(str(item) for item in declared if str(item) in KNOWN_CHECK_KINDS)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
         )
-    unknown = [str(item) for item in declared if str(item) not in KNOWN_CHECK_KINDS]
-    if unknown:
-        raise GovernorVerificationBridgeError(
-            f"unknown task-class check mapping: {', '.join(unknown)}",
-            reason_code="unknown_check_mapping",
-            details={"unknown": unknown},
+
+        record_ref = str(known[0] if known else "known-check-kinds")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="known_check_kinds",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
         )
-    return tuple(str(item) for item in declared if str(item) in KNOWN_CHECK_KINDS)
+    except Exception:
+        pass
+    return known
 
 
 def _receipts_by_kind(

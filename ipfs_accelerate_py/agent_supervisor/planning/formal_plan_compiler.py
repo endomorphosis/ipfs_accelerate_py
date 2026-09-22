@@ -1412,10 +1412,34 @@ class FormalPlanCompiler:
     ) -> PlanCompilationResult:
         """Compile canonical rows from a DuckDB path or open connection."""
 
+        def _mirror(outcome: PlanCompilationResult) -> PlanCompilationResult:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                plan_id = ""
+                if outcome.plan is not None:
+                    plan_id = str(getattr(outcome.plan, "plan_id", "") or "")
+                record_ref = str(
+                    plan_id or outcome.source_identity or "duckdb-formal-plan"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="duckdb_formal_plan",
+                    record_ref=record_ref,
+                    tree_id=str(getattr(outcome.plan, "repository_tree_id", "") or ""),
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return outcome
+
         try:
             import duckdb  # type: ignore
         except ImportError as exc:
-            return _failure_result(
+            return _mirror(_failure_result(
                 CompilationStatus.UNSUPPORTED,
                 (
                     CompilationIssue(
@@ -1425,7 +1449,7 @@ class FormalPlanCompiler:
                         f"DuckDB input is unavailable: {exc}",
                     ),
                 ),
-            )
+            ))
 
         connection = None
         owned = False
@@ -1465,7 +1489,7 @@ class FormalPlanCompiler:
             combined = expand_campaign_source(combined)
             bundle = _normalize_bundle(combined)
         except Exception as exc:
-            return _failure_result(
+            return _mirror(_failure_result(
                 CompilationStatus.INVALID,
                 (
                     CompilationIssue(
@@ -1475,11 +1499,11 @@ class FormalPlanCompiler:
                         f"could not read DuckDB formal-plan input: {exc}",
                     ),
                 ),
-            )
+            ))
         finally:
             if owned and connection is not None:
                 connection.close()
-        return self._compile_bundle(bundle)
+        return _mirror(self._compile_bundle(bundle))
 
     def compile_source(self, source: Any) -> PlanCompilationResult:
         """Detect mapping, JSON, or DuckDB input and compile it."""

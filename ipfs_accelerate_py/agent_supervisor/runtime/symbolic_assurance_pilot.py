@@ -2737,6 +2737,30 @@ def verify_pilot_report(
     return verified
 
 
+def _mirror_verify_pilot(
+    result: SymbolicAssurancePilotReport,
+) -> SymbolicAssurancePilotReport:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.report_cid or result.forest_id or result.task_id or "pilot-verify"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="symbolic_assurance_pilot_verify",
+            record_ref=record_ref,
+            tree_id=str(result.forest_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_pilot(
     config: PilotConfig,
     *,
@@ -2751,7 +2775,7 @@ def verify_pilot(
 
     if report_path is not None:
         payload = _load_json(Path(report_path))
-        return verify_pilot_report(payload, config=config, recompute=True)
+        return _mirror_verify_pilot(verify_pilot_report(payload, config=config, recompute=True))
 
     with tempfile.TemporaryDirectory(prefix="symbolic-assurance-pilot-verify-") as tmp:
         tmp_path = Path(tmp)
@@ -2774,7 +2798,9 @@ def verify_pilot(
             sole_write_alias=config.sole_write_alias,
         )
         report = dry_run_pilot(run_config)
-        return verify_pilot_report(report, config=run_config, recompute=True)
+        return _mirror_verify_pilot(
+            verify_pilot_report(report, config=run_config, recompute=True)
+        )
 
 
 __all__ = [

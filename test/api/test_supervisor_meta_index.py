@@ -7172,6 +7172,36 @@ def test_mirror_activation_observation_taskboard_integrity_and_coverage(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_checks_pilot_table_contract_and_duckdb_plan(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("known_check_kinds", "check:1", "proof_cache", "record_cid"),
+        ("symbolic_assurance_pilot_verify", "pilot:1", "proof_cache", "record_cid"),
+        ("state_transition_table", "table:1", "metadata", "record_cid"),
+        ("contract_logic_fixed_point", "repair:1", "proof_cache", "record_cid"),
+        ("duckdb_formal_plan", "plan:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

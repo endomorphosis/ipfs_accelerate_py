@@ -2088,7 +2088,23 @@ def load_state_transition_table(path: str | Path | None = None) -> StateTransiti
 def validate_state_transition_table(value: Mapping[str, Any]) -> StateTransitionTable:
     """Validate an in-memory table; useful to schema and property-test callers."""
 
-    return StateTransitionTable.from_dict(value)
+    result = StateTransitionTable.from_dict(value)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.schema or result.version or "state-transition-table")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="state_transition_table",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Descriptive compatibility aliases used by callers in the formal-plan layer.
