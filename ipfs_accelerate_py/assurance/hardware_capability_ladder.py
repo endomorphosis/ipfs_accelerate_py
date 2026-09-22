@@ -622,7 +622,7 @@ def refused_production_execution(
     """Typed refusal for production work selected from detection alone."""
 
     name = str(backend or "").strip() or "unspecified"
-    return {
+    result = {
         "admitted": False,
         "backend": name,
         "hardware": None,
@@ -637,6 +637,22 @@ def refused_production_execution(
         "interface": CONSOLIDATION_INTERFACE,
         "task_id": CONSOLIDATION_TASK_ID,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(name or result.get("code") or reason or "refused-production")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refused_production_execution",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = (

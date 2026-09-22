@@ -903,8 +903,33 @@ def maybe_verify_leanstral_draft(
         verify_leanstral_draft,
     )
 
+    def _mirror_typesafe(result: Any) -> Any:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            artifact = getattr(result, "model_artifact", None)
+            admission = getattr(result, "admission", None)
+            record_ref = str(
+                getattr(artifact, "artifact_id", "")
+                or getattr(admission, "theorem_id", "")
+                or getattr(result, "status", "")
+                or "typesafe-leanstral"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="typesafe_leanstral_draft_gate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     if not typesafe_precheck:
-        return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
+        return _mirror_typesafe(verify_leanstral_draft(draft, theorem, **kernel_kwargs))
     model = draft if not isinstance(draft, Mapping) else draft
     text = str(getattr(model, "draft_text", None) or (model.get("draft_text") if isinstance(model, Mapping) else "") or "")
     declaration = ""
@@ -924,7 +949,7 @@ def maybe_verify_leanstral_draft(
             remote_disclosure_permitted=remote_disclosure_permitted,
         )
     except Exception:
-        return verify_leanstral_draft(draft, theorem, **kernel_kwargs)
+        return _mirror_typesafe(verify_leanstral_draft(draft, theorem, **kernel_kwargs))
     if advice.action == KernelSpend.SKIP.value:
         raise TypesafeKernelSkip(advice)
     result = verify_leanstral_draft(draft, theorem, **kernel_kwargs)
@@ -944,7 +969,7 @@ def maybe_verify_leanstral_draft(
             )
         except Exception:
             pass
-    return result
+    return _mirror_typesafe(result)
 
 
 class TypesafeKernelSkip(RuntimeError):

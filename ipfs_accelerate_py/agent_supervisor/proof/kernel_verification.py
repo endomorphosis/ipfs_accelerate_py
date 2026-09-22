@@ -1801,12 +1801,35 @@ def verify_admitted_lean_proof(
 ) -> KernelVerificationResult:
     """Send an admitted model proof through the normal independent mapper."""
 
+    def _mirror_admitted(result: KernelVerificationResult) -> KernelVerificationResult:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(admission, "theorem_id", "")
+                or getattr(result, "reconstruction_id", "")
+                or getattr(result, "obligation_id", "")
+                or "admitted-lean-proof"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="admitted_lean_proof_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     if not isinstance(admission, LeanProofAdmission):
         raise KernelVerificationError("admission must be LeanProofAdmission")
     if not isinstance(bindings, KernelVerificationBindings):
         raise KernelVerificationError("bindings must be KernelVerificationBindings")
     if not admission.accepted:
-        return _failed_result(
+        return _mirror_admitted(_failed_result(
             target=KernelTarget.LEAN,
             status=KernelVerificationStatus.REJECTED,
             failure_code=admission.failure_code,
@@ -1816,7 +1839,7 @@ def verify_admitted_lean_proof(
             evidence_record={},
             environment_lock={},
             provider_status=provider_status,
-        )
+        ))
     if (
         isinstance(timeout_seconds, bool)
         or not isinstance(timeout_seconds, (int, float))
@@ -1842,7 +1865,7 @@ def verify_admitted_lean_proof(
                 + f"\n\n#print axioms {admission.declaration_name}\n"
             )
         if evidence_record.get("checked_source") not in admitted_sources:
-            return _failed_result(
+            return _mirror_admitted(_failed_result(
                 target=KernelTarget.LEAN,
                 status=KernelVerificationStatus.REJECTED,
                 failure_code=KernelFailureCode.SOURCE_COPY,
@@ -1852,11 +1875,11 @@ def verify_admitted_lean_proof(
                 evidence_record=evidence_record,
                 environment_lock=_record(environment_lock, field_name="environment_lock"),
                 provider_status=provider_status,
-            )
+            ))
         if str(evidence_record.get("reconstructed_proof_text") or "").strip() != (
             proof_text.strip()
         ):
-            return _failed_result(
+            return _mirror_admitted(_failed_result(
                 target=KernelTarget.LEAN,
                 status=KernelVerificationStatus.REJECTED,
                 failure_code=KernelFailureCode.BINDING_MISMATCH,
@@ -1866,8 +1889,8 @@ def verify_admitted_lean_proof(
                 evidence_record=evidence_record,
                 environment_lock=_record(environment_lock, field_name="environment_lock"),
                 provider_status=provider_status,
-            )
-        return mapper.verify(
+            ))
+        return _mirror_admitted(mapper.verify(
             reconstruction_record,
             reconstruction_evidence,
             environment_lock,
@@ -1875,7 +1898,7 @@ def verify_admitted_lean_proof(
             expected_native_source=admission.checked_source,
             provider_status=provider_status,
             independent=True,
-        )
+        ))
 
     packet = _local_lean_reconstruction_packet(
         checked_source=admission.checked_source,
@@ -1886,14 +1909,14 @@ def verify_admitted_lean_proof(
         kernel_runner=kernel_runner,
     )
     if packet is None:
-        return kernel_unavailable_result(
+        return _mirror_admitted(kernel_unavailable_result(
             target=KernelTarget.LEAN,
             bindings=bindings,
             reason="local Lean executable is unavailable",
             provider_status=provider_status,
-        )
+        ))
     record, evidence, lock = packet
-    return mapper.verify(
+    return _mirror_admitted(mapper.verify(
         record,
         evidence,
         lock,
@@ -1901,7 +1924,7 @@ def verify_admitted_lean_proof(
         expected_native_source=admission.checked_source,
         provider_status=provider_status,
         independent=True,
-    )
+    ))
 
 
 def build_kernel_verified_receipt(

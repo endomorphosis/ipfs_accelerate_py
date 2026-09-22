@@ -1588,7 +1588,7 @@ def verify_authoritative_benchmark_evidence(
     receipt_count = 0
 
     def finish(valid: bool = False) -> dict[str, Any]:
-        return _authoritative_verification_result(
+        result = _authoritative_verification_result(
             valid=valid,
             failures=failures,
             report_id=report_id,
@@ -1598,6 +1598,26 @@ def verify_authoritative_benchmark_evidence(
             receipt_artifact_sha256=receipt_artifact_sha256,
             trusted_commit=trusted_commit,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("authority_content_id")
+                or result.get("report_id")
+                or "authoritative-benchmark-verification"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="authoritative_benchmark_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     try:
         if not isinstance(benchmark, Mapping):
