@@ -239,6 +239,32 @@ def conclusiveness_for(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_countermodel_validation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "receipt_id", "")
+            or getattr(result, "solver_countermodel_id", "")
+            or "countermodel-validation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="countermodel_validation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class CountermodelValidator:
     """Separates raw solver countermodels from LogicIR-replay authority."""
@@ -342,7 +368,7 @@ class CountermodelValidator:
             },
             prefix="countermodel-validation",
         )
-        return CountermodelValidationReceipt(
+        return _mirror_countermodel_validation(CountermodelValidationReceipt(
             roots=roots,
             receipt_id=receipt_id,
             solver_countermodel_id=_text(
@@ -372,7 +398,7 @@ class CountermodelValidator:
                 required=False,
             ),
             invalidation_refs=inv,
-        )
+        ))
 
 
 # ---------------------------------------------------------------------------

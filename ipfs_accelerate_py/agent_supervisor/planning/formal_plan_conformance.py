@@ -524,7 +524,7 @@ def binding_for_plan(
 ) -> ConformanceBinding:
     """Create the exact semantic binding used by a completion evaluation."""
 
-    return ConformanceBinding(
+    result = ConformanceBinding(
         goal_id=(goal_id or (plan.goals[0].goal_id if len(plan.goals) == 1 else "")),
         plan_id=plan.plan_id,
         policy_id=policy.policy_id,
@@ -534,6 +534,24 @@ def binding_for_plan(
         premise_ids=tuple(premise_ids),
         counterexample_ids=tuple(counterexample_ids),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.repository_tree_id or "")
+        record_ref = str(result.binding_id or result.plan_id or "conformance-binding")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="conformance_binding",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

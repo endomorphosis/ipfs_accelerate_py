@@ -1214,6 +1214,29 @@ def _acyclic(edges: Sequence[IntentControlEdge]) -> bool:
     return all(visit(node) for node in sorted(nodes))
 
 
+def _mirror_intent_compilation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "compilation_id", "")
+            or getattr(getattr(result, "status", None), "value", "")
+            or "intent-constraint-compilation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="intent_constraint_compilation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class IntentConstraintAdapter:
     """Deterministic compiler and exact candidate-plan conformance checker."""
 
@@ -1231,14 +1254,14 @@ class IntentConstraintAdapter:
             nodes = tuple(intent_artifact.nodes + formal_artifact.nodes)
             if len(nodes) > self.bounds.max_nodes:
                 raise IntentConstraintError("IR node count exceeds compiler bound")
-            return self._compile_normalized(
+            return _mirror_intent_compilation(self._compile_normalized(
                 intent_artifact,
                 formal_artifact,
                 nodes,
                 graph_truncated=intent_truncated or formal_truncated,
-            )
+            ))
         except (ValueError, TypeError, OverflowError) as exc:
-            return IntentConstraintCompilationResult(
+            return _mirror_intent_compilation(IntentConstraintCompilationResult(
                 status=IntentCompilationStatus.INVALID,
                 findings=(
                     IntentFinding(
@@ -1246,7 +1269,7 @@ class IntentConstraintAdapter:
                         str(exc),
                     ),
                 ),
-            )
+            ))
 
     def _compile_normalized(
         self,

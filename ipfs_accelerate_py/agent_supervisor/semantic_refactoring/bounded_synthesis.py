@@ -2414,6 +2414,34 @@ class BoundedSynthesisReceipt:
         return result
 
 
+def _mirror_bounded_synthesis(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "packet_cid", "")
+            or getattr(result, "wave_cid", "")
+            or getattr(result, "selection_cid", "")
+            or tree_id
+            or "bounded-synthesis"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="bounded_synthesis",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(getattr(result, "write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 def run_bounded_synthesis(
     *,
     wave: Mapping[str, Any] | Any,
@@ -2495,7 +2523,7 @@ def run_bounded_synthesis(
         and not typed_obligations
         and not any(item.can_refute for item in counterexample_set)
     ):
-        return BoundedSynthesisReceipt(
+        return _mirror_bounded_synthesis(BoundedSynthesisReceipt(
             tree_id=tree_id,
             packet_cid=packet_cid,
             wave_cid=wave_cid,
@@ -2512,7 +2540,7 @@ def run_bounded_synthesis(
             status=SynthesisStatus.UNKNOWN.value,
             max_rounds=bound,
             rounds_used=0,
-        )
+        ))
 
     while rounds_used < bound and surviving is None:
         rounds_used += 1
@@ -2706,7 +2734,7 @@ def run_bounded_synthesis(
         max_rounds=bound,
         timed_out=timed_out,
     )
-    return BoundedSynthesisReceipt(
+    return _mirror_bounded_synthesis(BoundedSynthesisReceipt(
         tree_id=tree_id,
         packet_cid=packet_cid,
         wave_cid=wave_cid,
@@ -2724,7 +2752,7 @@ def run_bounded_synthesis(
         status=status,
         max_rounds=bound,
         rounds_used=rounds_used,
-    )
+    ))
 
 
 def dry_run_bounded_synthesis(

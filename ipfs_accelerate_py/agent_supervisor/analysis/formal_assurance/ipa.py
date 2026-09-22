@@ -741,6 +741,29 @@ def _is_variable(token: str) -> bool:
     return bool(token) and token[0].isupper()
 
 
+def _mirror_hermetic_evaluation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evaluator_id = str(getattr(result, "evaluator_id", "") or "hermetic-datalog")
+        record_ref = (
+            f"{evaluator_id}:{getattr(result, 'iterations', 0)}:"
+            f"{len(getattr(result, 'derived_rule_ids', ()) or ())}"
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="hermetic_datalog_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class HermeticReferenceEvaluator:
     """Bounded bottom-up Datalog evaluator used when Souffle is unavailable.
 
@@ -793,12 +816,12 @@ class HermeticReferenceEvaluator:
         frozen = {
             name: frozenset(rows) for name, rows in sorted(relations.items())
         }
-        return DatalogEvaluationResult(
+        return _mirror_hermetic_evaluation(DatalogEvaluationResult(
             relations=frozen,
             derived_rule_ids=tuple(sorted(derived_rules)),
             evaluator_id=self.evaluator_id,
             iterations=iterations,
-        )
+        ))
 
     def _match_body(
         self,
