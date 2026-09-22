@@ -1968,6 +1968,21 @@ def check_hard_properties(
             if not results.get(HardPropertyId.NO_SUCCESS_WITHOUT_OBSERVATION.value, True):
                 results[HardPropertyId.NO_SUCCESS_WITHOUT_OBSERVATION.value] = False
 
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(policy, "policy_id", "") or "policy-hard-properties")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="policy_hard_properties",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return results
 
 

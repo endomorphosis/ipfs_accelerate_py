@@ -1334,13 +1334,42 @@ def config_identity(repo_root: Path | None = None) -> str:
     return file_identity(root / CONFIG_REL)
 
 
+def _mirror_rollout_check(result: CheckResult, record_kind: str) -> CheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = dict(result.evidence or {})
+        record_ref = str(
+            evidence.get("config_identity")
+            or evidence.get("policy_binding_id")
+            or evidence.get("mode")
+            or result.name
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_config_defaults(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     try:
         payload = load_rollout_config(root)
         policy = DeterministicDoctorRolloutPolicy.from_config_mapping(payload)
     except (OSError, json.JSONDecodeError, DeterministicDoctorRolloutError) as exc:
-        return CheckResult("config_defaults", CheckStatus.FAIL, str(exc))
+        return _mirror_rollout_check(
+            CheckResult("config_defaults", CheckStatus.FAIL, str(exc)),
+            "doctor_rollout_config_defaults",
+        )
 
     errors: list[str] = []
     if payload.get("default_mode") != "report_only":
@@ -1395,12 +1424,18 @@ def check_config_defaults(repo_root: Path | None = None) -> CheckResult:
         "optional_providers": optional,
     }
     if errors:
-        return CheckResult("config_defaults", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
-        "config_defaults",
-        CheckStatus.PASS,
-        "immutable bounded config defaults to report-only with hard-off model flags and hard-on safety gates",
-        evidence,
+        return _mirror_rollout_check(
+            CheckResult("config_defaults", CheckStatus.FAIL, "; ".join(errors), evidence),
+            "doctor_rollout_config_defaults",
+        )
+    return _mirror_rollout_check(
+        CheckResult(
+            "config_defaults",
+            CheckStatus.PASS,
+            "immutable bounded config defaults to report-only with hard-off model flags and hard-on safety gates",
+            evidence,
+        ),
+        "doctor_rollout_config_defaults",
     )
 
 
@@ -1433,12 +1468,18 @@ def check_feature_flags(policy: DeterministicDoctorRolloutPolicy | None = None) 
         "mode": current.mode_value,
     }
     if errors:
-        return CheckResult("feature_flags", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
-        "feature_flags",
-        CheckStatus.PASS,
-        "feature flags and hard gates match deterministic-doctor fail-closed defaults",
-        evidence,
+        return _mirror_rollout_check(
+            CheckResult("feature_flags", CheckStatus.FAIL, "; ".join(errors), evidence),
+            "doctor_rollout_feature_flags",
+        )
+    return _mirror_rollout_check(
+        CheckResult(
+            "feature_flags",
+            CheckStatus.PASS,
+            "feature flags and hard gates match deterministic-doctor fail-closed defaults",
+            evidence,
+        ),
+        "doctor_rollout_feature_flags",
     )
 
 

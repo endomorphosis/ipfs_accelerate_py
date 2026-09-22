@@ -1191,6 +1191,31 @@ def _goal_evidence_projection(repo_root: Path) -> tuple[dict[str, Any], list[str
     return projection, errors
 
 
+def _mirror_release_check(result: CheckResult, record_kind: str) -> CheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = dict(result.evidence or {})
+        digests = evidence.get("digests") if isinstance(evidence.get("digests"), Mapping) else {}
+        record_ref = str(
+            next(iter(digests.values()), "")
+            or result.name
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_declared_artifacts(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     present = {rel: (root / rel).is_file() for rel in REQUIRED_RELEASE_ARTIFACTS}
@@ -1202,17 +1227,23 @@ def check_declared_artifacts(repo_root: Path | None = None) -> CheckResult:
     }
     evidence = {"artifacts": present, "digests": digests}
     if missing:
-        return CheckResult(
-            "declared_artifacts",
-            CheckStatus.FAIL,
-            f"missing declared artifacts: {missing}",
-            evidence,
+        return _mirror_release_check(
+            CheckResult(
+                "declared_artifacts",
+                CheckStatus.FAIL,
+                f"missing declared artifacts: {missing}",
+                evidence,
+            ),
+            "planner_declared_artifacts",
         )
-    return CheckResult(
-        "declared_artifacts",
-        CheckStatus.PASS,
-        "all PDR-092 release artifacts are present",
-        evidence,
+    return _mirror_release_check(
+        CheckResult(
+            "declared_artifacts",
+            CheckStatus.PASS,
+            "all PDR-092 release artifacts are present",
+            evidence,
+        ),
+        "planner_declared_artifacts",
     )
 
 

@@ -3658,7 +3658,28 @@ class ContractChecker:
         **kwargs: Any,
     ) -> tuple[ContractCheckResult, ...]:
         results = [self.check(expected, observed, call_path=path, **kwargs) for path in paths]
-        return tuple(sorted(results, key=lambda item: item.result_id))
+        ordered = tuple(sorted(results, key=lambda item: item.result_id))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                (ordered[0].result_id if ordered else "")
+                or getattr(expected, "repository_id", "")
+                or "contract-check-paths"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="contract_check_paths",
+                record_ref=record_ref,
+                tree_id=str(getattr(expected, "tree_id", "") or ""),
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return ordered
 
 
 def closed_supported_aspects() -> tuple[SemanticAspect, ...]:
