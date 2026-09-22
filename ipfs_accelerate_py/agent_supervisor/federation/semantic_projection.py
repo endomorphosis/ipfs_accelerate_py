@@ -151,6 +151,27 @@ def bind_semantic_root(
         raise SemanticProjectionAuthorityError(
             "semantic state root is not tree-bound to this federation"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.semantic_root
+            or projection.content_ref
+            or "semantic-root"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="federation_semantic_root_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(projection.tree_id or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 
@@ -189,6 +210,27 @@ def bind_capsule(
         raise SemanticProjectionAuthorityError(
             "capsule dependency root is not bound to this federation tree"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.content_ref
+            or projection.subject_ref
+            or "capsule-projection"
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="federation_capsule_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="capsule_cid",
+            subject_ref=str(projection.content_ref or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 

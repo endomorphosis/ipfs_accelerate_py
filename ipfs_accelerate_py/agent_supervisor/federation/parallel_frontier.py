@@ -167,7 +167,7 @@ def bind_parallel_task(
         raise ParallelFrontierAuthorityError(
             "validation plan must match the task-intent validation identity"
         )
-    return ParallelTask(
+    result = ParallelTask(
         intent=intent,
         supervisor_id=supervisor_id,
         subagent_id=subagent_id,
@@ -181,6 +181,28 @@ def bind_parallel_task(
         requires_merge_slot=requires_merge_slot,
         requires_proof_slot=requires_proof_slot,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.lease_id
+            or result.worktree_id
+            or getattr(intent, "task_id", "")
+            or "parallel-task"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_parallel_task_binding",
+            record_ref=record_ref,
+            tree_id=str(getattr(intent, "tree_id", "") or ""),
+            subject_kind="task_id",
+            subject_ref=str(getattr(intent, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

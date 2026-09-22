@@ -329,6 +329,22 @@ def bind_task_intent(
         raise DeduplicationAuthorityError("task intent tree identity mismatches")
     if intent.repository_id not in binding.repository_ids:
         raise DeduplicationAuthorityError("task intent repository is not bound")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(intent.task_id or intent.goal_id or intent.tree_id or "task-intent")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_task_intent_binding",
+            record_ref=record_ref,
+            tree_id=str(intent.tree_id or ""),
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return intent
 
 
