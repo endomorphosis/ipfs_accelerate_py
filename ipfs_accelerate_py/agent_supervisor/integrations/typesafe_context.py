@@ -899,6 +899,30 @@ def _normalize_citation_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").translate(_CURLY_QUOTES)).strip()
 
 
+def _mirror_claim_citation(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("verdict")
+            or payload.get("status")
+            or (payload.get("reason_codes") or ["claim-citation"])[0]
+            or "claim-citation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="claim_citation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 def check_claim_citation(
     source: str,
     claim: str,
@@ -935,7 +959,7 @@ def check_claim_citation(
             payload["confidence"] = None
             payload["reason_codes"] = ["string_match", "fabricated_no_http"]
             _LAST_CITATION.value = dict(payload)
-            return payload
+            return _mirror_claim_citation(payload)
         payload["status"] = "found"
     else:
         payload["status"] = "section-only"
@@ -944,7 +968,7 @@ def check_claim_citation(
         remote_disclosure_permitted=remote_disclosure_permitted,
     ):
         _LAST_CITATION.value = dict(payload)
-        return payload
+        return _mirror_claim_citation(payload)
     from ipfs_accelerate_py.typesafe_inference import Choice, system_one
 
     try:
@@ -986,7 +1010,7 @@ def check_claim_citation(
     except Exception:
         payload["reason_codes"] = ["typesafe_error_fail_open"]
         _LAST_CITATION.value = dict(payload)
-        return payload
+        return _mirror_claim_citation(payload)
     answer = (getattr(result, "choices", None) or {}).get("relation")
     picked = str(getattr(answer, "choice", "") or "").strip()
     if picked not in CITATION_CHOICES:
@@ -997,7 +1021,7 @@ def check_claim_citation(
     payload["auto"] = conf >= float(auto_accept)
     payload["reason_codes"] = ["composed_in_code", "citation_check", "advisory_only"]
     _LAST_CITATION.value = dict(payload)
-    return payload
+    return _mirror_claim_citation(payload)
 
 
 def observe_claim_citation(

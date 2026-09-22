@@ -1551,6 +1551,25 @@ def check_report(
     if not gates_ok:
         failed = [name for name, ok in gates.items() if not ok]
         raise BenchmarkError(f"benchmark gates failed: {failed}")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            envelope.get("recomputed_deterministic_digest")
+            or envelope.get("published_deterministic_digest")
+            or "benchmark-check"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="benchmark_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return envelope
 
 

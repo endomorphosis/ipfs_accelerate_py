@@ -1330,7 +1330,7 @@ class SupervisorCanonicalLogicAdapter:
             if all(module_status.values()):
                 aligned = True
 
-        return CrossRepoRevisionReport(
+        result = CrossRepoRevisionReport(
             aligned=aligned,
             parent_commit=parent_commit,
             datasets_gitlink=gitlink,
@@ -1338,6 +1338,28 @@ class SupervisorCanonicalLogicAdapter:
             required_modules=MappingProxyType(module_status),
             diagnostics=tuple(diagnostics),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.parent_commit
+                or result.datasets_gitlink
+                or result.datasets_embedded_head
+                or "cross-repo-revision"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="cross_repo_revision",
+                record_ref=record_ref,
+                tree_id=str(result.parent_commit or ""),
+                subject_kind="tree_id" if result.parent_commit else "record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # ------------------------------------------------------------------
     # Aggregate inventory

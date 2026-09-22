@@ -641,6 +641,26 @@ class SupervisorAdmissibilityBridge:
         payload = observation.to_dict()
         payload["success"] = observation.is_allow
         payload["executed"] = False
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                payload.get("content_id")
+                or payload.get("observation_id")
+                or payload.get("profile_id")
+                or "intent-admissibility"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="intent_admissibility",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return payload
 
     def capabilities(self) -> dict[str, Any]:

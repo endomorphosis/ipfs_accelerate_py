@@ -7232,6 +7232,36 @@ def test_mirror_json_source_listener_question_and_table_load(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_citation_diff_benchmark_admissibility_and_revision(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("claim_citation", "supports", "metadata", "record_cid"),
+        ("candidate_diff_check", "tree:1", "ast", "record_cid"),
+        ("benchmark_check", "digest:1", "world_model", "record_cid"),
+        ("intent_admissibility", "intent:1", "proof_cache", "record_cid"),
+        ("cross_repo_revision", "commit:1", "metadata", "tree_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

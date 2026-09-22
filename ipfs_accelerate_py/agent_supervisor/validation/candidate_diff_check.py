@@ -110,4 +110,20 @@ live assume-unchanged/skip-worktree flags cannot conceal candidate bytes.
     except (OSError, ValueError) as exc:
         result_code = 1
         messages.append(f"{type(exc).__name__}: {exc}")
-    return {"baseline": resolved, "returncode": result_code, "output": "\n".join(messages)}
+    result = {"baseline": resolved, "returncode": result_code, "output": "\n".join(messages)}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("baseline") or result.get("returncode") or "candidate-diff-check")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="candidate_diff_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
