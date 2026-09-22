@@ -587,6 +587,31 @@ def _parse_goals(repo_root: Path) -> list[Any]:
     return list(parse_goal_heap((repo_root / OBJECTIVE_REL).read_text(encoding="utf-8")))
 
 
+def _mirror_doctor_release_check(result: CheckResult) -> CheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = dict(result.evidence or {})
+        record_ref = str(
+            evidence.get("config_identity")
+            or evidence.get("policy_binding_id")
+            or result.name
+            or "deterministic-doctor-release"
+        )
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind=f"deterministic_doctor_{result.name}",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
     """Validate 43 tasks, 12 goals, LPR-042 terminal, and sealed CID prefix."""
 
@@ -598,11 +623,11 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
         all_tasks = _parse_task_file(root)
         goals = _parse_goals(root)
     except Exception as exc:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "canonical_board",
             CheckStatus.FAIL,
             f"unable to parse board/objectives: {exc}",
-        )
+        ))
 
     goal_ids = tuple(sorted({g.goal_id for g in goals}))
     evidence["goal_ids"] = list(goal_ids)
@@ -703,13 +728,13 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
 
     evidence["errors"] = errors
     if errors:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "canonical_board",
             CheckStatus.FAIL,
             "; ".join(errors[:6]),
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "canonical_board",
         CheckStatus.PASS,
         (
@@ -717,7 +742,7 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
             f"{TERMINAL_TASK_ID} unique terminal; LPR-000..028 CIDs preserved"
         ),
         evidence,
-    )
+    ))
 
 
 def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResult:
@@ -726,12 +751,12 @@ def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResu
     root = (repo_root or repository_root()).resolve()
     board = check_canonical_board(root)
     if not board.ok:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "four_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"board not drainable: {board.detail}",
             board.evidence,
-        )
+        ))
 
     launcher = root / LAUNCHER_REL
     validator = root / BOARD_VALIDATOR_REL
@@ -745,12 +770,12 @@ def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResu
         if not path.is_file()
     ]
     if missing:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "four_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"control-plane artifacts missing: {missing}",
             {"missing": missing},
-        )
+        ))
 
     # Protected paths must remain present and non-empty (not rewritten by release).
     protected_present = {
@@ -758,12 +783,12 @@ def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResu
         for rel in PROTECTED_PATHS
     }
     if not all(protected_present.values()):
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "four_lane_supervisor_drain",
             CheckStatus.FAIL,
             "protected control-plane path missing or empty",
             {"protected_present": protected_present},
-        )
+        ))
 
     evidence = {
         "lanes": LANE_COUNT,
@@ -777,12 +802,12 @@ def check_four_lane_supervisor_drain(repo_root: Path | None = None) -> CheckResu
         "protected_present": protected_present,
         "sinks": list(board.evidence.get("sinks") or []),
     }
-    return CheckResult(
+    return _mirror_doctor_release_check(CheckResult(
         "four_lane_supervisor_drain",
         CheckStatus.PASS,
         "joined DAG is drainable under four-lane strict sharding without blockage",
         evidence,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -967,7 +992,7 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
     equivalence_path = root / VFS_EQUIVALENCE_TEST_REL
     two_profile_path = root / TWO_PROFILE_TEST_REL
     if not equivalence_path.is_file() or not two_profile_path.is_file():
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "vfs_profiles_dual_run",
             CheckStatus.FAIL,
             "VFS equivalence or two-profile test module missing",
@@ -975,7 +1000,7 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
                 "equivalence": equivalence_path.is_file(),
                 "two_profile": two_profile_path.is_file(),
             },
-        )
+        ))
 
     try:
         equivalence_mod = _load_test_module(
@@ -1014,11 +1039,11 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
         )
         conformance_dict = conformance.to_dict()
     except Exception as exc:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "vfs_profiles_dual_run",
             CheckStatus.FAIL,
             f"VFS/non-VFS profile evaluation failed: {exc}",
-        )
+        ))
 
     evidence = {
         "vfs_equivalence_interface": VFS_GENERALIZATION_EQUIVALENCE_RECEIPT_INTERFACE,
@@ -1037,32 +1062,32 @@ def check_vfs_profiles_dual_run(repo_root: Path | None = None) -> CheckResult:
     }
 
     if not first_eq.passed:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "vfs_profiles_dual_run",
             CheckStatus.FAIL,
             "VFS generalization equivalence receipt did not pass",
             evidence,
-        )
+        ))
     if not (first_vfs.get("ok") and first_non.get("ok") and conformance.passed):
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "vfs_profiles_dual_run",
             CheckStatus.FAIL,
             "VFS or non-VFS profile stages failed conformance",
             evidence,
-        )
+        ))
     if not (eq_identity and vfs_identity and non_identity):
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "vfs_profiles_dual_run",
             CheckStatus.FAIL,
             "VFS/non-VFS dual-run receipts are not identity-equivalent",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "vfs_profiles_dual_run",
         CheckStatus.PASS,
         "VFS and non-VFS profiles dual-ran with identical content identities",
         evidence,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -1146,18 +1171,18 @@ def check_cold_imports() -> CheckResult:
         "strategy": "block_optional_providers_at_meta_path",
     }
     if failed:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "cold_imports",
             CheckStatus.FAIL,
             f"cold import unsafe for: {failed}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "cold_imports",
         CheckStatus.PASS,
         "cold imports succeed with optional providers blocked/absent",
         evidence,
-    )
+    ))
 
 
 def check_optional_provider_absence_safe() -> CheckResult:
@@ -1186,18 +1211,18 @@ def check_optional_provider_absence_safe() -> CheckResult:
         "decision_id": decision.decision_id,
     }
     if blocks:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "optional_provider_absence",
             CheckStatus.FAIL,
             "optional provider absence blocked or elevated report-only startup",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "optional_provider_absence",
         CheckStatus.PASS,
         "optional provider absence is safe for report-only startup",
         evidence,
-    )
+    ))
 
 
 def check_report_only_no_write(repo_root: Path | None = None) -> CheckResult:
@@ -1245,18 +1270,18 @@ def check_report_only_no_write(repo_root: Path | None = None) -> CheckResult:
         or decision.mutation_authorized
         or not tree_unchanged
     ):
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "report_only_no_write",
             CheckStatus.FAIL,
             "report-only path authorized mutation or modified a probe tree",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "report_only_no_write",
         CheckStatus.PASS,
         "report-only makes no write and authorizes no mutation",
         evidence,
-    )
+    ))
 
 
 def _doctor_cases_from_report_or_evidence(
@@ -1288,11 +1313,11 @@ def check_eligible_fixed_point(
         if str(case.get("scenario") or "") in ADMITTABLE_SCENARIOS
     ]
     if not positives:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "eligible_fixed_point",
             CheckStatus.FAIL,
             "no positive analytical cases present",
-        )
+        ))
 
     failures: list[str] = []
     details: dict[str, Any] = {}
@@ -1330,18 +1355,18 @@ def check_eligible_fixed_point(
         "all_caller_atomic_fixed_point": not failures,
     }
     if failures:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "eligible_fixed_point",
             CheckStatus.FAIL,
             f"eligible repairs failed fixed point: {failures}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "eligible_fixed_point",
         CheckStatus.PASS,
         "eligible no-model repairs reach complete all-caller atomic fixed point",
         evidence,
-    )
+    ))
 
 
 def check_abstention_and_rollback(
@@ -1435,25 +1460,25 @@ def check_abstention_and_rollback(
         "rollback_restores_exact_roots": rollback_ok,
     }
     if abstention_failures:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "abstention_and_rollback",
             CheckStatus.FAIL,
             f"abstention cleanliness failed for: {abstention_failures}",
             evidence,
-        )
+        ))
     if not rollback_ok:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "abstention_and_rollback",
             CheckStatus.FAIL,
             "rollback did not restore exact roots",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "abstention_and_rollback",
         CheckStatus.PASS,
         "ambiguous/unsupported cases abstain with clean trees; rollback restores roots",
         evidence,
-    )
+    ))
 
 
 def check_zero_safety_floors(
@@ -1533,18 +1558,18 @@ def check_zero_safety_floors(
         "metrics_authoritative": False,
     }
     if nonzero:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "zero_safety_floors",
             CheckStatus.FAIL,
             f"nonzero safety floors: {nonzero}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "zero_safety_floors",
         CheckStatus.PASS,
         "all joined-release safety floors are exactly zero",
         evidence,
-    )
+    ))
 
 
 def check_declared_artifacts(repo_root: Path | None = None) -> CheckResult:
@@ -1553,18 +1578,18 @@ def check_declared_artifacts(repo_root: Path | None = None) -> CheckResult:
     missing = [rel for rel, ok in present.items() if not ok]
     evidence = {"artifacts": present}
     if missing:
-        return CheckResult(
+        return _mirror_doctor_release_check(CheckResult(
             "declared_artifacts",
             CheckStatus.FAIL,
             f"missing declared artifacts: {missing}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_doctor_release_check(CheckResult(
         "declared_artifacts",
         CheckStatus.PASS,
         "all LPR-042 release artifacts are present",
         evidence,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
