@@ -499,6 +499,22 @@ def evaluate_majority(
         thr = threshold
     count = len(approval_set)
     accepted = thr > 0 and count >= thr
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = next(iter(member_set), "")
+        record_ref = str(first or thr or "majority-consensus")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="majority_consensus",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return accepted, count, thr
 
 

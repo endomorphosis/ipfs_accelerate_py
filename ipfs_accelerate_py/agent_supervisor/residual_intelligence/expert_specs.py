@@ -232,7 +232,7 @@ class ModelSizePolicy:
         if expert_class_rank(wanted) < expert_class_rank(smallest):
             raise ResidualIntelligenceError(REASON_UNSUPPORTED_EXPERT_CLASS)
         if wanted is smallest:
-            return wanted
+            return self._mirror_requested_class(wanted, family_spec)
         baseline = parse_expert_class(compared_class) if compared_class is not None else smallest
         if expert_class_rank(wanted) - expert_class_rank(baseline) > 1:
             raise ResidualIntelligenceError(REASON_SKIP_SMALLER)
@@ -253,6 +253,30 @@ class ModelSizePolicy:
             raise ResidualIntelligenceError(REASON_LARGER_FORM)
         if delta < self.minimum_routing_changing_delta_ppm:
             raise ResidualIntelligenceError(REASON_LARGER_FORM)
+        return self._mirror_requested_class(wanted, family_spec)
+
+    def _mirror_requested_class(
+        self, wanted: ExpertClass, family_spec: ResidualTaskFamilySpec
+    ) -> ExpertClass:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(wanted, "value", "")
+                or getattr(family_spec, "task_family", "")
+                or "requested-expert-class"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="requested_expert_class",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return wanted
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:

@@ -5973,6 +5973,35 @@ def test_mirror_seal_review_receipt_and_security_surfaces(tmp_path, monkeypatch)
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_majority_freeze_ipld_expert_and_certificate_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("majority_consensus", "did:key:z1", "metadata", "record_cid"),
+        ("planner_doctor_anchor_freeze", "tree:1", "filesystem_mtime", "tree_id"),
+        ("coordination_cid_admission", "bafy...", "capsule", "content_cid"),
+        ("requested_expert_class", "class-a", "metadata", "record_cid"),
+        ("cve_execution_permit", "permit:1", "proof_cache", "record_cid"),
+        ("test_certificate_verification", "cert:1", "proof_certificate", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

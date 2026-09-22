@@ -644,7 +644,25 @@ class PlannerDoctorEpochAnchors:
                 if expected.endswith("0" * 64) and not (repo_root / relative).is_file():
                     continue
                 drifted.append(relative)
-        return tuple(drifted)
+        drifted_paths = tuple(drifted)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                drifted_paths[0] if drifted_paths else self.tree_id or "planner-doctor-anchors"
+            )
+            mirror_work_record(
+                catalog_kind="filesystem_mtime",
+                record_kind="planner_doctor_anchor_freeze",
+                record_ref=record_ref,
+                subject_kind="tree_id" if self.tree_id else "path",
+                subject_ref=str(self.tree_id or record_ref),
+            )
+        except Exception:
+            pass
+        return drifted_paths
 
 
 def freeze_planner_doctor_anchors(

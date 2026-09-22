@@ -1679,12 +1679,32 @@ def verify_cve_execution_permit(
             PermitVerificationCode.INVALID_PERMIT,
             "CVE execution permit lacks the exact plan and pre-execution gate evidence",
         )
-    return verify_execution_permit(
+    receipt = verify_execution_permit(
         permit,
         attempt,
         ledger=ledger,
         trusted_permit_ids=trusted_permit_ids,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(permit, "permit_id", "")
+            or getattr(receipt, "receipt_id", "")
+            or "cve-execution-permit"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="cve_execution_permit",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 # Readable compatibility names for callers that use authorization terminology.

@@ -701,7 +701,7 @@ def _result(
     backend_id: str = "",
     diagnostics: Mapping[str, Any] | None = None,
 ) -> TestCertificateVerificationResult:
-    return TestCertificateVerificationResult(
+    result = TestCertificateVerificationResult(
         status=status,
         reason_code=reason_code,
         authority=authority,
@@ -711,6 +711,27 @@ def _result(
         backend_id=backend_id,
         diagnostics=dict(diagnostics or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.certificate_cid
+            or result.receipt_cid
+            or getattr(result.reason_code, "value", "")
+            or "test-certificate-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="test_certificate_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _unavailable(

@@ -674,13 +674,29 @@ class VerifiedIPLDBackend:
         if payload is not None:
             verify_bytes_match_cid(payload, admitted, codec=codec)
         digest = digest_hex_from_cid(admitted, codecs=(codec,))
-        return CoordinationCidAdmission(
+        result = CoordinationCidAdmission(
             schema=ADMISSION_RECEIPT_SCHEMA,
             cid=admitted,
             codec=codec,
             digest_hex=digest,
             purpose=str(purpose),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.cid or result.digest_hex or "coordination-cid")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="coordination_cid_admission",
+                record_ref=record_ref,
+                subject_kind="content_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def export_car(self, cid: str, *, codec: str = "raw") -> bytes:
         """Capability-gated CAR export; fails closed when unsupported."""
