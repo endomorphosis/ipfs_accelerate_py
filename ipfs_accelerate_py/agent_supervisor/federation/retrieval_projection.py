@@ -261,6 +261,27 @@ def bind_nomination(
         raise RetrievalProjectionAuthorityError(
             "retrieval nomination tree identity mismatches"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.source_cid
+            or projection.content_ref
+            or "federation-nomination"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="federation_nomination_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="content_cid",
+            subject_ref=str(projection.source_cid or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 

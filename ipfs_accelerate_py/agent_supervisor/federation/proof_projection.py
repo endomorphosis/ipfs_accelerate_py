@@ -290,6 +290,27 @@ def bind_test(
     )
     if projection.tree_id != binding.repository_tree_ids[0]:
         raise ProofProjectionAuthorityError("test tree identity mismatches")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.test_ref
+            or projection.content_ref
+            or "federation-test"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_test_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return projection
 
 
@@ -329,6 +350,27 @@ def bind_cache(
         raise ProofProjectionAuthorityError(
             "cache dependency root is not bound to this federation tree"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.obligation_ref
+            or projection.content_ref
+            or "federation-cache"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="federation_cache_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="obligation_ref",
+            subject_ref=str(projection.obligation_ref or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 

@@ -141,7 +141,7 @@ def bind_supervisor_specialization(
     unknown = set(repos) - set(binding.repository_ids)
     if unknown:
         raise ShardingAuthorityError("specialization repository is not bound")
-    return SupervisorSpecializationBound(
+    result = SupervisorSpecializationBound(
         supervisor_id=supervisor_id,
         allowed_repository_ids=repos,
         allowed_goal_refs=tuple(allowed_goal_refs),
@@ -149,6 +149,27 @@ def bind_supervisor_specialization(
         capability_refs=tuple(capability_refs),
         max_shards=max_shards,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.supervisor_id
+            or (result.capability_refs[0] if result.capability_refs else "")
+            or "supervisor-specialization"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_supervisor_specialization",
+            record_ref=record_ref,
+            tree_id=str(binding.repository_tree_ids[0] if binding.repository_tree_ids else ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

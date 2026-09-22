@@ -2761,6 +2761,26 @@ class AnalysisStrategyRegistry:
         )
         key = f"{receipt.provider_id}:{receipt.capability_id}:{receipt.method.value}"
         self._probed[key] = receipt
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                receipt.capability_id
+                or receipt.config_digest
+                or receipt.strategy_id
+                or "analysis-capability"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="analysis_capability_receipt",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return receipt
 
     def _receipts_for_method(
