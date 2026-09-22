@@ -2707,7 +2707,7 @@ def validate_planner_doctor_release(
         }
     )
 
-    return PlannerDoctorReleaseReceipt(
+    receipt = PlannerDoctorReleaseReceipt(
         valid=valid,
         checks=checks,
         policy=policy.to_dict(),
@@ -2718,6 +2718,28 @@ def validate_planner_doctor_release(
         repository_state_root=str(before_identity.get("identity") or ""),
         board_terminal=TERMINAL_TASK_ID,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt.forest_root
+            or receipt.task_preimage_root
+            or receipt.repository_commit
+            or receipt.board_terminal
+            or "planner-doctor-release"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="planner_doctor_release",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
 
 
 def replay_release_receipt(

@@ -1739,6 +1739,26 @@ def validate_deterministic_doctor_release(
         two_profile_content_id=str(vfs_evidence.get("conformance_content_id") or ""),
         board_terminal=TERMINAL_TASK_ID,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt.doctor_report_id
+            or receipt.vfs_equivalence_content_id
+            or receipt.board_terminal
+            or "deterministic-doctor-release"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="deterministic_doctor_release",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return receipt
 
 

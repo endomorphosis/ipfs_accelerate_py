@@ -794,6 +794,27 @@ class TaskExecutionRoutePolicy:
             raise TaskSourceIntegrityError(
                 "task execution route binding is not in the launch policy"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                binding.task_cid
+                or binding.policy_id
+                or binding.plan_root_cid
+                or "task-execution-route"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="task_execution_route_binding",
+                record_ref=record_ref,
+                tree_id=str(binding.repository_tree_id or ""),
+                subject_kind="task_id",
+                subject_ref=str(binding.task_cid or record_ref),
+            )
+        except Exception:
+            pass
         return binding
 
 

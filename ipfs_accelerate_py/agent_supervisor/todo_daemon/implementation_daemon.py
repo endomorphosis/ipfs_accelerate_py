@@ -10343,7 +10343,28 @@ class PortalImplementationDaemon:
         if existing is not None and existing != authority:
             raise RuntimeError("database attempt authority cannot be rebound")
         self._database_attempt_authority = dict(authority)
-        return MappingProxyType(dict(authority))
+        result = MappingProxyType(dict(authority))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("database_binding_id")
+                or result.get("database_attempt_id")
+                or result.get("task_id")
+                or "database-attempt-authority"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="portal_database_attempt_authority",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(result.get("task_id") or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     def _retry_no_change_pre_dispatch_scope(
         self,
