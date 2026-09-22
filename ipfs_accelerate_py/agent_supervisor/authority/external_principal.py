@@ -887,7 +887,7 @@ def bind_capability(
             "requested effects must be a subset of the bound exact_effects",
             reason_code="effect_not_granted",
         )
-    return CapabilityDecision(
+    result = CapabilityDecision(
         principal_id=principal.principal_id,
         repository_id=principal.repository_id,
         run_id=principal.run_id,
@@ -905,6 +905,27 @@ def bind_capability(
         reason_code="bound",
         authority_source=source,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or result.principal_content_id
+            or result.principal_id
+            or "capability-binding"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="external_principal_capability_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = (

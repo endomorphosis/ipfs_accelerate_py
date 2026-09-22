@@ -1743,13 +1743,35 @@ def bind_container_execution(
         reason_code=reason_code,
         created_at_ms=created_at_ms,
     )
-    return ContainerExecutionBinding(
+    result = ContainerExecutionBinding(
         profile=profile,
         lease=lease,
         artifact_manifest=manifest,
         checkpoint=checkpoint,
         receipt=receipt,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(lease, "lease_id", "")
+            or getattr(profile, "profile_id", "")
+            or getattr(profile, "task_id", "")
+            or "container-execution"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="container_execution_binding",
+            record_ref=record_ref,
+            tree_id=str(tree_id or ""),
+            subject_kind="task_id",
+            subject_ref=str(getattr(profile, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 _RECORD_DECODERS: Final[Mapping[str, Any]] = MappingProxyType(

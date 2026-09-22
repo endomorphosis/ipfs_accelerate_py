@@ -2276,7 +2276,7 @@ def bind_observation_to_forest(
             f"observation path matches multiple descriptors: {aliases}",
         )
     descriptor, resolved = matches[0]
-    return {
+    result = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "repository-forest-observation-binding@1"
@@ -2294,6 +2294,28 @@ def bind_observation_to_forest(
         .as_posix(),
         "satisfied": True,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("forest_id")
+            or result.get("descriptor_cid")
+            or result.get("relative_path")
+            or "forest-observation"
+        )
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="forest_observation_binding",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(result.get("relative_path") or record_ref),
+            paths=tuple(p for p in (str(result.get("relative_path") or ""),) if p),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _forest_manifest_failure_reasons(

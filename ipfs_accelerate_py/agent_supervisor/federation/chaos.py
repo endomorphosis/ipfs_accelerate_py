@@ -780,7 +780,7 @@ def bind_post_merge_validation_evidence(
             "post-merge validation evidence is invalid: " + ",".join(reasons)
         )
     try:
-        return ChaosValidationBinding(
+        result = ChaosValidationBinding(
             task_id=value["task_id"],
             target_revision=value["target_commit"],
             validated_revision=value["validated_commit"],
@@ -795,6 +795,28 @@ def bind_post_merge_validation_evidence(
         )
     except (KeyError, TypeError, FederationChaosError) as exc:
         raise ChaosVerificationError("post-merge validation receipt cannot be bound") from exc
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_id
+            or result.result_ref
+            or result.task_id
+            or "post-merge-validation-binding"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="post_merge_validation_binding",
+            record_ref=record_ref,
+            tree_id=str(result.target_tree or ""),
+            subject_kind="task_id",
+            subject_ref=str(result.task_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

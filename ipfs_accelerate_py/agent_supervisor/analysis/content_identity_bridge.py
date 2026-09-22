@@ -1635,7 +1635,7 @@ def bind_authority_root(
             reason_code="unknown_profile",
             details={"profile": profile},
         )
-    return ContentIdentity(
+    result = ContentIdentity(
         profile=identity.profile,
         canonical_bytes=identity.canonical_bytes,
         byte_length=identity.byte_length,
@@ -1653,6 +1653,22 @@ def bind_authority_root(
         ),
         validated=identity.validated,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.cid or result.digest or kind or "authority-root")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authority_root_binding",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _vector_from_identity(
