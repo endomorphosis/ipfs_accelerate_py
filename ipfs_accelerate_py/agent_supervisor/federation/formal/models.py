@@ -1813,7 +1813,27 @@ def check_federation_formal_suite(
 
     if not isinstance(suite, FederationFormalSuite):
         raise FederationFormalError("suite must be FederationFormalSuite")
-    return tuple(check_federation_scenario(item) for item in suite.scenarios)
+    result = tuple(check_federation_scenario(item) for item in suite.scenarios)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(suite.identity, "content_id", "")
+            or (result[0].receipt_id if result else "")
+            or "federation-formal-suite"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="federation_formal_suite",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 _EXTERNAL_STATUS: Final[Mapping[ModelCheckStatus, ExternalCheckStatus]] = MappingProxyType(

@@ -1289,6 +1289,27 @@ class HoleValidationReceipt(CanonicalContract):
         return record
 
 
+def _mirror_hole_reason(
+    result: HoleResolutionReason | None, record_kind: str
+) -> HoleResolutionReason | None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.value if result is not None else "accepted")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class HoleResolutionValidator:
     """Independent structural, injection, freshness, and authority-flow checks."""
 
@@ -1303,38 +1324,40 @@ class HoleResolutionValidator:
         self, request: HoleRequest, output: Mapping[str, Any]
     ) -> HoleResolutionReason | None:
         if not isinstance(output, Mapping):
-            return HoleResolutionReason.SCHEMA_MISMATCH
+            return _mirror_hole_reason(HoleResolutionReason.SCHEMA_MISMATCH, "hole_output_schema")
         scan = _scan_forbidden_payload(output, "output")
         if scan is not None:
-            return _reason_from_scan(scan)
+            return _mirror_hole_reason(_reason_from_scan(scan), "hole_output_schema")
         declared_schema = output.get("schema_ref", request.output_schema_ref)
         if declared_schema != request.output_schema_ref:
-            return HoleResolutionReason.SCHEMA_MISMATCH
+            return _mirror_hole_reason(HoleResolutionReason.SCHEMA_MISMATCH, "hole_output_schema")
         required = _REQUIRED_OUTPUT_KEYS[request.hole_type]
         if any(key not in output for key in required):
-            return HoleResolutionReason.SCHEMA_MISMATCH
+            return _mirror_hole_reason(HoleResolutionReason.SCHEMA_MISMATCH, "hole_output_schema")
         if request.hole_type is HoleType.SELECT_ONE_OF_ALLOWED_SYMBOLS:
             allowed = request.input_payload.get("allowed_values", ())
             if output.get("selected") not in tuple(allowed):
-                return HoleResolutionReason.SCHEMA_MISMATCH
+                return _mirror_hole_reason(HoleResolutionReason.SCHEMA_MISMATCH, "hole_output_schema")
         if request.hole_type in {
             HoleType.PROPOSE_BOUNDED_PATCH,
             HoleType.CHOOSE_APPROVED_REPAIR_TEMPLATE,
         }:
             allowed = request.input_payload.get("template_ids", ())
             if output.get("template_id") not in tuple(allowed):
-                return HoleResolutionReason.SCHEMA_MISMATCH
+                return _mirror_hole_reason(HoleResolutionReason.SCHEMA_MISMATCH, "hole_output_schema")
         extra_effects = output.get("effect_classes", ())
         if extra_effects and not set(extra_effects).issubset(
             {item.value for item in request.effect_classes} | {EffectClass.OBSERVE.value}
         ):
-            return HoleResolutionReason.EFFECT_FLOW_REJECTED
+            return _mirror_hole_reason(HoleResolutionReason.EFFECT_FLOW_REJECTED, "hole_output_schema")
         extra_authority = output.get("authority_requirement_ids", ())
         if extra_authority and not set(extra_authority).issubset(
             set(request.authority_requirement_ids)
         ):
-            return HoleResolutionReason.AUTHORITY_FLOW_REJECTED
-        return None
+            return _mirror_hole_reason(
+                HoleResolutionReason.AUTHORITY_FLOW_REJECTED, "hole_output_schema"
+            )
+        return _mirror_hole_reason(None, "hole_output_schema")
 
     def check_freshness(
         self,
@@ -1345,16 +1368,16 @@ class HoleResolutionValidator:
     ) -> HoleResolutionReason | None:
         tree_id = current_tree_id or self._current_tree_id
         if tree_id and tree_id != request.bindings.tree_id:
-            return HoleResolutionReason.STALE_CONTEXT
+            return _mirror_hole_reason(HoleResolutionReason.STALE_CONTEXT, "hole_freshness")
         for item in request.context_references:
             if item.tree_id and item.tree_id != request.bindings.tree_id:
-                return HoleResolutionReason.STALE_CONTEXT
+                return _mirror_hole_reason(HoleResolutionReason.STALE_CONTEXT, "hole_freshness")
         if compiled is not None:
             if compiled.tree_id != request.bindings.tree_id:
-                return HoleResolutionReason.STALE_CONTEXT
+                return _mirror_hole_reason(HoleResolutionReason.STALE_CONTEXT, "hole_freshness")
             if compiled.repository_id != request.bindings.repository_id:
-                return HoleResolutionReason.STALE_CONTEXT
-        return None
+                return _mirror_hole_reason(HoleResolutionReason.STALE_CONTEXT, "hole_freshness")
+        return _mirror_hole_reason(None, "hole_freshness")
 
     def validate_candidate(
         self,
@@ -1540,6 +1563,28 @@ def _failure_fingerprint(
     )
 
 
+def _mirror_provider_result(result: HoleProviderResult) -> HoleProviderResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.failure_code
+            or getattr(result.outcome, "value", "")
+            or "hole-provider-result"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="hole_provider_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
 class HoleResolver:
     """Route an allowed typed hole through approved providers, then stop at a candidate."""
 
@@ -1663,6 +1708,7 @@ class HoleResolver:
     def _capacity_for(self, provider_class: ProviderClass) -> ProviderCapacitySnapshot | None:
         return self._capacity.get(provider_class)
 
+
     def _call_provider(
         self,
         provider_class: ProviderClass,
@@ -1671,47 +1717,47 @@ class HoleResolver:
     ) -> HoleProviderResult:
         port = self._providers.get(provider_class)
         if port is None:
-            return HoleProviderResult(
+            return _mirror_provider_result(HoleProviderResult(
                 outcome=HoleProviderOutcome.MISSED, failure_code="provider-not-injected"
-            )
+            ))
         if provider_port_claims_authority(port):
-            return HoleProviderResult(
+            return _mirror_provider_result(HoleProviderResult(
                 outcome=HoleProviderOutcome.FAILED,
                 failure_code="authority-flow-rejected",
-            )
+            ))
         try:
             result = port.propose(request, compiled)
         except Exception:
-            return HoleProviderResult(
+            return _mirror_provider_result(HoleProviderResult(
                 outcome=HoleProviderOutcome.FAILED, failure_code="provider-error"
-            )
+            ))
         if isinstance(result, HoleProviderResult):
             scan = _scan_forbidden_payload(result.output, "output")
             if scan is not None:
-                return HoleProviderResult(
+                return _mirror_provider_result(HoleProviderResult(
                     outcome=HoleProviderOutcome.FAILED, failure_code=scan
-                )
-            return result
+                ))
+            return _mirror_provider_result(result)
         if isinstance(result, Mapping):
             output = result.get("output", {})
             scan = _scan_forbidden_payload(output, "output")
             if scan is not None:
-                return HoleProviderResult(
+                return _mirror_provider_result(HoleProviderResult(
                     outcome=HoleProviderOutcome.FAILED, failure_code=scan
-                )
+                ))
             try:
-                return HoleProviderResult(
+                return _mirror_provider_result(HoleProviderResult(
                     outcome=result.get("outcome", HoleProviderOutcome.FAILED),
                     output=output if isinstance(output, Mapping) else {},
                     token_count=result.get("token_count", 0),
                     failure_code=result.get("failure_code", ""),
                     evidence_ids=result.get("evidence_ids", ()),
-                )
+                ))
             except ProcedureContractError:
-                return HoleProviderResult(
+                return _mirror_provider_result(HoleProviderResult(
                     outcome=HoleProviderOutcome.FAILED,
                     failure_code="injection-rejected",
-                )
+                ))
         raise HoleResolutionError("provider port returned an unsupported result")
 
     def _resolution(
@@ -1725,7 +1771,7 @@ class HoleResolver:
         candidate: HoleCandidate | None = None,
         attempts_used: int = 0,
     ) -> HoleResolution:
-        return HoleResolution(
+        result = HoleResolution(
             bindings=request.bindings,
             request_cid=request.content_id,
             hole_id=request.hole_id,
@@ -1738,6 +1784,24 @@ class HoleResolver:
             evidence_fingerprint="" if compiled is None else compiled.evidence_fingerprint,
             attempts_used=attempts_used,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_cid or result.hole_id or result.candidate_cid or "hole-resolution"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="hole_resolution",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def resolve(
         self,
