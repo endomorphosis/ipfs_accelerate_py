@@ -552,7 +552,7 @@ def bind_exact_sources(repo_root: Path | None = None) -> PropagationSourceBindin
     prefix = str(scheduler.get("task_prefix") or TASK_PREFIX)
     merge = str(scheduler.get("merge_target_branch") or MERGE_TARGET_BRANCH)
 
-    return PropagationSourceBinding(
+    result = PropagationSourceBinding(
         repository_root=str(root),
         board_namespace=board,
         task_prefix=prefix,
@@ -568,6 +568,27 @@ def bind_exact_sources(repo_root: Path | None = None) -> PropagationSourceBindin
         rollout_module_identity=file_identity(paths["rollout_module"]),
         validate_script_identity=file_identity(paths["validate_script"]),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.binding_id
+            or result.board_namespace
+            or result.scheduler_identity
+            or "propagation-sources"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="propagation_exact_sources",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

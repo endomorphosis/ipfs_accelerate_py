@@ -63,4 +63,24 @@ def validate_database_attempt_binding(value: Mapping[str, Any]) -> dict[str, Any
     ).encode("utf-8")).hexdigest()
     if type(binding_id) is not str or binding_id != digest:
         raise ValueError("database Portal attempt binding digest is invalid")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            value.get("binding_id")
+            or value.get("attempt_id")
+            or value.get("task_cid")
+            or "database-attempt-binding"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="database_attempt_binding",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(value.get("task_cid") or record_ref),
+        )
+    except Exception:
+        pass
     return value

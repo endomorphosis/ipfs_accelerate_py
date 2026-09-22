@@ -18,7 +18,7 @@ def bind_provisional_root(record: Mapping[str, Any]) -> Mapping[str, Any]:
     missing = [name for name in required if not record.get(name)]
     if missing:
         raise ProvisionalStateError(f"provisional root missing {missing}")
-    return MappingProxyType(
+    result = MappingProxyType(
         {
             "schema": SCHEMA,
             "root_cid": record["root_cid"],
@@ -29,6 +29,27 @@ def bind_provisional_root(record: Mapping[str, Any]) -> Mapping[str, Any]:
             "canonical": False,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("root_cid")
+            or result.get("attempt_id")
+            or result.get("task_id")
+            or "provisional-root"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="provisional_root_binding",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(result.get("task_id") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def publish_canonical(record: Mapping[str, Any]) -> Mapping[str, Any]:

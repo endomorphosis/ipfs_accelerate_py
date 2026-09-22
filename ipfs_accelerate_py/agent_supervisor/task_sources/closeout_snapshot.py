@@ -150,4 +150,19 @@ def validate_closeout_snapshot(
             raise TypedStateOwnerProtocolError(
                 "closeout relation population exceeds bound"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(value.get("snapshot_cid") or "closeout-snapshot")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="closeout_snapshot_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return value
