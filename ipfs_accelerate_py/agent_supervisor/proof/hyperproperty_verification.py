@@ -1238,6 +1238,29 @@ def probe_hyperproperty_engines(
     return capabilities
 
 
+def _mirror_hyperproperty_result(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "model_identity", "")
+            or getattr(result, "model_id", "")
+            or "hyperproperty-self-composition"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="hyperproperty_self_composition",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class BoundedSelfCompositionChecker:
     """Deterministically compare low-equivalent traces under explicit bounds."""
 
@@ -1307,7 +1330,7 @@ class BoundedSelfCompositionChecker:
                         trace_refs=(left.public_ref, right.public_ref),
                         differences=differences,
                     )
-                    return HyperpropertyVerificationResult(
+                    return _mirror_hyperproperty_result(HyperpropertyVerificationResult(
                         model_id=model.model_id,
                         model_identity=model.content_id,
                         observation_policy_id=policy.content_id,
@@ -1320,7 +1343,7 @@ class BoundedSelfCompositionChecker:
                         maximum_pairs=self.max_pairs,
                         reason="bounded self-composition found a low-observable difference",
                         counterexample=counterexample,
-                    )
+                    ))
             if pairs >= self.max_pairs:
                 break
 
@@ -1333,7 +1356,7 @@ class BoundedSelfCompositionChecker:
         else:
             verdict = HyperpropertyVerdict.HOLDS
             reason = "all bounded low-equivalent trace pairs preserved approved observations"
-        return HyperpropertyVerificationResult(
+        return _mirror_hyperproperty_result(HyperpropertyVerificationResult(
             model_id=model.model_id,
             model_identity=model.content_id,
             observation_policy_id=policy.content_id,
@@ -1345,7 +1368,7 @@ class BoundedSelfCompositionChecker:
             explored_pairs=pairs,
             maximum_pairs=self.max_pairs,
             reason=reason,
-        )
+        ))
 
 
 def bounded_self_composition(

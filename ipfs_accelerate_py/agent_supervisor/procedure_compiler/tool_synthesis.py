@@ -2026,6 +2026,37 @@ class TranslationValidation:
     certificate: GeneratedToolCertificate | None
 
 
+def _mirror_tool_surface(result: Any, record_kind: str, catalog_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        spec = getattr(result, "spec", None)
+        candidate = getattr(result, "candidate", None)
+        bindings = getattr(result, "bindings", None) or getattr(spec, "bindings", None)
+        tree_id = str(getattr(bindings, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "spec_cid", "")
+            or getattr(candidate, "content_id", "")
+            or getattr(spec, "content_id", "")
+            or getattr(result, "dsl_candidate_cid", "")
+            or tree_id
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class GeneratedToolCompiler:
     """Compile reviewed DSL programs into candidate tools only."""
 
@@ -2131,7 +2162,11 @@ class GeneratedToolCompiler:
             adversarial_fixture_ids=spec.adversarial_fixture_ids,
             fixtures=spec.fixtures,
         )
-        return CompiledTool(spec=spec, candidate=candidate)
+        return _mirror_tool_surface(
+            CompiledTool(spec=spec, candidate=candidate),
+            "compiled_tool",
+            "metadata",
+        )
 
     def synthesize(
         self,
@@ -2310,7 +2345,7 @@ class TranslationValidator:
             if equivalent
             else ToolSynthesisReason.TRANSLATION_MISMATCH
         )
-        return TranslationReceipt(
+        return _mirror_tool_surface(TranslationReceipt(
             bindings=dsl_candidate.bindings,
             spec_cid=dsl_candidate.spec_cid,
             dsl_candidate_cid=dsl_candidate.content_id,
@@ -2320,7 +2355,7 @@ class TranslationValidator:
             failed_fixture_ids=tuple(failed),
             adversarial_rejected_ids=tuple(adversarial),
             reason_code=reason,
-        )
+        ), "translation_validation", "proof_cache")
 
     def certify(self, receipt: TranslationReceipt, optimized_candidate: GeneratedToolCandidate) -> GeneratedToolCertificate:
         if not receipt.equivalent:

@@ -1211,6 +1211,29 @@ def _coerce_bindings(
     raise InvariantMiningError("exact current bindings are required")
 
 
+def _mirror_mining_validation(result: Any, record_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bindings = getattr(result, "bindings", None)
+        receipt = getattr(result, "receipt", None)
+        tree_id = str(getattr(bindings, "tree_id", "") or "")
+        record_ref = str(getattr(receipt, "content_id", "") or tree_id or record_kind)
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class NonVacuityValidator:
     """Reject vacuous specification candidates; never certify survivors."""
 
@@ -1362,7 +1385,7 @@ class NonVacuityValidator:
             },
             created_at_ms=self.emitted_at_ms,
         )
-        return NonVacuityValidationResult(
+        return _mirror_mining_validation(NonVacuityValidationResult(
             bindings=current,
             surviving=tuple(surviving),
             refused=tuple(refused),
@@ -1375,7 +1398,7 @@ class NonVacuityValidator:
             campaign=campaign,
             receipt=receipt,
             completeness_claimed=False,
-        )
+        ), "non_vacuity_validation")
 
 
 class InvariantValidator:
@@ -1472,7 +1495,7 @@ class InvariantValidator:
             },
             created_at_ms=self.emitted_at_ms,
         )
-        return InvariantValidationResult(
+        return _mirror_mining_validation(InvariantValidationResult(
             bindings=result.bindings,
             surviving=result.surviving,
             refused=result.refused,
@@ -1485,7 +1508,7 @@ class InvariantValidator:
             receipt=receipt,
             non_vacuity=result,
             completeness_claimed=False,
-        )
+        ), "invariant_validation")
 
 
 __all__ = [
