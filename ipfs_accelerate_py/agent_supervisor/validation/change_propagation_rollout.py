@@ -1824,6 +1824,32 @@ def _parse_goal_heap_fallback(text: str) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 
+
+def _mirror_propagation_rollout_check(result: CheckResult) -> CheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = dict(result.evidence or {})
+        record_ref = str(
+            evidence.get("decision_id")
+            or evidence.get("config_identity")
+            or result.name
+            or "change-propagation-rollout"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=f"change_propagation_{result.name}",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_plan_objective_task_dag(
     repo_root: Path | None = None,
 ) -> CheckResult:
@@ -1845,11 +1871,11 @@ def check_plan_objective_task_dag(
         if not path.is_file():
             errors.append(f"{label} missing: {path}")
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="plan_objective_task_dag",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
-        )
+        ))
 
     plan_text = plan_path.read_text(encoding="utf-8")
     if (
@@ -1939,7 +1965,7 @@ def check_plan_objective_task_dag(
         errors.append("scheduler board namespace mismatch")
 
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="plan_objective_task_dag",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
@@ -1948,8 +1974,8 @@ def check_plan_objective_task_dag(
                 "task_count": len(tasks),
                 "errors": errors,
             },
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="plan_objective_task_dag",
         status=CheckStatus.PASS,
         detail="plan, objective heap, task DAG, and scheduler bindings are consistent",
@@ -1959,7 +1985,7 @@ def check_plan_objective_task_dag(
             "goal_ids": sorted(goal_ids),
             "task_ids": sorted(task_ids),
         },
-    )
+    ))
 
 
 def check_exact_source_bindings(
@@ -1968,11 +1994,11 @@ def check_exact_source_bindings(
     try:
         binding = bind_exact_sources(repo_root)
     except (OSError, json.JSONDecodeError, ChangePropagationRolloutError) as exc:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="exact_source_bindings",
             status=CheckStatus.FAIL,
             detail=str(exc),
-        )
+        ))
     root = Path(binding.repository_root)
     recomputed = {
         "plan": file_identity(root / binding.plan_path),
@@ -1999,18 +2025,18 @@ def check_exact_source_bindings(
         "validate_script": binding.validate_script_identity,
     }
     if recomputed != expected:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="exact_source_bindings",
             status=CheckStatus.FAIL,
             detail="source binding identities do not recompute",
             evidence={"expected": expected, "recomputed": recomputed},
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="exact_source_bindings",
         status=CheckStatus.PASS,
         detail="exact source bindings recompute",
         evidence=binding.to_dict(),
-    )
+    ))
 
 
 def check_capability_health(
@@ -2030,34 +2056,34 @@ def check_capability_health(
         "candidate_authoritative": False,
     }
     if not probe:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="capability_health",
             status=CheckStatus.SKIP,
             detail="capability probe skipped",
             evidence=evidence,
-        )
+        ))
 
     try:
         from ipfs_accelerate_py.agent_supervisor.integrations.change_propagation_capabilities import (
             probe_change_propagation_capabilities,
         )
     except Exception as exc:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="capability_health",
             status=CheckStatus.FAIL,
             detail=f"capability probe import failed: {exc}",
             evidence=evidence,
-        )
+        ))
 
     try:
         report = probe_change_propagation_capabilities()
     except Exception as exc:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="capability_health",
             status=CheckStatus.FAIL,
             detail=f"capability probe raised: {exc}",
             evidence=evidence,
-        )
+        ))
 
     report_dict = report.to_dict() if hasattr(report, "to_dict") else dict(report)
     capabilities = report_dict.get("capabilities") or []
@@ -2081,12 +2107,12 @@ def check_capability_health(
                 }
             )
         if item.get("candidate_authoritative"):
-            return CheckResult(
+            return _mirror_propagation_rollout_check(CheckResult(
                 name="capability_health",
                 status=CheckStatus.FAIL,
                 detail=f"capability {cap_id} illegally claims candidate authority",
                 evidence=evidence,
-            )
+            ))
 
     evidence.update(
         {
@@ -2097,7 +2123,7 @@ def check_capability_health(
             "capability_count": len(capabilities),
         }
     )
-    return CheckResult(
+    return _mirror_propagation_rollout_check(CheckResult(
         name="capability_health",
         status=CheckStatus.PASS,
         detail=(
@@ -2105,7 +2131,7 @@ def check_capability_health(
             f"unavailable={len(unavailable)}"
         ),
         evidence=evidence,
-    )
+    ))
 
 
 def check_graph_index_coverage(
@@ -2117,20 +2143,20 @@ def check_graph_index_coverage(
     errors: list[str] = []
     manifest_path = root / FIXTURE_MANIFEST_REL
     if not manifest_path.is_file():
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="graph_index_coverage",
             status=CheckStatus.FAIL,
             detail=f"fixture manifest missing: {manifest_path}",
-        )
+        ))
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="graph_index_coverage",
             status=CheckStatus.FAIL,
             detail=f"fixture manifest unreadable: {exc}",
-        )
+        ))
 
     cases = manifest.get("cases") or []
     if not cases:
@@ -2187,18 +2213,18 @@ def check_graph_index_coverage(
         "authoritative": False,
     }
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="graph_index_coverage",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence=evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="graph_index_coverage",
         status=CheckStatus.PASS,
         detail="graph/index coverage surfaces and fixtures are present",
         evidence=evidence,
-    )
+    ))
 
 
 def check_proof_reconstruction(
@@ -2239,18 +2265,18 @@ def check_proof_reconstruction(
         "authoritative": False,
     }
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="proof_reconstruction",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence=evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="proof_reconstruction",
         status=CheckStatus.PASS,
         detail="proof reconstruction surfaces present; reconstruction required for auto",
         evidence=evidence,
-    )
+    ))
 
 
 def check_transaction_health(
@@ -2261,11 +2287,11 @@ def check_transaction_health(
     root = (repo_root or repository_root()).resolve()
     path = root / TRANSACTION_MODULE_REL
     if not path.is_file():
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="transaction_health",
             status=CheckStatus.FAIL,
             detail=f"transaction module missing: {path}",
-        )
+        ))
 
     errors: list[str] = []
     text = path.read_text(encoding="utf-8")
@@ -2310,18 +2336,18 @@ def check_transaction_health(
         "authoritative": False,
     }
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="transaction_health",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence=evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="transaction_health",
         status=CheckStatus.PASS,
         detail="transaction module exports rollback/checkpoint surfaces; partial groups fail closed",
         evidence=evidence,
-    )
+    ))
 
 
 def check_supervisor_process_state(
@@ -2421,13 +2447,13 @@ def check_supervisor_process_state(
         "errors": errors,
     }
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="supervisor_process_state",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence=evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="supervisor_process_state",
         status=CheckStatus.PASS,
         detail=(
@@ -2435,7 +2461,7 @@ def check_supervisor_process_state(
             f"(master={'running' if master_alive else 'stopped'})"
         ),
         evidence=evidence,
-    )
+    ))
 
 
 def check_benchmark_floors(
@@ -2450,11 +2476,11 @@ def check_benchmark_floors(
     try:
         if report is None:
             if not run:
-                return CheckResult(
+                return _mirror_propagation_rollout_check(CheckResult(
                     name="benchmark_floors",
                     status=CheckStatus.SKIP,
                     detail="benchmark floor check skipped",
-                )
+                ))
             bench = _load_benchmark_module()
             report = bench.run_benchmark()
         metrics = report["metrics"]
@@ -2462,11 +2488,11 @@ def check_benchmark_floors(
         absolute = metrics.get("safety_absolute") or {}
         ops = ChangePropagationMetrics.from_benchmark_metrics(metrics)
     except Exception as exc:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="benchmark_floors",
             status=CheckStatus.FAIL,
             detail=f"benchmark floor evaluation failed: {exc}",
-        )
+        ))
 
     failures = [
         key for key in SAFETY_FLOOR_KEYS if int(floors.get(key, 1)) != 0
@@ -2488,18 +2514,18 @@ def check_benchmark_floors(
         "benchmark_stages": list(BENCHMARK_STAGES),
     }
     if failures:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="benchmark_floors",
             status=CheckStatus.FAIL,
             detail=f"safety floor breach: {sorted(set(failures))}",
             evidence=evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="benchmark_floors",
         status=CheckStatus.PASS,
         detail="all legacy and propagation release safety floors are absolute zero",
         evidence=evidence,
-    )
+    ))
 
 
 def check_feature_flags(
@@ -2624,13 +2650,13 @@ def check_feature_flags(
         errors.append("narrow-auto allows unreconstructed transform")
 
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="feature_flags",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence={"default": default.to_dict(), "selected": selected.to_dict()},
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="feature_flags",
         status=CheckStatus.PASS,
         detail=(
@@ -2639,7 +2665,7 @@ def check_feature_flags(
             "supported-Python transforms"
         ),
         evidence={"default": default.to_dict(), "selected": selected.to_dict()},
-    )
+    ))
 
 
 def check_rollback_gates(
@@ -2760,13 +2786,13 @@ def check_rollback_gates(
             errors.append(f"selected policy disables {attr}")
 
     if errors:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="rollback_gates",
             status=CheckStatus.FAIL,
             detail="; ".join(errors),
             evidence={"receipts": receipts},
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="rollback_gates",
         status=CheckStatus.PASS,
         detail=(
@@ -2775,7 +2801,7 @@ def check_rollback_gates(
             "floor breaches roll back"
         ),
         evidence={"receipts": receipts},
-    )
+    ))
 
 
 def check_guide_boundaries(
@@ -2786,11 +2812,11 @@ def check_guide_boundaries(
     root = (repo_root or repository_root()).resolve()
     guide = root / GUIDE_REL
     if not guide.is_file():
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="guide_boundaries",
             status=CheckStatus.FAIL,
             detail=f"guide missing: {guide}",
-        )
+        ))
     text = guide.read_text(encoding="utf-8")
     lower = text.casefold()
     required_phrases = (
@@ -2837,12 +2863,12 @@ def check_guide_boundaries(
                 missing.append(topic)
 
     if missing:
-        return CheckResult(
+        return _mirror_propagation_rollout_check(CheckResult(
             name="guide_boundaries",
             status=CheckStatus.FAIL,
             detail=f"guide missing required boundary language: {missing}",
-        )
-    return CheckResult(
+        ))
+    return _mirror_propagation_rollout_check(CheckResult(
         name="guide_boundaries",
         status=CheckStatus.PASS,
         detail=(
@@ -2850,7 +2876,7 @@ def check_guide_boundaries(
             "boundaries"
         ),
         evidence={"path": GUIDE_REL, "bytes": guide.stat().st_size},
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
