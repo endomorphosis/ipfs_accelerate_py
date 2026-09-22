@@ -893,7 +893,36 @@ class TaskSource(Protocol):
         limit: int = DEFAULT_QUERY_LIMIT,
     ) -> TaskSourceWatchResult: ...
 
-    def check_integrity(self) -> TaskSourceIntegrityReport: ...
+    
+def _mirror_task_source_integrity(
+    report: TaskSourceIntegrityReport,
+) -> TaskSourceIntegrityReport:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identity = report.identity
+        record_ref = str(
+            getattr(identity, "content_id", "")
+            or getattr(identity, "source_id", "")
+            or report.revision
+            or (report.issues[0] if report.issues else "")
+            or "task-source-integrity"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_source_integrity",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
+
+
+def check_integrity(self) -> TaskSourceIntegrityReport: ...
 
 
 def _encode_cursor(
@@ -1482,33 +1511,33 @@ class CanonicalTaskSource:
             if self.source_kind == "markdown":
                 native = self.backend.check_integrity()
                 if not native.valid:
-                    return TaskSourceIntegrityReport(
+                    return _mirror_task_source_integrity(TaskSourceIntegrityReport(
                         valid=False,
                         identity=current,
                         revision=str(native.board_revision or ""),
                         issues=tuple(native.reason_codes),
-                    )
+                    ))
                 snapshot = self.backend.snapshot()
-                return TaskSourceIntegrityReport(
+                return _mirror_task_source_integrity(TaskSourceIntegrityReport(
                     valid=True,
                     identity=current,
                     revision=snapshot.board_revision,
                     event_cursor=self._markdown_current_cursor(),
-                )
+                ))
             native = self.backend.validate_integrity()
-            return TaskSourceIntegrityReport(
+            return _mirror_task_source_integrity(TaskSourceIntegrityReport(
                 valid=bool(native.valid),
                 identity=current,
                 revision=int(native.revision),
                 event_cursor=int(native.event_cursor),
                 issues=tuple(native.issues),
-            )
+            ))
         except Exception as exc:
-            return TaskSourceIntegrityReport(
+            return _mirror_task_source_integrity(TaskSourceIntegrityReport(
                 valid=False,
                 identity=getattr(self, "_identity", None),
                 issues=(str(exc) or type(exc).__name__,),
-            )
+            ))
 
     integrity = check_integrity
 
@@ -2667,13 +2696,13 @@ class DualTaskSource:
                 snapshot = self.snapshot()
             except Exception as exc:
                 issues.append(str(exc) or type(exc).__name__)
-        return TaskSourceIntegrityReport(
+        return _mirror_task_source_integrity(TaskSourceIntegrityReport(
             valid=not issues,
             identity=self._identity,
             revision="" if snapshot is None else snapshot.revision,
             event_cursor=None if snapshot is None else snapshot.event_cursor,
             issues=tuple(issues),
-        )
+        ))
 
     integrity = check_integrity
 

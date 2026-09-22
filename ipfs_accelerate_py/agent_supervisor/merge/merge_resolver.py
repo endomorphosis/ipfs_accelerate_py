@@ -533,6 +533,25 @@ def _save_resolved_events(state_dir: Path, resolved: dict[str, int]) -> None:
         pass
 
 
+def _mirror_event_idempotency(result: tuple[bool, str]) -> tuple[bool, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result[1] or ("skip" if result[0] else "fresh") or "event-idempotency")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="merge_event_idempotency",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_event_idempotency(
     event: dict[str, Any],
     *,
@@ -546,11 +565,13 @@ def check_event_idempotency(
     resolved = _load_resolved_events(state_dir)
     attempts = resolved.get(fingerprint, 0)
     if attempts >= _MAX_RESOLVE_ATTEMPTS_PER_EVENT:
-        return (
-            True,
-            f"event already attempted {attempts} times (max={_MAX_RESOLVE_ATTEMPTS_PER_EVENT})",
+        return _mirror_event_idempotency(
+            (
+                True,
+                f"event already attempted {attempts} times (max={_MAX_RESOLVE_ATTEMPTS_PER_EVENT})",
+            )
         )
-    return False, ""
+    return _mirror_event_idempotency((False, ""))
 
 
 def record_resolve_attempt(

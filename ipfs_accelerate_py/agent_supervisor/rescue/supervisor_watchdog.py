@@ -1454,6 +1454,29 @@ def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     return _mirror_lane_pid(result)
 
 
+def _mirror_lane_heartbeat(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("status_path")
+            or result.get("active_task_id")
+            or "lane-heartbeat"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lane_heartbeat_check",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(result.get("status_path") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_lane_heartbeat(
     state_dir: Path, state_prefix: str, *, timeout_seconds: float
 ) -> dict[str, Any]:
@@ -1464,7 +1487,7 @@ def check_lane_heartbeat(
     if not status_path.exists():
         result["stale"] = True
         result["reason"] = "no_status_file"
-        return result
+        return _mirror_lane_heartbeat(result)
 
     try:
         stat = status_path.stat()
@@ -1531,7 +1554,7 @@ def check_lane_heartbeat(
         result["stale"] = True
         result["reason"] = f"stat_error: {exc}"
 
-    return result
+    return _mirror_lane_heartbeat(result)
 
 
 def _replace_pid_file(pid_path: Path, pid: int) -> None:

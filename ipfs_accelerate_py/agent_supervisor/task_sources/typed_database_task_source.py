@@ -1630,6 +1630,30 @@ class TypedDatabaseTaskSource:
         self._validate_retrying_cooldown_binding(task, cooldown)
         return lineage
 
+    def _mirror_execution_route_binding(
+        self, result: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("task_cid")
+                or result.get("policy_id")
+                or "execution-route-binding"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="execution_route_binding",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(result.get("task_cid") or record_ref),
+            )
+        except Exception:
+            pass
+        return result
+
     def validate_execution_route_binding(
         self,
         value: Mapping[str, Any],
@@ -1682,7 +1706,7 @@ class TypedDatabaseTaskSource:
                 "attempt execution route differs from its authoritative task"
             )
         if task.revision == binding.task_revision:
-            return MappingProxyType(binding.to_dict())
+            return self._mirror_execution_route_binding(MappingProxyType(binding.to_dict()))
         if not allow_claim_revision or task.revision <= binding.task_revision:
             raise TaskSourceIntegrityError(
                 "authoritative task revision differs from its execution route"
@@ -1718,7 +1742,7 @@ class TypedDatabaseTaskSource:
                 raise TaskSourceIntegrityError(
                     "advanced task revision has no exact carried execution-route lineage"
                 )
-        return MappingProxyType(binding.to_dict())
+        return self._mirror_execution_route_binding(MappingProxyType(binding.to_dict()))
 
     def get_task(self, task_cid_or_alias: Any) -> TaskRecord | None:
         self._require_open()
@@ -3130,6 +3154,24 @@ class TypedDatabaseTaskSource:
             reason=str(row["release_reason"] or extension.get("reason") or ""),
         )
 
+    def _mirror_retry_cooldown(self, result: QueueEntry) -> QueueEntry:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.task_cid or result.reason or "retry-cooldown")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="retrying_task_cooldown",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(result.task_cid or record_ref),
+            )
+        except Exception:
+            pass
+        return result
+
     def validate_retrying_task_cooldown(
         self,
         task_cid_or_alias: str,
@@ -3154,14 +3196,16 @@ class TypedDatabaseTaskSource:
             if row is None:
                 # Leftover retrying without a typed cooldown must not
                 # fail-close independent ready work (DOEP-044/L0).
-                return QueueEntry(
-                    task_cid=str(task.task_cid),
-                    attempt=int(getattr(task, "revision", 0) or 0),
-                    retry_not_before_ms=(2**31 - 1) * 1000,
-                    selection_penalty=0,
-                    consecutive_failures=0,
-                    state="retrying",
-                    reason="leftover_retrying_without_typed_cooldown",
+                return self._mirror_retry_cooldown(
+                    QueueEntry(
+                        task_cid=str(task.task_cid),
+                        attempt=int(getattr(task, "revision", 0) or 0),
+                        retry_not_before_ms=(2**31 - 1) * 1000,
+                        selection_penalty=0,
+                        consecutive_failures=0,
+                        state="retrying",
+                        reason="leftover_retrying_without_typed_cooldown",
+                    )
                 )
             self._validate_retrying_cooldown_binding(task, row)
             task_body = task.body if isinstance(task.body, Mapping) else {}
@@ -3172,7 +3216,7 @@ class TypedDatabaseTaskSource:
                 == "database_portal_leftover_wait_deferral_budget_retry_recovery"
                 and leftover_receipt.get("queue_reused") is True
             ):
-                return self._queue_entry_from_cooldown_row(row)
+                return self._mirror_retry_cooldown(self._queue_entry_from_cooldown_row(row))
             extension = dict(row.get("extension") or {})
             if expected_attempt_identity is not None:
                 required_identity = {
@@ -3222,7 +3266,7 @@ class TypedDatabaseTaskSource:
                 raise TaskSourceIntegrityError(
                     "retrying task cooldown differs from the expected delay"
                 )
-            return self._queue_entry_from_cooldown_row(row)
+            return self._mirror_retry_cooldown(self._queue_entry_from_cooldown_row(row))
         raise TaskSourceConflictError(
             "typed retrying task/cooldown changed during bounded validation"
         )
