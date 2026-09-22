@@ -1278,42 +1278,68 @@ def _parse_goal_heap_fallback(text: str) -> list[Any]:
     return goals
 
 
+
+def _mirror_logic_repair_check(result: CheckResult) -> CheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = dict(result.evidence or {})
+        record_ref = str(
+            evidence.get("decision_id")
+            or evidence.get("config_identity")
+            or result.name
+            or "logic-repair-rollout"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=f"logic_repair_{result.name}",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_bootstrap_board_doctor(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     validator = root / BOARD_VALIDATOR_REL
     if not validator.is_file():
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board validator missing: {validator}")
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board validator missing: {validator}"))
     try:
         result = subprocess.run(
             [sys.executable, str(validator), "--check-all"], cwd=str(root),
             capture_output=True, text=True, timeout=120, check=False,
         )
     except Exception as exc:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor failed to run: {exc}")
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor failed to run: {exc}"))
     if result.returncode != 0:
-        return CheckResult(
+        return _mirror_logic_repair_check(CheckResult(
             "bootstrap_board_doctor", CheckStatus.FAIL,
             "board doctor returned nonzero: " + (result.stderr or result.stdout or "")[:500],
             {"returncode": result.returncode},
-        )
+        ))
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor output is not JSON: {exc}")
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"board doctor output is not JSON: {exc}"))
     if not payload.get("valid"):
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor reported invalid", payload)
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor reported invalid", payload))
     if payload.get("schema") != BOARD_VALIDATOR_SCHEMA:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"unexpected board schema: {payload.get('schema')}", payload)
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, f"unexpected board schema: {payload.get('schema')}", payload))
     if payload.get("rollout_mode") != "shadow":
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor rollout mode is not shadow", payload)
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor rollout mode is not shadow", payload))
     if payload.get("lane_count") != LANE_COUNT:
-        return CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor lane_count is not 4", payload)
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("bootstrap_board_doctor", CheckStatus.FAIL, "board doctor lane_count is not 4", payload))
+    return _mirror_logic_repair_check(CheckResult(
         "bootstrap_board_doctor", CheckStatus.PASS, "protected bootstrap board/DAG doctor is healthy",
         {"schema": payload.get("schema"), "task_count": payload.get("task_count"), "goal_count": payload.get("goal_count"),
          "lane_count": payload.get("lane_count"), "rollout_mode": payload.get("rollout_mode"),
          "ready_task_ids": payload.get("ready_task_ids")},
-    )
+    ))
 
 
 def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
@@ -1324,7 +1350,7 @@ def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
         if not path.is_file():
             errors.append(f"{label} missing: {path}")
     if errors:
-        return CheckResult("plan_objective_task_dag", CheckStatus.FAIL, "; ".join(errors))
+        return _mirror_logic_repair_check(CheckResult("plan_objective_task_dag", CheckStatus.FAIL, "; ".join(errors)))
     plan_text = plan_path.read_text(encoding="utf-8").casefold()
     if "logic repair" not in plan_text and "tactician" not in plan_text:
         errors.append("plan does not identify tactician/hammer logic-repair work")
@@ -1388,8 +1414,8 @@ def check_plan_objective_task_dag(repo_root: Path | None = None) -> CheckResult:
         errors.append("scheduler board namespace mismatch")
     evidence = {"goal_ids": sorted(goal_ids), "task_ids": sorted(task_ids), "task_count": len(task_ids), "goal_count": len(goal_ids)}
     if errors:
-        return CheckResult("plan_objective_task_dag", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("plan_objective_task_dag", CheckStatus.PASS, "plan/objective/task DAG is acyclic and includes LPR-020", evidence)
+        return _mirror_logic_repair_check(CheckResult("plan_objective_task_dag", CheckStatus.FAIL, "; ".join(errors), evidence))
+    return _mirror_logic_repair_check(CheckResult("plan_objective_task_dag", CheckStatus.PASS, "plan/objective/task DAG is acyclic and includes LPR-020", evidence))
 
 
 def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
@@ -1397,7 +1423,7 @@ def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
     try:
         binding = bind_exact_sources(root)
     except LogicRepairRolloutError as exc:
-        return CheckResult("exact_source_bindings", CheckStatus.FAIL, str(exc))
+        return _mirror_logic_repair_check(CheckResult("exact_source_bindings", CheckStatus.FAIL, str(exc)))
     errors: list[str] = []
     source = (_load_scheduler(root).get("source_binding") or {})
     for key in (
@@ -1421,11 +1447,11 @@ def check_exact_source_bindings(repo_root: Path | None = None) -> CheckResult:
         if not (root / path).is_file():
             errors.append(f"release source missing: {path}")
     if errors:
-        return CheckResult("exact_source_bindings", CheckStatus.FAIL, "; ".join(errors), binding.to_dict())
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("exact_source_bindings", CheckStatus.FAIL, "; ".join(errors), binding.to_dict()))
+    return _mirror_logic_repair_check(CheckResult(
         "exact_source_bindings", CheckStatus.PASS,
         "exact two-repository gitlink/module/schema/tool/environment bindings hold", binding.to_dict(),
-    )
+    ))
 
 
 def check_capability_health(repo_root: Path | None = None, *, probe: bool = True) -> CheckResult:
@@ -1435,17 +1461,17 @@ def check_capability_health(repo_root: Path | None = None, *, probe: bool = True
         "native_execution_admitted": False, "resource_enforcement": None,
     }
     if not probe:
-        return CheckResult("capability_health", CheckStatus.SKIP, "capability probe skipped", evidence)
+        return _mirror_logic_repair_check(CheckResult("capability_health", CheckStatus.SKIP, "capability probe skipped", evidence))
     try:
         from ipfs_accelerate_py.agent_supervisor.integrations.tactician_hammer_capabilities import (
             probe_tactician_hammer_capabilities,
         )
     except Exception as exc:
-        return CheckResult("capability_health", CheckStatus.FAIL, f"capability probe import failed: {exc}", evidence)
+        return _mirror_logic_repair_check(CheckResult("capability_health", CheckStatus.FAIL, f"capability probe import failed: {exc}", evidence))
     try:
         report = probe_tactician_hammer_capabilities()
     except Exception as exc:
-        return CheckResult("capability_health", CheckStatus.FAIL, f"capability probe raised: {exc}", evidence)
+        return _mirror_logic_repair_check(CheckResult("capability_health", CheckStatus.FAIL, f"capability probe raised: {exc}", evidence))
     report_dict = report.to_dict() if hasattr(report, "to_dict") else dict(report)
     capabilities = report_dict.get("capabilities") or []
     available: list[str] = []; unavailable: list[dict[str, Any]] = []
@@ -1461,7 +1487,7 @@ def check_capability_health(repo_root: Path | None = None, *, probe: bool = True
             unavailable.append({"capability_id": cap_id, "status": status,
                                 "reason_code": item.get("reason_code") or (item.get("diagnostic") or {}).get("code")})
         if item.get("candidate_authoritative") or item.get("semantic_authority"):
-            return CheckResult("capability_health", CheckStatus.FAIL, f"capability {cap_id} illegally claims authority", evidence)
+            return _mirror_logic_repair_check(CheckResult("capability_health", CheckStatus.FAIL, f"capability {cap_id} illegally claims authority", evidence))
     isolation = report_dict.get("import_isolation") or report_dict.get("hammer_import_isolation")
     native = bool(report_dict.get("native_execution_admitted"))
     evidence.update({
@@ -1471,12 +1497,12 @@ def check_capability_health(repo_root: Path | None = None, *, probe: bool = True
         "native_execution_admitted": native, "resource_enforcement": report_dict.get("resource_enforcement"),
         "network_access_admitted": bool(report_dict.get("network_access_admitted")),
     })
-    return CheckResult(
+    return _mirror_logic_repair_check(CheckResult(
         "capability_health", CheckStatus.PASS,
         f"capability probe completed: available={len(available)} unavailable={len(unavailable)}; "
         f"import_isolation={isolation!r}; native_execution_admitted={native}",
         evidence,
-    )
+    ))
 
 
 def check_four_lane_sharding_and_isolation(repo_root: Path | None = None) -> CheckResult:
@@ -1537,19 +1563,19 @@ def check_four_lane_sharding_and_isolation(repo_root: Path | None = None) -> Che
         "protected_paths": list(protected), "one_merge_queue": True, "one_refill_owner": True,
     }
     if errors:
-        return CheckResult("four_lane_sharding_and_isolation", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("four_lane_sharding_and_isolation", CheckStatus.FAIL, "; ".join(errors), evidence))
+    return _mirror_logic_repair_check(CheckResult(
         "four_lane_sharding_and_isolation", CheckStatus.PASS,
         "strict four-lane sharding, isolated state/worktrees, one merge queue, bounded retries, and one refill owner hold",
         evidence,
-    )
+    ))
 
 
 def check_launcher_lifecycle_safety(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     launcher = root / LAUNCHER_REL
     if not launcher.is_file():
-        return CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, f"launcher missing: {launcher}")
+        return _mirror_logic_repair_check(CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, f"launcher missing: {launcher}"))
     text = launcher.read_text(encoding="utf-8")
     errors: list[str] = []
     for command in ("doctor", "start", "status", "restart", "stop"):
@@ -1576,12 +1602,12 @@ def check_launcher_lifecycle_safety(repo_root: Path | None = None) -> CheckResul
         "secrets_in_argv_or_logs": False,
     }
     if errors:
-        return CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("launcher_lifecycle_safety", CheckStatus.FAIL, "; ".join(errors), evidence))
+    return _mirror_logic_repair_check(CheckResult(
         "launcher_lifecycle_safety", CheckStatus.PASS,
         "bootstrap launcher doctor/start/status/restart/stop remains idempotent, refuses unowned PIDs, and keeps secrets out of argv/logs",
         evidence,
-    )
+    ))
 
 
 def check_proof_reconstruction(repo_root: Path | None = None) -> CheckResult:
@@ -1614,8 +1640,8 @@ def check_proof_reconstruction(repo_root: Path | None = None) -> CheckResult:
         "live_controller_interface": LIVE_LOGIC_REPAIR_CONTROLLER_INTERFACE,
     }
     if errors:
-        return CheckResult("proof_reconstruction", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("proof_reconstruction", CheckStatus.PASS, "reconstruction and fixed-point surfaces require independent proof", evidence)
+        return _mirror_logic_repair_check(CheckResult("proof_reconstruction", CheckStatus.FAIL, "; ".join(errors), evidence))
+    return _mirror_logic_repair_check(CheckResult("proof_reconstruction", CheckStatus.PASS, "reconstruction and fixed-point surfaces require independent proof", evidence))
 
 
 def check_transaction_health(repo_root: Path | None = None) -> CheckResult:
@@ -1641,8 +1667,8 @@ def check_transaction_health(repo_root: Path | None = None) -> CheckResult:
         "partial_plan_completion_allowed": repair.get("partial_plan_completion_allowed"),
     }
     if errors:
-        return CheckResult("transaction_health", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult("transaction_health", CheckStatus.PASS, "atomic SCC transactions and joint fixed-point gates hold", evidence)
+        return _mirror_logic_repair_check(CheckResult("transaction_health", CheckStatus.FAIL, "; ".join(errors), evidence))
+    return _mirror_logic_repair_check(CheckResult("transaction_health", CheckStatus.PASS, "atomic SCC transactions and joint fixed-point gates hold", evidence))
 
 
 def check_supervisor_process_state(
@@ -1658,7 +1684,7 @@ def check_supervisor_process_state(
         "lanes": [], "interface": SUPERVISOR_CONTROL_SERVICE_INTERFACE,
     }
     if not program.exists():
-        return CheckResult("supervisor_process_state", CheckStatus.PASS, "supervisor is stopped (no isolated program state)", evidence)
+        return _mirror_logic_repair_check(CheckResult("supervisor_process_state", CheckStatus.PASS, "supervisor is stopped (no isolated program state)", evidence))
     if master_pid.is_file():
         try:
             pid = int(master_pid.read_text(encoding="ascii").strip())
@@ -1668,7 +1694,7 @@ def check_supervisor_process_state(
             evidence["master_status"] = "running"; evidence["master_pid"] = pid
         else:
             evidence["master_status"] = "dead"; evidence["master_pid"] = pid
-            return CheckResult("supervisor_process_state", CheckStatus.FAIL, "master.pid present but process is dead", evidence)
+            return _mirror_logic_repair_check(CheckResult("supervisor_process_state", CheckStatus.FAIL, "master.pid present but process is dead", evidence))
     lane_reports: list[dict[str, Any]] = []
     state = program / "state"
     for lane in range(lane_count):
@@ -1685,11 +1711,11 @@ def check_supervisor_process_state(
             pid = int(payload.get("supervisor_pid") or payload.get("pid") or 0)
             lane_info["status"] = status or "unknown"; lane_info["pid"] = pid
             if status == "running" and pid > 0 and not Path(f"/proc/{pid}").exists():
-                return CheckResult(
+                return _mirror_logic_repair_check(CheckResult(
                     "supervisor_process_state", CheckStatus.FAIL,
                     f"lane {lane} claims running but pid {pid} is dead",
                     {**evidence, "lanes": lane_reports + [lane_info]},
-                )
+                ))
         if task_path.is_file():
             try:
                 task = json.loads(task_path.read_text(encoding="utf-8"))
@@ -1700,7 +1726,7 @@ def check_supervisor_process_state(
             lane_info["blocked_count"] = task.get("blocked_count")
         lane_reports.append(lane_info)
     evidence["lanes"] = lane_reports
-    return CheckResult("supervisor_process_state", CheckStatus.PASS, f"supervisor master_status={evidence['master_status']}", evidence)
+    return _mirror_logic_repair_check(CheckResult("supervisor_process_state", CheckStatus.PASS, f"supervisor master_status={evidence['master_status']}", evidence))
 
 
 def check_benchmark_floors(
@@ -1708,24 +1734,24 @@ def check_benchmark_floors(
 ) -> CheckResult:
     del repo_root
     if report is None and not run:
-        return CheckResult("benchmark_floors", CheckStatus.SKIP, "benchmark floor check skipped",
-                           {"safety_floors": {k: 0 for k in SAFETY_FLOOR_KEYS}})
+        return _mirror_logic_repair_check(CheckResult("benchmark_floors", CheckStatus.SKIP, "benchmark floor check skipped",
+                           {"safety_floors": {k: 0 for k in SAFETY_FLOOR_KEYS}}))
     try:
         if report is None:
             report = _load_benchmark_module().run_benchmark()
         metrics_payload = report["metrics"] if "metrics" in report else report  # type: ignore[index]
         metrics = LogicRepairMetrics.from_benchmark_metrics(metrics_payload)
     except Exception as exc:
-        return CheckResult("benchmark_floors", CheckStatus.FAIL, f"benchmark floor evaluation failed: {exc}")
+        return _mirror_logic_repair_check(CheckResult("benchmark_floors", CheckStatus.FAIL, f"benchmark floor evaluation failed: {exc}"))
     if not metrics.floors_hold():
-        return CheckResult("benchmark_floors", CheckStatus.FAIL, f"safety floor breach: {list(metrics.breaches())}",
-                           {"safety_floors": dict(metrics.safety_floors), "breaches": list(metrics.breaches())})
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("benchmark_floors", CheckStatus.FAIL, f"safety floor breach: {list(metrics.breaches())}",
+                           {"safety_floors": dict(metrics.safety_floors), "breaches": list(metrics.breaches())}))
+    return _mirror_logic_repair_check(CheckResult(
         "benchmark_floors", CheckStatus.PASS, "all logic-repair release safety floors are absolute zero",
         {"safety_floors": dict(metrics.safety_floors), "safety_absolute": dict(metrics.safety_absolute),
          "case_count": metrics.case_count, "fixed_point_iterations_total": metrics.fixed_point_iterations_total,
          "benchmark_stages": list(BENCHMARK_STAGES), "metrics_authoritative": False, "metrics_id": metrics.metrics_id},
-    )
+    ))
 
 
 def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> CheckResult:
@@ -1791,15 +1817,15 @@ def check_feature_flags(policy: LogicRepairRolloutPolicy | None = None) -> Check
     if model_edit.allows_automated_mutation(**base):
         errors.append("model_edit must remain approval-gated (no auto mutation)")
     if errors:
-        return CheckResult("feature_flags", CheckStatus.FAIL, "; ".join(errors),
-                           {"default": default.to_dict(), "selected": selected.to_dict()})
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("feature_flags", CheckStatus.FAIL, "; ".join(errors),
+                           {"default": default.to_dict(), "selected": selected.to_dict()}))
+    return _mirror_logic_repair_check(CheckResult(
         "feature_flags", CheckStatus.PASS,
         "shadow is default; assist/narrow-auto/model-edit require scoped policy; independent flags disable "
         "prediction/ranking/Hammer/refinement/LLM/auto; narrow-auto limited to deterministic complete-frontier "
         "analytical transforms",
         {"default": default.to_dict(), "selected": selected.to_dict()},
-    )
+    ))
 
 
 def check_rollback_gates(policy: LogicRepairRolloutPolicy | None = None) -> CheckResult:
@@ -1855,19 +1881,19 @@ def check_rollback_gates(policy: LogicRepairRolloutPolicy | None = None) -> Chec
         if not getattr(selected, attr):
             errors.append(f"selected policy disables {attr}")
     if errors:
-        return CheckResult("rollback_gates", CheckStatus.FAIL, "; ".join(errors), {"receipts": receipts})
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("rollback_gates", CheckStatus.FAIL, "; ".join(errors), {"receipts": receipts}))
+    return _mirror_logic_repair_check(CheckResult(
         "rollback_gates", CheckStatus.PASS,
         "nonzero floors, drift, reconstruction/countermodel loss, inconsistency, transaction, isolation, and budget regression roll back",
         {"receipts": receipts},
-    )
+    ))
 
 
 def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     guide = root / GUIDE_REL
     if not guide.is_file():
-        return CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing: {guide}")
+        return _mirror_logic_repair_check(CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing: {guide}"))
     text = guide.read_text(encoding="utf-8"); lower = text.casefold()
     missing: list[str] = []
     for phrase in ("shadow", "assist", "narrow-auto", "rollback", "memory safety", "transaction",
@@ -1898,35 +1924,35 @@ def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
         if flag not in lower:
             missing.append(flag)
     if missing:
-        return CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing required boundary language: {missing}")
-    return CheckResult(
+        return _mirror_logic_repair_check(CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing required boundary language: {missing}"))
+    return _mirror_logic_repair_check(CheckResult(
         "guide_boundaries", CheckStatus.PASS,
         "guide documents trust, safety, memory, transaction, recovery, stages, flags, and approval boundaries",
         {"path": GUIDE_REL, "bytes": guide.stat().st_size},
-    )
+    ))
 
 
 def check_fixture_corpus_coverage(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     manifest_path = root / FIXTURE_MANIFEST_REL
     if not manifest_path.is_file():
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest missing: {manifest_path}")
+        return _mirror_logic_repair_check(CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest missing: {manifest_path}"))
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest unreadable: {exc}")
+        return _mirror_logic_repair_check(CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"fixture manifest unreadable: {exc}"))
     cases = manifest.get("cases") or []
     if not cases:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, "fixture manifest has no cases")
+        return _mirror_logic_repair_check(CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, "fixture manifest has no cases"))
     scenarios = {str(c.get("scenario") or c.get("id") or "") for c in cases if isinstance(c, Mapping)}
     required = {"multiple_callers", "immutable_support_type", "stateful_support_type",
                 "ordinary_generic_provider_overlay", "partial_scc_rollback"}
     missing = sorted(required - scenarios)
     evidence = {"case_count": len(cases), "scenarios": sorted(scenarios), "required_present": sorted(required & scenarios)}
     if missing:
-        return CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"required fixture scenarios missing: {missing}", evidence)
-    return CheckResult("fixture_corpus_coverage", CheckStatus.PASS,
-                       "seeded multi-caller and support-type fixture scenarios are present", evidence)
+        return _mirror_logic_repair_check(CheckResult("fixture_corpus_coverage", CheckStatus.FAIL, f"required fixture scenarios missing: {missing}", evidence))
+    return _mirror_logic_repair_check(CheckResult("fixture_corpus_coverage", CheckStatus.PASS,
+                       "seeded multi-caller and support-type fixture scenarios are present", evidence))
 
 
 def run_all_checks(

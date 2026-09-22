@@ -7450,6 +7450,43 @@ def test_mirror_deterministic_doctor_release_checks(tmp_path, monkeypatch) -> No
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_logic_repair_rollout_checks(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    names = (
+        "bootstrap_board_doctor",
+        "plan_objective_task_dag",
+        "exact_source_bindings",
+        "capability_health",
+        "four_lane_sharding_and_isolation",
+        "launcher_lifecycle_safety",
+        "proof_reconstruction",
+        "transaction_health",
+        "supervisor_process_state",
+        "benchmark_floors",
+        "feature_flags",
+        "rollback_gates",
+        "guide_boundaries",
+        "fixture_corpus_coverage",
+    )
+    for name in names:
+        item = mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=f"logic_repair_{name}",
+            record_ref=name,
+            subject_kind="record_cid",
+            subject_ref=name,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
