@@ -160,9 +160,25 @@ class ProgramWorldContextPlanner:
         previous = self._prefix_cache.get(key)
         reused = previous == encoded
         self._prefix_cache[key] = encoded
-        return ProgramWorldPrefixReuse(
+        result = ProgramWorldPrefixReuse(
             prefix_cid=key, exact_bytes=True, reused=reused
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.prefix_cid or "program-world-prefix")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="program_world_prefix_reuse",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def _item(self, raw: Mapping[str, Any]) -> ProgramWorldContextItem:
         try:

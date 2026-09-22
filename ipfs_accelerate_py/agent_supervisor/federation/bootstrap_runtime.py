@@ -188,11 +188,27 @@ class _NoDelegationAuthority:
         request: FederationRequest,
         grant_refs: Sequence[str],
     ) -> tuple[()]:
+        request_id = getattr(request, "request_id", "")
         del request
         if grant_refs:
             raise FederationContractError(
                 "local bootstrap profile does not admit delegated authority"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(request_id or "bootstrap-delegation-chain")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="bootstrap_delegation_chain",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return ()
 
 

@@ -1999,7 +1999,28 @@ class ProtocolVerifier:
     ) -> tuple[ProtocolSuiteResult, ...]:
         selected = tuple(models) if models is not None else DEFAULT_PROTOCOL_MODELS
         caps = tuple(capabilities) if capabilities is not None else self.capabilities()
-        return tuple(self.verify(model, capabilities=caps) for model in selected)
+        results = tuple(self.verify(model, capabilities=caps) for model in selected)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            first = results[0] if results else None
+            record_ref = str(
+                getattr(first, "model_id", "")
+                or getattr(first, "model_identity", "")
+                or "protocol-suite"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="protocol_suite_results",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return results
 
 
 def _query(

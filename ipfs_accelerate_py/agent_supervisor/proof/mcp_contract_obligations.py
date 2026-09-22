@@ -1793,6 +1793,33 @@ def _graph_obligation(
     )
 
 
+def _mirror_mcp_graph_compilation(
+    result: McpGraphObligationCompilation,
+) -> McpGraphObligationCompilation:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason = getattr(result.reason, "value", "") if result.reason is not None else ""
+        record_ref = str(
+            result.candidate_cid
+            or result.graph_cid
+            or reason
+            or "mcp-graph-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcp_graph_obligation_compilation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def compile_dcr031_mcp_contract_obligations(
     candidate: Any,
     *,
@@ -1808,31 +1835,37 @@ def compile_dcr031_mcp_contract_obligations(
     candidate_ok, candidate_cid, input_cids = _valid_dcr030_candidate(candidate)
     graph_body, graph_cid = _canonical_dcr021_graph(graph)
     if not candidate_ok:
-        return McpGraphObligationCompilation(
-            disposition=McpObligationDisposition.INTEGRATION_PENDING,
-            graph_cid=graph_cid,
-            candidate_cid="",
-            input_cids=(),
-            obligations=(),
-            reason=McpObligationUnsupportedReason.DCR030_CANDIDATE_INVALID,
+        return _mirror_mcp_graph_compilation(
+            McpGraphObligationCompilation(
+                disposition=McpObligationDisposition.INTEGRATION_PENDING,
+                graph_cid=graph_cid,
+                candidate_cid="",
+                input_cids=(),
+                obligations=(),
+                reason=McpObligationUnsupportedReason.DCR030_CANDIDATE_INVALID,
+            )
         )
     if graph_body is None or graph_cid not in input_cids:
-        return McpGraphObligationCompilation(
-            disposition=McpObligationDisposition.INTEGRATION_PENDING,
-            graph_cid=graph_cid,
-            candidate_cid=candidate_cid,
-            input_cids=input_cids,
-            obligations=(),
-            reason=McpObligationUnsupportedReason.DCR021_GRAPH_INVALID,
+        return _mirror_mcp_graph_compilation(
+            McpGraphObligationCompilation(
+                disposition=McpObligationDisposition.INTEGRATION_PENDING,
+                graph_cid=graph_cid,
+                candidate_cid=candidate_cid,
+                input_cids=input_cids,
+                obligations=(),
+                reason=McpObligationUnsupportedReason.DCR021_GRAPH_INVALID,
+            )
         )
     if graph_body.get("blockers"):
-        return McpGraphObligationCompilation(
-            disposition=McpObligationDisposition.INTEGRATION_PENDING,
-            graph_cid=graph_cid,
-            candidate_cid=candidate_cid,
-            input_cids=input_cids,
-            obligations=(),
-            reason=McpObligationUnsupportedReason.DCR021_GRAPH_BLOCKED,
+        return _mirror_mcp_graph_compilation(
+            McpGraphObligationCompilation(
+                disposition=McpObligationDisposition.INTEGRATION_PENDING,
+                graph_cid=graph_cid,
+                candidate_cid=candidate_cid,
+                input_cids=input_cids,
+                obligations=(),
+                reason=McpObligationUnsupportedReason.DCR021_GRAPH_BLOCKED,
+            )
         )
     obligations: list[McpGraphContractObligation] = []
     represented: set[McpObligationFamily] = set()

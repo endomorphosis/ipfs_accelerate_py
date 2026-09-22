@@ -271,7 +271,23 @@ class ProgramWorldProcedureBridge:
                 self.compiler.promote(candidate.candidate_cid)
             except Exception:
                 pass
-        return ProcedurePromotionProposal(candidate_cid=candidate.candidate_cid)
+        proposal = ProcedurePromotionProposal(candidate_cid=candidate.candidate_cid)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(proposal.candidate_cid or "procedure-promotion")
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="procedure_promotion_proposal",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return proposal
 
 
 def compile_program_world_procedure_candidate(

@@ -1453,7 +1453,28 @@ def admit_receipts(
 ) -> tuple[AdmissionResult, ...]:
     """Admit a sequence of receipts against the same context."""
 
-    return tuple(admit_receipt(item, context) for item in receipts)
+    admitted = tuple(admit_receipt(item, context) for item in receipts)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = admitted[0] if admitted else None
+        record_ref = str(
+            getattr(first, "receipt_id", "")
+            or getattr(context, "task_id", "")
+            or "logic-platform-receipts"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_platform_receipts",
+            record_ref=record_ref,
+            subject_kind="task_id" if getattr(context, "task_id", "") else "record_cid",
+            subject_ref=str(getattr(context, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return admitted
 
 
 @dataclass(frozen=True, slots=True)
