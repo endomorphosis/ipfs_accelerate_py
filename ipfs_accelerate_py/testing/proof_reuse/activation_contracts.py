@@ -2539,6 +2539,29 @@ class ProofReuseActivationContract(CanonicalContract):
         ordinary mismatch / integrity faults and never fails collection.
         """
 
+        def _mirror_skip(result: RuntimeReuseDisposition) -> RuntimeReuseDisposition:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    getattr(result, "certificate_cid", "")
+                    or getattr(result, "receipt_cid", "")
+                    or getattr(result, "reason_code", "")
+                    or "skip-admission"
+                )
+                mirror_work_record(
+                    catalog_kind="proof_cache",
+                    record_kind="proof_reuse_skip_admission",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return result
+
         if candidate_bytes is not None:
             admission = admit_content_addressed_boundary(
                 role=ArtifactRole.IMMUTABLE_CANDIDATE_CONTEXT,
@@ -2546,10 +2569,12 @@ class ProofReuseActivationContract(CanonicalContract):
                 canonical_bytes=candidate_bytes,
             )
             if not admission.admitted:
-                return disposition_run(
+                return _mirror_skip(
+                    disposition_run(
                     admission.reason_code or "candidate_integrity_failed",
                     artifact_role=ArtifactRole.IMMUTABLE_CANDIDATE_CONTEXT,
                     diagnostics={"stage": "candidate_rehash"},
+                    )
                 )
 
         if certificate_bytes is not None:
@@ -2559,15 +2584,18 @@ class ProofReuseActivationContract(CanonicalContract):
                 canonical_bytes=certificate_bytes,
             )
             if not admission.admitted:
-                return disposition_run(
+                return _mirror_skip(
+                    disposition_run(
                     admission.reason_code or "candidate_integrity_failed",
                     artifact_role=ArtifactRole.AUTHORITATIVE_CERTIFICATE,
                     diagnostics={"stage": "certificate_rehash"},
+                    )
                 )
 
         comparison = compare_contexts_for_skip(candidate, current)
         if not comparison.matched:
-            return disposition_run(
+            return _mirror_skip(
+                disposition_run(
                 "execution_key_mismatch"
                 if "execution_key" in comparison.mismatched_dimensions
                 else "policy_mismatch"
@@ -2577,6 +2605,7 @@ class ProofReuseActivationContract(CanonicalContract):
                     "mismatched_dimensions": list(comparison.mismatched_dimensions),
                     "missing_dimensions": list(comparison.missing_dimensions),
                 },
+                )
             )
 
         if (
@@ -2584,29 +2613,37 @@ class ProofReuseActivationContract(CanonicalContract):
             or certificate.candidate_context_cid != candidate.candidate_context_id
             or certificate.receipt_cid != candidate.pass_receipt_cid
         ):
-            return disposition_run(
+            return _mirror_skip(
+                disposition_run(
                 "receipt_mismatch",
                 diagnostics={"stage": "certificate_binding"},
+                )
             )
 
         if not certificate.may_authorize_skip:
             if certificate.simulated:
-                return disposition_run(
+                return _mirror_skip(
+                    disposition_run(
                     "certificate_non_attested",
                     diagnostics={"stage": "simulated_certificate"},
+                    )
                 )
-            return disposition_run(
+            return _mirror_skip(
+                disposition_run(
                 "certificate_non_attested"
                 if not certificate.authoritative
                 else "trust_policy_rejected",
                 diagnostics={"stage": "certificate_not_skip_capable"},
+                )
             )
 
-        return disposition_skip(
+        return _mirror_skip(
+            disposition_skip(
             certificate_cid=certificate.certificate_cid,
             receipt_cid=certificate.receipt_cid,
             candidate_context_cid=candidate.candidate_context_id,
             diagnostics={"stage": "activation_skip_admitted"},
+            )
         )
 
     def _payload(self) -> Dict[str, Any]:

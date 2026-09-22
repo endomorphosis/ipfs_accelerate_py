@@ -464,7 +464,7 @@ def idea_digest() -> str:
 def admit_supervisor_objective_intent() -> dict[str, Any]:
     """Admit SupervisorObjectiveIntent@1 for the reference idea."""
 
-    return admit_shared_contract(
+    result = admit_shared_contract(
         "SupervisorObjectiveIntent",
         {
             "schema": shared_schema_id("SupervisorObjectiveIntent"),
@@ -474,6 +474,26 @@ def admit_supervisor_objective_intent() -> dict[str, Any]:
             "idea_digest": idea_digest(),
         },
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("objective_id")
+            or result.get("schema")
+            or "supervisor-objective-intent"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="supervisor_objective_intent",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def parse_pyproject_objective_table(text: str) -> dict[str, Any]:

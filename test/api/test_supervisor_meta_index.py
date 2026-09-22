@@ -6209,6 +6209,36 @@ def test_mirror_certificate_issued_draft_monitor_and_key_pair(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_disclosure_raw_policy_intent_evidence_and_skip(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("source_disclosure_evaluation", "pack:1", "metadata", "record_cid"),
+        ("raw_policy_evaluation", "allow", "metadata", "record_cid"),
+        ("supervisor_objective_intent", "obj:1", "metadata", "record_cid"),
+        ("proof_context_evidence_admission", "policy:1", "metadata", "record_cid"),
+        ("proof_reuse_skip_admission", "cert:1", "proof_cache", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

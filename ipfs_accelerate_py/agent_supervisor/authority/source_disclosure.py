@@ -1050,28 +1050,51 @@ def evaluate_disclosure(
         )
 
     if requested.rank > bound_policy.confidentiality.rank:
-        return deny("confidentiality")
-    if size > bound_policy.max_bytes:
-        return deny("byte_limit")
-    if provider not in bound_policy.allowed_providers:
-        return deny("provider_not_allowlisted")
-    if bound_policy.local_only and locality is ProviderLocality.EXTERNAL:
-        return deny("local_only")
-    if excluded:
-        return deny("excluded", excluded_matches=excluded)
-    if secrets:
-        return deny("secret_material", secret_kinds=secrets)
-    return _decision(
-        bound_policy,
-        context_pack_content_id=pack_id,
-        provider_id=provider,
-        provider_locality=locality,
-        confidentiality=requested,
-        payload_bytes=size,
-        verdict=DisclosureVerdict.PERMIT,
-        reason_code="bound",
-        principal_content_id=principal_id,
-    )
+        result = deny("confidentiality")
+    elif size > bound_policy.max_bytes:
+        result = deny("byte_limit")
+    elif provider not in bound_policy.allowed_providers:
+        result = deny("provider_not_allowlisted")
+    elif bound_policy.local_only and locality is ProviderLocality.EXTERNAL:
+        result = deny("local_only")
+    elif excluded:
+        result = deny("excluded", excluded_matches=excluded)
+    elif secrets:
+        result = deny("secret_material", secret_kinds=secrets)
+    else:
+        result = _decision(
+            bound_policy,
+            context_pack_content_id=pack_id,
+            provider_id=provider,
+            provider_locality=locality,
+            confidentiality=requested,
+            payload_bytes=size,
+            verdict=DisclosureVerdict.PERMIT,
+            reason_code="bound",
+            principal_content_id=principal_id,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.context_pack_content_id
+            or result.policy_content_id
+            or result.reason_code
+            or "disclosure-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="source_disclosure_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(extra_paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 def admit_disclosure(

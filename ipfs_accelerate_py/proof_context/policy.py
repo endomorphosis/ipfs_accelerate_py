@@ -868,13 +868,34 @@ def admit_evidence(mode: Any, evidence: Any) -> PolicyResult:
         provenance=provenance,
         status=status,
     )
-    return _build_result(
+    result = _build_result(
         admitted_mode,
         payload,
         provenance=provenance,
         requested_status=status,
         defects=defects,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "policy_cid", "")
+            or getattr(result, "mode", "")
+            or admitted_mode
+            or "proof-context-evidence"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_context_evidence_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def require_admitted(mode: Any, evidence: Any) -> PolicyResult:

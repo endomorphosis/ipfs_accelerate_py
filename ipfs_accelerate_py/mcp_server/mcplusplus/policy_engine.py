@@ -240,13 +240,35 @@ def evaluate_raw_policy(
     now: datetime | None = None,
 ) -> PolicyDecision:
     """Convenience evaluator for raw dict clause payloads."""
-    return evaluate_policy(
+    result = evaluate_policy(
         clauses=parse_policy_clauses(raw_clauses),
         actor=actor,
         action=action,
         resource=resource,
         now=now,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = getattr(result, "evidence", None) or {}
+        record_ref = str(
+            (evidence.get("decision_cid") if isinstance(evidence, dict) else "")
+            or getattr(result, "decision", "")
+            or action
+            or "raw-policy"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="raw_policy_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluate_with_ipfs_datasets_policy(
