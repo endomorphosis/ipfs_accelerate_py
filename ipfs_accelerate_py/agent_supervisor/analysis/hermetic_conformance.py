@@ -336,7 +336,7 @@ def validate_hermetic_conformance(
         "live_required_for_green": True,
     }
 
-    return HermeticConformanceReport(
+    report = HermeticConformanceReport(
         mode=mode,
         live_conformance=live,
         structural_ok=structural_ok,
@@ -347,6 +347,26 @@ def validate_hermetic_conformance(
         reason_codes=tuple(dict.fromkeys(reasons)),
         profile_matrix=profile_matrix,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(getattr(report, "mode", None), "value", "")
+            or (report.reason_codes[0] if report.reason_codes else "")
+            or "hermetic-conformance"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="hermetic_conformance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
 
 
 def build_contract_graph_fixture(

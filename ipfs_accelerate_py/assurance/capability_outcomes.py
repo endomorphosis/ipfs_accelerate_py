@@ -1003,8 +1003,33 @@ def bind_inference_observation(
 
     Without observation evidence the result is ``Unknown`` — never success.
     """
+
+    def _mirror_bind(result: CapabilityOutcome) -> CapabilityOutcome:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            details = getattr(result, "details", None) or {}
+            record_ref = str(
+                (details.get("observation_id") if isinstance(details, Mapping) else "")
+                or result.code
+                or attempt.backend
+                or "inference-observation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="inference_observation_bind",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     if attempt.outcome not in {"Attempted", "Unknown", "Observed"}:
-        return CapabilityOutcome(
+        return _mirror_bind(CapabilityOutcome(
             outcome="Failed",
             code="observation_requires_attempt",
             message=(
@@ -1016,10 +1041,10 @@ def bind_inference_observation(
             envelope=attempt.envelope,
             evidence=attempt.evidence,
             details={"prior_outcome": attempt.outcome, **dict(details or {})},
-        )
+        ))
 
     if not observation_present or not observation_id:
-        return CapabilityOutcome(
+        return _mirror_bind(CapabilityOutcome(
             outcome="Unknown",
             code="inference_unobserved",
             message=(
@@ -1036,10 +1061,10 @@ def bind_inference_observation(
                 "success_forbidden_without_observation": True,
                 **dict(details or {}),
             },
-        )
+        ))
 
     if origin in _WEAK_ORIGINS:
-        return CapabilityOutcome(
+        return _mirror_bind(CapabilityOutcome(
             outcome="Failed",
             code="weak_origin_cannot_observe_inference",
             message=f"origin {origin!r} cannot bind an inference observation",
@@ -1048,7 +1073,7 @@ def bind_inference_observation(
             envelope=attempt.envelope.with_overrides(origin=origin, effect="started"),
             evidence=attempt.evidence,
             details={"origin": origin, **dict(details or {})},
-        )
+        ))
 
     evidence = set(attempt.evidence)
     evidence.add("independent_effect_observation")
@@ -1058,7 +1083,7 @@ def bind_inference_observation(
         evidence.add("delegated_receipt")
 
     code = "inference_delegated" if delegated else "inference_observed"
-    return CapabilityOutcome(
+    return _mirror_bind(CapabilityOutcome(
         outcome="Observed",
         code=code,
         message=(
@@ -1086,7 +1111,7 @@ def bind_inference_observation(
             "delegated": delegated,
             **dict(details or {}),
         },
-    )
+    ))
 
 
 def validate_delegated_inference_receipt(

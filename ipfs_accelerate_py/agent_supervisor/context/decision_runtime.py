@@ -2322,7 +2322,29 @@ class DecisionRuntime:
                     metadata={"effect_observation_receipt_id": observation.receipt_id},
                 )
                 raise DecisionRuntimeEffectMismatch(observation)
-        return DecisionExecutionResult(value, decision, permit_use, observation)
+        result = DecisionExecutionResult(value, decision, permit_use, observation)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            receipt = getattr(decision, "receipt", None)
+            record_ref = str(
+                getattr(receipt, "receipt_id", "")
+                or getattr(receipt, "decision_request_id", "")
+                or getattr(getattr(permit_use, "permit", None), "permit_id", "")
+                or "mutation-authorization"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="decision_runtime_mutation_authorization",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     execute_mutation = authorize_mutation
 

@@ -346,11 +346,34 @@ def _request_identity(request: CodegenRoundtripRequest) -> str:
 def validate_codegen_roundtrip(request: Any) -> CodegenRoundtripResult:
     """Validate two exact generation observations without executing either run."""
 
+    def _mirror_roundtrip(result: CodegenRoundtripResult) -> CodegenRoundtripResult:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_cid
+                or (result.run_cids[0] if result.run_cids else "")
+                or (result.reason_codes[0] if result.reason_codes else "")
+                or "codegen-roundtrip"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="codegen_roundtrip_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     if not isinstance(request, CodegenRoundtripRequest):
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.REJECTED,
             ("typed_codegen_roundtrip_request_required",),
-        )
+        ))
     try:
         _validate_registry(request)
         _validate_tool(request)
@@ -363,7 +386,7 @@ def validate_codegen_roundtrip(request: Any) -> CodegenRoundtripResult:
         if not generated_paths or len(set(generated_paths)) != len(generated_paths):
             raise CodegenRoundtripError("generated path set must be non-empty and unique")
     except (CodegenRoundtripError, TypeError) as exc:
-        return CodegenRoundtripResult(CodegenRoundtripDisposition.REJECTED, (str(exc),))
+        return _mirror_roundtrip(CodegenRoundtripResult(CodegenRoundtripDisposition.REJECTED, (str(exc),)))
 
     first, second = request.first_run, request.second_run
     expected_binding = (
@@ -385,30 +408,30 @@ def validate_codegen_roundtrip(request: Any) -> CodegenRoundtripResult:
             )
             != expected_binding
         ):
-            return CodegenRoundtripResult(
+            return _mirror_roundtrip(CodegenRoundtripResult(
                 CodegenRoundtripDisposition.REJECTED,
                 ("generator_run_binding_is_stale",),
-            )
+            ))
     if first.run_ordinal != 1 or second.run_ordinal != 2 or first.argv != second.argv:
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.REJECTED,
             ("ordered_repeat_run_or_argv_binding_invalid",),
-        )
+        ))
     first_outputs = {item.output_key: item for item in first.outputs}
     second_outputs = {item.output_key: item for item in second.outputs}
     expected_keys = {(owner_root, path) for path in generated_paths}
     if set(first_outputs) != expected_keys or set(second_outputs) != expected_keys:
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.REJECTED,
             ("generated_output_set_or_owner_is_unexpected",),
-        )
+        ))
     if any(path not in request.descriptor.write_scope for path in generated_paths) or (
         request.descriptor.owner_root != owner_root
     ):
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.REJECTED,
             ("generated_output_is_outside_reviewed_write_scope",),
-        )
+        ))
     if any(
         item.authority_source_cid != authority_source_cid
         or item.authority_class != "derived_from_reviewed_source"
@@ -416,31 +439,31 @@ def validate_codegen_roundtrip(request: Any) -> CodegenRoundtripResult:
         or item.semantic_cid != item.decoded_semantic_cid
         for item in (*first.outputs, *second.outputs)
     ):
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.REJECTED,
             ("authority_source_or_semantic_roundtrip_is_invalid",),
-        )
+        ))
     if any(first_outputs[key].to_dict() != second_outputs[key].to_dict() for key in expected_keys):
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.ABSTAINED,
             ("repeat_generation_is_not_byte_identical",),
             run_cids=(first.content_id, second.content_id),
-        )
+        ))
     if not any(item.before_bytes != item.generated_bytes for item in first.outputs):
-        return CodegenRoundtripResult(
+        return _mirror_roundtrip(CodegenRoundtripResult(
             CodegenRoundtripDisposition.ABSTAINED,
             ("generation_has_no_source_change",),
             run_cids=(first.content_id, second.content_id),
-        )
+        ))
     output_cids = tuple(content_identity(item.to_dict()) for item in first.outputs)
-    return CodegenRoundtripResult(
+    return _mirror_roundtrip(CodegenRoundtripResult(
         CodegenRoundtripDisposition.INTEGRATION_PENDING,
         (CODEGEN_ACTIVATION_STATUS,),
         request_cid=_request_identity(request),
         run_cids=(first.content_id, second.content_id),
         output_cids=output_cids,
         inverse_cids=tuple(item.inverse_cid for item in first.outputs),
-    )
+    ))
 
 
 __all__ = [

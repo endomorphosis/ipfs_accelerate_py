@@ -1026,7 +1026,7 @@ def validate_manifest_replay(
         reasons.append("forest_id_mismatch")
 
     valid = not reasons
-    return ManifestReplayValidation(
+    result = ManifestReplayValidation(
         valid=valid,
         forest_id=forest.forest_id,
         manifest_cid=authority_source.manifest_cid,
@@ -1034,6 +1034,22 @@ def validate_manifest_replay(
         observed_aliases=observed_aliases,
         reason_codes=tuple(dict.fromkeys(reasons)),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.forest_id or result.manifest_cid or "manifest-replay")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="manifest_replay_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def materialize_initial_four_repository_forest(
