@@ -554,6 +554,28 @@ def _threshold_failures(
     return sorted(failures)
 
 
+def _mirror_rollout_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "decision_id", "")
+            or "formal-planning-rollout"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_rollout",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class FormalPlanningRolloutGate:
     """Evaluate every executable matrix lane against one target mode."""
 
@@ -667,7 +689,7 @@ class FormalPlanningRolloutGate:
                 if key not in {"decision_id", "generated_at"}
             }
         )
-        return FormalPlanningRolloutDecision(material)
+        return _mirror_rollout_decision(FormalPlanningRolloutDecision(material))
 
 
 def _project_items(

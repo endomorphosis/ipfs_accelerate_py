@@ -942,6 +942,29 @@ def _finding(
     return AdversarialFinding(code=code, boundary=boundary, message=message)
 
 
+def _mirror_adversarial_admission(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "binding_id", "")
+            or getattr(result, "evidence_id", "")
+            or "formal-planning-adversarial"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_adversarial",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class FormalPlanningAdversarialGate:
     """Re-derive trust from typed evidence and exact request bindings."""
 
@@ -951,7 +974,7 @@ class FormalPlanningAdversarialGate:
         evidence: ProverBoundaryEvidence,
         policy: AdversarialPolicy,
     ) -> AdversarialAdmission:
-        return AdversarialAdmission(
+        return _mirror_adversarial_admission(AdversarialAdmission(
             binding_id=binding.content_id,
             evidence_id=evidence.content_id,
             policy_id=_policy_id(policy),
@@ -966,7 +989,7 @@ class FormalPlanningAdversarialGate:
                     "validation was cancelled; no assurance was derived",
                 ),
             ),
-        )
+        ))
 
     def execution_failed(
         self,
@@ -974,7 +997,7 @@ class FormalPlanningAdversarialGate:
         evidence: ProverBoundaryEvidence,
         policy: AdversarialPolicy,
     ) -> AdversarialAdmission:
-        return AdversarialAdmission(
+        return _mirror_adversarial_admission(AdversarialAdmission(
             binding_id=binding.content_id,
             evidence_id=evidence.content_id,
             policy_id=_policy_id(policy),
@@ -989,7 +1012,7 @@ class FormalPlanningAdversarialGate:
                     "validation execution failed; retry from a fresh fenced claim",
                 ),
             ),
-        )
+        ))
 
     def evaluate(
         self,
@@ -1128,7 +1151,7 @@ class FormalPlanningAdversarialGate:
             evidence_class = EvidenceClass.UNVERIFIED
         else:
             disposition = AdmissionDisposition.ADMITTED
-        return AdversarialAdmission(
+        return _mirror_adversarial_admission(AdversarialAdmission(
             binding_id=binding.content_id,
             evidence_id=evidence.content_id,
             policy_id=_policy_id(policy),
@@ -1137,7 +1160,7 @@ class FormalPlanningAdversarialGate:
             authoritative_assurance=assurance,
             conclusion=evidence.conclusion,
             findings=tuple(findings),
-        )
+        ))
 
     validate = evaluate
     admit = evaluate

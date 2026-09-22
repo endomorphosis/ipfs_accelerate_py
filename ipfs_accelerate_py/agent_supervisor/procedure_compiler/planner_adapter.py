@@ -1340,6 +1340,34 @@ def _certificate_verified(operator: ProcedureOperator) -> bool:
     return True
 
 
+def _mirror_composition_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bindings = getattr(result, "bindings", None)
+        tree_id = str(getattr(bindings, "tree_id", "") or "")
+        procedure_cids = getattr(result, "procedure_cids", ()) or ()
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or (procedure_cids[0] if procedure_cids else "")
+            or tree_id
+            or "procedure-composition"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_composition",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProcedureCompositionValidator:
     """Exact post-to-pre, effect, authority, budget, rollback, and cycle checks."""
 
@@ -1438,7 +1466,7 @@ class ProcedureCompositionValidator:
         else:
             action = CompositionAction.REJECT
             reason = reasons[0] if reasons else CompositionReason.EFFECT_INCOMPATIBLE
-        return CompositionDecision(
+        return _mirror_composition_decision(CompositionDecision(
             bindings=bindings,
             action=action,
             reason_code=reason,
@@ -1446,7 +1474,7 @@ class ProcedureCompositionValidator:
             compatible_dimensions=tuple(compatible),
             incompatible_dimensions=tuple(incompatible),
             accepted=accepted,
-        )
+        ))
 
     def _entailment_reason(
         self,

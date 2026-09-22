@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Final
+from typing import Any, Final
 
 from .contracts import ProcedureContractError, _identifier, _nonnegative_int
 
@@ -181,6 +181,33 @@ class PromotionGateResult:
             raise PromotionMetricsError("metrics gates never grant promotion authority")
 
 
+def _mirror_promotion_gate(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = getattr(result, "reasons", ()) or ()
+        record_ref = (
+            "pass"
+            if getattr(result, "eligible", False)
+            else ",".join(
+                str(getattr(item, "value", item)) for item in reasons
+            )
+            or "procedure-promotion-gate"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_promotion_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProcedurePromotionGate:
     """Evaluate immutable release floors; no registry or control mutation occurs."""
     def evaluate(self, metrics: ProcedureMetrics) -> PromotionGateResult:
@@ -220,7 +247,11 @@ class ProcedurePromotionGate:
             reasons.append(MetricReason.AMORTIZATION_FAILED)
         if not reasons:
             reasons.append(MetricReason.PASS)
-        return PromotionGateResult(eligible=reasons == [MetricReason.PASS], reasons=tuple(reasons))
+        return _mirror_promotion_gate(
+            PromotionGateResult(
+                eligible=reasons == [MetricReason.PASS], reasons=tuple(reasons)
+            )
+        )
 
 
 __all__ = ["AmortizationReport", "BASIS_POINTS", "MetricPopulation", "MetricReason", "ProcedureMetrics", "ProcedurePromotionGate", "PromotionGateResult", "PromotionMetricsError", "QualifiedBaseline", "REQUIRED_COST_KINDS", "SAFETY_GATES"]
