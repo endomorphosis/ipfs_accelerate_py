@@ -1197,7 +1197,9 @@ class ReasoningInvalidationReceipt:
 AssuranceDeriver = Callable[[ReasoningSourceReceipt], AssuranceLevel | str]
 
 
-def _mirror_reasoning_lookup(result: ReasoningCacheResult) -> ReasoningCacheResult:
+def _mirror_reasoning_lookup(
+    result: ReasoningCacheResult, record_kind: str = "reasoning_cache_lookup"
+) -> ReasoningCacheResult:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
             mirror_work_record,
@@ -1207,11 +1209,35 @@ def _mirror_reasoning_lookup(result: ReasoningCacheResult) -> ReasoningCacheResu
         record_ref = str(
             getattr(key, "key_id", "")
             or getattr(result.status, "value", "")
-            or "reasoning-cache-lookup"
+            or record_kind
         )
         mirror_work_record(
             catalog_kind="metadata",
-            record_kind="reasoning_cache_lookup",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _mirror_reasoning_store(result: ReasoningCacheStoreResult) -> ReasoningCacheStoreResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        key = getattr(result, "key", None)
+        record_ref = str(
+            getattr(key, "key_id", "")
+            or (result.reason_codes[0] if result.reason_codes else "")
+            or "reasoning-cache-store"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reasoning_cache_store",
             record_ref=record_ref,
             subject_kind="record_cid",
             subject_ref=record_ref,
@@ -1514,27 +1540,27 @@ class ReasoningCacheCoordinator:
                 ttl_seconds=ttl_seconds,
             )
         except ReasoningCacheError as exc:
-            return ReasoningCacheStoreResult(
+            return _mirror_reasoning_store(ReasoningCacheStoreResult(
                 False, semantic_key, reason_codes=(exc.reason_code,)
-            )
+            ))
         except ArtifactBlobIntegrityError:
-            return ReasoningCacheStoreResult(
+            return _mirror_reasoning_store(ReasoningCacheStoreResult(
                 False,
                 semantic_key,
                 reason_codes=(
                     ReasoningCacheReason.ARTIFACT_INTEGRITY_FAILED.value,
                 ),
-            )
+            ))
         except BoundedPersistenceError:
-            return ReasoningCacheStoreResult(
+            return _mirror_reasoning_store(ReasoningCacheStoreResult(
                 False,
                 semantic_key,
                 reason_codes=(
                     ReasoningCacheReason.ARTIFACT_PERSISTENCE_REJECTED.value,
                 ),
-            )
+            ))
         if not native.stored:
-            return ReasoningCacheStoreResult(
+            return _mirror_reasoning_store(ReasoningCacheStoreResult(
                 False,
                 semantic_key,
                 source_receipt=source,
@@ -1544,14 +1570,14 @@ class ReasoningCacheCoordinator:
                     *native.reason_codes,
                 ),
                 native_result=native,
-            )
-        return ReasoningCacheStoreResult(
+            ))
+        return _mirror_reasoning_store(ReasoningCacheStoreResult(
             True,
             semantic_key,
             source_receipt=source,
             source_reference=reference,
             native_result=native,
-        )
+        ))
 
     store_analysis = put_analysis
 
@@ -1879,13 +1905,19 @@ class ReasoningCacheCoordinator:
         )
         result = self.lookup_analysis(semantic_key)
         if not result.hit:
-            return replace(result, native_result=native)
+            return _mirror_reasoning_lookup(
+                replace(result, native_result=native),
+                "reasoning_cache_compute",
+            )
         status = {
             CacheCoordinationStatus.PRODUCED: ReasoningCacheStatus.PRODUCED,
             CacheCoordinationStatus.SHARED: ReasoningCacheStatus.SHARED,
             CacheCoordinationStatus.CACHE_HIT: ReasoningCacheStatus.HIT,
         }[native.status]
-        return replace(result, status=status, native_result=native)
+        return _mirror_reasoning_lookup(
+            replace(result, status=status, native_result=native),
+            "reasoning_cache_compute",
+        )
 
     coordinate_analysis = get_or_compute_analysis
     compute_analysis = get_or_compute_analysis
@@ -1927,17 +1959,17 @@ class ReasoningCacheCoordinator:
         try:
             native_key = self._coerce_proof_key(semantic_key, proof_key)
         except ReasoningCacheError as exc:
-            return ReasoningCacheResult(
+            return _mirror_reasoning_lookup(ReasoningCacheResult(
                 ReasoningCacheStatus.REJECTED,
                 semantic_key,
                 reason_codes=(exc.reason_code,),
-            )
+            ), 'reasoning_proof_lookup')
         requested = requirements or CacheRequirements(
             required_assurance=semantic_key.required_assurance
         )
         native = self.proof_cache.lookup(native_key, requirements=requested)
         if native.status is ProofLookupStatus.MISS:
-            return ReasoningCacheResult(
+            return _mirror_reasoning_lookup(ReasoningCacheResult(
                 ReasoningCacheStatus.MISS,
                 semantic_key,
                 reason_codes=(
@@ -1945,25 +1977,25 @@ class ReasoningCacheCoordinator:
                     ReasoningCacheReason.CACHE_MISS_NOT_REFUTATION.value,
                 ),
                 native_result=native,
-            )
+            ), 'reasoning_proof_lookup')
         if not native.hit or native.receipt is None or native.entry is None:
-            return ReasoningCacheResult(
+            return _mirror_reasoning_lookup(ReasoningCacheResult(
                 ReasoningCacheStatus.REJECTED,
                 semantic_key,
                 reason_codes=tuple(native.reason_codes)
                 or (ReasoningCacheReason.PROOF_CACHE_REJECTED.value,),
                 native_result=native,
-            )
+            ), 'reasoning_proof_lookup')
         assurance = native.authoritative_assurance
         if not assurance.satisfies(semantic_key.required_assurance):
-            return ReasoningCacheResult(
+            return _mirror_reasoning_lookup(ReasoningCacheResult(
                 ReasoningCacheStatus.REJECTED,
                 semantic_key,
                 reason_codes=(
                     ReasoningCacheReason.INSUFFICIENT_ASSURANCE.value,
                 ),
                 native_result=native,
-            )
+            ), 'reasoning_proof_lookup')
         use = self._issue_use_receipt(
             lane=ReasoningCacheLane.PROOF,
             key=semantic_key,
@@ -1973,7 +2005,7 @@ class ReasoningCacheCoordinator:
             producer_run_id=self.run_id,
             assurance=assurance,
         )
-        return ReasoningCacheResult(
+        return _mirror_reasoning_lookup(ReasoningCacheResult(
             ReasoningCacheStatus.HIT,
             semantic_key,
             payload=native.receipt.to_dict(),
@@ -1981,7 +2013,7 @@ class ReasoningCacheCoordinator:
             reason_codes=(ReasoningCacheReason.EXACT_KEY_HIT.value,),
             use_receipt=use,
             native_result=native,
-        )
+        ), 'reasoning_proof_lookup')
 
     get_proof = lookup_proof
 
@@ -2276,7 +2308,7 @@ class ReasoningCacheCoordinator:
                 invalidated_proof.append(proof_key.key_id)
                 self._proof_bindings.pop(key_id, None)
 
-        return ReasoningInvalidationReceipt(
+        result = ReasoningInvalidationReceipt(
             changed_dependency_ids=tuple(sorted(changed)),
             invalidated_analysis_key_ids=tuple(sorted(set(invalidated_analysis))),
             invalidated_proof_key_ids=tuple(sorted(set(invalidated_proof))),
@@ -2284,6 +2316,26 @@ class ReasoningCacheCoordinator:
             run_id=self.run_id,
             created_at_ms=self._now_ms(),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                (result.changed_dependency_ids[0] if result.changed_dependency_ids else "")
+                or result.run_id
+                or "reasoning-cache-invalidation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="reasoning_cache_invalidation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     invalidate = invalidate_dependencies
     invalidate_changed_dependencies = invalidate_dependencies

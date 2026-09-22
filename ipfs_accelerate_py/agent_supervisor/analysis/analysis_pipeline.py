@@ -2926,7 +2926,7 @@ def make_analysis_stage_receipt(
         if successful and coverage_complete and not truncated and not error_code
         else ContractOutcome.INCONCLUSIVE
     )
-    return AnalysisStageReceipt(
+    result = AnalysisStageReceipt(
         stage=stage,
         status=status,
         outcome=outcome,
@@ -2946,6 +2946,28 @@ def make_analysis_stage_receipt(
         error_code=error_code,
         **values,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.query_digest
+            or result.configuration_digest
+            or result.analyzer_id
+            or "analysis-stage-receipt"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="analysis_stage_receipt",
+            record_ref=record_ref,
+            tree_id=str(result.tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class AnalysisPipeline:
