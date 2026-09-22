@@ -453,7 +453,29 @@ def plan_covers_required_checks(
         elif check == CHECK_HUMAN_REVIEW:
             if not plan.human_review_required:
                 missing.append(check)
-    return tuple(missing)
+    result = tuple(missing)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(plan, "content_id", "")
+            or getattr(plan, "plan_id", "")
+            or getattr(acceptance, "task_class", "")
+            or (result[0] if result else "")
+            or "plan-coverage"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="plan_coverage_checks",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluate_matrix_checks(

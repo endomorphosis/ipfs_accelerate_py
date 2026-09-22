@@ -569,7 +569,28 @@ def validate_activation_authorization(
         except ValueError:
             errors.append(f"{prefix}.expiry_at: unparsable")
 
-    return tuple(errors)
+    result = tuple(errors)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("authorization_id")
+            or payload.get("task_id")
+            or (result[0] if result else "")
+            or "activation-authorization"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="activation_authorization",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(payload.get("task_id") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def validate_post_activation_observation(
@@ -769,7 +790,28 @@ def validate_post_activation_observation(
                     f"{prefix}.observation_id: canonical identity mismatch"
                 )
 
-    return tuple(errors)
+    result = tuple(errors)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("observation_id")
+            or payload.get("task_id")
+            or (result[0] if result else "")
+            or "post-activation-observation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="post_activation_observation",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(payload.get("task_id") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _walk(value: Any, prefix: str = "") -> list[tuple[str, Any]]:

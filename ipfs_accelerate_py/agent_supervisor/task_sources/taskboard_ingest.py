@@ -274,13 +274,37 @@ def normalize_status(value: object) -> str:
     return aliased
 
 
+def _mirror_taskboard_validation(errors: list[str], board: Mapping[str, Any]) -> list[str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            board.get("source_path")
+            or board.get("board_namespace")
+            or (errors[0] if errors else "")
+            or "taskboard-validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="taskboard_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return errors
+
+
 def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
     """Return blocking errors. Empty means the board may be ingested."""
 
     errors: list[str] = []
     tasks = board.get("tasks")
     if not isinstance(tasks, list) or not tasks:
-        return ["taskboard has no tasks"]
+        return _mirror_taskboard_validation(["taskboard has no tasks"], board)
     seen: set[str] = set()
     ids: list[str] = []
     for index, task in enumerate(tasks):
@@ -328,7 +352,7 @@ def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
             dep_id = str(dep).strip()
             if dep_id and dep_id not in known:
                 errors.append(f"{alias}: unknown dependency {dep_id}")
-    return errors
+    return _mirror_taskboard_validation(errors, board)
 
 
 def load_taskboard(path: Path | str, *, repair: bool = True) -> dict[str, Any]:

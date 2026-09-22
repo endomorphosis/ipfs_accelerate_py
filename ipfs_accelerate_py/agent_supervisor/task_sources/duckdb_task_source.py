@@ -2769,7 +2769,7 @@ class DuckDBTaskSource:
                 raise TaskSourceIntegrityError(
                     "independent formal plan recompilation disagrees with source"
                 )
-            return IntegrityReport(
+            report = IntegrityReport(
                 valid=True,
                 plan_root_cid=_meta_value(metadata, "plan_root_cid"),
                 projection_cid=_meta_value(metadata, "projection_cid"),
@@ -2779,6 +2779,28 @@ class DuckDBTaskSource:
                 source_identity=result.source_identity,
                 checked_tables=tuple(sorted(_TABLE_COLUMNS)),
             )
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    report.plan_root_cid
+                    or report.projection_cid
+                    or report.formal_plan_id
+                    or report.source_identity
+                    or "task-source-integrity"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="task_source_integrity",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return report
 
     integrity = validate_integrity
 
