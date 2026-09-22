@@ -1824,6 +1824,21 @@ def check_step_hard_properties(
     ):
         results[HardPropertyId.COMPENSATION_EXPLICIT.value] = False
 
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(effect, "value", "") or "step-hard-properties")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="step_hard_properties",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return results
 
 

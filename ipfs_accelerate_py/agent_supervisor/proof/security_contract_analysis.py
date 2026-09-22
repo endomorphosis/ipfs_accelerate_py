@@ -2592,6 +2592,31 @@ def extract_code_security_facts(
     return tuple(facts)
 
 
+def _mirror_forbidden_logic(
+    result: ForbiddenLogicCheckResult,
+) -> ForbiddenLogicCheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (result.forbidden_logic_ids[0] if result.forbidden_logic_ids else "")
+            or (result.reason_codes[0] if result.reason_codes else "")
+            or "forbidden-logic"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="forbidden_logic_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_intent_code_forbidden_logic(
     *,
     intent_effects: Sequence[str | Mapping[str, Any]],
@@ -2635,7 +2660,7 @@ def check_intent_code_forbidden_logic(
     reasons: list[str] = []
     if not intent_ids or not code_ids:
         reasons.append("intent_code_stream_gap")
-        return ForbiddenLogicCheckResult(
+        return _mirror_forbidden_logic(ForbiddenLogicCheckResult(
             passed=False,
             intent_effect_ids=intent_ids,
             code_effect_ids=code_ids,
@@ -2643,7 +2668,7 @@ def check_intent_code_forbidden_logic(
             uncovered_intent_ids=intent_ids,
             uncovered_code_ids=code_ids,
             reason_codes=tuple(reasons),
-        )
+        ))
 
     matched_forbidden = tuple(
         sorted(
@@ -2670,7 +2695,7 @@ def check_intent_code_forbidden_logic(
         uncovered_code = ()
 
     passed = not reasons and not matched_forbidden
-    return ForbiddenLogicCheckResult(
+    return _mirror_forbidden_logic(ForbiddenLogicCheckResult(
         passed=passed,
         intent_effect_ids=intent_ids,
         code_effect_ids=code_ids,
@@ -2678,7 +2703,7 @@ def check_intent_code_forbidden_logic(
         uncovered_intent_ids=uncovered_intent,
         uncovered_code_ids=uncovered_code,
         reason_codes=tuple(sorted(set(reasons))),
-    )
+    ))
 
 
 def check_required_security_hyperproperties(
@@ -2709,7 +2734,27 @@ def check_required_security_hyperproperties(
         if req in failed or req in unavailable or not held_match:
             missing.add(req)
     passed = not missing and not (failed & set(required))
-    return passed, held, tuple(sorted(missing))
+    result = (passed, held, tuple(sorted(missing)))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (result[2][0] if result[2] else "")
+            or (held[0] if held else "")
+            or "security-hyperproperties"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="security_hyperproperties",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluate_fixed_point_security(

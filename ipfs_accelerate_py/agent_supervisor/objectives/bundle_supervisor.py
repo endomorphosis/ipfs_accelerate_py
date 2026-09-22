@@ -4089,6 +4089,24 @@ def check_lane_health(
                 logger.error("Failed to restart lane %s: %s", lane.bundle_key, exc)
 
         reports.append(report)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (reports[0].get("bundle_key") if reports else "")
+            or "lane-health"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lane_health",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return reports
 
 

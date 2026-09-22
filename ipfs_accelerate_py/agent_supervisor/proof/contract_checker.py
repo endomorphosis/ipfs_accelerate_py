@@ -3620,7 +3620,7 @@ class ContractChecker:
         summary = f"checked {len(results)} pair(s): " + ", ".join(
             f"{name}={count}" for name, count in sorted(counts.items()) if count
         )
-        return ContractCheckReport(
+        result = ContractCheckReport(
             repository_id=bundle.repository_id,
             tree_id=bundle.tree_id,
             policy_revision=bundle.policy_revision,
@@ -3630,6 +3630,25 @@ class ContractChecker:
             summary=summary,
             checker_version=self.checker_version,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.tree_id or result.repository_id or result.policy_revision or "contract-check-bundle"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="contract_check_bundle",
+                record_ref=record_ref,
+                tree_id=str(result.tree_id or ""),
+                subject_kind="tree_id" if result.tree_id else "record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def check_along_paths(
         self,
