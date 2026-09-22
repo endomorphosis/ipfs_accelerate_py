@@ -1827,16 +1827,46 @@ class IpfsDatasetsTestCertificateProvider:
         if binding is not None:
             requirements_map.setdefault("binding", binding)
 
+        def _mirror_certificate(
+            result: TestCertificateVerificationResult,
+        ) -> TestCertificateVerificationResult:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                reason = getattr(result, "reason_code", None)
+                record_ref = str(
+                    getattr(result, "certificate_cid", "")
+                    or getattr(result, "receipt_cid", "")
+                    or getattr(reason, "value", "")
+                    or "test-certificate"
+                )
+                mirror_work_record(
+                    catalog_kind="proof_certificate",
+                    record_kind="test_certificate_object_verification",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return result
+
         if certificate_bytes is not None or receipt_bytes is not None:
             if certificate_bytes is None or receipt_bytes is None:
-                return _rejected(
+                return _mirror_certificate(
+                    _rejected(
                     ReuseReasonCode.MALFORMED_ARTIFACT,
                     "retained-byte verification requires both certificate and receipt bytes",
+                    )
                 )
-            return self.verify_retained_bytes(
+            return _mirror_certificate(
+                self.verify_retained_bytes(
                 certificate_bytes,
                 receipt_bytes,
                 requirements_map,
+                )
             )
 
         try:
@@ -1847,9 +1877,11 @@ class IpfsDatasetsTestCertificateProvider:
             else:
                 payload = _as_mapping(certificate)
                 if payload is None:
-                    return _rejected(
+                    return _mirror_certificate(
+                        _rejected(
                         ReuseReasonCode.MALFORMED_ARTIFACT,
                         "certificate must be TestProofCertificate or mapping",
+                        )
                     )
                 cert_obj = TestProofCertificate.from_dict(payload)
 
@@ -1860,45 +1892,55 @@ class IpfsDatasetsTestCertificateProvider:
             else:
                 payload = _as_mapping(receipt)
                 if payload is None:
-                    return _rejected(
+                    return _mirror_certificate(
+                        _rejected(
                         ReuseReasonCode.MALFORMED_ARTIFACT,
                         "receipt must be TestPassReceipt or mapping",
+                        )
                     )
                 receipt_obj = TestPassReceipt.from_dict(payload)
         except TestExecutionContractError as exc:
             message = str(exc).lower()
             if "simulated" in message or "illegal-authority" in message:
-                return _rejected(
+                return _mirror_certificate(
+                    _rejected(
                     ReuseReasonCode.CERTIFICATE_NON_ATTESTED, str(exc)
+                    )
                 )
-            return _rejected(ReuseReasonCode.MALFORMED_ARTIFACT, str(exc))
+            return _mirror_certificate(_rejected(ReuseReasonCode.MALFORMED_ARTIFACT, str(exc)))
         except Exception as exc:
-            return _unavailable(
+            return _mirror_certificate(
+                _unavailable(
                 ReuseReasonCode.EXCEPTION_FAIL_OPEN_TO_RUN,
                 f"certificate/receipt normalization raised {type(exc).__name__}",
                 diagnostics={"exception_type": type(exc).__name__},
+                )
             )
 
         # When objects are provided, still enforce that any supplied retained
         # identity matches recomputed content ids when present in requirements.
         claimed_cert_cid = _mapping_get(requirements_map, "certificate_cid")
         if claimed_cert_cid and str(claimed_cert_cid) != cert_obj.certificate_id:
-            return _rejected(
+            return _mirror_certificate(
+                _rejected(
                 ReuseReasonCode.CANDIDATE_INTEGRITY_FAILED,
                 "certificate_cid does not match recomputed content identity",
                 certificate_cid=cert_obj.certificate_id,
                 receipt_cid=receipt_obj.receipt_id,
+                )
             )
         claimed_receipt_cid = _mapping_get(requirements_map, "receipt_cid")
         if claimed_receipt_cid and str(claimed_receipt_cid) != receipt_obj.receipt_id:
-            return _rejected(
+            return _mirror_certificate(
+                _rejected(
                 ReuseReasonCode.CANDIDATE_INTEGRITY_FAILED,
                 "receipt_cid does not match recomputed content identity",
                 certificate_cid=cert_obj.certificate_id,
                 receipt_cid=receipt_obj.receipt_id,
+                )
             )
 
-        return self._verify_decoded(cert_obj, receipt_obj, requirements_map)
+        return _mirror_certificate(self._verify_decoded(cert_obj, receipt_obj, requirements_map))
 
     def verify(
         self,
@@ -2038,7 +2080,7 @@ class IpfsDatasetsTestCertificateProvider:
                 code = ReuseReasonCode.MALFORMED_ARTIFACT
             if reason == "private_material_present":
                 code = ReuseReasonCode.CERTIFICATE_NON_ATTESTED
-            return _rejected(
+            result = _rejected(
                 code,
                 redact_provider_diagnostics(reason or "material_rejected"),
                 diagnostics={
@@ -2047,8 +2089,9 @@ class IpfsDatasetsTestCertificateProvider:
                     "can_authorize_skip": False,
                 },
             )
-        # Structural admission only — never skip authority from self-claims.
-        return _result(
+        else:
+            # Structural admission only — never skip authority from self-claims.
+            result = _result(
             TestCertificateVerificationStatus.REJECTED
             if not admitted.get("verified_locally")
             else TestCertificateVerificationStatus.UNAVAILABLE,
@@ -2078,7 +2121,29 @@ class IpfsDatasetsTestCertificateProvider:
                 "proof_digest": str(admitted.get("proof_digest") or "")[:96],
                 "interface": str(admitted.get("interface") or "")[:96],
             },
-        )
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            reason = getattr(result, "reason_code", None)
+            record_ref = str(
+                getattr(result, "certificate_cid", "")
+                or getattr(result, "receipt_cid", "")
+                or getattr(reason, "value", "")
+                or "issued-material"
+            )
+            mirror_work_record(
+                catalog_kind="proof_certificate",
+                record_kind="issued_certificate_material_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def inspect_test_certificate_provider_capability(

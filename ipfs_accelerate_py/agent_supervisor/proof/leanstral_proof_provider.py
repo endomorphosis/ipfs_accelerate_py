@@ -1916,7 +1916,7 @@ class LeanstralProofProvider:
                 maybe_verify_leanstral_draft,
             )
 
-            return maybe_verify_leanstral_draft(
+            result = maybe_verify_leanstral_draft(
                 draft,
                 theorem,
                 typesafe_precheck=True,
@@ -1926,7 +1926,31 @@ class LeanstralProofProvider:
                 ),
                 **kwargs,
             )
-        return verify_leanstral_draft(draft, theorem, **kwargs)
+        else:
+            result = verify_leanstral_draft(draft, theorem, **kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            artifact = getattr(result, "model_artifact", None)
+            admission = getattr(result, "admission", None)
+            record_ref = str(
+                getattr(artifact, "artifact_id", "")
+                or getattr(admission, "theorem_id", "")
+                or getattr(result, "status", "")
+                or "leanstral-draft-provider"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="leanstral_draft_provider_gate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def check_patch_proposal(self, patch_text: str, **kwargs: Any) -> LeanstralPatchGateResult:
         """Check an untrusted patch without giving the provider apply authority."""

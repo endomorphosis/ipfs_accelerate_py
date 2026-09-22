@@ -306,7 +306,27 @@ class DurableMonitorRunner:
             tree_reachable=tree_reachable,
             observed_at_ms=clock,
         )
-        return join_running_evidence(snapshot, now_ms=clock)
+        result = join_running_evidence(snapshot, now_ms=clock)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                run_id
+                or getattr(result, "content_id", "")
+                or "durable-monitor-running"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="durable_monitor_running",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def recover(
         self,

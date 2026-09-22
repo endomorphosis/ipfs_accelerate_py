@@ -1521,30 +1521,53 @@ class TrustedProofPolicy:
             circuit_id=circuit_id,
         )
         if not vk_decision.accepted:
-            return vk_decision
-        pk_decision, _handle = self.select_proving_key_handle(
-            proving_key_id,
-            key_cid=proving_key_cid,
-            circuit_id=circuit_id,
-            paired_verification_key_id=verification_key_id,
-        )
-        if not pk_decision.accepted:
-            return pk_decision
-        return _accept(
-            subject_kind="key_pair",
-            subject_id=f"{verification_key_id}+{proving_key_id}",
-            evidence_subset=KEY_REGISTRY_EVIDENCE,
-            message=(
-                f"key pair verification_key={verification_key_id!r} "
-                f"proving_key={proving_key_id!r} admitted for circuit {circuit_id!r}"
-            ),
-            details={
-                "verification_key_id": verification_key_id,
-                "proving_key_id": proving_key_id,
-                "circuit_id": circuit_id,
-                "handle_only": True,
-            },
-        )
+            result = vk_decision
+        else:
+            pk_decision, _handle = self.select_proving_key_handle(
+                proving_key_id,
+                key_cid=proving_key_cid,
+                circuit_id=circuit_id,
+                paired_verification_key_id=verification_key_id,
+            )
+            if not pk_decision.accepted:
+                result = pk_decision
+            else:
+                result = _accept(
+                    subject_kind="key_pair",
+                    subject_id=f"{verification_key_id}+{proving_key_id}",
+                    evidence_subset=KEY_REGISTRY_EVIDENCE,
+                    message=(
+                        f"key pair verification_key={verification_key_id!r} "
+                        f"proving_key={proving_key_id!r} admitted for circuit {circuit_id!r}"
+                    ),
+                    details={
+                        "verification_key_id": verification_key_id,
+                        "proving_key_id": proving_key_id,
+                        "circuit_id": circuit_id,
+                        "handle_only": True,
+                    },
+                )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "subject_id", "")
+                or f"{verification_key_id}+{proving_key_id}"
+                or circuit_id
+                or "trust-key-pair"
+            )
+            mirror_work_record(
+                catalog_kind="proof_certificate",
+                record_kind="trust_key_pair",
+                record_ref=record_ref,
+                subject_kind="key_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # ------------------------------------------------------------------
     # Production hard gates: never generate or download key material
