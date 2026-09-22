@@ -45,20 +45,43 @@ class ResidualCheckpointAdapter:
         current: ExpertCheckpointLineage,
         incoming: ExpertCheckpointLineage,
     ) -> dict[str, Any]:
+        def _mirror_resume(result: dict[str, Any]) -> dict[str, Any]:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    result.get("lineage_id")
+                    or getattr(getattr(current, "binding", None), "lineage_id", "")
+                    or result.get("reason")
+                    or "residual-resume"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="residual_resume_validation",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return result
+
         if current.corrupt or incoming.corrupt:
-            return {"ok": False, "reason": REASON_CORRUPT, "promoted": False}
+            return _mirror_resume({"ok": False, "reason": REASON_CORRUPT, "promoted": False})
         if current.withdrawn or incoming.withdrawn:
-            return {"ok": False, "reason": REASON_WITHDRAWN, "promoted": False}
+            return _mirror_resume({"ok": False, "reason": REASON_WITHDRAWN, "promoted": False})
         if incoming.admission.admission_decision is not TrainingAvailability.ADMITTED:
-            return {"ok": False, "reason": REASON_WITHDRAWN, "promoted": False}
+            return _mirror_resume({"ok": False, "reason": REASON_WITHDRAWN, "promoted": False})
         if current.binding.lineage_id != incoming.binding.lineage_id:
-            return {"ok": False, "reason": REASON_INCOMPATIBLE_RESUME, "promoted": False}
-        return {
+            return _mirror_resume({"ok": False, "reason": REASON_INCOMPATIBLE_RESUME, "promoted": False})
+        return _mirror_resume({
             "ok": True,
             "reason": REASON_NO_PROMOTION,
             "promoted": False,
             "lineage_id": current.binding.lineage_id,
-        }
+        })
 
 
 def validate_residual_resume(

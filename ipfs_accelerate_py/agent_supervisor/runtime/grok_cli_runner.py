@@ -742,11 +742,27 @@ def bind_grok_runner_command(command: Sequence[str]) -> list[str]:
     ):
         raise ValueError("Grok runner command already has an invocation binding")
     values.extend((GROK_INVOCATION_ID_FLAG, secrets.token_hex(16)))
-    return [
+    result = [
         *values,
         GROK_INVOCATION_BINDING_FLAG,
         grok_command_sha256(values),
     ]
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result[-1] if result else "grok-runner-command")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="grok_runner_command_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def validate_grok_runner_command_binding(command: Sequence[str]) -> str:

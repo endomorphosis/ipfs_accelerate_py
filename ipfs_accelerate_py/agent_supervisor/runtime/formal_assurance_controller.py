@@ -2249,23 +2249,47 @@ def validate_controller(
 ) -> ControllerResult:
     """Validate a caller-supplied policy against hard properties and the spec."""
 
+    def _mirror_controller(result: ControllerResult) -> ControllerResult:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            policy = getattr(result, "policy", None)
+            record_ref = str(
+                getattr(policy, "policy_id", "")
+                or getattr(result.verdict, "value", "")
+                or result.reason
+                or "controller-validation"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="controller_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     try:
         parsed_spec = _coerce_spec(spec)
         parsed_policy = _coerce_policy(policy)
     except ControllerError as exc:
-        return ControllerResult(
+        return _mirror_controller(ControllerResult(
             verdict=ControllerVerdict.INVALID_SPEC,
             assumptions=(),
             toolchain=toolchain,
             bounds=bounds or ControllerBounds(),
             hard_property_results={},
             reason=str(exc),
-        )
+        ))
 
     effective_bounds = bounds or parsed_spec.bounds
     if _spec_is_unrealizable(parsed_spec):
         core = explain_unrealizable(parsed_spec)
-        return ControllerResult(
+        return _mirror_controller(ControllerResult(
             verdict=ControllerVerdict.UNREALIZABLE,
             assumptions=parsed_spec.assumptions,
             toolchain=toolchain,
@@ -2277,13 +2301,13 @@ def validate_controller(
             unrealizable_core=core,
             reason=core.explanation,
             evidence=(SCHEMA, REACTIVE_EVIDENCE, CORE_SCHEMA),
-        )
+        ))
 
     # Reject policies that drop baseline hard properties.
     baseline = {prop.property_id for prop in default_hard_properties(effective_bounds)}
     present = {prop.property_id for prop in parsed_policy.hard_properties}
     if not baseline.issubset(present):
-        return ControllerResult(
+        return _mirror_controller(ControllerResult(
             verdict=ControllerVerdict.REJECTED,
             assumptions=parsed_spec.assumptions,
             toolchain=toolchain,
@@ -2291,11 +2315,11 @@ def validate_controller(
             hard_property_results={HardPropertyId.NO_WEAKEN_HARD_SAFETY.value: False},
             policy=parsed_policy,
             reason="policy weakens or omits baseline hard properties",
-        )
+        ))
 
     for effect in parsed_policy.effects():
         if effect in parsed_spec.forbidden_effects:
-            return ControllerResult(
+            return _mirror_controller(ControllerResult(
                 verdict=ControllerVerdict.REJECTED,
                 assumptions=parsed_spec.assumptions,
                 toolchain=toolchain,
@@ -2303,9 +2327,9 @@ def validate_controller(
                 hard_property_results={},
                 policy=parsed_policy,
                 reason=f"policy includes forbidden effect {effect}",
-            )
+            ))
         if effect not in CONTROL_EFFECTS:
-            return ControllerResult(
+            return _mirror_controller(ControllerResult(
                 verdict=ControllerVerdict.REJECTED,
                 assumptions=parsed_spec.assumptions,
                 toolchain=toolchain,
@@ -2313,7 +2337,7 @@ def validate_controller(
                 hard_property_results={HardPropertyId.TYPESTATE_CLOSED.value: False},
                 policy=parsed_policy,
                 reason=f"policy includes unknown effect {effect}",
-            )
+            ))
 
     missing_required = [
         effect
@@ -2321,7 +2345,7 @@ def validate_controller(
         if effect not in parsed_policy.effects()
     ]
     if missing_required:
-        return ControllerResult(
+        return _mirror_controller(ControllerResult(
             verdict=ControllerVerdict.REJECTED,
             assumptions=parsed_spec.assumptions,
             toolchain=toolchain,
@@ -2329,7 +2353,7 @@ def validate_controller(
             hard_property_results={},
             policy=parsed_policy,
             reason="policy missing required effects: " + ", ".join(missing_required),
-        )
+        ))
 
     # Soft objectives never override: if policy tries cheaper provider via
     # authority/evidence promotion edges without preservation props, reject.
@@ -2339,7 +2363,7 @@ def validate_controller(
     )
     if not all(property_results.values()):
         failed = [name for name, ok in property_results.items() if not ok]
-        return ControllerResult(
+        return _mirror_controller(ControllerResult(
             verdict=ControllerVerdict.REJECTED,
             assumptions=parsed_spec.assumptions,
             toolchain=toolchain,
@@ -2347,7 +2371,7 @@ def validate_controller(
             hard_property_results=property_results,
             policy=parsed_policy,
             reason="hard property violations: " + ", ".join(failed),
-        )
+        ))
 
     discharged = tuple(name for name, ok in property_results.items() if ok)
     accepted = ControllerPolicy(
@@ -2361,7 +2385,7 @@ def validate_controller(
         assumptions=parsed_policy.assumptions or parsed_spec.assumptions,
         evidence=parsed_policy.evidence,
     )
-    return ControllerResult(
+    return _mirror_controller(ControllerResult(
         verdict=ControllerVerdict.REALIZED,
         assumptions=parsed_spec.assumptions,
         toolchain=toolchain,
@@ -2370,7 +2394,7 @@ def validate_controller(
         policy=accepted,
         reason="policy validates against hard properties and specification",
         soft_scores=_soft_scores(accepted),
-    )
+    ))
 
 
 def synthesize_or_validate(

@@ -6779,6 +6779,36 @@ def test_mirror_zkp_code_proof_schema_phase_and_retrieval_surfaces(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_remaining_task_pipeline_grok_controller_and_residual_resume(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("remaining_task_binding", "sawm", "metadata", "task_id"),
+        ("analysis_pipeline_policy_binding", "digest:1", "metadata", "tree_id"),
+        ("grok_runner_command_binding", "sha:1", "metadata", "record_cid"),
+        ("controller_validation", "policy:1", "proof_cache", "record_cid"),
+        ("residual_resume_validation", "lineage:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

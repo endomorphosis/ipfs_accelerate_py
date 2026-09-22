@@ -490,12 +490,34 @@ class AnalysisPipelineRequest:
     def bind_pipeline_policy(self, value: Any) -> "AnalysisPipelineRequest":
         digest = digest_analysis_input(_identity_projection(value))
         if digest == self.pipeline_policy_digest:
-            return self
-        # __post_init__ folds declared digests into actual inputs exactly once.
-        # A normal dataclass replacement would fold the derived values again.
-        bound = copy(self)
-        object.__setattr__(bound, "pipeline_policy_digest", digest)
-        return bound
+            result = self
+        else:
+            # __post_init__ folds declared digests into actual inputs exactly once.
+            # A normal dataclass replacement would fold the derived values again.
+            result = copy(self)
+            object.__setattr__(result, "pipeline_policy_digest", digest)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.pipeline_policy_digest
+                or result.tree_id
+                or result.repository_id
+                or "pipeline-policy"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="analysis_pipeline_policy_binding",
+                record_ref=record_ref,
+                tree_id=str(result.tree_id or ""),
+                subject_kind="tree_id",
+                subject_ref=str(result.tree_id or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     @property
     def cache_key(self) -> AnalysisCacheKey:

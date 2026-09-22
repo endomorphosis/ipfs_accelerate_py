@@ -132,13 +132,29 @@ def bind_remaining_task(
         "spar": "SPAR-native-retain-owner-non-merge@1",
         "aseh": "ContextPack@1 remaining-task ports",
     }
-    return RemainingTaskBinding(
+    result = RemainingTaskBinding(
         task_id=alias,
         board=board,
         overlay_root=root,
         required_files=files,
         no_model_route=routes[board],
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.candidate_id or result.task_id or result.board or "remaining-task")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remaining_task_binding",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(result.task_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def remaining_task_analytical_candidate(
