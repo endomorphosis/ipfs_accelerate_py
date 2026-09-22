@@ -1545,6 +1545,40 @@ def _default_restore(checkpoint: DoctorTransactionCheckpoint) -> bool:
     return bool(str(checkpoint_id).strip())
 
 
+def _mirror_doctor_fixed_point(
+    result: DoctorFixedPointOutcome,
+) -> DoctorFixedPointOutcome:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt_id = result.fixed_point.receipt_id if result.fixed_point is not None else ""
+        rollback_id = (
+            result.compensating_rollback.rollback_id
+            if result.compensating_rollback is not None
+            else ""
+        )
+        record_ref = str(
+            receipt_id
+            or rollback_id
+            or result.report.plan_id
+            or result.report.transaction_id
+            or "doctor-fixed-point"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="deterministic_doctor_fixed_point",
+            record_ref=record_ref,
+            tree_id=str(result.report.candidate_tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class DeterministicDoctorFixedPointValidator:
     """Orchestrate post-edit doctor fixed-point after provisional commit.
@@ -1816,12 +1850,14 @@ class DeterministicDoctorFixedPointValidator:
             disposition=DoctorFixedPointDisposition.COMPLETE,
             iteration_receipts=tuple(accepted),
         )
-        return DoctorFixedPointOutcome(
-            report=report,
-            fixed_point=receipt,
-            compensating_rollback=None,
-            rolled_back=False,
-            quarantined=False,
+        return _mirror_doctor_fixed_point(
+            DoctorFixedPointOutcome(
+                report=report,
+                fixed_point=receipt,
+                compensating_rollback=None,
+                rolled_back=False,
+                quarantined=False,
+            )
         )
 
     def require_complete(self, *args: Any, **kwargs: Any) -> DoctorFixedPointReceipt:
@@ -2182,12 +2218,14 @@ class DeterministicDoctorFixedPointValidator:
             complete=False,
             disposition=DoctorFixedPointDisposition.INCOMPLETE,
         )
-        return DoctorFixedPointOutcome(
-            report=report,
-            fixed_point=None,
-            compensating_rollback=None,
-            rolled_back=False,
-            quarantined=False,
+        return _mirror_doctor_fixed_point(
+            DoctorFixedPointOutcome(
+                report=report,
+                fixed_point=None,
+                compensating_rollback=None,
+                rolled_back=False,
+                quarantined=False,
+            )
         )
 
     def _rollback_or_incomplete(
@@ -2268,12 +2306,14 @@ class DeterministicDoctorFixedPointValidator:
             disposition=disposition,
             iteration_receipts=iteration_receipts,
         )
-        return DoctorFixedPointOutcome(
-            report=report,
-            fixed_point=None,
-            compensating_rollback=rollback,
-            rolled_back=restored,
-            quarantined=quarantined,
+        return _mirror_doctor_fixed_point(
+            DoctorFixedPointOutcome(
+                report=report,
+                fixed_point=None,
+                compensating_rollback=rollback,
+                rolled_back=restored,
+                quarantined=quarantined,
+            )
         )
 
 

@@ -3680,7 +3680,7 @@ class InterfaceContractParityAnalyzer:
         if runtime_observations:
             evidence.append(EVIDENCE_RUNTIME_WITNESS)
 
-        return InterfaceParityReport(
+        result = InterfaceParityReport(
             inventory_id=self._inventory.inventory_id,
             policy_id=self._policy.policy_id,
             forest_id=self._inventory.forest_id,
@@ -3700,6 +3700,27 @@ class InterfaceContractParityAnalyzer:
                 "surface_kinds": list(self._policy.surface_kinds()),
             },
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.report_id
+                or result.inventory_id
+                or result.policy_id
+                or "interface-parity-report"
+            )
+            mirror_work_record(
+                catalog_kind="ast",
+                record_kind="interface_parity_report",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def _contract_pack_findings(self) -> list[ParityFinding]:
         if self._contract_adapter is None:

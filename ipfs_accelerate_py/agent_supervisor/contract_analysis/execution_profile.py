@@ -896,13 +896,34 @@ class AnalysisExecutionProfile:
             disposition = "unknown" if proof_required else "incomplete"
         else:
             disposition = "pass"
-        return HermeticValidation(
+        result = HermeticValidation(
             safe=not violations_tuple,
             complete=not violations_tuple and not unavailable_tuple,
             disposition=disposition,
             violations=violations_tuple,
             unavailable_capabilities=unavailable_tuple,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                self.profile_id
+                or self.goal_id
+                or result.disposition
+                or "hermetic-capability-validation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="hermetic_capability_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def validate_usage(
         self, usage: Mapping[str, Any], *, proof_required: bool = False

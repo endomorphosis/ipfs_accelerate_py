@@ -431,7 +431,27 @@ def validate_canary_registry(analyzer_version: str | None = None) -> tuple[str, 
             errors.append(f"{version}:missing:{parser_path}:{kind}")
         for parser_path, kind in sorted(observed - expected):
             errors.append(f"{version}:unsupported:{parser_path}:{kind}")
-    return tuple(errors)
+    result = tuple(errors)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            analyzer_version
+            or (result[0] if result else "")
+            or "analyzer-canary-registry"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="analyzer_canary_registry",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

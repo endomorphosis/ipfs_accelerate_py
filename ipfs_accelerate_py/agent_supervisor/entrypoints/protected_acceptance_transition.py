@@ -385,6 +385,25 @@ def observe_prompt_v3_quiescence(
         raise ProtectedAcceptanceDenied(
             "old generation is not exactly terminal and fenced"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.evidence.content_id
+            or (result.terminal_lane_ids[0] if result.terminal_lane_ids else "")
+            or f"quiescence:{result.generation}"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="prompt_v3_quiescence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 
