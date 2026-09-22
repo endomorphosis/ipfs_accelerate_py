@@ -1487,25 +1487,34 @@ def check_limits(policy: DeterministicDoctorRolloutPolicy | None = None) -> Chec
     current = policy or default_rollout_policy()
     missing = [key for key in LIMIT_KEYS if key not in current.limits]
     if missing:
-        return CheckResult(
-            "resource_limits",
-            CheckStatus.FAIL,
-            f"missing limit keys: {missing}",
-            {"limits": dict(current.limits)},
+        return _mirror_rollout_check(
+            CheckResult(
+                "resource_limits",
+                CheckStatus.FAIL,
+                f"missing limit keys: {missing}",
+                {"limits": dict(current.limits)},
+            ),
+            "doctor_rollout_resource_limits",
         )
     for key, value in current.limits.items():
         if not isinstance(value, int) or value <= 0:
-            return CheckResult(
-                "resource_limits",
-                CheckStatus.FAIL,
-                f"limit {key} must be a positive integer",
-                {"limits": dict(current.limits)},
+            return _mirror_rollout_check(
+                CheckResult(
+                    "resource_limits",
+                    CheckStatus.FAIL,
+                    f"limit {key} must be a positive integer",
+                    {"limits": dict(current.limits)},
+                ),
+                "doctor_rollout_resource_limits",
             )
-    return CheckResult(
-        "resource_limits",
-        CheckStatus.PASS,
-        "findings/candidates/queries/operators/plan steps/iterations/files/bytes/processes/time/CPU/memory limits defined",
-        {"limits": dict(current.limits)},
+    return _mirror_rollout_check(
+        CheckResult(
+            "resource_limits",
+            CheckStatus.PASS,
+            "findings/candidates/queries/operators/plan steps/iterations/files/bytes/processes/time/CPU/memory limits defined",
+            {"limits": dict(current.limits)},
+        ),
+        "doctor_rollout_resource_limits",
     )
 
 
@@ -1574,12 +1583,18 @@ def check_promotion_monotonicity() -> CheckResult:
         "narrow_auto_default": False,
     }
     if errors:
-        return CheckResult("promotion_monotonicity", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
-        "promotion_monotonicity",
-        CheckStatus.PASS,
-        "promotion is manual and monotonic across report_only→plan→sandbox_auto→narrow_auto",
-        evidence,
+        return _mirror_rollout_check(
+            CheckResult("promotion_monotonicity", CheckStatus.FAIL, "; ".join(errors), evidence),
+            "doctor_rollout_promotion_monotonicity",
+        )
+    return _mirror_rollout_check(
+        CheckResult(
+            "promotion_monotonicity",
+            CheckStatus.PASS,
+            "promotion is manual and monotonic across report_only→plan→sandbox_auto→narrow_auto",
+            evidence,
+        ),
+        "doctor_rollout_promotion_monotonicity",
     )
 
 
@@ -1639,12 +1654,18 @@ def check_rollback_gates() -> CheckResult:
         "demotion_is_one_stage_or_report_only": True,
     }
     if errors:
-        return CheckResult("rollback_gates", CheckStatus.FAIL, "; ".join(errors), evidence)
-    return CheckResult(
-        "rollback_gates",
-        CheckStatus.PASS,
-        "any nonzero floor, drift, canary failure, isolation/transaction loss, or resource regression rolls back or disables auto",
-        evidence,
+        return _mirror_rollout_check(
+            CheckResult("rollback_gates", CheckStatus.FAIL, "; ".join(errors), evidence),
+            "doctor_rollout_rollback_gates",
+        )
+    return _mirror_rollout_check(
+        CheckResult(
+            "rollback_gates",
+            CheckStatus.PASS,
+            "any nonzero floor, drift, canary failure, isolation/transaction loss, or resource regression rolls back or disables auto",
+            evidence,
+        ),
+        "doctor_rollout_rollback_gates",
     )
 
 

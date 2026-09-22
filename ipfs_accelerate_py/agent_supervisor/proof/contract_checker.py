@@ -2137,7 +2137,7 @@ def _aspect_result(
     summary: str = "",
     closed_rule: bool = True,
 ) -> AspectCheckResult:
-    return AspectCheckResult(
+    result = AspectCheckResult(
         aspect=aspect,
         verdict=verdict,
         rule_id=rule_id,
@@ -2146,6 +2146,22 @@ def _aspect_result(
         summary=summary,
         closed_rule=closed_rule,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.rule_id or getattr(result.aspect, "value", "") or "aspect-check")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="aspect_contract_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _unsupported_or_unknown(

@@ -7322,6 +7322,36 @@ def test_mirror_policy_paths_rollout_flags_and_artifacts(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_aspect_anchors_limits_promotion_and_rollback(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("aspect_contract_check", "rule:1", "proof_cache", "record_cid"),
+        ("planner_protected_anchors", "anchor:1", "filesystem_mtime", "record_cid"),
+        ("doctor_rollout_resource_limits", "limits:1", "metadata", "record_cid"),
+        ("doctor_rollout_promotion_monotonicity", "promotion:1", "metadata", "record_cid"),
+        ("doctor_rollout_rollback_gates", "rollback:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

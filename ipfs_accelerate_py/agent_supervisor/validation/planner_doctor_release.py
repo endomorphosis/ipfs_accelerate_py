@@ -1265,17 +1265,23 @@ def check_protected_anchors(repo_root: Path | None = None) -> CheckResult:
         "release_may_rewrite_protected": False,
     }
     if missing:
-        return CheckResult(
-            "protected_anchors",
-            CheckStatus.FAIL,
-            f"protected anchors missing or empty: {missing}",
-            evidence,
+        return _mirror_release_check(
+            CheckResult(
+                "protected_anchors",
+                CheckStatus.FAIL,
+                f"protected anchors missing or empty: {missing}",
+                evidence,
+            ),
+            "planner_protected_anchors",
         )
-    return CheckResult(
-        "protected_anchors",
-        CheckStatus.PASS,
-        "protected anchors present; release has no rewrite authority",
-        evidence,
+    return _mirror_release_check(
+        CheckResult(
+            "protected_anchors",
+            CheckStatus.PASS,
+            "protected anchors present; release has no rewrite authority",
+            evidence,
+        ),
+        "planner_protected_anchors",
     )
 
 
