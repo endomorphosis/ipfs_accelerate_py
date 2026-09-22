@@ -7755,6 +7755,36 @@ def test_mirror_proof_store_invalidation_stage_and_compute(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_repair_propagation_logic_proof_and_negotiation(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("proof_gated_contract_repair", "repair:1", "metadata", "record_cid"),
+        ("change_propagation_pipeline", "propagation:1", "metadata", "record_cid"),
+        ("live_logic_repair", "logic:1", "metadata", "record_cid"),
+        ("reasoning_proof_compute", "proof:1", "metadata", "record_cid"),
+        ("analysis_transport_negotiation", "capability:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

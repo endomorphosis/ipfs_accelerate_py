@@ -2076,13 +2076,16 @@ class ReasoningCacheCoordinator:
         )
         if not result.hit:
             return result
-        return replace(
-            result,
-            status=(
-                ReasoningCacheStatus.PRODUCED
-                if produced_here
-                else ReasoningCacheStatus.SHARED
+        return _mirror_reasoning_lookup(
+            replace(
+                result,
+                status=(
+                    ReasoningCacheStatus.PRODUCED
+                    if produced_here
+                    else ReasoningCacheStatus.SHARED
+                ),
             ),
+            "reasoning_proof_compute",
         )
 
     coordinate_proof = get_or_compute_proof

@@ -2970,6 +2970,33 @@ def make_analysis_stage_receipt(
     return result
 
 
+def _mirror_route_result(result: Any, record_kind: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "decision_id", "")
+            or getattr(result, "nomination_receipt_id", "")
+            or getattr(result, "change_set_id", "")
+            or getattr(result, "plan_id", "")
+            or getattr(result, "stage", "")
+            or getattr(result, "disposition", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AnalysisPipeline:
     """Run and cache bounded integrated analysis with fail-closed authority."""
 
@@ -3619,13 +3646,13 @@ class AnalysisPipeline:
                 )
             request = ProofGatedContractRepairRequest.from_mapping(request)
         if not self.policy.enable_proof_gated_contract_repair:
-            return ProofGatedContractRepairResult(
+            return _mirror_route_result(ProofGatedContractRepairResult(
                 enabled=False,
                 provider_invoked_before_admission=False,
                 stage="disabled",
                 disposition="disabled",
                 detail="enable_proof_gated_contract_repair is false",
-            )
+            ), 'proof_gated_contract_repair')
         # Hard invariant: no optional analysis provider may run before
         # admission on this route.  Target selection is local and proof-gated.
         provider_invoked_before_admission = False
@@ -3647,14 +3674,14 @@ class AnalysisPipeline:
         # route never expands that set via a provider.
         candidates = tuple(request.candidates)
         if not candidates:
-            return ProofGatedContractRepairResult(
+            return _mirror_route_result(ProofGatedContractRepairResult(
                 enabled=True,
                 provider_invoked_before_admission=provider_invoked_before_admission,
                 stage=stage,
                 disposition="rejected",
                 detail="candidate retrieval produced no candidates",
                 nomination_receipt_id=request.nomination_receipt_id,
-            )
+            ), 'proof_gated_contract_repair')
 
         stage = "proof"
         # Proof references must already bind each candidate.  Reconstruction
@@ -3669,14 +3696,14 @@ class AnalysisPipeline:
                 expiry=request.expiry,
             )
         except Exception as exc:  # fail-closed: any admission error abstains
-            return ProofGatedContractRepairResult(
+            return _mirror_route_result(ProofGatedContractRepairResult(
                 enabled=True,
                 provider_invoked_before_admission=provider_invoked_before_admission,
                 stage=stage,
                 disposition="rejected",
                 detail=f"admission failed: {exc}",
                 nomination_receipt_id=request.nomination_receipt_id,
-            )
+            ), 'proof_gated_contract_repair')
 
         decision = admission.decision
         if decision.disposition is not DecisionDisposition.ADMITTED:
@@ -3685,7 +3712,7 @@ class AnalysisPipeline:
                 if decision.strategy.value == "ambiguous"
                 else "rejected"
             )
-            return ProofGatedContractRepairResult(
+            return _mirror_route_result(ProofGatedContractRepairResult(
                 enabled=True,
                 provider_invoked_before_admission=provider_invoked_before_admission,
                 stage=stage,
@@ -3696,7 +3723,7 @@ class AnalysisPipeline:
                 admission=admission,
                 decision_id=decision.content_id,
                 nomination_receipt_id=request.nomination_receipt_id,
-            )
+            ), 'proof_gated_contract_repair')
 
         stage = "materialize"
         try:
@@ -3717,7 +3744,7 @@ class AnalysisPipeline:
                 expansion_handles=request.expansion_handles,
             )
         except ContractRepairEditPacketError as exc:
-            return ProofGatedContractRepairResult(
+            return _mirror_route_result(ProofGatedContractRepairResult(
                 enabled=True,
                 provider_invoked_before_admission=provider_invoked_before_admission,
                 stage=stage,
@@ -3726,9 +3753,9 @@ class AnalysisPipeline:
                 admission=admission,
                 decision_id=decision.content_id,
                 nomination_receipt_id=request.nomination_receipt_id,
-            )
+            ), 'proof_gated_contract_repair')
 
-        return ProofGatedContractRepairResult(
+        return _mirror_route_result(ProofGatedContractRepairResult(
             enabled=True,
             provider_invoked_before_admission=provider_invoked_before_admission,
             stage=stage,
@@ -3739,7 +3766,7 @@ class AnalysisPipeline:
             packet=packet,
             write_paths=packet.write_paths,
             nomination_receipt_id=request.nomination_receipt_id,
-        )
+        ), 'proof_gated_contract_repair')
 
     def run_change_propagation(
         self,
@@ -3764,13 +3791,13 @@ class AnalysisPipeline:
         )
 
         if not self.policy.enable_change_propagation:
-            return ChangePropagationPipelineResult(
+            return _mirror_route_result(ChangePropagationPipelineResult(
                 enabled=False,
                 stage="disabled",
                 disposition="disabled",
                 detail="enable_change_propagation is false",
                 provider_invoked=False,
-            )
+            ), 'change_propagation_pipeline')
 
         policy = ChangePropagationPipelinePolicy(
             enable_change_propagation=True,
@@ -3783,7 +3810,7 @@ class AnalysisPipeline:
                     "ChangePropagationPipelineRequest"
                 )
             request = ChangePropagationPipelineRequest.from_mapping(request)
-        return pipeline.run(request)
+        return _mirror_route_result(pipeline.run(request), "change_propagation_pipeline")
 
     def run_live_logic_repair(
         self,
@@ -3807,7 +3834,7 @@ class AnalysisPipeline:
         )
 
         if not self.policy.enable_live_logic_repair:
-            return LiveLogicRepairResult(
+            return _mirror_route_result(LiveLogicRepairResult(
                 enabled=False,
                 mode=str(
                     getattr(request, "mode", None)
@@ -3822,7 +3849,7 @@ class AnalysisPipeline:
                 disposition="disabled",
                 detail="enable_live_logic_repair is false",
                 provider_invoked=False,
-            )
+            ), 'live_logic_repair')
 
         policy = LiveLogicRepairPolicy(enable_live_logic_repair=True)
         controller = LiveLogicRepairController(policy=policy)
@@ -3833,7 +3860,7 @@ class AnalysisPipeline:
                     "LiveLogicRepairRequest"
                 )
             request = LiveLogicRepairRequest.from_mapping(request)
-        return controller.run(request)
+        return _mirror_route_result(controller.run(request), "live_logic_repair")
 
     async def aanalyze(
         self,

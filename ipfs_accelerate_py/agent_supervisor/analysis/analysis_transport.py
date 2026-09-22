@@ -1447,7 +1447,7 @@ class AnalysisTransport:
         ]
         if not protocols or not request_schemas or not result_schemas:
             return None
-        return NegotiatedAnalysisCapability(
+        result = NegotiatedAnalysisCapability(
             provider_id=capability.provider_id,
             capability_id=capability.capability_id,
             capability_revision=capability.capability_revision,
@@ -1460,6 +1460,24 @@ class AnalysisTransport:
             supports_progress=capability.supports_progress,
             supports_batching=capability.supports_batching,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.capability_id or result.provider_id or result.operation or "analysis-negotiation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="analysis_transport_negotiation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def health_snapshot(self) -> AnalysisTransportHealth:
         capabilities = []
