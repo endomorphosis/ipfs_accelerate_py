@@ -1789,7 +1789,7 @@ def bind_zkp_to_trusted_receipt(
         raise GoalDirectedTacticianError(
             "ZKP binding requires an existing trusted (kernel-verified) receipt"
         )
-    return ZkpReceiptBinding(
+    result = ZkpReceiptBinding(
         receipt_id=receipt_id,
         receipt_assurance=assurance,
         # Binding preserves the receipt's assurance projection.
@@ -1802,6 +1802,27 @@ def bind_zkp_to_trusted_receipt(
         or f"statement:sha256:{_sha256_hex({'receipt_id': receipt_id, 'circuit_id': circuit_id})}",
         reason_code="bound_existing_trusted_receipt",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_id
+            or result.statement_id
+            or result.circuit_id
+            or "zkp-trusted-receipt"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="zkp_trusted_receipt_binding",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=str(result.receipt_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

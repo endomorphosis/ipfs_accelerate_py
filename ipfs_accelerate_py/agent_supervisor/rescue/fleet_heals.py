@@ -2086,6 +2086,30 @@ def bind_schema_serve_in_place(
     This is not overlay-first extra-gate wrap. Sealed extra-gate stays; overlay
     apply() serves in place when live schema is newer, or migrates forward.
     """
+
+    def _mirror_schema(result: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("live_owner_unit")
+                or result.get("reason")
+                or board.get("id")
+                or "schema-serve-in-place"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="schema_serve_in_place_binding",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     empty = {
         "status": "skip",
         "recipe": "bind_schema_serve_in_place",
@@ -2093,17 +2117,17 @@ def bind_schema_serve_in_place(
     }
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
-        return {**empty, "reason": "retain_owner_not_rewrapped"}
+        return _mirror_schema({**empty, "reason": "retain_owner_not_rewrapped"})
     unit = _exclusive_owner_unit(board, observation)
     if not unit.endswith(".service") or unit == "cron.service":
-        return {**empty, "reason": "live_owner_unit_unknown"}
+        return _mirror_schema({**empty, "reason": "live_owner_unit_unknown"})
     overlay = supervisor_overlay_root()
     inventory = _inventory_board(board)
     cwd = str(inventory.get("cwd") or board.get("cwd") or "")
     if not cwd:
-        return {**empty, "reason": "source_root_absent", "live_owner_unit": unit}
+        return _mirror_schema({**empty, "reason": "source_root_absent", "live_owner_unit": unit})
     if not Path(cwd).is_dir():
-        return {**empty, "reason": "source_root_absent", "live_owner_unit": unit}
+        return _mirror_schema({**empty, "reason": "source_root_absent", "live_owner_unit": unit})
     user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
     dropin_dir = user_dir / f"{unit}.d"
     dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -2143,18 +2167,18 @@ def bind_schema_serve_in_place(
     if inventory_cwd and existing and inventory_cwd not in existing:
         broken = True
     if existing == body and not broken:
-        return {**empty, "reason": "schema_serve_already_bound", "live_owner_unit": unit}
+        return _mirror_schema({**empty, "reason": "schema_serve_already_bound", "live_owner_unit": unit})
     path.write_text(body, encoding="utf-8")
     os.chmod(path, 0o600)
     reloader = daemon_reload or _systemd_daemon_reload
     reloader()
-    return {
+    return _mirror_schema({
         "status": "applied",
         "recipe": "bind_schema_serve_in_place",
         "completion_authority": False,
         "live_owner_unit": unit,
         "reason": "native unit starts with pin-only overlay migrations (serve in place or forward migrate)",
-    }
+    })
 
 
 def repair_board_database(

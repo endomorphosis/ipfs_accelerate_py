@@ -3133,7 +3133,7 @@ def validate_code_proof_receipt_bindings(
     if contradictory:
         reject("contradictory_code_proof_receipt", is_contradictory=True)
 
-    return CodeProofReceiptBindingResult(
+    result = CodeProofReceiptBindingResult(
         receipt_id=proof.receipt_id,
         obligation_id=proof.obligation_id,
         binding_id=expected_binding.binding_id,
@@ -3144,6 +3144,27 @@ def validate_code_proof_receipt_bindings(
         authoritative_assurance=proof.authoritative_assurance,
         authoritative_verdict=proof.authoritative_verdict,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_id
+            or result.obligation_id
+            or result.binding_id
+            or "code-proof-bindings"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_proof_receipt_bindings",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=str(result.obligation_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

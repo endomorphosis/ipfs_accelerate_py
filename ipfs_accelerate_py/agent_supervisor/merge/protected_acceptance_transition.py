@@ -1015,10 +1015,32 @@ def validate_phase_candidate(
             raise TypeError("phase validator must return a tuple")
         for handle in handles:
             _verify_bound_evidence(candidate, handle, evidence_loader)
-        return ValidatedCandidate(evidence=evidence, validation_handles=handles)
+        result = ValidatedCandidate(evidence=evidence, validation_handles=handles)
     except Exception:
         reject_phase_candidate(candidate)
         raise
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            candidate.tree_id
+            or candidate.commit_id
+            or candidate.lease_id
+            or "phase-candidate"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="phase_candidate_validation",
+            record_ref=record_ref,
+            tree_id=str(candidate.tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(candidate.tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _publish_phase_candidate_held(

@@ -718,6 +718,26 @@ def validate_bound_retrieval_candidate(
         else BoundRetrievalCandidate.from_dict(candidate)
     )
     result.validate_against(expected, node_ids=node_ids)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.candidate_id
+            or result.node_id
+            or result.index_root_id
+            or "bound-retrieval-candidate"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="bound_retrieval_candidate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 
