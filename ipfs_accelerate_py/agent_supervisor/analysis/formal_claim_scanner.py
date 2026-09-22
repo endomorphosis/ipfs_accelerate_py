@@ -1126,7 +1126,27 @@ def bind_corpus_seeds(
     """Attach corpus seed ids to overlapping live findings and append missing seeds."""
 
     if not corpus_entries:
-        return tuple(findings)
+        result = tuple(findings)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            first = result[0] if result else None
+            record_ref = str(
+                getattr(first, "finding_id", "")
+                or "corpus-seeds-empty"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="corpus_seed_binding",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     corpus_findings: list[AmbiguousClaimFinding] = []
     for entry in corpus_entries:
@@ -1181,7 +1201,28 @@ def bind_corpus_seeds(
             continue
         seen_orphan_seeds.add(seed_id)
         bound.append(corpus_finding)
-    return _dedupe_findings(bound)
+    result = _dedupe_findings(bound)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = result[0] if result else None
+        record_ref = str(
+            getattr(first, "corpus_seed_id", "")
+            or getattr(first, "finding_id", "")
+            or "corpus-seeds"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="corpus_seed_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def apply_allowlist(

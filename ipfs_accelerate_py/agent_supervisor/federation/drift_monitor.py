@@ -889,7 +889,7 @@ def validate_current_drift_report(
     payload = report.to_dict()
     if payload["report_id"] != content_identity(report._identity_payload()):
         raise StaleDriftReportError("drift report identity is invalid")
-    return MappingProxyType(
+    result = MappingProxyType(
         {
             "schema": "casf/drift-report-validation@1",
             "report_id": report.report_id,
@@ -900,6 +900,23 @@ def validate_current_drift_report(
             "production_state_changed": False,
         }
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("report_id") or current_repository_tree_id or "drift-report")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="current_drift_report_validation",
+            record_ref=record_ref,
+            tree_id=str(current_repository_tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(current_repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 # Compatibility names for integrations that describe the same pure service by

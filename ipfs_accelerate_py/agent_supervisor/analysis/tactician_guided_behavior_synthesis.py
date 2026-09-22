@@ -1533,7 +1533,7 @@ class TacticianGuidedBehaviorSynthesizer:
                 "disposition": disposition.value,
             }
         )
-        return PredictionEvidenceBinding(
+        result = PredictionEvidenceBinding(
             binding_id=f"binding:{binding_id[:40]}",
             prediction_receipt_id=receipt.receipt_id,
             hypothesis_id=receipt.hypothesis_id,
@@ -1564,6 +1564,27 @@ class TacticianGuidedBehaviorSynthesizer:
                 and receipt.automation_eligible
             ),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.binding_id
+                or result.prediction_receipt_id
+                or result.hypothesis_id
+                or "prediction-binding"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="prediction_evidence_binding",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def atoms_from_bindings(
         self,

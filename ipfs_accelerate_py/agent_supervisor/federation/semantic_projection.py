@@ -248,7 +248,7 @@ def bind_datasets_capsule_ref(
         raise SemanticProjectionAuthorityError(
             "capsule semantic root is not tree-bound to this federation"
         )
-    return bind_capsule(
+    result = bind_capsule(
         binding=binding,
         subject_kind="symbol",
         subject_ref=capsule.stable_symbol_id
@@ -258,6 +258,28 @@ def bind_datasets_capsule_ref(
         content_ref=capsule.capsule_cid,
         record_id=record_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "record_id", "")
+            or getattr(capsule, "capsule_cid", "")
+            or record_id
+            or "datasets-capsule"
+        )
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="federation_datasets_capsule_ref",
+            record_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or ""),
+            subject_kind="capsule_cid",
+            subject_ref=str(getattr(capsule, "capsule_cid", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _identifier_ok(value: str) -> bool:

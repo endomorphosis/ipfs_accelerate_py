@@ -907,7 +907,23 @@ def bind_context_pack_identity(
             "ContextPack content identity is required",
             reason_code="identity_mismatch",
         )
-    return _text(identity, "context_pack_content_id", pattern=_ID_RE)
+    result = _text(identity, "context_pack_content_id", pattern=_ID_RE)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result or "context-pack-identity")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context_pack_identity_binding",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _context_pack_exclusions(context_pack: Any) -> tuple[str, ...]:
