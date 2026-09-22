@@ -2082,7 +2082,23 @@ def load_state_transition_table(path: str | Path | None = None) -> StateTransiti
             payload = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         raise StateTransitionTableError(f"unable to load state transition table: {table_path}") from exc
-    return StateTransitionTable.from_dict(payload)
+    result = StateTransitionTable.from_dict(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.schema or result.version or table_path)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="state_transition_table_load",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=str(table_path),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def validate_state_transition_table(value: Mapping[str, Any]) -> StateTransitionTable:

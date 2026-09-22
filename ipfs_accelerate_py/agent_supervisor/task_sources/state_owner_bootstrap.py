@@ -195,6 +195,21 @@ def validate_state_owner_bootstrap_listener(descriptor: int) -> str | bytes:
             raise StateOwnerBootstrapError(
                 "state-owner bootstrap rendezvous identity is unavailable"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = address.decode("utf-8", "replace") if isinstance(address, bytes) else str(address)
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="state_owner_bootstrap_listener",
+                record_ref=record_ref or "state-owner-bootstrap-listener",
+                subject_kind="path",
+                subject_ref=record_ref or "state-owner-bootstrap-listener",
+            )
+        except Exception:
+            pass
         return address
     except StateOwnerBootstrapError:
         raise

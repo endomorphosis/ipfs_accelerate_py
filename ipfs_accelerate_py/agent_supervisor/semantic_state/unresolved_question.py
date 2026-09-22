@@ -357,7 +357,23 @@ def build_unresolved_question(**fields: Any) -> UnresolvedQuestion:
 def validate_unresolved_question(payload: Mapping[str, Any]) -> UnresolvedQuestion:
     """Fail-closed admission helper for untrusted unresolved-question data."""
 
-    return UnresolvedQuestion.from_dict(payload)
+    result = UnresolvedQuestion.from_dict(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.question_id or "unresolved-question")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="unresolved_question_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def round_trip_unresolved_question(payload: Mapping[str, Any]) -> dict[str, Any]:

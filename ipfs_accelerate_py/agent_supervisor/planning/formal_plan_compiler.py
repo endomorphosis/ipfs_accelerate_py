@@ -1364,6 +1364,28 @@ class FormalPlanCompiler:
     def compile_json(self, source: str | bytes | Path) -> PlanCompilationResult:
         """Compile a JSON object, JSON text, or path without leaking parse errors."""
 
+        def _mirror(outcome: PlanCompilationResult) -> PlanCompilationResult:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                plan_id = ""
+                if outcome.plan is not None:
+                    plan_id = str(getattr(outcome.plan, "plan_id", "") or "")
+                record_ref = str(plan_id or outcome.source_identity or "json-formal-plan")
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="json_formal_plan",
+                    record_ref=record_ref,
+                    tree_id=str(getattr(outcome.plan, "repository_tree_id", "") or ""),
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return outcome
+
         try:
             if isinstance(source, Path):
                 text = source.read_text(encoding="utf-8")
@@ -1385,7 +1407,7 @@ class FormalPlanCompiler:
             if not isinstance(value, Mapping):
                 raise ValueError("formal-plan JSON must contain an object")
         except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            return _failure_result(
+            return _mirror(_failure_result(
                 CompilationStatus.INVALID,
                 (
                     CompilationIssue(
@@ -1395,8 +1417,8 @@ class FormalPlanCompiler:
                         f"could not parse formal-plan input: {exc}",
                     ),
                 ),
-            )
-        return self.compile(value)
+            ))
+        return _mirror(self.compile(value))
 
     def compile_duckdb(
         self,
@@ -1508,10 +1530,32 @@ class FormalPlanCompiler:
     def compile_source(self, source: Any) -> PlanCompilationResult:
         """Detect mapping, JSON, or DuckDB input and compile it."""
 
+        def _mirror(outcome: PlanCompilationResult) -> PlanCompilationResult:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                plan_id = ""
+                if outcome.plan is not None:
+                    plan_id = str(getattr(outcome.plan, "plan_id", "") or "")
+                record_ref = str(plan_id or outcome.source_identity or "formal-plan-source")
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="formal_plan_source",
+                    record_ref=record_ref,
+                    tree_id=str(getattr(outcome.plan, "repository_tree_id", "") or ""),
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return outcome
+
         if isinstance(source, Mapping):
-            return self.compile(source)
+            return _mirror(self.compile(source))
         if hasattr(source, "execute") and callable(source.execute):
-            return self.compile_duckdb(source)
+            return _mirror(self.compile_duckdb(source))
         if isinstance(source, (str, Path)):
             suffix = (
                 Path(source).suffix.lower()
@@ -1519,8 +1563,8 @@ class FormalPlanCompiler:
                 else ""
             )
             if suffix in {".duckdb", ".db"}:
-                return self.compile_duckdb(source)
-        return self.compile_json(source)
+                return _mirror(self.compile_duckdb(source))
+        return _mirror(self.compile_json(source))
 
     def compile_prompt_graph(
         self,
