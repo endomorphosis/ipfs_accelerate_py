@@ -133,7 +133,7 @@ def binding_fingerprint_for_item(
         assurance_s = assurance.value
     else:
         assurance_s = str(assurance or "")
-    return BindingFingerprint(
+    result = BindingFingerprint(
         repository_tree_id=str(
             repository_tree_id or (obligation.repository_tree_id if obligation else "") or ""
         ),
@@ -148,6 +148,24 @@ def binding_fingerprint_for_item(
         ast_scope_ids=scopes,
         residual_ref_ids=tuple(item.residual_ref_ids or ()),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.cache_key_id or result.property_id or "binding-fingerprint")
+        tree_id = str(result.repository_tree_id or "")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="binding_fingerprint",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="key_id" if result.cache_key_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def invalidation_reasons(

@@ -804,6 +804,37 @@ _NOMINATION_ONLY_KINDS: Final[frozenset[ValueCandidateKind]] = frozenset(
 )
 
 
+def _mirror_propagation_obligations(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(
+            getattr(roots, "candidate_tree_id", "")
+            or getattr(roots, "base_tree_id", "")
+            or ""
+        )
+        record_ref = str(
+            getattr(result, "migration_obligation_id", "")
+            or getattr(result, "consumer_id", "")
+            or getattr(result, "delta_id", "")
+            or "change-propagation-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="change_propagation_obligation_compilation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ChangePropagationObligationCompiler:
     """Compile mandatory LogicIR obligations without ranking or admitting repairs."""
 
@@ -1008,7 +1039,7 @@ class ChangePropagationObligationCompiler:
                 "no obligations could be lowered from the provided evidence"
             )
 
-        return ChangePropagationObligationCompilation(
+        return _mirror_propagation_obligations(ChangePropagationObligationCompilation(
             roots=roots,
             delta_id=consumer_obligation.delta_id,
             consumer_id=consumer_obligation.consumer_id,
@@ -1017,7 +1048,7 @@ class ChangePropagationObligationCompiler:
             value_mapping_claims=tuple(value_claims),
             behavior_refinement_claims=tuple(behavior_claims),
             unsupported_semantics=tuple(unsupported),
-        )
+        ))
 
     compile_consumer = compile
 

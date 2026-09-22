@@ -2333,6 +2333,34 @@ def _status_from_steps(
     return SearchStatus.INCOMPLETE.value
 
 
+def _mirror_bounded_proof_search(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "decomposition_cid", "")
+            or getattr(result, "corpus_cid", "")
+            or getattr(result, "packet_cid", "")
+            or tree_id
+            or "bounded-proof-search"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="bounded_proof_search",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(getattr(result, "write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 def run_bounded_proof_search(
     *,
     decomposition: ObligationDecomposition | Mapping[str, Any],
@@ -2435,7 +2463,7 @@ def run_bounded_proof_search(
         steps_used=steps_used,
         max_steps=bound,
     )
-    return BoundedProofSearchReceipt(
+    return _mirror_bounded_proof_search(BoundedProofSearchReceipt(
         tree_id=typed.tree_id,
         corpus_cid=typed_corpus.corpus_cid,
         decomposition_cid=typed.decomposition_cid,
@@ -2451,7 +2479,7 @@ def run_bounded_proof_search(
         status=status,
         max_steps=bound,
         steps_used=min(steps_used, bound) if steps_used <= bound else steps_used,
-    )
+    ))
 
 
 def dry_run_bounded_proof_search(

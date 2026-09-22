@@ -2640,6 +2640,34 @@ class ProofNormalizationReceipt:
         return result
 
 
+def _mirror_proof_normalization(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "receipt_cid", "")
+            or getattr(result, "packet_cid", "")
+            or getattr(result, "wave_cid", "")
+            or tree_id
+            or "proof-normalization"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_normalization",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+            paths=tuple(getattr(result, "write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 def run_proof_normalization(
     *,
     wave: Mapping[str, Any] | Any,
@@ -2887,7 +2915,7 @@ def run_proof_normalization(
         reentry=reentry,
         expressions=typed_expressions,
     )
-    return ProofNormalizationReceipt(
+    return _mirror_proof_normalization(ProofNormalizationReceipt(
         tree_id=tree_id,
         packet_cid=packet_cid,
         wave_cid=wave_cid,
@@ -2907,7 +2935,7 @@ def run_proof_normalization(
         status=status,
         max_steps=bound,
         steps_used=saturation.steps_used,
-    )
+    ))
 
 
 def dry_run_proof_normalization(

@@ -1767,6 +1767,33 @@ class ProgramLogicNativeGoalCompiler:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_hammer_obligations(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "plan_content_id", "")
+            or getattr(result, "plan_id", "")
+            or getattr(result, "gate_receipt_id", "")
+            or "tactician-hammer-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="tactician_hammer_obligation_compilation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TacticianHammerObligationCompiler:
     """Lower admitted tactic plans to exact existing proof obligations."""
 
@@ -1963,7 +1990,7 @@ class TacticianHammerObligationCompiler:
                 "compilation produced neither obligations nor residuals"
             )
 
-        return TacticianHammerObligationCompilation(
+        return _mirror_hammer_obligations(TacticianHammerObligationCompilation(
             roots=roots,
             plan_id=typed_plan.plan_id,
             plan_content_id=receipt.plan_content_id,
@@ -1976,7 +2003,7 @@ class TacticianHammerObligationCompiler:
             goal_snapshots=tuple(goal_snapshots),
             residuals=tuple(residuals),
             existing_obligation_links=context.existing_obligation_links,
-        )
+        ))
 
     # -- work-item collection -------------------------------------------------
 
