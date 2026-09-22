@@ -1223,6 +1223,30 @@ def evaluate_deterministic_doctor_fixed_point(
         IrLogicRequiredGateDisposition,
         IrLogicRequiredGateResult,
     )
+    def _eval(*args: Any, **kwargs: Any) -> DoctorFixedPointResult:
+        result = _dcr053_result(*args, **kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.finding_id
+                or result.roots_cid
+                or result.reason_code
+                or "doctor-fixed-point-eval"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="deterministic_doctor_fixed_point_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     from ..sca_doctor_bridge import (
         DoctorFinding,
         DoctorFindingDisposition,
@@ -1241,7 +1265,7 @@ def evaluate_deterministic_doctor_fixed_point(
         or dcr035_gate.model_call_count != 0
         or dcr035_gate.provider_call_count != 0
     ):
-        return _dcr053_result(
+        return _eval(
             DeterministicRepairDisposition.DEFER_CAPABILITY, "current_typed_inputs_required"
         )
     if (
@@ -1250,12 +1274,12 @@ def evaluate_deterministic_doctor_fixed_point(
         or not isinstance(states, tuple)
         or any(not isinstance(item, DoctorFixedPointState) for item in states)
     ):
-        return _dcr053_result(
+        return _eval(
             DeterministicRepairDisposition.REJECTED, "closed_state_sequence_required"
         )
     root_fields = {"forest_id", "graph_cid", "epoch_cid", "findings_cid", "roots_cid", "status"}
     if not isinstance(roots, Mapping) or set(roots) != root_fields:
-        return _dcr053_result(DeterministicRepairDisposition.REJECTED, "closed_roots_required")
+        return _eval(DeterministicRepairDisposition.REJECTED, "closed_roots_required")
     canonical_roots = {key: roots[key] for key in root_fields if key not in {"roots_cid", "status"}}
     if (
         not all(isinstance(value, str) and value for value in canonical_roots.values())
@@ -1266,11 +1290,11 @@ def evaluate_deterministic_doctor_fixed_point(
         or roots.get("findings_cid") != finding.findings_cid
         or roots.get("roots_cid") != transform.roots_cid
     ):
-        return _dcr053_result(
+        return _eval(
             DeterministicRepairDisposition.DEFER_CAPABILITY, "roots_stale_or_mismatched"
         )
     if roots["status"] != "current_live":
-        return _dcr053_result(
+        return _eval(
             DeterministicRepairDisposition.DEFER_CAPABILITY,
             "transitional_or_nonlive_roots",
             finding_id=finding.finding_id,
@@ -1278,16 +1302,16 @@ def evaluate_deterministic_doctor_fixed_point(
             roots_cid=str(roots["roots_cid"]),
         )
     if len(states) > maximum_states:
-        return _dcr053_result(
+        return _eval(
             DeterministicRepairDisposition.DEFER_CAPABILITY, "state_bound_exhausted"
         )
     previous_measure: int | None = None
     seen: set[str] = set()
     for state in states:
         if state.finding_id != finding.finding_id or state.transform_id != transform.transform_id:
-            return _dcr053_result(DeterministicRepairDisposition.REJECTED, "state_binding_mismatch")
+            return _eval(DeterministicRepairDisposition.REJECTED, "state_binding_mismatch")
         if state.state_id in seen:
-            return _dcr053_result(
+            return _eval(
                 DeterministicRepairDisposition.ABSTAIN_REVIEW,
                 "repeated_state_cycle",
                 finding_id=finding.finding_id,
@@ -1298,14 +1322,14 @@ def evaluate_deterministic_doctor_fixed_point(
         seen.add(state.state_id)
         if previous_measure is not None and state.kind is DoctorFixedPointStateKind.OPEN:
             if state.progress_measure == previous_measure:
-                return _dcr053_result(DeterministicRepairDisposition.ABSTAIN_REVIEW, "no_progress")
+                return _eval(DeterministicRepairDisposition.ABSTAIN_REVIEW, "no_progress")
             if state.progress_measure > previous_measure:
-                return _dcr053_result(
+                return _eval(
                     DeterministicRepairDisposition.REJECTED, "progress_measure_increased"
                 )
         previous_measure = state.progress_measure
         if state.kind is DoctorFixedPointStateKind.PROVED:
-            return _dcr053_result(
+            return _eval(
                 DeterministicRepairDisposition.PROVED_VALID,
                 "proved_fixed_point",
                 finding_id=finding.finding_id,
@@ -1314,7 +1338,7 @@ def evaluate_deterministic_doctor_fixed_point(
                 states=states,
             )
         if state.kind is DoctorFixedPointStateKind.REFUTED:
-            return _dcr053_result(
+            return _eval(
                 DeterministicRepairDisposition.REFUTED_REPAIRABLE,
                 "refuted_repairable_no_retry",
                 finding_id=finding.finding_id,
@@ -1323,10 +1347,10 @@ def evaluate_deterministic_doctor_fixed_point(
                 states=states,
             )
         if state.kind is DoctorFixedPointStateKind.UNKNOWN:
-            return _dcr053_result(
+            return _eval(
                 DeterministicRepairDisposition.ABSTAIN_REVIEW, "unknown_terminal_state"
             )
-    return _dcr053_result(
+    return _eval(
         DeterministicRepairDisposition.ABSTAIN_REVIEW,
         "empty_or_open_sequence_no_progress",
         finding_id=finding.finding_id,

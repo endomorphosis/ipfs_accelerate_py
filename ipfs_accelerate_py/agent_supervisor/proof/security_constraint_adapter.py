@@ -1868,6 +1868,26 @@ def revalidate_security_authorization(
     current = evaluate_security_authorization(policy, request)
     if current != receipt or current.content_id != receipt.content_id:
         raise SecurityConstraintError("security decision receipt is stale, forged, or detached")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            current.content_id
+            or current.request_id
+            or current.policy_receipt_id
+            or "security-revalidation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="security_authorization_revalidation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return current
 
 

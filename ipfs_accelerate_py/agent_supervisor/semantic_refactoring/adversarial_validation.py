@@ -3159,7 +3159,7 @@ class RefactorMutationAndAdversarialValidator:
         vector_evidence: Any = None,
         generate: bool = True,
     ) -> MutationCampaignRequest:
-        return compile_mutation_campaign_request(
+        result = compile_mutation_campaign_request(
             packet=packet,
             wave=wave,
             selection=selection,
@@ -3181,6 +3181,28 @@ class RefactorMutationAndAdversarialValidator:
             vector_evidence=vector_evidence,
             generate=generate,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree_id = str(getattr(result, "tree_id", "") or "")
+            record_ref = str(
+                getattr(result, "packet_cid", "")
+                or getattr(result, "wave_receipt_cid", "")
+                or "mutation-campaign-compile"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="mutation_campaign_compile_request",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def validate(
         self,

@@ -2503,7 +2503,7 @@ class TacticianHammerAdapter:
         toolchain_id: str = "",
         vector_evidence: Any = None,
     ) -> PremiseCorpus:
-        return compile_premise_corpus(
+        result = compile_premise_corpus(
             tree_id=tree_id,
             corpus_revision=corpus_revision,
             premises=premises,
@@ -2511,6 +2511,29 @@ class TacticianHammerAdapter:
             toolchain_id=toolchain_id,
             vector_evidence=vector_evidence,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            tree = str(result.tree_id or tree_id or "")
+            record_ref = str(
+                getattr(result, "corpus_cid", "")
+                or result.corpus_revision
+                or tree
+                or "hammer-premise-corpus"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="hammer_premise_corpus",
+                record_ref=record_ref,
+                tree_id=tree,
+                subject_kind="tree_id" if tree else "record_cid",
+                subject_ref=tree or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def lower(
         self,
