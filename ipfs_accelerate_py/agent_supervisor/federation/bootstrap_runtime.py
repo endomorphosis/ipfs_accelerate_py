@@ -179,7 +179,28 @@ def validate_bootstrap_profile(profile: Mapping[str, Any]) -> Mapping[str, Any]:
         raise FederationContractError("bootstrap profile expiry is invalid") from exc
     if expiry.tzinfo is None:
         raise FederationContractError("bootstrap profile expiry must include a timezone")
-    return MappingProxyType(dict(profile))
+    result = MappingProxyType(dict(profile))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("policy_ref")
+            or result.get("tenant_id")
+            or result.get("caller_did")
+            or "bootstrap-profile"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_bootstrap_profile",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class _NoDelegationAuthority:

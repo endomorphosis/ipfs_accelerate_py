@@ -59,7 +59,23 @@ def validate_observation(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("unavailable observation cannot copy an old receipt as current")
     if len(canonical(value).encode()) > MAX_BYTES:
         raise ValueError("fleet observation exceeds bounded artifact size")
-    return dict(value)
+    result = dict(value)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("source_id") or result.get("observed_at") or "fleet-observation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="fleet_source_observation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def observation_cid(value: Mapping[str, Any]) -> str:

@@ -1290,13 +1290,14 @@ class GuiRunJournal:
             ),
         )
         if checkpoint.artifact_manifest_cid == manifest.cid:
-            return checkpoint
-        if checkpoint.status is RunStatus.COMPLETED:
+            result = checkpoint
+        elif checkpoint.status is RunStatus.COMPLETED:
             raise GuiRunJournalError(
                 "cannot mutate a completed journal manifest",
                 reason_code=JournalReasonCode.COMPLETED_RECEIPT_MISMATCH.value,
             )
-        return self._commit_checkpoint(
+        else:
+            result = self._commit_checkpoint(
             run_id=checkpoint.run_id,
             run_identity_cid=checkpoint.run_identity_cid,
             attempt=checkpoint.attempt,
@@ -1319,7 +1320,28 @@ class GuiRunJournal:
             terminal_receipt_cid=checkpoint.terminal_receipt_cid,
             terminal_receipt_digest=checkpoint.terminal_receipt_digest,
             prev_checkpoint_cid=checkpoint.cid,
-        )
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "cid", "")
+                or result.run_id
+                or result.artifact_manifest_cid
+                or "journal-manifest"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="gui_run_journal_manifest",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def decide_resume(
         self,

@@ -2474,6 +2474,28 @@ def validate_change_value_search_result(
             raise ChangeValueVectorIndexIntegrityError(
                 "value vector hits must retain signal provenance"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        query = getattr(result, "query", None)
+        record_ref = str(
+            result.index_id
+            or getattr(query, "forest_id", "")
+            or getattr(query, "tree_id", "")
+            or "change-value-search"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="change_value_search_result",
+            record_ref=record_ref,
+            tree_id=str(getattr(query, "tree_id", "") or ""),
+            subject_kind="tree_id",
+            subject_ref=str(getattr(query, "tree_id", "") or record_ref),
+        )
+    except Exception:
+        pass
     return result
 
 

@@ -6599,6 +6599,36 @@ def test_mirror_corpus_pack_datasets_prediction_and_drift_surfaces(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_nomination_hit_bootstrap_fleet_search_and_journal_manifest(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("federation_nomination_from_hit", "cid:1", "vector", "content_cid"),
+        ("federation_bootstrap_profile", "policy:1", "metadata", "record_cid"),
+        ("fleet_source_observation", "source:1", "metadata", "record_cid"),
+        ("change_value_search_result", "index:1", "vector", "tree_id"),
+        ("gui_run_journal_manifest", "run:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

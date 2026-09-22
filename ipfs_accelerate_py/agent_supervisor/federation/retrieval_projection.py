@@ -296,7 +296,7 @@ def bind_nomination_from_hit(
 ) -> RetrievalNominationProjection:
     if not isinstance(hit, RetrievalNominationBinding):
         raise FederationContractError("hit must be a RetrievalNominationBinding")
-    return bind_nomination(
+    result = bind_nomination(
         binding=binding,
         index_id=index_id,
         subject_kind=subject_kind,
@@ -310,6 +310,28 @@ def bind_nomination_from_hit(
         content_ref=hit.cid,
         tree_id=hit.tree_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "record_id", "")
+            or getattr(hit, "source_cid", "")
+            or getattr(hit, "cid", "")
+            or "nomination-from-hit"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="federation_nomination_from_hit",
+            record_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or getattr(hit, "tree_id", "") or ""),
+            subject_kind="content_cid",
+            subject_ref=str(getattr(hit, "source_cid", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def bind_kg_relation(
