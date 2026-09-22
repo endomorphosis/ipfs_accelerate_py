@@ -142,6 +142,21 @@ class DatasetsContextPackAuthority:
         payload["producer"] = PRODUCER
         payload["interface"] = INTERFACE
         payload["pack_cid"] = claimed
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(payload.get("pack_cid") or "datasets-context-pack")
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="datasets_context_pack_envelope",
+                record_ref=record_ref,
+                subject_kind="capsule_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return payload
 
 

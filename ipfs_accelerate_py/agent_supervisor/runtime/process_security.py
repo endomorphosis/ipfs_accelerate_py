@@ -237,7 +237,23 @@ def validate_linux_process_scope(record: Mapping[str, object]) -> dict[str, obje
     identity_id = record.get("identity_id")
     if identity_id != _scope_identity(body):
         _scope_error("Linux process scope identity is invalid")
-    return {**body, "identity_id": identity_id}
+    result = {**body, "identity_id": identity_id}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("identity_id") or result.get("pid") or "linux-process-scope")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="linux_process_scope",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _read_scope_descriptor(descriptor: int, *, maximum_bytes: int) -> str:

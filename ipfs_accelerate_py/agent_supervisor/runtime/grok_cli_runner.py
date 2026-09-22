@@ -791,7 +791,23 @@ def validate_grok_runner_command_binding(command: Sequence[str]) -> str:
     if not re.fullmatch(r"[0-9a-f]{64}", binding):
         return ""
     unsigned = values[:binding_index] + values[binding_index + 2 :]
-    return binding if binding == grok_command_sha256(unsigned) else ""
+    result = binding if binding == grok_command_sha256(unsigned) else ""
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result or binding or "grok-runner-command-verify")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="grok_runner_command_binding_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def grok_terminal_quota_code(event: object) -> str:

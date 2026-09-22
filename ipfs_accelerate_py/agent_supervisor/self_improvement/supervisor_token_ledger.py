@@ -2246,19 +2246,41 @@ def bind_attribution_to_span(
             "token attribution is already bound to a different span"
         )
     if attribution.span_id == span_id:
-        return attribution
-    return TokenAttribution(
-        binding=attribution.binding,
-        event_id=attribution.event_id,
-        stage=attribution.stage,
-        attempt=attribution.attempt,
-        context_id=attribution.context_id,
-        cache_decision=attribution.cache_decision,
-        validation_result=attribution.validation_result,
-        terminal_attribution_id=attribution.terminal_attribution_id,
-        usage=attribution.usage,
-        span_id=span_id,
-    )
+        result = attribution
+    else:
+        result = TokenAttribution(
+            binding=attribution.binding,
+            event_id=attribution.event_id,
+            stage=attribution.stage,
+            attempt=attribution.attempt,
+            context_id=attribution.context_id,
+            cache_decision=attribution.cache_decision,
+            validation_result=attribution.validation_result,
+            terminal_attribution_id=attribution.terminal_attribution_id,
+            usage=attribution.usage,
+            span_id=span_id,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.span_id
+            or result.event_id
+            or result.context_id
+            or "token-span-attribution"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="token_span_attribution_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def attributions_for_span(

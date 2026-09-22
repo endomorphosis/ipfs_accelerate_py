@@ -108,7 +108,28 @@ def validate_observation(value: Any) -> dict[str, Any]:
                     {k: v for k, v in value.items() if k != "observation_sha256"})):
             raise AttemptObservationUnavailable()
         # Copy nested containers so later caller mutation cannot alter a relay.
-        return json.loads(_bytes(value))
+        result = json.loads(_bytes(value))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            attempt = result.get("attempt") if isinstance(result, dict) else {}
+            record_ref = str(
+                result.get("observation_sha256")
+                or (attempt.get("attempt_id") if isinstance(attempt, dict) else "")
+                or "attempt-custody-observation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="attempt_custody_observation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
     except Exception:
         raise AttemptObservationUnavailable() from None
 
