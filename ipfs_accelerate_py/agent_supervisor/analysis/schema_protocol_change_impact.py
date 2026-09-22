@@ -2901,7 +2901,7 @@ class SchemaProtocolChangeAnalyzer:
             },
         )
 
-        return SchemaProtocolImpact(
+        result = SchemaProtocolImpact(
             roots=bound_roots,
             delta_id=str(delta_id),
             subject_symbol_id=delta.subject_symbol_id,
@@ -2915,6 +2915,22 @@ class SchemaProtocolChangeAnalyzer:
                 tuple(evidence_refs) + ast_evidence, "evidence_refs"
             ),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.delta_id or result.subject_symbol_id or "schema-protocol-impact")
+            mirror_work_record(
+                catalog_kind="knowledge_graph",
+                record_kind="schema_protocol_impact",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def build_schema_protocol_impact(

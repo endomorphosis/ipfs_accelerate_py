@@ -1609,6 +1609,25 @@ class PlanningEvidenceBundleCompiler:
             raise PlanningEvidenceError(
                 "max_bytes is too small for mandatory evidence coverage metadata"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                bundle.current_root_id
+                or getattr(bundle.query, "query_id", "")
+                or "planning-evidence-bundle"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="planning_evidence_bundle",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return bundle
 
     build = compile

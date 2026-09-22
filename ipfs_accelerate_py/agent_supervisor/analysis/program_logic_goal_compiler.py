@@ -1242,7 +1242,7 @@ class ProgramLogicGoalCompiler:
             unsupported=list(unsupported),
             diagnostics=[item.diagnostic_id for item in diagnostics],
         )
-        return ProgramLogicGoalCompilation(
+        result = ProgramLogicGoalCompilation(
             roots=self.roots,
             compilation_id=compilation_id,
             disposition=disposition,
@@ -1254,6 +1254,22 @@ class ProgramLogicGoalCompiler:
             bound_refs=bound,
             invalidation_refs=invalidation,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.compilation_id or self.roots.content_id or "program-logic-goals")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="program_logic_goal_compilation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # -- ingestion paths -----------------------------------------------------
 

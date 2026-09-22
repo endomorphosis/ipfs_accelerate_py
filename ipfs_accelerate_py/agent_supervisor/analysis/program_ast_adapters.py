@@ -3226,6 +3226,27 @@ def detect_program_language(path: str, language: str = "") -> str:
     return "unknown"
 
 
+
+def _mirror_program_ast(result: ProgramASTAdapterResult) -> ProgramASTAdapterResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.blob_identity or result.source_sha256 or result.path or "program-ast")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="program_ast_adapter",
+            record_ref=record_ref,
+            subject_kind="path" if result.path else "record_cid",
+            subject_ref=str(result.path or record_ref),
+            paths=(str(result.path),) if result.path else (),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def adapt_program_source(
     source: str,
     *,
@@ -3248,7 +3269,7 @@ def adapt_program_source(
     detected = detect_program_language(path, language)
     byte_count = len(source.encode("utf-8", errors="surrogatepass"))
     if byte_count > max_source_bytes:
-        return ProgramASTAdapterResult(
+        return _mirror_program_ast(ProgramASTAdapterResult(
             path=path,
             language=detected,
             status="unsupported",
@@ -3268,7 +3289,7 @@ def adapt_program_source(
                 ),
             ),
             generated=generated,
-        )
+        ))
     if detected == "python":
         result = adapt_python_source(
             source,
@@ -3303,7 +3324,7 @@ def adapt_program_source(
             generated=generated,
         )
     else:
-        return ProgramASTAdapterResult(
+        return _mirror_program_ast(ProgramASTAdapterResult(
             path=path,
             language=detected,
             status="unsupported",
@@ -3318,9 +3339,9 @@ def adapt_program_source(
                 ),
             ),
             generated=generated,
-        )
+        ))
     if len(result.facts) <= max_facts:
-        return result
+        return _mirror_program_ast(result)
     retained = result.facts[:max_facts]
     diagnostic = AdapterDiagnostic(
         code="fact_bound_exceeded",
@@ -3342,13 +3363,13 @@ def adapt_program_source(
             language=result.language,
             parse_error=result.parse_error,
         )
-    return replace(
+    return _mirror_program_ast(replace(
         result,
         status="partial",
         ast_record=record,
         facts=retained,
         diagnostics=(*result.diagnostics, diagnostic),
-    )
+    ))
 
 
 def _coerce_document(value: Any) -> SourceDocument:
