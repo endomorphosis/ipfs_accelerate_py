@@ -1097,6 +1097,32 @@ def _make_candidate(context: ResidualCascadeContext, stage: CascadeStage) -> Cas
 
 
 @dataclass(frozen=True)
+def _mirror_cascade_walk(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        family = getattr(result, "family", None)
+        stage = getattr(result, "selected_stage", None)
+        record_ref = str(
+            getattr(result, "walk_id", "")
+            or getattr(family, "value", family)
+            or getattr(stage, "value", stage)
+            or "residual-cascade"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_cascade_walk",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ResidualCascade:
     """Versioned exact-order cascade.  Provider routers remain canonical owners."""
 
@@ -1145,7 +1171,7 @@ class ResidualCascade:
         if not candidates:
             candidates.append(_make_candidate(context, CascadeStage.HUMAN_REVIEW))
         selected = candidates[0].stage
-        return ResidualCascadeWalk(
+        return _mirror_cascade_walk(ResidualCascadeWalk(
             policy_version=self.policy_version,
             family=context.family,
             risk_class=context.risk_class,
@@ -1154,7 +1180,7 @@ class ResidualCascade:
             selected_stage=selected,
             fallback_stage=CascadeStage.HUMAN_REVIEW,
             candidate_only=True,
-        )
+        ))
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         result: dict[str, Any] = {

@@ -487,6 +487,29 @@ class _ForbiddenProviderImportFinder:
 
 
 @dataclass(frozen=True)
+def _mirror_repair_authority(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "route", "")
+            or getattr(result, "reason", "")
+            or "repair-authority"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_authority_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DeterministicRepairAuthorityPolicy:
     """Allowlist execution authority for the TARGET deterministic runtime.
 
@@ -620,18 +643,18 @@ class DeterministicRepairAuthorityPolicy:
             text=text, key=key, pin=normalized_pin, endpoint=endpoint
         )
         if denied_reason:
-            return RepairAuthorityDecision(
+            return _mirror_repair_authority(RepairAuthorityDecision(
                 disposition=RepairAuthorityDisposition.DENIED,
                 route=text or "<invalid>",
                 reason=denied_reason,
                 pin=normalized_pin,
-            )
-        return RepairAuthorityDecision(
+            ))
+        return _mirror_repair_authority(RepairAuthorityDecision(
             disposition=RepairAuthorityDisposition.ALLOWED,
             route=text,
             reason="explicit_pinned_deterministic_route",
             pin=normalized_pin,
-        )
+        ))
 
     def authorize(
         self,
@@ -683,11 +706,11 @@ class DeterministicRepairAuthorityPolicy:
         text = _pin_text(reason)
         if not text:
             raise ValueError("terminal deterministic repair reason must be non-empty")
-        return RepairAuthorityDecision(
+        return _mirror_repair_authority(RepairAuthorityDecision(
             disposition=disposition,
             route="",
             reason=text,
-        )
+        ))
 
     def _denial_reason(self, *, text: str, key: str, pin: str, endpoint: str) -> str:
         if not text:

@@ -195,6 +195,33 @@ class PreProviderGateReceipt:
         return receipt
 
 
+def _mirror_contract_repair_gate(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "packet_id", "")
+            or getattr(result, "decision_id", "")
+            or "contract-repair-pre-provider"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_repair_pre_provider_gate",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(getattr(result, "write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairPreProviderGate:
     """Replay current packet, proof, capability, and snapshot bindings.
 
@@ -313,13 +340,13 @@ class ContractRepairPreProviderGate:
                 "contract repair pre-provider gate rejected: " + ", ".join(item.value for item in invalid)
             )
         required = _ids(required_capability_ids, "required_capability_ids")
-        return PreProviderGateReceipt(
+        return _mirror_contract_repair_gate(PreProviderGateReceipt(
             packet_id=packet.packet_id, decision_id=decision.content_id, admission_audit_id=admission.audit.content_id,
             snapshot_id=snapshot.snapshot_id, roots=packet.roots, target_path=packet.target_span.path,
             target_artifact_id=packet.target_span.artifact_id, read_paths=packet.read_paths, write_paths=packet.write_paths,
             capability_report_id=content_identity(capability_report_to_dict(capability_report)),
             required_capability_ids=required, checked_at=now, expires_at=admission.expiry.expires_at,
-        )
+        ))
 
     check = require_valid
     admit = require_valid

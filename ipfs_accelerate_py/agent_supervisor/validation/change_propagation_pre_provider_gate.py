@@ -375,6 +375,38 @@ def capability_report_to_dict(report: ChangePropagationCapabilityReport) -> dict
     }
 
 
+def _mirror_propagation_gate(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(
+            getattr(roots, "candidate_tree_id", "")
+            or getattr(roots, "base_tree_id", "")
+            or ""
+        )
+        record_ref = str(
+            getattr(result, "step_id", "")
+            or getattr(result, "packet_id", "")
+            or getattr(result, "plan_id", "")
+            or "propagation-pre-provider"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="propagation_pre_provider_gate",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(getattr(result, "write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ChangePropagationPreProviderGate:
     """Replay current packet, plan, proof, capability, lease, and snapshot bindings.
 
@@ -834,7 +866,7 @@ class ChangePropagationPreProviderGate:
                 and not impact_closure.frontier_node_ids
                 and not impact_closure.frontier_edge_ids
             )
-        return PropagationGateReceipt(
+        return _mirror_propagation_gate(PropagationGateReceipt(
             packet_id=packet.packet_id,
             plan_id=packet.plan_id,
             plan_content_id=packet.plan_content_id,
@@ -854,7 +886,7 @@ class ChangePropagationPreProviderGate:
             expires_at=effective_expires,
             scc_group_id=step.scc_group_id,
             frontier_complete=frontier_complete,
-        )
+        ))
 
     check = require_valid
     admit = require_valid

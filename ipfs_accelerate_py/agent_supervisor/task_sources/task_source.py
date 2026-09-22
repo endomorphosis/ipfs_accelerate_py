@@ -4270,7 +4270,7 @@ def compiled_claim_preconditions(
         critical_rank = len(critical)
     affinity = str(assignment.get("affinity_key") or "").strip()
     exclusive_group = str(assignment.get("exclusive_group") or "").strip()
-    return CompiledClaimPreconditions(
+    result = CompiledClaimPreconditions(
         task_id=task_id,
         revision_cid=binding.revision_cid,
         plan_id=binding.plan_id,
@@ -4295,6 +4295,22 @@ def compiled_claim_preconditions(
         critical_path_rank=critical_rank,
         fairness_key=affinity or exclusive_group or str(assignment.get("shard_id") or task_id),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.task_id or result.plan_id or "compiled-claim")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="compiled_claim_preconditions",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def assert_no_conflict_with_active(
