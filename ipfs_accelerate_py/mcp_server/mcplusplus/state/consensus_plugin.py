@@ -1035,7 +1035,7 @@ class DeterministicTestAdapter(ConsensusPlugin):
         label = self.guarantee if guarantee is None else guarantee
         # Fail closed before wiring if the caller attempts a BFT label.
         require_profile_g_guarantee(label)
-        return wire_neighborhood_result(
+        result = wire_neighborhood_result(
             state_id=state_id,
             proposal_cid=proposal_cid,
             attestations=attestations,
@@ -1046,6 +1046,27 @@ class DeterministicTestAdapter(ConsensusPlugin):
             plugin_id=PROFILE_G_NEIGHBORHOOD_PLUGIN_ID,
             records=records,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.proposal_cid
+                or result.state_id
+                or state_id
+                or "neighborhood-adapter"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="neighborhood_adapter_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def stats(self) -> MutableMapping[str, Any]:
         """Return deterministic adapter diagnostics."""

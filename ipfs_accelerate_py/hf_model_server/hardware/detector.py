@@ -425,15 +425,38 @@ class HardwareSelector:
     def admit_production_execution(self, hardware: Optional[str]) -> Dict[str, Any]:
         """Fail closed unless the named backend is production_authorized."""
         if not hardware:
-            return refused_production_execution(
+            result = refused_production_execution(
                 "unspecified", reason="production_hardware_absent"
             )
-        cap = self.detector.get_capability(hardware)
-        if cap is None:
-            return refused_production_execution(
-                hardware, reason="backend_not_in_detector"
+        else:
+            cap = self.detector.get_capability(hardware)
+            if cap is None:
+                result = refused_production_execution(
+                    hardware, reason="backend_not_in_detector"
+                )
+            else:
+                result = admit_production_execution(cap.to_ladder())
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
             )
-        return admit_production_execution(cap.to_ladder())
+
+            record_ref = str(
+                hardware
+                or result.get("backend")
+                or result.get("code")
+                or "hardware-selector"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="hardware_selector_production_execution",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def track_load(self, hardware: str, delta: int = 1):
         """Track hardware load (increment/decrement)"""

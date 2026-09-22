@@ -382,7 +382,28 @@ class DefaultCurrentContextProvider:
             component_bytes=component_bytes,
             item=item,
         )
-        return result.context if result.compiled else None
+        compiled = result.context if result.compiled else None
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                locator_cid
+                or getattr(candidate, "candidate_context_id", "")
+                or getattr(getattr(result, "reason", None), "value", "")
+                or "current-execution-context"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="current_execution_context",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return compiled
 
     def compile_current_result(
         self,

@@ -524,9 +524,34 @@ class TaskFamilyBoundaryValidator:
         self.validate_family(family)
         if not isinstance(other, TaskFamily):
             raise TaskFamilyContractError("merged family must be TaskFamily")
+
+        def _mirror_merge(decision: BoundaryDecision) -> BoundaryDecision:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                counterexample = decision.counterexample
+                record_ref = str(
+                    getattr(counterexample, "example_cid", "")
+                    or decision.reason_code
+                    or family.content_id
+                    or "family-merge"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="task_family_merge_evaluation",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return decision
+
         other_missing = _incomplete_family_dimensions(other)
         if other_missing:
-            return self._reject(
+            return _mirror_merge(self._reject(
                 family,
                 example_cid=other.name,
                 membership=FamilyMembershipClass.NEGATIVE,
@@ -536,9 +561,9 @@ class TaskFamilyBoundaryValidator:
                     BoundaryViolationClass.OVERGENERALIZATION,
                 ),
                 missing_dimensions=other_missing,
-            )
+            ))
         if family.content_id == other.content_id:
-            return self._admit(FamilyMembershipClass.POSITIVE)
+            return _mirror_merge(self._admit(FamilyMembershipClass.POSITIVE))
 
         violations: list[BoundaryViolationClass] = [BoundaryViolationClass.OVERGENERALIZATION]
         authority: list[str] = []
@@ -623,7 +648,7 @@ class TaskFamilyBoundaryValidator:
         for item in effects:
             if item not in unique_effects:
                 unique_effects.append(item)
-        return self._reject(
+        return _mirror_merge(self._reject(
             family,
             example_cid=other.content_id,
             membership=FamilyMembershipClass.NEGATIVE,
@@ -632,7 +657,7 @@ class TaskFamilyBoundaryValidator:
             conflicting_authority_classes=tuple(dict.fromkeys(authority)),
             conflicting_effect_classes=tuple(unique_effects),
             conflicting_validation_classes=tuple(dict.fromkeys(validation)),
-        )
+        ))
 
     def require_merge(self, family: TaskFamily, other: TaskFamily) -> BoundaryDecision:
         decision = self.evaluate_merge(family, other)

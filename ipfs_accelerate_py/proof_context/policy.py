@@ -938,7 +938,7 @@ def promote(
         if "replayed" not in defects:
             defects.append("replayed")
     if extra or source != target:
-        return _build_result(
+        result = _build_result(
             target,
             payload,
             provenance=provenance,
@@ -947,25 +947,47 @@ def promote(
             promotion_admitted=False,
             extra_reasons=tuple(extra or ("boundary_violation",)),
         )
-    result = admit_evidence(target, payload)
-    return PolicyResult(
-        schema=result.schema,
-        mode=result.mode,
-        closed_modes=result.closed_modes,
-        provenance=result.provenance,
-        quality_class=result.quality_class,
-        status=result.status,
-        admitted=result.admitted,
-        accepted=result.accepted,
-        promotion_admitted=False,
-        error=result.error,
-        reasons=result.reasons,
-        watermark=result.watermark,
-        policy_cid=result.policy_cid,
-        forbidden_evidence=result.forbidden_evidence,
-        per_mode=result.per_mode,
-        quality_claim=result.quality_claim,
-    )
+    else:
+        admitted = admit_evidence(target, payload)
+        result = PolicyResult(
+            schema=admitted.schema,
+            mode=admitted.mode,
+            closed_modes=admitted.closed_modes,
+            provenance=admitted.provenance,
+            quality_class=admitted.quality_class,
+            status=admitted.status,
+            admitted=admitted.admitted,
+            accepted=admitted.accepted,
+            promotion_admitted=False,
+            error=admitted.error,
+            reasons=admitted.reasons,
+            watermark=admitted.watermark,
+            policy_cid=admitted.policy_cid,
+            forbidden_evidence=admitted.forbidden_evidence,
+            per_mode=admitted.per_mode,
+            quality_claim=admitted.quality_claim,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "policy_cid", "")
+            or getattr(result, "mode", "")
+            or target
+            or "proof-context-promotion"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_context_promotion",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def evaluation_quality_claims(evidence: Any) -> Mapping[str, Any]:
