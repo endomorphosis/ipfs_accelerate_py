@@ -7382,6 +7382,41 @@ def test_mirror_lifecycle_provider_artifacts_guide_and_surfaces(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_planner_doctor_release_checks(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    names = (
+        "canonical_board",
+        "source_artifact_reload",
+        "child_goal_coverage",
+        "task_vs_objective_completion",
+        "reject_bad_evidence",
+        "zero_safety_floors",
+        "exact_rollback",
+        "optional_capabilities",
+        "automatic_promotion_gated",
+        "six_lane_supervisor_drain",
+        "cold_imports",
+        "report_only_no_write",
+    )
+    for name in names:
+        item = mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind=f"planner_{name}",
+            record_ref=name,
+            subject_kind="record_cid",
+            subject_ref=name,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

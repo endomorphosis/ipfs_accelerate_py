@@ -1191,7 +1191,8 @@ def _goal_evidence_projection(repo_root: Path) -> tuple[dict[str, Any], list[str
     return projection, errors
 
 
-def _mirror_release_check(result: CheckResult, record_kind: str) -> CheckResult:
+def _mirror_release_check(result: CheckResult, record_kind: str = "") -> CheckResult:
+    kind = record_kind or f"planner_{result.name}"
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
             mirror_work_record,
@@ -1202,11 +1203,11 @@ def _mirror_release_check(result: CheckResult, record_kind: str) -> CheckResult:
         record_ref = str(
             next(iter(digests.values()), "")
             or result.name
-            or record_kind
+            or kind
         )
         mirror_work_record(
             catalog_kind="filesystem_mtime",
-            record_kind=record_kind,
+            record_kind=kind,
             record_ref=record_ref,
             subject_kind="record_cid",
             subject_ref=record_ref,
@@ -1296,11 +1297,11 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
         all_tasks = _parse_task_file(root)
         goals = _parse_goals(root)
     except Exception as exc:  # noqa: BLE001 - surface parse failures as check fail
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "canonical_board",
             CheckStatus.FAIL,
             f"unable to parse board/objectives: {exc}",
-        )
+        ))
 
     raw_goal_ids = tuple(g.goal_id for g in goals)
     goal_ids = tuple(sorted(set(raw_goal_ids)))
@@ -1447,13 +1448,13 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
 
     evidence["errors"] = errors
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "canonical_board",
             CheckStatus.FAIL,
             "; ".join(errors[:6]),
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "canonical_board",
         CheckStatus.PASS,
         (
@@ -1461,7 +1462,7 @@ def check_canonical_board(repo_root: Path | None = None) -> CheckResult:
             f"{TERMINAL_TASK_ID} unique terminal"
         ),
         evidence,
-    )
+    ))
 
 
 def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
@@ -1554,32 +1555,32 @@ def check_source_artifact_reload(repo_root: Path | None = None) -> CheckResult:
         "reloaded_from_current_tree": True,
     }
     if declaration_errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "source_artifact_reload",
             CheckStatus.FAIL,
             f"invalid task output declarations: {declaration_errors[:8]}",
             evidence,
-        )
+        ))
     if missing:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "source_artifact_reload",
             CheckStatus.FAIL,
             f"required source artifacts missing: {missing[:8]}",
             evidence,
-        )
+        ))
     if forged:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "source_artifact_reload",
             CheckStatus.FAIL,
             f"forged or unsealed source receipts: {forged}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "source_artifact_reload",
         CheckStatus.PASS,
         f"reloaded {len(artifacts)} source artifacts; forest_root={forest_root[:18]}…",
         evidence,
-    )
+    ))
 
 
 def check_child_goal_coverage(repo_root: Path | None = None) -> CheckResult:
@@ -1589,11 +1590,11 @@ def check_child_goal_coverage(repo_root: Path | None = None) -> CheckResult:
     try:
         coverage, errors = _goal_evidence_projection(root)
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "child_goal_coverage",
             CheckStatus.FAIL,
             f"unable to derive goal evidence: {exc}",
-        )
+        ))
 
     evidence = {
         "child_goal_ids": list(CHILD_GOAL_IDS),
@@ -1607,18 +1608,18 @@ def check_child_goal_coverage(repo_root: Path | None = None) -> CheckResult:
         "errors": errors,
     }
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "child_goal_coverage",
             CheckStatus.FAIL,
             f"child-goal coverage gaps: {errors[:8]}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "child_goal_coverage",
         CheckStatus.PASS,
         f"all {len(CHILD_GOAL_IDS)} child goals have current independent evidence",
         evidence,
-    )
+    ))
 
 
 def check_task_vs_objective_completion(
@@ -1630,19 +1631,19 @@ def check_task_vs_objective_completion(
     board = check_canonical_board(root)
     coverage = check_child_goal_coverage(root)
     if not board.ok:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "task_vs_objective_completion",
             CheckStatus.FAIL,
             f"board invalid: {board.detail}",
             {"board": board.to_dict()},
-        )
+        ))
     if not coverage.ok:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "task_vs_objective_completion",
             CheckStatus.FAIL,
             f"coverage invalid: {coverage.detail}",
             {"coverage": coverage.to_dict()},
-        )
+        ))
 
     task_completion = {
         "canonical_task_count": board.evidence.get("canonical_task_count"),
@@ -1658,11 +1659,11 @@ def check_task_vs_objective_completion(
             for goal in _parse_goals(root)
         }
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "task_vs_objective_completion",
             CheckStatus.FAIL,
             f"objective status projection unreadable: {exc}",
-        )
+        ))
     objective_completion = {
         "child_goals_covered": coverage.evidence.get("covered_count")
         == coverage.evidence.get("required_count"),
@@ -1702,18 +1703,18 @@ def check_task_vs_objective_completion(
         "completion_authoritative": False,
     }
     if not distinct:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "task_vs_objective_completion",
             CheckStatus.FAIL,
             "failed to distinguish task completion from objective completion",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "task_vs_objective_completion",
         CheckStatus.PASS,
         "task completion is not treated as objective completion",
         evidence,
-    )
+    ))
 
 
 def check_reject_bad_evidence(
@@ -1822,28 +1823,28 @@ def check_reject_bad_evidence(
         "wrongly_admitted": wrongly_admitted,
     }
     if wrongly_admitted:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "reject_bad_evidence",
             CheckStatus.FAIL,
             f"bad evidence wrongly admitted: {wrongly_admitted}",
             evidence,
-        )
+        ))
     missing_reject_class = sorted(
         set(REJECTED_EVIDENCE_CLASSES) - set(rejected_classes_seen)
     )
     if missing_reject_class:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "reject_bad_evidence",
             CheckStatus.FAIL,
             f"probe set did not exercise rejected classes: {missing_reject_class}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "reject_bad_evidence",
         CheckStatus.PASS,
         "stale/synthetic/skipped/forged/self-authored/incomplete evidence rejected",
         evidence,
-    )
+    ))
 
 
 def check_zero_safety_floors(
@@ -1870,12 +1871,12 @@ def check_zero_safety_floors(
             "caller_projection_ignored": dict(floor_projection or {}),
             "metrics_authoritative": False,
         }
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "zero_safety_floors",
             CheckStatus.FAIL,
             "sealed external current-tree safety-floor receipt is required",
             evidence,
-        )
+        ))
 
     producer_authenticated, authority_result = _verify_external_evidence_authority(
         payload,
@@ -1940,18 +1941,18 @@ def check_zero_safety_floors(
         "errors": errors,
     }
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "zero_safety_floors",
             CheckStatus.FAIL,
             f"safety-floor evidence rejected: {errors}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "zero_safety_floors",
         CheckStatus.PASS,
         "all terminal-release safety floors are exactly zero",
         evidence,
-    )
+    ))
 
 
 def check_exact_rollback(
@@ -1993,12 +1994,12 @@ def check_exact_rollback(
         if not path.is_file()
     ]
     if missing:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "exact_rollback",
             CheckStatus.FAIL,
             f"rollback-related modules missing: {missing}",
             {"missing": missing},
-        )
+        ))
     source, payload, source_result = _load_external_json(
         rollback_receipt_path,
         repo_root=root,
@@ -2006,7 +2007,7 @@ def check_exact_rollback(
         require_seal=True,
     )
     if source is None:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "exact_rollback",
             CheckStatus.FAIL,
             "sealed external Doctor rollback receipt is required",
@@ -2015,7 +2016,7 @@ def check_exact_rollback(
                 "source_result": source_result,
                 "rollback_authoritative": False,
             },
-        )
+        ))
     producer_authenticated, authority_result = _verify_external_evidence_authority(
         payload,
         repo_root=root,
@@ -2087,18 +2088,18 @@ def check_exact_rollback(
         },
     }
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "exact_rollback",
             CheckStatus.FAIL,
             f"rollback evidence rejected: {errors}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "exact_rollback",
         CheckStatus.PASS,
         "exact-root rollback restored identity-equivalent bytes",
         evidence,
-    )
+    ))
 
 
 def check_optional_capabilities() -> CheckResult:
@@ -2135,13 +2136,13 @@ def check_optional_capabilities() -> CheckResult:
     # This check always passes when documentation is complete; optional absence
     # must never fail release and never count as a positive qualification.
     if not observations:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "optional_capabilities",
             CheckStatus.FAIL,
             "no optional capability probes configured",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "optional_capabilities",
         CheckStatus.PASS,
         (
@@ -2149,7 +2150,7 @@ def check_optional_capabilities() -> CheckResult:
             f"unavailable={evidence['unavailable']}; none convert to pass"
         ),
         evidence,
-    )
+    ))
 
 
 def check_automatic_promotion_gated(repo_root: Path | None = None) -> CheckResult:
@@ -2236,18 +2237,18 @@ def check_automatic_promotion_gated(repo_root: Path | None = None) -> CheckResul
             errors.append("ops launch profile does not default automatic off")
 
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "automatic_promotion_gated",
             CheckStatus.FAIL,
             "; ".join(errors[:6]),
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "automatic_promotion_gated",
         CheckStatus.PASS,
         "automatic promotion remains subject to later held-out current-tree decision",
         evidence,
-    )
+    ))
 
 
 def check_six_lane_supervisor_drain(
@@ -2261,12 +2262,12 @@ def check_six_lane_supervisor_drain(
     root = (repo_root or repository_root()).resolve()
     board = check_canonical_board(root)
     if not board.ok:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "six_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"board not drainable: {board.detail}",
             board.evidence,
-        )
+        ))
 
     missing = [
         rel
@@ -2274,33 +2275,33 @@ def check_six_lane_supervisor_drain(
         if not (root / rel).is_file()
     ]
     if missing:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "six_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"control-plane artifacts missing: {missing}",
             {"missing": missing},
-        )
+        ))
 
     protected_present = {
         rel: (root / rel).is_file() and (root / rel).stat().st_size > 0
         for rel in PROTECTED_PATHS
     }
     if not all(protected_present.values()):
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "six_lane_supervisor_drain",
             CheckStatus.FAIL,
             "protected control-plane path missing or empty",
             {"protected_present": protected_present},
-        )
+        ))
 
     paths = tuple(lane_state_paths or ())
     if len(paths) != LANE_COUNT:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "six_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"exactly {LANE_COUNT} external lane projections are required",
             {"lane_state_paths": [str(item) for item in paths], "lanes": len(paths)},
-        )
+        ))
     errors: list[str] = []
     lane_rows: dict[int, dict[str, Any]] = {}
     lane_content_ids: dict[str, str] = {}
@@ -2431,18 +2432,18 @@ def check_six_lane_supervisor_drain(
         "errors": errors,
     }
     if errors:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "six_lane_supervisor_drain",
             CheckStatus.FAIL,
             f"six-lane drain evidence rejected: {errors[:8]}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "six_lane_supervisor_drain",
         CheckStatus.PASS,
         "six distinct lanes reached terminal quiescence and were fenced",
         evidence,
-    )
+    ))
 
 
 def check_cold_imports(repo_root: Path | None = None) -> CheckResult:
@@ -2505,18 +2506,18 @@ def check_cold_imports(repo_root: Path | None = None) -> CheckResult:
         "optional_providers_not_required": True,
     }
     if failed:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "cold_imports",
             CheckStatus.FAIL,
             f"cold import failures: {failed}",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "cold_imports",
         CheckStatus.PASS,
         f"cold-imported {len(imported)} release-critical modules",
         evidence,
-    )
+    ))
 
 
 def check_report_only_no_write(
@@ -2544,32 +2545,32 @@ def check_report_only_no_write(
         "tree_clean_after": after.get("clean") is True,
     }
     if policy.default_mode != "report_only" or policy.mutation_authorized:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "report_only_no_write",
             CheckStatus.FAIL,
             "policy is not report-only / no-mutation",
             evidence,
-        )
+        ))
     if before.get("identity") != after.get("identity"):
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "report_only_no_write",
             CheckStatus.FAIL,
             "validation mutated probe artifact",
             evidence,
-        )
+        ))
     if before.get("clean") is not True or after.get("clean") is not True:
-        return CheckResult(
+        return _mirror_release_check(CheckResult(
             "report_only_no_write",
             CheckStatus.FAIL,
             "terminal release requires a clean target worktree",
             evidence,
-        )
-    return CheckResult(
+        ))
+    return _mirror_release_check(CheckResult(
         "report_only_no_write",
         CheckStatus.PASS,
         "report-only validation leaves the tree unchanged",
         evidence,
-    )
+    ))
 
 
 # ---------------------------------------------------------------------------
