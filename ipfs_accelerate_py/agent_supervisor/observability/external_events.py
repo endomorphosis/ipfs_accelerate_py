@@ -549,7 +549,29 @@ def validate_lifecycle_sequence(
         previous_sequence = event.sequence
         previous_cursor = event.continuation_cursor
         previous_kind = kind
-    return tuple(identities)
+    result = tuple(identities)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = events[0] if events else None
+        record_ref = str(
+            (result[0] if result else "")
+            or getattr(first, "run_id", "")
+            or getattr(first, "task_id", "")
+            or "lifecycle-sequence"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lifecycle_sequence_validation",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(getattr(first, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 class ExternalLifecycleEventStream:

@@ -1906,6 +1906,28 @@ def validate_formal_plan_model_response(
             raise FormalPlanResponseError(
                 f"model response changed path is outside the capsule: {changed_path}"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        bindings = result.bindings
+        record_ref = str(
+            getattr(bindings, "capsule_cid", "")
+            or getattr(bindings, "plan_cid", "")
+            or getattr(bindings, "task_cid", "")
+            or "formal-plan-response"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_plan_model_response",
+            record_ref=record_ref,
+            subject_kind="capsule_cid",
+            subject_ref=str(getattr(bindings, "capsule_cid", "") or record_ref),
+            paths=tuple(result.changed_paths)[:16],
+        )
+    except Exception:
+        pass
     return result
 
 

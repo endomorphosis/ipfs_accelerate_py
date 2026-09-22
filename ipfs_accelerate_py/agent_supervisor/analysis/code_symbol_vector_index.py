@@ -1094,6 +1094,28 @@ def validate_code_vector_search_result(
     current = {row.row_id for row in snapshot.rows}
     if len({hit.row_id for hit in result.hits}) != len(result.hits) or any(hit.row_id not in current for hit in result.hits):
         raise CodeSymbolVectorIndexIntegrityError("code vector result contains a row absent from the exact snapshot")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        query = getattr(result, "query", None)
+        record_ref = str(
+            result.index_id
+            or getattr(query, "forest_id", "")
+            or getattr(query, "tree_id", "")
+            or "code-vector-search"
+        )
+        mirror_work_record(
+            catalog_kind="vector",
+            record_kind="code_vector_search_result",
+            record_ref=record_ref,
+            tree_id=str(getattr(query, "tree_id", "") or ""),
+            subject_kind="tree_id",
+            subject_ref=str(getattr(query, "tree_id", "") or record_ref),
+        )
+    except Exception:
+        pass
     return result
 
 

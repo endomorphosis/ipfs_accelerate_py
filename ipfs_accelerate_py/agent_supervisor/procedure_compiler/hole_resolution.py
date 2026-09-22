@@ -1418,22 +1418,44 @@ class HoleResolutionValidator:
         if resolution.action is HoleResolutionAction.PROPOSE:
             if candidate is None:
                 raise HoleValidationError("propose resolutions require the candidate artifact")
-            return self.validate_candidate(
+            result = self.validate_candidate(
                 request,
                 candidate,
                 compiled=compiled,
                 current_tree_id=current_tree_id,
                 observations=observations,
             )
-        return HoleValidationReceipt(
-            bindings=request.bindings,
-            request_cid=request.content_id,
-            candidate_cid=resolution.candidate_cid or resolution.content_id,
-            hole_id=request.hole_id,
-            accepted=False,
-            reason_code=resolution.reason_code,
-            observation_ids=tuple(observations),
-        )
+        else:
+            result = HoleValidationReceipt(
+                bindings=request.bindings,
+                request_cid=request.content_id,
+                candidate_cid=resolution.candidate_cid or resolution.content_id,
+                hole_id=request.hole_id,
+                accepted=False,
+                reason_code=resolution.reason_code,
+                observation_ids=tuple(observations),
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_cid
+                or result.hole_id
+                or result.candidate_cid
+                or "hole-resolution"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="hole_resolution_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def _capacity_index(

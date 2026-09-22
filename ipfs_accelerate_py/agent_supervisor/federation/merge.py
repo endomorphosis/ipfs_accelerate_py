@@ -592,7 +592,7 @@ class FederationMergeCoordinator:
         isolated: bool = True,
         exclusive: bool = True,
     ) -> WorktreeBinding:
-        return bind_worktree(
+        result = bind_worktree(
             binding=binding,
             worktree_id=worktree_id,
             owner_session_id=owner_session_id,
@@ -602,6 +602,28 @@ class FederationMergeCoordinator:
             isolated=isolated,
             exclusive=exclusive,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.worktree_id
+                or result.head_commit_id
+                or result.tree_id
+                or "merge-coordinator-worktree"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="federation_merge_coordinator_worktree",
+                record_ref=record_ref,
+                tree_id=str(result.tree_id or ""),
+                subject_kind="tree_id",
+                subject_ref=str(result.tree_id or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     def compile(
         self,
