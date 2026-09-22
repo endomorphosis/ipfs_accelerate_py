@@ -1170,6 +1170,26 @@ def validate_false_completion_recovery_receipt(
         raise MergeQueueFenceError(
             "false-completion recovery receipt content id is invalid"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt_cid
+            or payload.get("request_id")
+            or payload.get("dedupe_key")
+            or "false-completion-recovery"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="false_completion_recovery_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return receipt_cid
 
 

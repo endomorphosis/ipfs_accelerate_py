@@ -2247,7 +2247,27 @@ class AuthorizationChecker:
                     reason,
                 )
             )
-        return AuthorizationReport(decision, tuple(results))
+        result = AuthorizationReport(decision, tuple(results))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.decision.request_identity
+                or result.decision.policy_identity
+                or "authorization-report"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="authorization_report",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=str(result.decision.policy_identity or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
     authorize = evaluate
     check = evaluate

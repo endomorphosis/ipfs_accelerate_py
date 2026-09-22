@@ -1034,6 +1034,39 @@ class LogicRepairFixedPointOutcome:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_logic_repair_fixed_point(
+    result: LogicRepairFixedPointOutcome,
+) -> LogicRepairFixedPointOutcome:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (result.finalize.finalize_id if result.finalize is not None else "")
+            or (
+                result.logic_attachment.attachment_id
+                if result.logic_attachment is not None
+                else ""
+            )
+            or (result.completion.completion_id if result.completion is not None else "")
+            or result.report.plan_id
+            or result.report.transaction_id
+            or "logic-repair-fixed-point"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_repair_fixed_point",
+            record_ref=record_ref,
+            tree_id=str(result.report.candidate_tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class LogicRepairFixedPointValidator:
     """Orchestrate joint program+logic fixed-point after provisional commit.
@@ -1252,14 +1285,16 @@ class LogicRepairFixedPointValidator:
                 complete=False,
                 program_complete=True,
             )
-            return LogicRepairFixedPointOutcome(
-                report=report,
-                completion=program_outcome.completion,
-                logic_attachment=None,
-                finalize=None,
-                compensating_rollback=None,
-                program_outcome=program_outcome,
-                rolled_back=False,
+            return _mirror_logic_repair_fixed_point(
+                LogicRepairFixedPointOutcome(
+                    report=report,
+                    completion=program_outcome.completion,
+                    logic_attachment=None,
+                    finalize=None,
+                    compensating_rollback=None,
+                    program_outcome=program_outcome,
+                    rolled_back=False,
+                )
             )
 
         if not isinstance(logic_evidence, CandidateLogicRepairEvidence):
@@ -1693,14 +1728,16 @@ class LogicRepairFixedPointValidator:
             iteration_receipts=tuple(accepted_receipts),
             program_complete=True,
         )
-        return LogicRepairFixedPointOutcome(
-            report=report,
-            completion=completion,
-            logic_attachment=attachment,
-            finalize=finalize,
-            compensating_rollback=None,
-            program_outcome=program_outcome,
-            rolled_back=False,
+        return _mirror_logic_repair_fixed_point(
+            LogicRepairFixedPointOutcome(
+                report=report,
+                completion=completion,
+                logic_attachment=attachment,
+                finalize=finalize,
+                compensating_rollback=None,
+                program_outcome=program_outcome,
+                rolled_back=False,
+            )
         )
 
     def require_complete(self, *args: Any, **kwargs: Any) -> PropagationCompletionReceipt:
@@ -1774,7 +1811,7 @@ class LogicRepairFixedPointValidator:
             iteration_count=0,
             complete=False,
         )
-        return LogicRepairFixedPointOutcome(report=report)
+        return _mirror_logic_repair_fixed_point(LogicRepairFixedPointOutcome(report=report))
 
     def _incomplete(
         self,
@@ -1801,11 +1838,13 @@ class LogicRepairFixedPointValidator:
             iteration_receipts=iteration_receipts,
             program_complete=program_complete,
         )
-        return LogicRepairFixedPointOutcome(
-            report=report,
-            completion=completion,
-            program_outcome=program_outcome,
-            rolled_back=False,
+        return _mirror_logic_repair_fixed_point(
+            LogicRepairFixedPointOutcome(
+                report=report,
+                completion=completion,
+                program_outcome=program_outcome,
+                rolled_back=False,
+            )
         )
 
     def _rollback_or_incomplete(
@@ -1985,14 +2024,16 @@ class LogicRepairFixedPointValidator:
             iteration_receipts=iteration_receipts,
             program_complete=program_complete,
         )
-        return LogicRepairFixedPointOutcome(
-            report=report,
-            completion=completion,
-            logic_attachment=attachment,
-            finalize=None,
-            compensating_rollback=compensating,
-            program_outcome=program_outcome,
-            rolled_back=rolled_back,
+        return _mirror_logic_repair_fixed_point(
+            LogicRepairFixedPointOutcome(
+                report=report,
+                completion=completion,
+                logic_attachment=attachment,
+                finalize=None,
+                compensating_rollback=compensating,
+                program_outcome=program_outcome,
+                rolled_back=rolled_back,
+            )
         )
 
 

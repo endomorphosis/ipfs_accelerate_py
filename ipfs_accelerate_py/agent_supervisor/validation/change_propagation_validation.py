@@ -925,6 +925,33 @@ class PropagationValidationOutcome:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_change_propagation(
+    result: PropagationValidationOutcome,
+) -> PropagationValidationOutcome:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (result.completion.completion_id if result.completion is not None else "")
+            or result.report.plan_id
+            or result.report.transaction_id
+            or "change-propagation-fixed-point"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="change_propagation_fixed_point",
+            record_ref=record_ref,
+            tree_id=str(result.report.candidate_tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class ChangePropagationValidator:
     """Orchestrate fixed-point re-index / re-diff / re-resolve / re-prove gates.
@@ -1023,11 +1050,13 @@ class ChangePropagationValidator:
                 iteration_count=0,
                 complete=False,
             )
-            return PropagationValidationOutcome(
-                report=report,
-                completion=self._incomplete_completion(
-                    plan, transaction, reasons, residual_consumers=(), residual_frontier=(), residual_deltas=()
-                ),
+            return _mirror_change_propagation(
+                PropagationValidationOutcome(
+                    report=report,
+                    completion=self._incomplete_completion(
+                        plan, transaction, reasons, residual_consumers=(), residual_frontier=(), residual_deltas=()
+                    ),
+                )
             )
 
         original_obligation_ids = tuple(
@@ -1520,7 +1549,9 @@ class ChangePropagationValidator:
                     validation_refs=tuple(sorted(set(last_validation_refs))),
                     invalidation_refs=plan.invalidation_refs,
                 )
-            return PropagationValidationOutcome(report=report, completion=completion)
+            return _mirror_change_propagation(
+                PropagationValidationOutcome(report=report, completion=completion)
+            )
 
         # Success path: residual-free fixed point.
         if not reached_fixed_point or not last_discharged:
@@ -1535,16 +1566,18 @@ class ChangePropagationValidator:
                 iteration_count=iteration_count,
                 complete=False,
             )
-            return PropagationValidationOutcome(
-                report=report,
-                completion=self._incomplete_completion(
-                    plan,
-                    transaction,
-                    reasons,
-                    residual_consumers=residual_consumers,
-                    residual_frontier=residual_frontier,
-                    residual_deltas=residual_deltas,
-                ),
+            return _mirror_change_propagation(
+                PropagationValidationOutcome(
+                    report=report,
+                    completion=self._incomplete_completion(
+                        plan,
+                        transaction,
+                        reasons,
+                        residual_consumers=residual_consumers,
+                        residual_frontier=residual_frontier,
+                        residual_deltas=residual_deltas,
+                    ),
+                )
             )
 
         fixed = FixedPointReceipt(
@@ -1611,7 +1644,9 @@ class ChangePropagationValidator:
             or ("validation:fixed-point",),
             invalidation_refs=plan.invalidation_refs,
         )
-        return PropagationValidationOutcome(report=report, completion=completion)
+        return _mirror_change_propagation(
+            PropagationValidationOutcome(report=report, completion=completion)
+        )
 
     def require_complete(self, *args: Any, **kwargs: Any) -> PropagationCompletionReceipt:
         return self.validate(*args, **kwargs).require_complete()
@@ -1652,7 +1687,9 @@ class ChangePropagationValidator:
             iteration_count=0,
             complete=False,
         )
-        return PropagationValidationOutcome(report=report, completion=None)
+        return _mirror_change_propagation(
+            PropagationValidationOutcome(report=report, completion=None)
+        )
 
     def _incomplete_completion(
         self,

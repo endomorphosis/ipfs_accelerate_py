@@ -812,7 +812,33 @@ class PairedBenchmarkRunner:
             )
         if (prior is None) != (current is None):
             raise ResidualIntelligenceError("paired scores must be provided together")
-        return baseline
+        result = dict(baseline)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            freeze = (
+                manifest.benchmark_freeze
+                if isinstance(manifest.benchmark_freeze, Mapping)
+                else {}
+            )
+            record_ref = str(
+                freeze.get("freeze_id")
+                or manifest.source_revision
+                or "paired-benchmark-baseline"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="paired_benchmark_baseline",
+                record_ref=record_ref,
+                tree_id=str((freeze.get("source") or {}).get("tree") or ""),
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
