@@ -1635,7 +1635,24 @@ def compile_candidate_diff(
         if is_directory:
             kwargs.setdefault("repo_root", candidate_diff)
             candidate_diff = None
-    return compile_candidate_diff_scopes(candidate_diff, **kwargs)
+    result = compile_candidate_diff_scopes(candidate_diff, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.scope_set_id or "candidate-diff")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="candidate_diff",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(str(path) for path in result.changed_paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 compile_code_proof_scopes = compile_candidate_diff_scopes

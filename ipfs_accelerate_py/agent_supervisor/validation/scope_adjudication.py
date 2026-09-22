@@ -604,7 +604,30 @@ class ScopeAdjudicationReceipt:
             raise ValueError(
                 "scope adjudication is already bound to another policy"
             )
-        return replace(self, authorized_policy_id=normalized)
+        result = replace(self, authorized_policy_id=normalized)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.receipt_id
+                or result.authorized_policy_id
+                or result.task_id
+                or "authorized-scope-policy"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="authorized_scope_policy",
+                record_ref=record_ref,
+                tree_id=str(result.repository_tree_id or ""),
+                subject_kind="task_id",
+                subject_ref=str(result.task_id or record_ref),
+                paths=tuple(str(path) for path in result.authorized_paths)[:16],
+            )
+        except Exception:
+            pass
+        return result
 
     @classmethod
     def from_dict(

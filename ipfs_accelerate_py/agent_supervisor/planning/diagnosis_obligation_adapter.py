@@ -1949,7 +1949,30 @@ def compile_diagnosis_obligation_graph(
 ) -> ObligationGraph:
     """Return only the shared graph for callers which do not persist receipts."""
 
-    return compile_diagnosis_obligations(bridge, **kwargs).graph
+    result = compile_diagnosis_obligations(bridge, **kwargs).graph
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.intent_id
+            or result.current_root_id
+            or (result.root_obligation_ids[0] if result.root_obligation_ids else "")
+            or "diagnosis-obligation-graph"
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="diagnosis_obligation_graph",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=str(
+                result.root_obligation_ids[0] if result.root_obligation_ids else record_ref
+            ),
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

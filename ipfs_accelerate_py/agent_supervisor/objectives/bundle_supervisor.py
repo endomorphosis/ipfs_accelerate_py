@@ -1337,7 +1337,28 @@ class DistributedLaneWorker:
                 failures.append("environment_mismatch")
         if not callable(self.execute):
             failures.append("worker_executor_missing")
-        return tuple(dict.fromkeys(failures))
+        result = tuple(dict.fromkeys(failures))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                self.worker_id
+                or lane.task_cid
+                or (result[0] if result else "")
+                or "lane-worker-validation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="distributed_lane_worker_validation",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(lane.task_cid or record_ref),
+            )
+        except Exception:
+            pass
+        return result
 
 
 @dataclass(frozen=True)
