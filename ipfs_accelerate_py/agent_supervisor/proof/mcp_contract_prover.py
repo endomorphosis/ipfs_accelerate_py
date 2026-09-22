@@ -598,6 +598,30 @@ def _premise_observations(
     return tuple(sorted(satisfied)), tuple(sorted(failed)), complete
 
 
+def _mirror_local_check(result: LocalCheckResult, record_kind: str) -> LocalCheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (result.reason_codes[0] if result.reason_codes else "")
+            or (result.failed_premise_ids[0] if result.failed_premise_ids else "")
+            or getattr(result.outcome, "value", "")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _default_local_graph_check(
     obligation: McpContractObligation,
     facts: Mapping[str, Any],
@@ -608,22 +632,31 @@ def _default_local_graph_check(
     observed_edges = set(_edges(facts.get("observed_edges", ()), "observed_edges"))
     failed_edges = tuple(sorted(set(explicit_failed_edges) | (required_edges - observed_edges)))
     if failed_premises or failed_edges:
-        return LocalCheckResult(
-            ContractProofOutcome.REFUTED,
-            failed_premise_ids=failed_premises,
-            failed_edges=failed_edges,
-            reason_codes=("local_graph_counterexample",),
+        return _mirror_local_check(
+            LocalCheckResult(
+                ContractProofOutcome.REFUTED,
+                failed_premise_ids=failed_premises,
+                failed_edges=failed_edges,
+                reason_codes=("local_graph_counterexample",),
+            ),
+            "local_graph_check",
         )
     graph_valid = facts.get("graph_valid")
     edges_complete = bool(required_edges) and required_edges.issubset(observed_edges)
     if premises_complete and (graph_valid is True or edges_complete):
-        return LocalCheckResult(
-            ContractProofOutcome.PROVED,
-            reason_codes=("local_graph_check_passed",),
+        return _mirror_local_check(
+            LocalCheckResult(
+                ContractProofOutcome.PROVED,
+                reason_codes=("local_graph_check_passed",),
+            ),
+            "local_graph_check",
         )
-    return LocalCheckResult(
-        ContractProofOutcome.INCONCLUSIVE,
-        reason_codes=("local_graph_evidence_incomplete",),
+    return _mirror_local_check(
+        LocalCheckResult(
+            ContractProofOutcome.INCONCLUSIVE,
+            reason_codes=("local_graph_evidence_incomplete",),
+        ),
+        "local_graph_check",
     )
 
 
@@ -649,22 +682,31 @@ def _default_local_schema_check(
     if schema_valid is False and not failed:
         failed = (obligation.property_id,)
     if failed:
-        return LocalCheckResult(
-            ContractProofOutcome.REFUTED,
-            failed_premise_ids=failed,
-            reason_codes=("local_schema_counterexample",),
+        return _mirror_local_check(
+            LocalCheckResult(
+                ContractProofOutcome.REFUTED,
+                failed_premise_ids=failed,
+                reason_codes=("local_schema_counterexample",),
+            ),
+            "local_schema_check",
         )
     schema_complete = schema_valid is True or (
         bool(schema_results) and all(value is True for value in schema_results.values())
     )
     if premises_complete and schema_complete:
-        return LocalCheckResult(
-            ContractProofOutcome.PROVED,
-            reason_codes=("local_schema_check_passed",),
+        return _mirror_local_check(
+            LocalCheckResult(
+                ContractProofOutcome.PROVED,
+                reason_codes=("local_schema_check_passed",),
+            ),
+            "local_schema_check",
         )
-    return LocalCheckResult(
-        ContractProofOutcome.INCONCLUSIVE,
-        reason_codes=("local_schema_evidence_incomplete",),
+    return _mirror_local_check(
+        LocalCheckResult(
+            ContractProofOutcome.INCONCLUSIVE,
+            reason_codes=("local_schema_evidence_incomplete",),
+        ),
+        "local_schema_check",
     )
 
 

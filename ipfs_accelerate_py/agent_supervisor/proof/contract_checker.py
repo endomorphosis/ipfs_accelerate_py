@@ -3467,7 +3467,7 @@ def compare_contracts(
     else:
         summary = "contract comparison is incomplete"
 
-    return ContractCheckResult(
+    result = ContractCheckResult(
         kind=kind,
         binding=binding,
         aspect_results=tuple(aspect_results),
@@ -3481,6 +3481,26 @@ def compare_contracts(
         elapsed_ms=effective_elapsed,
         checker_version=CHECKER_VERSION,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "result_id", "")
+            or getattr(kind, "value", "")
+            or "contract-pair-check"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_pair_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compare_expected_refinement(

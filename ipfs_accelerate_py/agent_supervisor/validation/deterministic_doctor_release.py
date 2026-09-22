@@ -838,11 +838,11 @@ def check_doctor_fixture_dual_run(
     manifest = root / DOCTOR_FIXTURE_MANIFEST_REL
     if not manifest.is_file():
         return (
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "doctor_fixture_dual_run",
                 CheckStatus.FAIL,
                 f"doctor fixture manifest missing: {manifest}",
-            ),
+            )),
             [],
             {},
         )
@@ -929,45 +929,45 @@ def check_doctor_fixture_dual_run(
 
     if missing_positive or missing_adversarial:
         return (
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "doctor_fixture_dual_run",
                 CheckStatus.FAIL,
                 f"fixture coverage gaps positive={missing_positive} "
                 f"adversarial={missing_adversarial}",
                 evidence,
-            ),
+            )),
             case_projections,
             metrics_projection,
         )
     if not identity_ok:
         return (
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "doctor_fixture_dual_run",
                 CheckStatus.FAIL,
                 "dual-run doctor receipts are not identity-equivalent",
                 evidence,
-            ),
+            )),
             case_projections,
             metrics_projection,
         )
     if not floors_hold or not llm_zero:
         return (
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "doctor_fixture_dual_run",
                 CheckStatus.FAIL,
                 "doctor safety floors or LLM counters are nonzero",
                 evidence,
-            ),
+            )),
             case_projections,
             metrics_projection,
         )
     return (
-        CheckResult(
+        _mirror_doctor_release_check(CheckResult(
             "doctor_fixture_dual_run",
             CheckStatus.PASS,
             "doctor positive/adversarial fixtures dual-ran with identical CIDs/receipts",
             evidence,
-        ),
+        )),
         case_projections,
         metrics_projection,
     )
@@ -1696,44 +1696,44 @@ def validate_deterministic_doctor_release(
             )
         else:
             results.append(
-                CheckResult(
+                _mirror_doctor_release_check(CheckResult(
                     "eligible_fixed_point",
                     CheckStatus.FAIL,
                     "skipped because doctor dual-run failed",
-                )
+                ))
             )
             results.append(
-                CheckResult(
+                _mirror_doctor_release_check(CheckResult(
                     "abstention_and_rollback",
                     CheckStatus.FAIL,
                     "skipped because doctor dual-run failed",
-                )
+                ))
             )
             results.append(
-                CheckResult(
+                _mirror_doctor_release_check(CheckResult(
                     "zero_safety_floors",
                     CheckStatus.FAIL,
                     "skipped because doctor dual-run failed",
-                )
+                ))
             )
     else:
         results.append(
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "doctor_fixture_dual_run",
                 CheckStatus.SKIP,
                 "doctor dual-run not requested",
-            )
+            ))
         )
 
     if run_vfs and policy.require_vfs_and_non_vfs_profiles:
         results.append(check_vfs_profiles_dual_run(root))
     else:
         results.append(
-            CheckResult(
+            _mirror_doctor_release_check(CheckResult(
                 "vfs_profiles_dual_run",
                 CheckStatus.SKIP,
                 "VFS dual-run not requested",
-            )
+            ))
         )
 
     if policy.require_cold_imports:
@@ -1803,7 +1803,7 @@ def replay_release_receipt(
         id_key="receipt_id",
     )
     identity_ok = claimed == resealed.get("receipt_id") and verify_sealed(payload)
-    return {
+    result = {
         "schema": "ipfs_accelerate_py/agent-supervisor/deterministic-doctor-release-replay@1",
         "interface": "DeterministicDoctorReleaseReplay@1",
         "valid": bool(identity_ok and payload.get("valid") is True),
@@ -1813,6 +1813,26 @@ def replay_release_receipt(
         "mutation_authorized": False,
         "completion_authoritative": False,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("recomputed_receipt_id")
+            or result.get("claimed_receipt_id")
+            or "doctor-release-replay"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="deterministic_doctor_release_replay",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def run_all_checks(
