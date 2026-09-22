@@ -722,11 +722,36 @@ class PatchValidator:
         write files.
         """
 
+        def _result(**kwargs: Any) -> PatchValidationResult:
+            outcome = PatchValidationResult(**kwargs)
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    outcome.patch_digest
+                    or outcome.pre_tree
+                    or (outcome.paths[0] if outcome.paths else "")
+                    or "patch-validation"
+                )
+                mirror_work_record(
+                    catalog_kind="ast",
+                    record_kind="patch_validation",
+                    record_ref=record_ref,
+                    subject_kind="path" if outcome.paths else "record_cid",
+                    subject_ref=str(outcome.paths[0] if outcome.paths else record_ref),
+                    paths=tuple(str(path) for path in outcome.paths)[:16],
+                )
+            except Exception:
+                pass
+            return outcome
+
         digest = _patch_digest(patch_text) if isinstance(patch_text, str) else ""
         try:
             parsed = self.parse(patch_text)
         except PatchValidationError as exc:
-            return PatchValidationResult(
+            return _result(
                 accepted=False,
                 reason_codes=(exc.reason_code,),
                 paths=(),
@@ -755,7 +780,7 @@ class PatchValidator:
             if code not in ordered_reasons:
                 ordered_reasons.append(code)
         if ordered_reasons:
-            return PatchValidationResult(
+            return _result(
                 accepted=False,
                 reason_codes=tuple(ordered_reasons),
                 paths=paths,
@@ -774,7 +799,7 @@ class PatchValidator:
                     visible_sources=visible_sources,
                 )
                 if not ok:
-                    return PatchValidationResult(
+                    return _result(
                         accepted=False,
                         reason_codes=(code,),
                         paths=paths,
@@ -788,7 +813,7 @@ class PatchValidator:
         if worktree_root is not None:
             root = Path(worktree_root)
             if not root.is_dir():
-                return PatchValidationResult(
+                return _result(
                     accepted=False,
                     reason_codes=("worktree_missing",),
                     paths=paths,
@@ -801,7 +826,7 @@ class PatchValidator:
                 head = _head_commit(root)
                 tree = _tree_for_commit(root, head)
             except PatchValidationError as exc:
-                return PatchValidationResult(
+                return _result(
                     accepted=False,
                     reason_codes=(exc.reason_code,),
                     paths=paths,
@@ -811,7 +836,7 @@ class PatchValidator:
                     patch_digest=digest,
                 )
             if expected_base_commit and head != expected_base_commit:
-                return PatchValidationResult(
+                return _result(
                     accepted=False,
                     reason_codes=("stale_base",),
                     paths=paths,
@@ -824,7 +849,7 @@ class PatchValidator:
                     patch_digest=digest,
                 )
             if expected_base_tree and tree != expected_base_tree:
-                return PatchValidationResult(
+                return _result(
                     accepted=False,
                     reason_codes=("stale_base",),
                     paths=paths,
@@ -844,7 +869,7 @@ class PatchValidator:
                     stdin=patch_text,
                 )
                 if checked.returncode != 0:
-                    return PatchValidationResult(
+                    return _result(
                         accepted=False,
                         reason_codes=("apply_check_failed",),
                         paths=paths,
@@ -857,7 +882,7 @@ class PatchValidator:
                         patch_digest=digest,
                     )
 
-        return PatchValidationResult(
+        return _result(
             accepted=True,
             reason_codes=(),
             paths=paths,

@@ -3530,6 +3530,26 @@ def bind_metric_row_to_span_identity(
         bound["attempt"] = int(attempt)
     if process_id:
         bound["process_id"] = str(process_id)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            bound.get("span_id")
+            or bound.get("run_id")
+            or bound.get("case_id")
+            or "metric-span-identity"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="metric_span_identity",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return bound
 
 

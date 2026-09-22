@@ -1587,12 +1587,29 @@ def compile_candidate_diff_scopes(
             base_revision=base_revision,
             candidate_revision=candidate_revision,
         )
-    return compile_candidate_proof_scopes(
+    result = compile_candidate_proof_scopes(
         candidate_diff,
         ast_records=ast_records,
         conflict_graph=conflict_graph,
         conflict_surfaces=conflict_surfaces,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.scope_set_id or "candidate-diff-scopes")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="candidate_diff_scopes",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(str(path) for path in result.changed_paths)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 def compile_candidate_diff(

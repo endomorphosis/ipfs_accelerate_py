@@ -1413,7 +1413,29 @@ def compile_code_proof_obligation(
 ) -> CodeProofObligation:
     """Compile and return the existing ``CodeProofObligation`` projection."""
 
-    return compile_contract_claim(claim, **bindings).code_obligation
+    result = compile_contract_claim(claim, **bindings).code_obligation
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "task_id", "")
+            or getattr(result, "repository_tree_id", "")
+            or getattr(result, "template_id", "")
+            or "code-proof-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_proof_obligation",
+            record_ref=record_ref,
+            tree_id=str(getattr(result, "repository_tree_id", "") or ""),
+            subject_kind="task_id" if getattr(result, "task_id", "") else "record_cid",
+            subject_ref=str(getattr(result, "task_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 # DCR-031 is intentionally separate from the historical catalog compiler

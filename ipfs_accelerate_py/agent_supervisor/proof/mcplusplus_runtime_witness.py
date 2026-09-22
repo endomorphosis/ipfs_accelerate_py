@@ -439,6 +439,27 @@ def _reject_unknown(payload: Mapping[str, Any], allowed: frozenset[str], *, arti
 # ---------------------------------------------------------------------------
 
 
+def _mirror_schema_validation(
+    verdict: ValidationVerdict, errors: tuple[str, ...]
+) -> tuple[ValidationVerdict, tuple[str, ...]]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(verdict.value or (errors[0] if errors else "") or "schema-validation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_schema_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verdict, errors
+
+
 def validate_against_schema(
     payload: Any, schema: Mapping[str, Any] | None
 ) -> tuple[ValidationVerdict, tuple[str, ...]]:
@@ -450,7 +471,7 @@ def validate_against_schema(
     """
 
     if not schema:
-        return ValidationVerdict.SKIPPED, ()
+        return _mirror_schema_validation(ValidationVerdict.SKIPPED, ())
 
     errors: list[str] = []
 
@@ -497,8 +518,8 @@ def validate_against_schema(
 
     _check(payload, schema, "$")
     if errors:
-        return ValidationVerdict.INVALID, tuple(errors[:32])
-    return ValidationVerdict.VALID, ()
+        return _mirror_schema_validation(ValidationVerdict.INVALID, tuple(errors[:32]))
+    return _mirror_schema_validation(ValidationVerdict.VALID, ())
 
 
 # ---------------------------------------------------------------------------
