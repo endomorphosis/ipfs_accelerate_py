@@ -1722,14 +1722,20 @@ def check_lifecycle_doctor_readonly(repo_root: Path | None = None) -> CheckResul
         evidence["launcher_present"] = False
 
     if errors:
-        return CheckResult(
-            "lifecycle_doctor_readonly", CheckStatus.FAIL, "; ".join(errors), evidence
+        return _mirror_rollout_check(
+            CheckResult(
+                "lifecycle_doctor_readonly", CheckStatus.FAIL, "; ".join(errors), evidence
+            ),
+            "doctor_rollout_lifecycle_readonly",
         )
-    return CheckResult(
-        "lifecycle_doctor_readonly",
-        CheckStatus.PASS,
-        "ordinary lifecycle doctor remains read-only and idempotent",
-        evidence,
+    return _mirror_rollout_check(
+        CheckResult(
+            "lifecycle_doctor_readonly",
+            CheckStatus.PASS,
+            "ordinary lifecycle doctor remains read-only and idempotent",
+            evidence,
+        ),
+        "doctor_rollout_lifecycle_readonly",
     )
 
 
@@ -1758,24 +1764,33 @@ def check_optional_provider_absence() -> CheckResult:
         "decision_id": decision.decision_id,
     }
     if decision.effective_mode_value != "report_only":
-        return CheckResult(
-            "optional_provider_absence",
-            CheckStatus.FAIL,
-            "report-only startup blocked or elevated unexpectedly",
-            evidence,
+        return _mirror_rollout_check(
+            CheckResult(
+                "optional_provider_absence",
+                CheckStatus.FAIL,
+                "report-only startup blocked or elevated unexpectedly",
+                evidence,
+            ),
+            "doctor_rollout_optional_provider_absence",
         )
     if decision.mutation_authorized:
-        return CheckResult(
-            "optional_provider_absence",
-            CheckStatus.FAIL,
-            "provider probe incorrectly authorized mutation",
-            evidence,
+        return _mirror_rollout_check(
+            CheckResult(
+                "optional_provider_absence",
+                CheckStatus.FAIL,
+                "provider probe incorrectly authorized mutation",
+                evidence,
+            ),
+            "doctor_rollout_optional_provider_absence",
         )
-    return CheckResult(
-        "optional_provider_absence",
-        CheckStatus.PASS,
-        "optional provider absence is actionable and does not block report-only startup",
-        evidence,
+    return _mirror_rollout_check(
+        CheckResult(
+            "optional_provider_absence",
+            CheckStatus.PASS,
+            "optional provider absence is actionable and does not block report-only startup",
+            evidence,
+        ),
+        "doctor_rollout_optional_provider_absence",
     )
 
 
@@ -1787,17 +1802,23 @@ def check_artifacts_present(repo_root: Path | None = None) -> CheckResult:
     if (root / CONFIG_REL).is_file():
         evidence["config_identity"] = config_identity(root)
     if missing:
-        return CheckResult(
-            "declared_artifacts",
-            CheckStatus.FAIL,
-            f"missing declared artifacts: {missing}",
-            evidence,
+        return _mirror_rollout_check(
+            CheckResult(
+                "declared_artifacts",
+                CheckStatus.FAIL,
+                f"missing declared artifacts: {missing}",
+                evidence,
+            ),
+            "doctor_rollout_artifacts_present",
         )
-    return CheckResult(
-        "declared_artifacts",
-        CheckStatus.PASS,
-        "all LPR-041 declared outputs are present",
-        evidence,
+    return _mirror_rollout_check(
+        CheckResult(
+            "declared_artifacts",
+            CheckStatus.PASS,
+            "all LPR-041 declared outputs are present",
+            evidence,
+        ),
+        "doctor_rollout_artifacts_present",
     )
 
 
@@ -1805,7 +1826,10 @@ def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
     root = (repo_root or repository_root()).resolve()
     path = root / GUIDE_REL
     if not path.is_file():
-        return CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing: {path}")
+        return _mirror_rollout_check(
+            CheckResult("guide_boundaries", CheckStatus.FAIL, f"guide missing: {path}"),
+            "doctor_rollout_guide_boundaries",
+        )
     text = path.read_text(encoding="utf-8")
     lower = text.casefold()
     required = (
@@ -1829,17 +1853,23 @@ def check_guide_boundaries(repo_root: Path | None = None) -> CheckResult:
         missing = [m for m in missing if m != "report-only"]
     evidence = {"guide_path": GUIDE_REL, "bytes": path.stat().st_size, "topics": list(required)}
     if missing:
-        return CheckResult(
-            "guide_boundaries",
-            CheckStatus.FAIL,
-            f"guide missing topics: {missing}",
-            evidence,
+        return _mirror_rollout_check(
+            CheckResult(
+                "guide_boundaries",
+                CheckStatus.FAIL,
+                f"guide missing topics: {missing}",
+                evidence,
+            ),
+            "doctor_rollout_guide_boundaries",
         )
-    return CheckResult(
-        "guide_boundaries",
-        CheckStatus.PASS,
-        "operator guide documents modes, kill switch, floors, promotion, lifecycle, and providers",
-        evidence,
+    return _mirror_rollout_check(
+        CheckResult(
+            "guide_boundaries",
+            CheckStatus.PASS,
+            "operator guide documents modes, kill switch, floors, promotion, lifecycle, and providers",
+            evidence,
+        ),
+        "doctor_rollout_guide_boundaries",
     )
 
 
@@ -1860,17 +1890,23 @@ def check_related_surfaces(repo_root: Path | None = None) -> CheckResult:
         "control_interface": SUPERVISOR_CONTROL_SERVICE_INTERFACE,
     }
     if missing:
-        return CheckResult(
-            "related_surfaces",
-            CheckStatus.FAIL,
-            f"related doctor surfaces missing: {missing}",
-            evidence,
+        return _mirror_rollout_check(
+            CheckResult(
+                "related_surfaces",
+                CheckStatus.FAIL,
+                f"related doctor surfaces missing: {missing}",
+                evidence,
+            ),
+            "doctor_rollout_related_surfaces",
         )
-    return CheckResult(
-        "related_surfaces",
-        CheckStatus.PASS,
-        "service/policy/benchmark/ops surfaces exist for operator validation",
-        evidence,
+    return _mirror_rollout_check(
+        CheckResult(
+            "related_surfaces",
+            CheckStatus.PASS,
+            "service/policy/benchmark/ops surfaces exist for operator validation",
+            evidence,
+        ),
+        "doctor_rollout_related_surfaces",
     )
 
 
