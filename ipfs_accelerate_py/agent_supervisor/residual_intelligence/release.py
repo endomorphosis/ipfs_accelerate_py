@@ -774,6 +774,27 @@ def validate_release_claims(
         "non_authoritative",
         "rollback_blocker_eligibility.report_authority",
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            report.corpus_admission_id
+            or report.end_tree
+            or report.start_tree
+            or "residual-release-claims"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="residual_release_claims",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(report.end_tree or report.start_tree or ""),
+        )
+    except Exception:
+        pass
     return report
 
 

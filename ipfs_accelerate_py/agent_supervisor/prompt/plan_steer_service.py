@@ -2474,7 +2474,7 @@ class PlanSteerService:
             )
         )
 
-        return PlanRevision(
+        result = PlanRevision(
             plan_root_cid=candidate_root,
             semantic_revision=request.plan_revision + 1,
             parent_plan_root=parent_root,
@@ -2511,6 +2511,27 @@ class PlanSteerService:
             validation_dag=validation_dag,
             event_cursor=request.event_cursor,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.plan_root_cid
+                or result.delta_cid
+                or result.request_cid
+                or "plan-steer-revision"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="plan_steer_revision",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def validate_resulting_plan(
         self,

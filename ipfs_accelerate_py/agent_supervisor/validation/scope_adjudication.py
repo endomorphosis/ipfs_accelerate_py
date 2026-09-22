@@ -1122,13 +1122,30 @@ def validate_semantic_nonempty_patch(
     if not any(delta.get(key) for key in ("added_symbols", "changed_contracts", "tests_added")):
         if all(path.endswith((".md", ".txt")) for path in paths):
             raise ScopeAdjudicationError("patch is semantically empty")
-    return {
+    result = {
         "schema": "ipfs_accelerate_py/agent-supervisor/semantic-nonempty-patch@1",
         "accepted": True,
         "changed_paths": list(paths),
         "completion_authority": False,
         "completion_authoritative": False,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str((result.get("changed_paths") or ["semantic-nonempty-patch"])[0])
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="semantic_nonempty_patch",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=tuple(str(path) for path in result.get("changed_paths") or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 class ScopeAdjudicationError(ValueError):

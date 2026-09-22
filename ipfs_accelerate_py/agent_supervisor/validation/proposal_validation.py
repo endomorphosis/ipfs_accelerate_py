@@ -4914,6 +4914,32 @@ class UntrustedProposalAdmissionResult:
         return {**self._identity_payload(), "admission_id": self.admission_id}
 
 
+def _mirror_untrusted_proposal_admission(
+    result: UntrustedProposalAdmissionResult,
+) -> UntrustedProposalAdmissionResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.input_digest
+            or result.repository_snapshot_id
+            or result.policy_id
+            or "untrusted-proposal-admission"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="untrusted_proposal_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def validate_untrusted_implementation_proposal(
     provider_output: bytes | bytearray | str | Mapping[str, Any],
     *,
@@ -4956,12 +4982,14 @@ def validate_untrusted_implementation_proposal(
                 ),
             )
         )
-        return UntrustedProposalAdmissionResult(
-            accepted=False,
-            policy_id=policy.policy_id,
-            input_digest=input_digest,
-            findings=combined,
-            proposal_validation=proposal_validation,
+        return _mirror_untrusted_proposal_admission(
+            UntrustedProposalAdmissionResult(
+                accepted=False,
+                policy_id=policy.policy_id,
+                input_digest=input_digest,
+                findings=combined,
+                proposal_validation=proposal_validation,
+            )
         )
 
     try:
@@ -5005,12 +5033,14 @@ def validate_untrusted_implementation_proposal(
 
     validation = validate_implementation_proposal(proposal, policy=policy)
     if not validation.accepted:
-        return UntrustedProposalAdmissionResult(
-            accepted=False,
-            policy_id=policy.policy_id,
-            input_digest=input_digest,
-            findings=validation.findings,
-            proposal_validation=validation,
+        return _mirror_untrusted_proposal_admission(
+            UntrustedProposalAdmissionResult(
+                accepted=False,
+                policy_id=policy.policy_id,
+                input_digest=input_digest,
+                findings=validation.findings,
+                proposal_validation=validation,
+            )
         )
     try:
         snapshot_id = _validate_repository_envelope(
@@ -5034,12 +5064,14 @@ def validate_untrusted_implementation_proposal(
             path=exc.path,
             proposal_validation=validation,
         )
-    return UntrustedProposalAdmissionResult(
-        accepted=True,
-        policy_id=policy.policy_id,
-        input_digest=input_digest,
-        repository_snapshot_id=snapshot_id,
-        proposal_validation=validation,
+    return _mirror_untrusted_proposal_admission(
+        UntrustedProposalAdmissionResult(
+            accepted=True,
+            policy_id=policy.policy_id,
+            input_digest=input_digest,
+            repository_snapshot_id=snapshot_id,
+            proposal_validation=validation,
+        )
     )
 
 

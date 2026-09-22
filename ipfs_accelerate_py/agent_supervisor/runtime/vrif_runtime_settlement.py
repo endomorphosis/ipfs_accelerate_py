@@ -6568,6 +6568,26 @@ def vrif_runtime_settlement_binding(
         "retired_ready_task_cids": retired_ready_task_cids,
     }
     binding["binding_id"] = _content_id(binding)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            binding.get("binding_id")
+            or binding.get("receipt_cid")
+            or binding.get("snapshot_cid")
+            or "vrif-runtime-settlement-binding"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="vrif_runtime_settlement_binding",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return binding
 
 
