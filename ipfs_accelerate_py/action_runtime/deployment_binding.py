@@ -736,6 +736,25 @@ def require_production_execute(
     )
     if not verdict.admitted:
         raise DeploymentBindingError(verdict)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            verdict.binding_id
+            or verdict.reason
+            or "production-execute-require"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_execute_require",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return verdict
 
 

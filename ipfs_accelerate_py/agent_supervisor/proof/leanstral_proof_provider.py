@@ -1693,7 +1693,7 @@ def check_leanstral_patch_proposal(
         apply_check: Mapping[str, Any] | None = None,
         validations: tuple[Mapping[str, Any], ...] = (),
     ) -> LeanstralPatchGateResult:
-        return LeanstralPatchGateResult(
+        result = LeanstralPatchGateResult(
             status=LeanstralGateStatus.REJECTED,
             reason_codes=(reason,),
             model_artifact_id=artifact_id,
@@ -1710,6 +1710,22 @@ def check_leanstral_patch_proposal(
             },
             validation_results=validations,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.model_artifact_id or result.patch_sha256 or "leanstral-patch-gate")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="leanstral_patch_gate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     if len(patch_bytes) > effective_policy.max_patch_bytes:
         return rejected("patch_too_large")
@@ -1814,7 +1830,7 @@ def check_leanstral_patch_proposal(
                 pass
         if temporary is not None:
             temporary.cleanup()
-    return LeanstralPatchGateResult(
+    result = LeanstralPatchGateResult(
         status=LeanstralGateStatus.ACCEPTED,
         reason_codes=("scope_apply_and_validation_passed",),
         model_artifact_id=artifact_id,
@@ -1823,6 +1839,22 @@ def check_leanstral_patch_proposal(
         apply_check=check,
         validation_results=tuple(validations),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.model_artifact_id or result.patch_sha256 or "leanstral-patch-gate")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="leanstral_patch_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class LeanstralProofProvider:

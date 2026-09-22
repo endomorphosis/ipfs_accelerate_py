@@ -2013,6 +2013,23 @@ def dry_run_translation_validation(
     result = validate_translation(request, mutate=False)
     if result.mutated is not False or result.deterministic is not True:
         raise TranslationValidationError("dry-run must remain deterministic and non-mutating")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.request_cid or result.packet_cid or "translation-dry-run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="translation_validation_dry_run",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 

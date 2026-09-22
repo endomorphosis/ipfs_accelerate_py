@@ -839,7 +839,7 @@ def validate_translation(
 
     conformant = not issues
     bounded = contract.translation_class is TranslationClass.BOUNDED_ABSTRACTION
-    return TranslationValidationResult(
+    result = TranslationValidationResult(
         contract_identity=contract.content_id,
         artifact_identity=artifact.content_id,
         conformant=conformant,
@@ -848,6 +848,27 @@ def validate_translation(
         issues=tuple(issues),
         bounded=bounded,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or result.artifact_identity
+            or result.contract_identity
+            or "logic-translation-validation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_translation_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def semantic_inventory_identity(inventory: SemanticInventory) -> str:

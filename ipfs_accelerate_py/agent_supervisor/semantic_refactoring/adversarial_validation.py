@@ -3480,6 +3480,23 @@ def dry_run_mutation_campaign(
         raise AdversarialValidationError(
             "dry-run must remain deterministic and non-mutating"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.request_cid or result.packet_cid or "mutation-campaign-dry-run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mutation_campaign_dry_run",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
     return result
 
 

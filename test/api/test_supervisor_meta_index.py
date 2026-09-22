@@ -6389,6 +6389,36 @@ def test_mirror_authorize_gate_translation_campaign_and_delegated_receipt(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_dry_run_require_patch_gate_and_logic_translation(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("translation_validation_dry_run", "req:1", "metadata", "record_cid"),
+        ("mutation_campaign_dry_run", "packet:1", "metadata", "record_cid"),
+        ("production_execute_require", "bind:1", "metadata", "record_cid"),
+        ("leanstral_patch_gate", "artifact:1", "proof_cache", "record_cid"),
+        ("logic_translation_validation", "artifact:1", "proof_cache", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
