@@ -2367,7 +2367,28 @@ class TranslationValidator:
         certificate = None
         if receipt.equivalent:
             certificate = self.certify(receipt, optimized_candidate)
-        return TranslationValidation(receipt=receipt, certificate=certificate)
+        result = TranslationValidation(receipt=receipt, certificate=certificate)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(receipt, "content_id", "")
+                or getattr(certificate, "tool_id", "")
+                or getattr(optimized_candidate, "tool_id", "")
+                or "tool-translation-certify"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="tool_translation_certify",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def promote(
         self,

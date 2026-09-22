@@ -2069,7 +2069,7 @@ class PlanSteerService:
                 cleaned.append(text)
             return tuple(sorted(set(cleaned)))
 
-        return PlanSteerScanImpact(
+        result = PlanSteerScanImpact(
             scan_receipt_cid=scan_cid,
             repository_root_cid=repo_root,
             dirty_worktree_root=dirty_root,
@@ -2094,6 +2094,28 @@ class PlanSteerService:
             truncation_refs=_paths("truncation_refs", "truncations"),
             instability_refs=_paths("instability_refs", "instabilities"),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.scan_receipt_cid
+                or result.repository_root_cid
+                or result.base_plan_root
+                or "plan-steer-scan-impact"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="plan_steer_scan_impact",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+                paths=tuple(result.impacted_paths)[:16],
+            )
+        except Exception:
+            pass
+        return result
 
     # -- delta generation --------------------------------------------------
 

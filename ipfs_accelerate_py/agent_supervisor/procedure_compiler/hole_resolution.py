@@ -1391,7 +1391,7 @@ class HoleResolutionValidator:
                     reason = HoleResolutionReason.VALIDATION_REQUIRED
                 else:
                     reason = HoleResolutionReason.CANDIDATE_PROPOSED
-        return HoleValidationReceipt(
+        result = HoleValidationReceipt(
             bindings=request.bindings,
             request_cid=request.content_id,
             candidate_cid=candidate.content_id,
@@ -1400,6 +1400,27 @@ class HoleResolutionValidator:
             reason_code=reason or HoleResolutionReason.CANDIDATE_PROPOSED,
             observation_ids=tuple(observations),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_cid
+                or result.hole_id
+                or result.candidate_cid
+                or "hole-candidate"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="hole_candidate_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def validate_resolution(
         self,

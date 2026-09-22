@@ -333,6 +333,26 @@ def validate_execution_trajectory_contract(
         }
         if not step_validation.issubset(set(outcome.validation_receipt_cids)):
             raise TrajectoryContractError("accepted outcome omits step validation evidence")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(trajectory, "content_id", "")
+            or trajectory.source_episode_cid
+            or trajectory.initial_abstract_state_cid
+            or "execution-trajectory"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="execution_trajectory_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return trajectory
 
 

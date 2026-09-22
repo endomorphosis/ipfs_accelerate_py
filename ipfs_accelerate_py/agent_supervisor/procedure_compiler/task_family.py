@@ -1108,6 +1108,21 @@ def validate_task_family_contract(
                 "known counterexample materially splits authority, effects, or validation"
             )
         raise TaskFamilyContractError("known counterexample invalidates the family boundary")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(family.content_id or family.name or "task-family-contract")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_contract_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return family
 
 

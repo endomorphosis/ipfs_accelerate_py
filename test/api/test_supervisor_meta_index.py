@@ -6689,6 +6689,36 @@ def test_mirror_resolved_paths_handoff_procedure_family_and_typed_goals(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_family_trajectory_candidate_scan_and_tool_certify(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("task_family_contract_validation", "family:1", "metadata", "record_cid"),
+        ("execution_trajectory_validation", "traj:1", "world_model", "record_cid"),
+        ("hole_candidate_validation", "hole:1", "proof_cache", "record_cid"),
+        ("plan_steer_scan_impact", "scan:1", "metadata", "record_cid"),
+        ("tool_translation_certify", "tool:1", "proof_cache", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
