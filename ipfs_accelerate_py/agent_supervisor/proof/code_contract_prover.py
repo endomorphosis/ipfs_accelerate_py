@@ -1668,13 +1668,36 @@ def validate_solver_portfolio(
     claim_digest = expected_claim_digest or compiled.claim_digest
     obligation_digest = expected_obligation_digest or compiled.obligation_digest
 
+    def _mirror_portfolio(result: ValidationReceipt) -> ValidationReceipt:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_digest
+                or result.obligation_digest
+                or result.claim_digest
+                or "solver-portfolio"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="solver_portfolio_validation",
+                record_ref=record_ref,
+                subject_kind="obligation_ref",
+                subject_ref=str(result.obligation_digest or record_ref),
+            )
+        except Exception:
+            pass
+        return result
+
     def _reject(
         reason: NonConclusiveReason,
         detail: str,
         *,
         status: ProveStatus = ProveStatus.INCONCLUSIVE,
     ) -> ValidationReceipt:
-        return ValidationReceipt(
+        return _mirror_portfolio(ValidationReceipt(
             disposition=ValidationDisposition.NON_CONCLUSIVE
             if status is ProveStatus.INCONCLUSIVE
             else ValidationDisposition.REJECTED,
@@ -1687,7 +1710,7 @@ def validate_solver_portfolio(
             required_assurance=required_assurance,
             derived_assurance=AssuranceLevel.UNVERIFIED,
             policy_id=policy_id,
-        )
+        ))
 
     # Binding checks (wrong theorem / stale identity).
     if claim_digest != compiled.claim_digest:
@@ -1823,7 +1846,7 @@ def validate_solver_portfolio(
         )
 
     if counterexamples:
-        return ValidationReceipt(
+        return _mirror_portfolio(ValidationReceipt(
             disposition=ValidationDisposition.ACCEPTED,
             status=ProveStatus.DISPROVED,
             reason=NonConclusiveReason.NONE,
@@ -1836,7 +1859,7 @@ def validate_solver_portfolio(
             derived_assurance=AssuranceLevel.SOLVER_CHECKED,
             policy_id=policy_id,
             evidence={"counterexample_backend": counterexamples[0].backend_id},
-        )
+        ))
 
     if authority_ids:
         if not AssuranceLevel.SOLVER_CHECKED.satisfies(required_assurance):
@@ -1844,7 +1867,7 @@ def validate_solver_portfolio(
                 NonConclusiveReason.POLICY_REJECTED,
                 "required assurance exceeds solver-checked portfolio",
             )
-        return ValidationReceipt(
+        return _mirror_portfolio(ValidationReceipt(
             disposition=ValidationDisposition.ACCEPTED,
             status=ProveStatus.PROVED,
             reason=NonConclusiveReason.NONE,
@@ -1857,7 +1880,7 @@ def validate_solver_portfolio(
             derived_assurance=AssuranceLevel.SOLVER_CHECKED,
             policy_id=policy_id,
             evidence={"authority_backends": [a.backend_id for a in attempts if a.attempt_id in authority_ids]},
-        )
+        ))
 
     # Non-authoritative candidates only → never proved.
     if any(item.effective_outcome is AttemptOutcome.UNAVAILABLE for item in attempts):
@@ -1867,7 +1890,7 @@ def validate_solver_portfolio(
             f"missing backends: {', '.join(sorted(set(missing)))}",
         )
     if any(item.effective_outcome is AttemptOutcome.CANCELLED for item in attempts) and not authority_ids:
-        return ValidationReceipt(
+        return _mirror_portfolio(ValidationReceipt(
             disposition=ValidationDisposition.NON_CONCLUSIVE,
             status=ProveStatus.CANCELLED,
             reason=NonConclusiveReason.CANCELLED,
@@ -1878,7 +1901,7 @@ def validate_solver_portfolio(
             required_assurance=required_assurance,
             derived_assurance=AssuranceLevel.UNVERIFIED,
             policy_id=policy_id,
-        )
+        ))
     if any(item.effective_outcome is AttemptOutcome.UNKNOWN for item in attempts):
         return _reject(NonConclusiveReason.UNKNOWN, "solver returned unknown")
 

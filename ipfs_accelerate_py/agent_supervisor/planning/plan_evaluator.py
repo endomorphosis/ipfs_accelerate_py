@@ -2230,6 +2230,27 @@ def validate_evidence_aware_plan_evaluation(
         raise PlanBranchValidationError(
             "evidence-aware plan evaluation does not match deterministic recomputation"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        selected = evaluation.selected
+        record_ref = str(
+            getattr(selected, "plan_id", "")
+            or getattr(getattr(selected, "candidate", None), "plan_id", "")
+            or evaluation.evaluator_version
+            or "evidence-aware-plan-eval"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="evidence_aware_plan_eval_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return evaluation
 
 
@@ -3254,4 +3275,25 @@ def validate_and_or_plan_evaluation(
         raise PlanBranchValidationError(
             "AND/OR evaluation does not match deterministic recomputation"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        selected = evaluation.selected
+        record_ref = str(
+            getattr(selected, "branch_id", "")
+            or getattr(getattr(selected, "branch", None), "branch_id", "")
+            or evaluation.evaluator_version
+            or "and-or-plan-eval"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="and_or_plan_eval_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return evaluation

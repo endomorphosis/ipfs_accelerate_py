@@ -2964,12 +2964,37 @@ def bind_provider_reply(
     path outside the write ceiling, or effect outside the allowed set.
     """
 
+    def _binding(**kwargs: Any) -> PacketReplyBinding:
+        result = PacketReplyBinding(**kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.binding_id
+                or result.packet_id
+                or result.context_cid
+                or result.reply_digest
+                or "provider-reply"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="delta_provider_reply_binding",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     try:
         cleaned = _reject_or_redact_secrets(
             _strip_noise(dict(reply)), reject=True
         )
     except DeltaTaskPacketAuthorityError:
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -2980,7 +3005,7 @@ def bind_provider_reply(
             reason="authority_claim_rejected",
         )
     except DeltaTaskPacketSecretError:
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -2993,7 +3018,7 @@ def bind_provider_reply(
     reply_digest = _content_digest(cleaned)
 
     if claimed_context_cid and claimed_context_cid != packet.context_cid:
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -3008,7 +3033,7 @@ def bind_provider_reply(
         claimed_effect_scope_digest
         and claimed_effect_scope_digest != packet.effect_scope.scope_digest
     ):
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -3024,7 +3049,7 @@ def bind_provider_reply(
         cleaned.get("context_cid") or cleaned.get("context_id") or ""
     ).strip()
     if nested_context and nested_context != packet.context_cid:
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -3037,7 +3062,7 @@ def bind_provider_reply(
 
     nested_packet = str(cleaned.get("packet_id") or "").strip()
     if nested_packet and nested_packet != packet.packet_id:
-        return PacketReplyBinding(
+        return _binding(
             binding_id="",
             packet_id=packet.packet_id,
             context_cid=packet.context_cid,
@@ -3056,7 +3081,7 @@ def bind_provider_reply(
     for path in paths:
         try:
             if not packet.effect_scope.permits_path(path):
-                return PacketReplyBinding(
+                return _binding(
                     binding_id="",
                     packet_id=packet.packet_id,
                     context_cid=packet.context_cid,
@@ -3067,7 +3092,7 @@ def bind_provider_reply(
                     reason="path_scope_escape",
                 )
         except DeltaTaskPacketError:
-            return PacketReplyBinding(
+            return _binding(
                 binding_id="",
                 packet_id=packet.packet_id,
                 context_cid=packet.context_cid,
@@ -3086,7 +3111,7 @@ def bind_provider_reply(
     for effect in effects:
         try:
             if not packet.effect_scope.permits_effect(effect):
-                return PacketReplyBinding(
+                return _binding(
                     binding_id="",
                     packet_id=packet.packet_id,
                     context_cid=packet.context_cid,
@@ -3097,7 +3122,7 @@ def bind_provider_reply(
                     reason="effect_scope_escape",
                 )
         except DeltaTaskPacketError:
-            return PacketReplyBinding(
+            return _binding(
                 binding_id="",
                 packet_id=packet.packet_id,
                 context_cid=packet.context_cid,
@@ -3111,7 +3136,7 @@ def bind_provider_reply(
     # Authority claims in the reply are never accepted as grants.
     for key in _PROVIDER_OMITTED_AUTHORITY_KEYS:
         if cleaned.get(key) is True:
-            return PacketReplyBinding(
+            return _binding(
                 binding_id="",
                 packet_id=packet.packet_id,
                 context_cid=packet.context_cid,
@@ -3122,7 +3147,7 @@ def bind_provider_reply(
                 reason="authority_claim_rejected",
             )
 
-    return PacketReplyBinding(
+    return _binding(
         binding_id="",
         packet_id=packet.packet_id,
         context_cid=packet.context_cid,

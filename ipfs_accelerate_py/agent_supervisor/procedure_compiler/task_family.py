@@ -450,6 +450,21 @@ class TaskFamilyBoundaryValidator:
                 "family does not declare complete boundary dimensions",
                 decision=decision,
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(family.content_id or family.name or "family-boundary")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="task_family_boundary_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return family
 
     def evaluate(
