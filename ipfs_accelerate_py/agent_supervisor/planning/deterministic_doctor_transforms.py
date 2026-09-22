@@ -1301,6 +1301,31 @@ class DoctorOperatorReceipt(CanonicalContract):
 
 
 @dataclass(frozen=True)
+def _mirror_doctor_operator(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        proposal = getattr(result, "proposal", None)
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or getattr(proposal, "content_id", "")
+            or getattr(proposal, "proposal_id", "")
+            or "doctor-operator"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_operator_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DoctorRepairOperatorRegistry(CanonicalContract):
     """Immutable closed registry of allowlisted doctor repair operators."""
 
@@ -1517,31 +1542,31 @@ class DoctorRepairOperatorRegistry(CanonicalContract):
             proposal, value_mapping=value_mapping, decision=decision
         )
         if reasons:
-            return DoctorOperatorReceipt(
+            return _mirror_doctor_operator(DoctorOperatorReceipt(
                 proposal=proposal,
                 disposition=DoctorRepairDisposition.ABSTAIN,
                 rejection_reasons=tuple(reason.value for reason in reasons),
                 postcondition_refs=proposal.postcondition_refs,
-            )
+            ))
         if not proposal.proof_admitted:
-            return DoctorOperatorReceipt(
+            return _mirror_doctor_operator(DoctorOperatorReceipt(
                 proposal=proposal,
                 disposition=DoctorRepairDisposition.ABSTAIN,
                 rejection_reasons=(
                     DoctorOperatorRejectionReason.PROOF_NOT_ADMITTED.value,
                 ),
                 postcondition_refs=proposal.postcondition_refs,
-            )
+            ))
         # Proof-admitted but body-free evaluate path never renders; materializers
         # must call render_admitted with the exact span under the bound hashes.
-        return DoctorOperatorReceipt(
+        return _mirror_doctor_operator(DoctorOperatorReceipt(
             proposal=proposal,
             disposition=DoctorRepairDisposition.ABSTAIN,
             rejection_reasons=(
                 DoctorOperatorRejectionReason.RENDER_REQUIRED.value,
             ),
             postcondition_refs=proposal.postcondition_refs,
-        )
+        ))
 
     def render_admitted(
         self,

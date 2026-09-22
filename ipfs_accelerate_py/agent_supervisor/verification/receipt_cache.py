@@ -406,6 +406,29 @@ def classify_candidate(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_receipt_cache_admit(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "key_id", "")
+            or getattr(result, "receipt_cid", "")
+            or "verification-receipt-cache"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="verification_receipt_cache_admit",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class VerificationReceiptCache:
     """Durable exact-key verification receipt cache over a store protocol."""
 
@@ -545,7 +568,7 @@ class VerificationReceiptCache:
 
         eligible = production_eligible(normalized)
         if require_production_eligible and not eligible:
-            return AdmitResult(
+            return _mirror_receipt_cache_admit(AdmitResult(
                 success=False,
                 key_id=normalized.key.key_id,
                 receipt_cid="",
@@ -553,7 +576,7 @@ class VerificationReceiptCache:
                 cas=None,
                 reason=REASON_ADMIT_REJECTED,
                 production_eligible=False,
-            )
+            ))
 
         body = normalized.to_record()
         try:
@@ -584,7 +607,7 @@ class VerificationReceiptCache:
             clock=self._clock,
         )
         if not cas.success:
-            return AdmitResult(
+            return _mirror_receipt_cache_admit(AdmitResult(
                 success=False,
                 key_id=normalized.key.key_id,
                 receipt_cid=put.cid,
@@ -592,14 +615,14 @@ class VerificationReceiptCache:
                 cas=cas,
                 reason=cas.reason or REASON_CAS_EXHAUSTED,
                 production_eligible=eligible,
-            )
+            ))
 
         try:
             self._store.record_access(put.cid, at_ms=_now_ms(self._clock))
         except ReceiptStoreError:
             pass
 
-        return AdmitResult(
+        return _mirror_receipt_cache_admit(AdmitResult(
             success=True,
             key_id=normalized.key.key_id,
             receipt_cid=put.cid,
@@ -607,7 +630,7 @@ class VerificationReceiptCache:
             cas=cas,
             reason=REASON_ADMITTED,
             production_eligible=eligible,
-        )
+        ))
 
     # -- invalidation / tombstones ------------------------------------------
 

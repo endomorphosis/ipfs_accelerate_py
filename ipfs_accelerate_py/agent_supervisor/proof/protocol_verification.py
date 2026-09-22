@@ -1454,6 +1454,29 @@ def _query_outcomes(
     return tuple(results)
 
 
+def _mirror_protocol_lane(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "model_identity", "")
+            or getattr(result, "model_id", "")
+            or "protocol-lane"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="protocol_lane_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProtocolToolAdapter:
     """Bounded adapter shared by Tamarin and ProVerif."""
 
@@ -1691,7 +1714,7 @@ class ProtocolToolAdapter:
         if not isinstance(cap, ProtocolToolCapability) or cap.tool is not self.tool:
             raise ProtocolValidationError("capability belongs to another tool")
         if not cap.available or cap.conformance_receipt is None:
-            return ProtocolLaneResult(
+            return _mirror_protocol_lane(ProtocolLaneResult(
                 model_id=model.model_id,
                 model_identity=model.content_id,
                 tool=self.tool,
@@ -1700,12 +1723,12 @@ class ProtocolToolAdapter:
                 reason=("protocol lane unavailable without a passing end-to-end model fixture"),
                 query_results=(),
                 capability_identity=cap.content_id,
-            )
+            ))
         executable = cap.executable_path
         assert executable is not None
         current_id = _executable_identity(Path(executable), self.max_executable_bytes)
         if current_id != cap.executable_identity:
-            return ProtocolLaneResult(
+            return _mirror_protocol_lane(ProtocolLaneResult(
                 model_id=model.model_id,
                 model_identity=model.content_id,
                 tool=self.tool,
@@ -1714,7 +1737,7 @@ class ProtocolToolAdapter:
                 reason="toolchain drifted after its conformance fixture",
                 query_results=(),
                 capability_identity=cap.content_id,
-            )
+            ))
 
         started = self.monotonic()
         source = self.render_model(model)
@@ -1785,7 +1808,7 @@ class ProtocolToolAdapter:
             duration_ms=duration_ms,
             reason=reason,
         )
-        return ProtocolLaneResult(
+        return _mirror_protocol_lane(ProtocolLaneResult(
             model_id=model.model_id,
             model_identity=model.content_id,
             tool=self.tool,
@@ -1795,7 +1818,7 @@ class ProtocolToolAdapter:
             query_results=query_results,
             capability_identity=cap.content_id,
             toolchain_receipt=receipt,
-        )
+        ))
 
 
 _TAMARIN_FIXTURE = """\

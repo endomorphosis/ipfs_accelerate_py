@@ -948,6 +948,30 @@ LocalChecker = Callable[
 ]
 
 
+def _mirror_mcp_proof(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        record_ref = str(
+            getattr(result, "obligation_id", "")
+            or getattr(receipt, "receipt_id", "")
+            or "mcp-contract-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcp_contract_proof",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class McpContractProver:
     """Route and execute one MCP obligation without optional eager imports."""
 
@@ -1595,20 +1619,20 @@ class McpContractProver:
                 budget=budget,
                 reason_codes=reasons,
             )
-            return McpContractProofResult(
+            return _mirror_mcp_proof(McpContractProofResult(
                 normalized.obligation_id,
                 ContractProofOutcome.UNSUPPORTED,
                 route,
                 reasons,
                 receipt,
                 fallback_used=True,
-            )
+            ))
         if route in {
             ContractProofRoute.LOCAL_GRAPH,
             ContractProofRoute.LOCAL_SCHEMA,
         }:
-            return self._local(normalized, route, observations, budget)
-        return self._provider(normalized, route, budget)
+            return _mirror_mcp_proof(self._local(normalized, route, observations, budget))
+        return _mirror_mcp_proof(self._provider(normalized, route, budget))
 
     execute = prove
     prove_obligation = prove

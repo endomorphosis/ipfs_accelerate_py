@@ -3047,6 +3047,25 @@ class ResidualHybridAdmission(CanonicalContract):
         }
 
 
+def _mirror_residual_hybrid(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "packet_id", "") or "residual-hybrid")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_hybrid_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ResidualHybridRepairService:
     """Separately named residual-only hybrid repair admission surface.
 
@@ -3089,12 +3108,12 @@ class ResidualHybridRepairService:
                 token_count=self._tokens,
                 reason_codes=(ProgramRepairReason.BOUNDS_EXCEEDED.value,),
             )
-            return ResidualHybridAdmission(
+            return _mirror_residual_hybrid(ResidualHybridAdmission(
                 packet_id=packet.packet_id,
                 disposition=ResidualHybridDisposition.REJECTED,
                 reason_codes=(ProgramRepairReason.BOUNDS_EXCEEDED.value,),
                 usage=usage,
-            )
+            ))
         if self._tokens > self.bounds.max_hybrid_tokens:
             usage = HybridUsageReceipt(
                 packet_id=packet.packet_id,
@@ -3103,12 +3122,12 @@ class ResidualHybridRepairService:
                 token_count=self._tokens,
                 reason_codes=(ProgramRepairReason.BOUNDS_EXCEEDED.value,),
             )
-            return ResidualHybridAdmission(
+            return _mirror_residual_hybrid(ResidualHybridAdmission(
                 packet_id=packet.packet_id,
                 disposition=ResidualHybridDisposition.REJECTED,
                 reason_codes=(ProgramRepairReason.BOUNDS_EXCEEDED.value,),
                 usage=usage,
-            )
+            ))
 
         if isinstance(proposal, str):
             try:
@@ -3162,12 +3181,12 @@ class ResidualHybridRepairService:
                     :MAX_REASON_CODES
                 ],
             )
-            return ResidualHybridAdmission(
+            return _mirror_residual_hybrid(ResidualHybridAdmission(
                 packet_id=packet.packet_id,
                 disposition=ResidualHybridDisposition.REJECTED,
                 reason_codes=tuple(dict.fromkeys(reasons))[:MAX_REASON_CODES],
                 usage=usage,
-            )
+            ))
 
         usage = HybridUsageReceipt(
             packet_id=packet.packet_id,
@@ -3177,14 +3196,14 @@ class ResidualHybridRepairService:
             reason_codes=(ProgramRepairReason.HYBRID_ADMITTED.value,),
             syntax_digest=_sha256_text(syntax),
         )
-        return ResidualHybridAdmission(
+        return _mirror_residual_hybrid(ResidualHybridAdmission(
             packet_id=packet.packet_id,
             disposition=ResidualHybridDisposition.ADMITTED,
             reason_codes=(ProgramRepairReason.HYBRID_ADMITTED.value,),
             syntax=syntax,
             syntax_digest=_sha256_text(syntax),
             usage=usage,
-        )
+        ))
 
 
 # ---------------------------------------------------------------------------
