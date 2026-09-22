@@ -1156,7 +1156,23 @@ def check_documentation_claims(
 
     claims = parse_controlled_claims(records, default_mode=default_mode)
     results = tuple(evaluate_claim(claim) for claim in claims)
-    return DocsClaimsReport(claims=claims, results=results)
+    result = DocsClaimsReport(claims=claims, results=results)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.task_id or result.goal_id or "documentation-claims")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="documentation_claims",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def claim_ir_coverage() -> dict[str, ClaimIRRequirement]:

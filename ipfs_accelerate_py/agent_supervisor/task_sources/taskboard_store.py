@@ -1457,6 +1457,28 @@ class TaskboardStore:
             watcher.close()
 
     def check_integrity(self) -> TaskboardIntegrityReport:
+        def _mirror(report: TaskboardIntegrityReport) -> TaskboardIntegrityReport:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    report.board_revision
+                    or (report.reason_codes[0] if report.reason_codes else "")
+                    or "taskboard-integrity"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="taskboard_integrity",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return report
+
         try:
             snapshot = self.snapshot()
         except (OSError, TypeError, ValueError) as exc:
@@ -1465,15 +1487,19 @@ class TaskboardStore:
                 "_",
                 str(exc).strip().lower(),
             ).strip("_")
-            return TaskboardIntegrityReport(
-                valid=False,
-                reason_codes=(reason or type(exc).__name__.lower(),),
+            return _mirror(
+                TaskboardIntegrityReport(
+                    valid=False,
+                    reason_codes=(reason or type(exc).__name__.lower(),),
+                )
             )
-        return TaskboardIntegrityReport(
-            valid=True,
-            board_revision=snapshot.board_revision,
-            task_count=snapshot.task_count,
-            plan_root=snapshot.plan_root,
+        return _mirror(
+            TaskboardIntegrityReport(
+                valid=True,
+                board_revision=snapshot.board_revision,
+                task_count=snapshot.task_count,
+                plan_root=snapshot.plan_root,
+            )
         )
 
     integrity = check_integrity

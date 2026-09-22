@@ -7577,6 +7577,34 @@ def test_mirror_host_model_gui_and_doctor_report(tmp_path, monkeypatch) -> None:
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_docs_health_integrity_and_lane_pid(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("documentation_claims", "task:1", "metadata", "task_id"),
+        ("daemon_health", "path:1", "metadata", "path"),
+        ("legal_parser_health", "path:2", "metadata", "path"),
+        ("taskboard_integrity", "rev:1", "metadata", "record_cid"),
+        ("lane_pid_check", "path:3", "metadata", "path"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

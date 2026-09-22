@@ -1403,6 +1403,25 @@ def _manifest_master_alive(
     return False
 
 
+def _mirror_lane_pid(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("pid_path") or result.get("pid") or "lane-pid")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lane_pid_check",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     """Check if a lane's supervisor process is alive by its PID file."""
     candidates = (
@@ -1428,11 +1447,11 @@ def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
             if pid_alive(pid):
                 result["alive"] = True
                 result.pop("reason", None)
-                return result
+                return _mirror_lane_pid(result)
             result["reason"] = "process_dead"
         except (ValueError, OSError) as exc:
             result["reason"] = f"pid_read_error: {exc}"
-    return result
+    return _mirror_lane_pid(result)
 
 
 def check_lane_heartbeat(

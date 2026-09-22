@@ -1163,7 +1163,27 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
         "last_agentic_maintenance_reason": supervisor.get("last_agentic_maintenance_reason"),
         "last_agentic_maintenance_log_path": supervisor.get("last_agentic_maintenance_log_path"),
     }
-    return DaemonHealth(payload=payload, exit_code=0 if alive else 1)
+    result = DaemonHealth(payload=payload, exit_code=0 if alive else 1)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("task_board_path")
+            or payload.get("agentic_state_path")
+            or "daemon-health"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="daemon_health",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _merged_launch_env(spec: ManagedDaemonSpec, extra_env: Optional[Mapping[str, str]] = None) -> Dict[str, str]:

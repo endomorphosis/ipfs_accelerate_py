@@ -377,6 +377,25 @@ def check_legal_parser_health(
         "current_status_path": spec.repo_relative(spec.status_path),
         "supervisor_status_path": spec.repo_relative(spec.supervisor_status_path),
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            payload.get("current_status_path")
+            or payload.get("supervisor_status_path")
+            or "legal-parser-health"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legal_parser_health",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return payload
 
 
