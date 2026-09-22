@@ -672,8 +672,23 @@ class DAGCompactor:
 
         event_cids = [e.get("cid", "") for e in events]
         computed_root, _ = build_merkle_tree(event_cids)
+        accepted = computed_root == proof.merkle_root
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
 
-        return computed_root == proof.merkle_root
+            record_ref = str(proof.merkle_root or epoch_id or "cold-epoch")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="cold_epoch_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     def find_epoch_for_cid(self, cid: str) -> Optional[int]:
         """Find which cold epoch (if any) contains a given CID.

@@ -998,7 +998,23 @@ class HermeticTestOnlyRecursiveBackend:
         if artifact.public_input_digest != material.public_input_digest():
             return False
         expected = self._child_mac(material)
-        return hmac.compare_digest(artifact.proof_bytes, expected)
+        accepted = hmac.compare_digest(artifact.proof_bytes, expected)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(artifact.circuit_id or artifact.public_input_digest or "recursion-child")
+            mirror_work_record(
+                catalog_kind="proof_certificate",
+                record_kind="recursion_child_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     def prove_recursive(
         self,
@@ -1048,7 +1064,23 @@ class HermeticTestOnlyRecursiveBackend:
             + b"recursive",
             hashlib.sha256,
         ).digest()
-        return hmac.compare_digest(artifact.proof_bytes, expected)
+        accepted = hmac.compare_digest(artifact.proof_bytes, expected)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(artifact.child_root or artifact.circuit_id or "recursion-aggregate")
+            mirror_work_record(
+                catalog_kind="proof_certificate",
+                record_kind="recursion_aggregate_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
 
 def _module_spec_present(module: str) -> bool:

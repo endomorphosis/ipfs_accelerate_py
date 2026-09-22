@@ -2748,7 +2748,28 @@ class PlannerDoctorLiveBenchmark:
             telemetry_receipt_cid=arm_receipt.telemetry_receipt_cid,
             mount_receipt_cid=arm_receipt.mount_receipt_cid,
         )
-        return self._quality_oracle.evaluate(observation)
+        result = self._quality_oracle.evaluate(observation)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "content_id", "")
+                or getattr(observation, "case_id", "")
+                or getattr(arm_receipt, "arm_id", "")
+                or "live-oracle"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="live_benchmark_oracle",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def run_pair(
         self,

@@ -643,7 +643,28 @@ class SemanticCompressionGovernor:
     ) -> Any:
         fn = self.resolve(name)
         _reject_unknown_params(fn, args, kwargs, context=name)
-        return fn(*args, **dict(kwargs))
+        result = fn(*args, **dict(kwargs))
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "content_id", "")
+                or getattr(result, "receipt_id", "")
+                or name
+                or "governor-api"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="governor_api_call",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # -- closed command dispatch --------------------------------------------
 

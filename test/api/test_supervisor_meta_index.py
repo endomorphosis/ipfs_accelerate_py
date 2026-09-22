@@ -5835,6 +5835,42 @@ def test_mirror_rollout_mutation_consensus_and_parser_surfaces(tmp_path, monkeyp
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_federation_trust_oracle_and_certificate_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("federation_delegation_chain", "grant:1", "metadata", "record_cid"),
+        ("recursion_child_verification", "circuit:child", "proof_certificate", "record_cid"),
+        ("recursion_aggregate_verification", "circuit:recursive", "proof_certificate", "record_cid"),
+        ("cold_epoch_verification", "epoch:1", "metadata", "record_cid"),
+        ("mutation_case_verification", "template:1", "proof_cache", "record_cid"),
+        ("governor_api_call", "evaluate_context_sufficiency", "metadata", "record_cid"),
+        ("trust_decision", "vk+pk", "proof_certificate", "key_id"),
+        ("live_benchmark_oracle", "case:live", "metadata", "record_cid"),
+        ("quality_oracle_adversarial", "adv:1", "metadata", "record_cid"),
+        ("quality_oracle_ablation", "ablation:1", "metadata", "record_cid"),
+        ("logic_guided_proposal_disposition", "packet:1", "metadata", "record_cid"),
+        ("local_certificate_verification", "cert:1", "proof_certificate", "record_cid"),
+        ("zk_backend_health", "groth16", "proof_certificate", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

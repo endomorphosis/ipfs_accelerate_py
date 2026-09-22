@@ -1275,22 +1275,44 @@ class IpfsDatasetsZkAttestation:
     ) -> BackendHealthReport:
         selected = selection or self.select_backend(selected_at=evaluated_at)
         if selected.simulated or not selected.available:
-            return evaluate_backend_health(
+            result = evaluate_backend_health(
                 selected.setup.to_backend_policy(),
                 configured=selected.setup.configured,
                 available=False,
                 outcomes={},
                 evaluated_at=evaluated_at or _utc_now(),
             )
-        return run_datasets_zk_backend_self_tests(
-            selected.setup,
-            available=selected.available,
-            evaluated_at=evaluated_at,
-            cases=cases,
-            prover=self._prover,
-            verifier=self._verifier,
-            secret_probes=self._secret_probes,
-        )
+        else:
+            result = run_datasets_zk_backend_self_tests(
+                selected.setup,
+                available=selected.available,
+                evaluated_at=evaluated_at,
+                cases=cases,
+                prover=self._prover,
+                verifier=self._verifier,
+                secret_probes=self._secret_probes,
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "backend_family", "")
+                or getattr(selected, "backend_family", "")
+                or getattr(selected.setup, "backend_family", "")
+                or "zk-backend-health"
+            )
+            mirror_work_record(
+                catalog_kind="proof_certificate",
+                record_kind="zk_backend_health",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def _typed_result(
         self,

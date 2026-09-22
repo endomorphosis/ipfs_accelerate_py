@@ -462,10 +462,26 @@ class ProofObligationTemplate:
         return result if isinstance(result, bool) else False
 
     def verify_mutation_cases(self) -> dict[str, bool]:
-        return {
+        result = {
             case.case_id: self.evaluate(**case.arguments) is case.expected
             for case in self.mutation_cases
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(getattr(self, "content_id", "") or getattr(self, "semantic_hash", "") or "mutation-cases")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="mutation_case_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def to_dict(self) -> dict[str, Any]:
         payload = self._semantic_payload()

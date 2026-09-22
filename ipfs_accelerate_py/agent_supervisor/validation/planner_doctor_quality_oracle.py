@@ -2850,7 +2850,7 @@ class PlannerDoctorQualityOracle:
                 floor_violations.append(key)
         matched = _disposition_matches(target.expected_disposition, observed)
         passed = matched and not floor_violations
-        return {
+        result = {
             "schema": ADVERSARIAL_CASE_SCHEMA,
             "adversarial_id": target.adversarial_id,
             "family": target.family.value,
@@ -2860,6 +2860,22 @@ class PlannerDoctorQualityOracle:
             "passed": passed,
             "promotion_eligible": False,
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.get("adversarial_id") or "adversarial-oracle")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="quality_oracle_adversarial",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def evaluate_ablation_delta(
         self,
@@ -2882,7 +2898,7 @@ class PlannerDoctorQualityOracle:
         deltas: dict[str, int] = {}
         for name in sorted(set(ref_map) | set(abl_map)):
             deltas[name] = int(abl_map.get(name, 0)) - int(ref_map.get(name, 0))
-        return {
+        result = {
             "schema": QUALITY_ORACLE_ABLATION_SCHEMA,
             "interface": PLANNER_DOCTOR_ABLATION_INTERFACE,
             "ablation_id": ablation.ablation_id,
@@ -2893,6 +2909,22 @@ class PlannerDoctorQualityOracle:
             "reference_disposition": reference.disposition.value,
             "ablated_disposition": ablated.disposition.value,
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.get("ablation_id") or "oracle-ablation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="quality_oracle_ablation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def create_planner_doctor_quality_oracle(

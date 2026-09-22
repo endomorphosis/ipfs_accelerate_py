@@ -576,7 +576,7 @@ def _accept(
     message: str,
     details: Mapping[str, Any] | None = None,
 ) -> TrustDecision:
-    return TrustDecision(
+    result = TrustDecision(
         outcome=TrustOutcome.ACCEPTED,
         accepted=True,
         reason_code=None,
@@ -586,6 +586,22 @@ def _accept(
         evidence_subset=evidence_subset,
         details=dict(details or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.subject_id or result.subject_kind or "trust-accept")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="trust_decision",
+            record_ref=record_ref,
+            subject_kind="key_id" if result.subject_kind in {"key_pair", "verification_key", "proving_key"} else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _reject(
@@ -597,7 +613,7 @@ def _reject(
     message: str,
     details: Mapping[str, Any] | None = None,
 ) -> TrustDecision:
-    return TrustDecision(
+    result = TrustDecision(
         outcome=TrustOutcome.REJECTED,
         accepted=False,
         reason_code=reason.value,
@@ -607,6 +623,22 @@ def _reject(
         evidence_subset=evidence_subset,
         details=dict(details or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.subject_id or result.reason_code or result.subject_kind or "trust-reject")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="trust_decision",
+            record_ref=record_ref,
+            subject_kind="key_id" if result.subject_kind in {"key_pair", "verification_key", "proving_key"} else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class VerificationKeyRegistry:

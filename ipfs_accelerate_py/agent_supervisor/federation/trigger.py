@@ -408,6 +408,21 @@ class HmacDelegationAuthority:
             previous = grant
         if grants[-1].subject_did != request.caller_did:
             raise DelegationRejected("delegation terminal subject is not the caller")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(grants[-1].grant_id or request.caller_did or "federation-delegation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="federation_delegation_chain",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return grants
 
 

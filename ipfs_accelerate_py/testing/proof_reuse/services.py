@@ -3675,12 +3675,34 @@ class LazyRealTestCertificateIssuer:
                     )
                 },
             )
-            return verifier_module.verify_test_execution_certificate_v2(
+            result = verifier_module.verify_test_execution_certificate_v2(
                 certificate,
                 binding,
                 PinnedGroth16NativeVerifier(),
                 expected_candidate_context_cid=request.candidate_context_cid,
             )
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    getattr(certificate, "get", lambda *_: "")("certificate_id")
+                    if isinstance(certificate, Mapping)
+                    else getattr(certificate, "certificate_id", "")
+                    or request.receipt_cid
+                    or "local-certificate"
+                )
+                mirror_work_record(
+                    catalog_kind="proof_certificate",
+                    record_kind="local_certificate_verification",
+                    record_ref=str(record_ref or "local-certificate"),
+                    subject_kind="record_cid",
+                    subject_ref=str(record_ref or "local-certificate"),
+                )
+            except Exception:
+                pass
+            return result
         except Exception:
             return False
 

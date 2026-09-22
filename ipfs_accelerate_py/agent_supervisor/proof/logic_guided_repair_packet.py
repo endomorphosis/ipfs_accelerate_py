@@ -1277,7 +1277,7 @@ class LogicGuidedRepairPacketMaterializer:
             ProposalFailureKind.UNTRUSTED: MaterializationReason.NO_WRITE,
             ProposalFailureKind.ADMISSION_REJECTED: MaterializationReason.NO_WRITE,
         }
-        return LogicGuidedProposalDisposition(
+        result = LogicGuidedProposalDisposition(
             disposition=MaterializationDisposition.NO_WRITE,
             failure_kind=kind,
             write_performed=False,
@@ -1290,6 +1290,23 @@ class LogicGuidedRepairPacketMaterializer:
             writer_lease_id="",
             overlay_packet_id=overlay.packet_id if overlay is not None else "",
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            failure = result.failure_kind.value if result.failure_kind is not None else ""
+            record_ref = str(result.overlay_packet_id or failure or "proposal-disposition")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="logic_guided_proposal_disposition",
+                record_ref=str(record_ref or "proposal-disposition"),
+                subject_kind="record_cid",
+                subject_ref=str(record_ref or "proposal-disposition"),
+            )
+        except Exception:
+            pass
+        return result
 
     def admit_provider_proposal(
         self,
@@ -1379,7 +1396,7 @@ class LogicGuidedRepairPacketMaterializer:
 
         # Successful parse/scope check still creates no write from this module —
         # write authority remains on the existing RPR lease/router path.
-        return LogicGuidedProposalDisposition(
+        result = LogicGuidedProposalDisposition(
             disposition=MaterializationDisposition.MODEL_REQUIRED,
             failure_kind=None,
             write_performed=False,
@@ -1392,6 +1409,22 @@ class LogicGuidedRepairPacketMaterializer:
             writer_lease_id="",
             overlay_packet_id=overlay.packet_id,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.overlay_packet_id or "proposal-admitted")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="logic_guided_proposal_disposition",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # ------------------------------------------------------------------
     # Internals
