@@ -2263,6 +2263,21 @@ class LogicRepairEndToEnd:
             "board_drain": drain, "mutation_authorized": False, "completion_authoritative": False,
         }
         payload["report_id"] = content_identity({k: v for k, v in payload.items() if k != "report_id"})
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(payload.get("report_id") or payload.get("task_id") or TASK_ID or "logic-repair-corpus")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="logic_repair_seeded_corpus",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return payload
 
 

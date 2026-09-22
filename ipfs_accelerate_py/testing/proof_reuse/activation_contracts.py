@@ -2260,6 +2260,33 @@ class RuntimeReuseDisposition(CanonicalContract):
         return result
 
 
+def _mirror_reuse_disposition(
+    result: RuntimeReuseDisposition,
+) -> RuntimeReuseDisposition:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "certificate_cid", "")
+            or getattr(result, "receipt_cid", "")
+            or getattr(result, "candidate_context_cid", "")
+            or getattr(result, "reason_code", "")
+            or "runtime-reuse-disposition"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_reuse_disposition",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def disposition_run(
     reason_code: str,
     *,
@@ -2268,14 +2295,16 @@ def disposition_run(
     receipt_cid: str = "",
     candidate_context_cid: str = "",
 ) -> RuntimeReuseDisposition:
-    return RuntimeReuseDisposition(
-        action=RuntimeReuseAction.RUN,
-        reason_code=reason_code,
-        artifact_role=artifact_role,
-        receipt_cid=receipt_cid,
-        candidate_context_cid=candidate_context_cid,
-        collection_failed=False,
-        diagnostics=diagnostics or {},
+    return _mirror_reuse_disposition(
+        RuntimeReuseDisposition(
+            action=RuntimeReuseAction.RUN,
+            reason_code=reason_code,
+            artifact_role=artifact_role,
+            receipt_cid=receipt_cid,
+            candidate_context_cid=candidate_context_cid,
+            collection_failed=False,
+            diagnostics=diagnostics or {},
+        )
     )
 
 
@@ -2286,14 +2315,16 @@ def disposition_deferred(
     candidate_context_cid: str = "",
     diagnostics: Mapping[str, Any] | None = None,
 ) -> RuntimeReuseDisposition:
-    return RuntimeReuseDisposition(
-        action=RuntimeReuseAction.DEFERRED,
-        reason_code=reason_code,
-        artifact_role=ArtifactRole.DEFERRED_PROOF_REQUEST,
-        receipt_cid=receipt_cid,
-        candidate_context_cid=candidate_context_cid,
-        collection_failed=False,
-        diagnostics=diagnostics or {},
+    return _mirror_reuse_disposition(
+        RuntimeReuseDisposition(
+            action=RuntimeReuseAction.DEFERRED,
+            reason_code=reason_code,
+            artifact_role=ArtifactRole.DEFERRED_PROOF_REQUEST,
+            receipt_cid=receipt_cid,
+            candidate_context_cid=candidate_context_cid,
+            collection_failed=False,
+            diagnostics=diagnostics or {},
+        )
     )
 
 
@@ -2305,15 +2336,17 @@ def disposition_skip(
     reason_code: str = "proof_cache_hit",
     diagnostics: Mapping[str, Any] | None = None,
 ) -> RuntimeReuseDisposition:
-    return RuntimeReuseDisposition(
-        action=RuntimeReuseAction.SKIP,
-        reason_code=reason_code,
-        artifact_role=ArtifactRole.AUTHORITATIVE_CERTIFICATE,
-        certificate_cid=certificate_cid,
-        receipt_cid=receipt_cid,
-        candidate_context_cid=candidate_context_cid,
-        collection_failed=False,
-        diagnostics=diagnostics or {},
+    return _mirror_reuse_disposition(
+        RuntimeReuseDisposition(
+            action=RuntimeReuseAction.SKIP,
+            reason_code=reason_code,
+            artifact_role=ArtifactRole.AUTHORITATIVE_CERTIFICATE,
+            certificate_cid=certificate_cid,
+            receipt_cid=receipt_cid,
+            candidate_context_cid=candidate_context_cid,
+            collection_failed=False,
+            diagnostics=diagnostics or {},
+        )
     )
 
 

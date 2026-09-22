@@ -533,7 +533,23 @@ class RepositorySnapshot:
             bounds=self.bounds,
             verify_after_hash=False,
         )
-        if current.snapshot_id != self.snapshot_id:
+        unchanged = current.snapshot_id == self.snapshot_id
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.snapshot_id or current.snapshot_id or "repository-snapshot")
+            mirror_work_record(
+                catalog_kind="filesystem_mtime",
+                record_kind="repository_snapshot_rehash",
+                record_ref=record_ref,
+                subject_kind="tree_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        if not unchanged:
             raise RepositoryRaceError(
                 "repository changed after its behavior snapshot was hashed"
             )

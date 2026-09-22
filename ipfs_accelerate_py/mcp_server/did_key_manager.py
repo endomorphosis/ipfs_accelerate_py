@@ -165,7 +165,23 @@ class DIDKeyManager:
             audience=self._did,
             required_capabilities=req_caps,
         )
-        return isinstance(result, _ucan_lib.VerifyResultOk)
+        accepted = isinstance(result, _ucan_lib.VerifyResultOk)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self._did or token or "ucan-delegation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="ucan_delegation_verification",
+                record_ref=record_ref,
+                subject_kind="key_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     async def mint_self_delegation(
         self,
@@ -220,6 +236,7 @@ class DIDKeyManager:
         signed_token: str,
         required_capabilities: Optional[Sequence[Tuple[str, str]]] = None,
     ) -> bool:
+        accepted = False
         if signed_token.startswith("stub:"):
             import base64
             import json as _json
@@ -227,15 +244,12 @@ class DIDKeyManager:
             try:
                 b64 = signed_token[5:] + "=="
                 _json.loads(base64.urlsafe_b64decode(b64).decode())
-                return True
+                accepted = True
             except Exception:
-                return False
-
-        if not _UCAN_AVAILABLE or self._keypair is None:
-            return False
-
-        req_caps: List[Any] = []
-        if required_capabilities:
+                accepted = False
+        elif not _UCAN_AVAILABLE or self._keypair is None:
+            accepted = False
+        elif required_capabilities:
             req_caps = [
                 _ucan_lib.RequiredCapability(
                     capability=_ucan_lib.Capability(with_=res, can=ability),
@@ -248,13 +262,31 @@ class DIDKeyManager:
                 audience=self._did,
                 required_capabilities=req_caps,
             )
-            return isinstance(result, _ucan_lib.VerifyResultOk)
-
+            accepted = isinstance(result, _ucan_lib.VerifyResultOk)
+        else:
+            try:
+                await _ucan_lib.verify(
+                    signed_token, audience=self._did, required_capabilities=[]
+                )
+                accepted = True
+            except Exception:
+                accepted = False
         try:
-            await _ucan_lib.verify(signed_token, audience=self._did, required_capabilities=[])
-            return True
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self._did or signed_token or "ucan-token")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="ucan_token_verification",
+                record_ref=record_ref,
+                subject_kind="key_id",
+                subject_ref=record_ref,
+            )
         except Exception:
-            return False
+            pass
+        return accepted
 
     def info(self) -> Dict[str, Any]:
         return {

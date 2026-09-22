@@ -158,7 +158,7 @@ def evaluate_provider_gate(
         skip = not authorized
         reason = result.reason_code
 
-    return ProviderGateDecision(
+    decision = ProviderGateDecision(
         disposition=disposition,
         provider_authorized=authorized,
         provider_hook_count=int(result.provider_hook_count),
@@ -168,6 +168,28 @@ def evaluate_provider_gate(
         residual_packet_cid=result.receipt.residual_packet_cid,
         analytical_candidate_count=int(result.analytical_candidate_count),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            decision.receipt_cid
+            or decision.residual_packet_cid
+            or task_cid
+            or decision.reason_code
+            or "provider-gate"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_gate",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
 
 
 def assert_provider_dispatch_allowed(decision: ProviderGateDecision) -> None:

@@ -1618,8 +1618,30 @@ class StaticCurrentContextProvider:
         component_bytes: Mapping[str, bytes],
     ) -> CurrentExecutionContext | None:
         if self.current.locator_cid and self.current.locator_cid != locator_cid:
-            return None
-        return self.current
+            result = None
+        else:
+            result = self.current
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                locator_cid
+                or getattr(result, "locator_cid", "")
+                or getattr(candidate, "candidate_context_id", "")
+                or "static-current-context"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="static_current_context",
+                record_ref=record_ref,
+                subject_kind="content_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def map_revalidation_reason_to_reuse_code(reason: RevalidationReason | str) -> str:

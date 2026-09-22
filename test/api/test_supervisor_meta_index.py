@@ -5871,6 +5871,43 @@ def test_mirror_federation_trust_oracle_and_certificate_surfaces(tmp_path, monke
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_snapshot_reuse_kernel_and_continuation_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("repository_snapshot_rehash", "snap:1", "filesystem_mtime", "tree_id"),
+        ("runtime_reuse_disposition", "cert:1", "metadata", "record_cid"),
+        ("static_current_context", "locator:1", "metadata", "content_cid"),
+        ("logic_repair_seeded_corpus", "LPR-020", "metadata", "task_id"),
+        ("ucan_delegation_verification", "did:key:z1", "metadata", "key_id"),
+        ("ucan_token_verification", "did:key:z1", "metadata", "key_id"),
+        ("interruption_continuation_admission", "receipt:1", "metadata", "task_id"),
+        ("post_merge_validation_evidence", "task:1", "metadata", "task_id"),
+        ("proof_test_merge_admission", "task:1", "metadata", "task_id"),
+        ("pre_implementation_kernel", "kernel:1", "metadata", "task_id"),
+        ("provider_gate", "gate:1", "metadata", "task_id"),
+        ("failure_replan", "replan:1", "metadata", "record_cid"),
+        ("database_rollout_promotion_gate", "canary", "metadata", "record_cid"),
+        ("auth_request_verification", "key:1", "metadata", "key_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

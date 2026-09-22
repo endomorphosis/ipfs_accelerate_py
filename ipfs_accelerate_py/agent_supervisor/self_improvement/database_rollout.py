@@ -581,7 +581,28 @@ class DatabaseRollout:
         if self.policy.allow_legacy_dual_write:
             denials.append(DenialReason.DUAL_WRITE_FORBIDDEN.value)
 
-        return (not denials, tuple(denials))
+        allowed = not denials
+        denial_reasons = tuple(denials)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(target, "value", "")
+                or (denial_reasons[0] if denial_reasons else "")
+                or "database-rollout-promotion"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="database_rollout_promotion_gate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return (allowed, denial_reasons)
 
     def transition(
         self,

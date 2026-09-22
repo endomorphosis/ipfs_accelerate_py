@@ -265,6 +265,32 @@ class KernelEvaluationResult:
         return self.receipt.authorizes_provider
 
 
+def _mirror_kernel_result(*args: Any, **kwargs: Any) -> KernelEvaluationResult:
+    result = KernelEvaluationResult(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = result.receipt
+        record_ref = str(
+            getattr(receipt, "content_id", "")
+            or getattr(receipt, "task_cid", "")
+            or result.reason_code
+            or "pre-implementation-kernel"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="pre_implementation_kernel",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Kernel
 # ---------------------------------------------------------------------------
@@ -303,7 +329,7 @@ class PreImplementationKernel:
                 disposition=ImplementationDisposition.DEFER_CAPABILITY,
                 reason_code=capability,
             )
-            return KernelEvaluationResult(
+            return _mirror_kernel_result(
                 receipt=receipt,
                 provider_hook_count=0,
                 analytical_candidate_count=0,
@@ -325,7 +351,7 @@ class PreImplementationKernel:
                 reason_code=winner.reason_code or REASON_ANALYTICAL_UNIQUE_MAPPING,
                 evidence_cids=evidence,
             )
-            return KernelEvaluationResult(
+            return _mirror_kernel_result(
                 receipt=receipt,
                 provider_hook_count=0,
                 analytical_candidate_count=len(candidates),
@@ -341,7 +367,7 @@ class PreImplementationKernel:
                 reason_code=REASON_AMBIGUOUS_CANDIDATES,
                 evidence_cids=normalized.evidence_cids,
             )
-            return KernelEvaluationResult(
+            return _mirror_kernel_result(
                 receipt=receipt,
                 provider_hook_count=0,
                 analytical_candidate_count=len(candidates),
@@ -357,7 +383,7 @@ class PreImplementationKernel:
                     reason_code=authority_reason,
                     evidence_cids=normalized.evidence_cids,
                 )
-                return KernelEvaluationResult(
+                return _mirror_kernel_result(
                     receipt=receipt,
                     provider_hook_count=0,
                     analytical_candidate_count=len(candidates),
@@ -380,7 +406,7 @@ class PreImplementationKernel:
                     )
                 ),
             )
-            return KernelEvaluationResult(
+            return _mirror_kernel_result(
                 receipt=receipt,
                 provider_hook_count=0,
                 analytical_candidate_count=len(candidates),
@@ -395,7 +421,7 @@ class PreImplementationKernel:
             reason_code=REASON_NO_ANALYTICAL_CLOSE,
             evidence_cids=normalized.evidence_cids,
         )
-        return KernelEvaluationResult(
+        return _mirror_kernel_result(
             receipt=receipt,
             provider_hook_count=0,
             analytical_candidate_count=len(candidates),

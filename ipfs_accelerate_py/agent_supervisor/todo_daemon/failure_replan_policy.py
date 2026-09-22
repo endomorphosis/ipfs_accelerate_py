@@ -1428,7 +1428,7 @@ class FailureReplanPolicy:
         residual_packet_sealed: bool,
         notes: tuple[str, ...],
     ) -> FailureReplanResult:
-        return FailureReplanResult(
+        result = FailureReplanResult(
             outcome=outcome,
             reason_code=reason_code,
             disposition=disposition,
@@ -1446,6 +1446,28 @@ class FailureReplanPolicy:
             free_reprompt_allowed=False,
             notes=notes,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            packet = result.residual_packet
+            record_ref = str(
+                getattr(packet, "content_id", "")
+                or result.reason_code
+                or getattr(result.outcome, "value", "")
+                or "failure-replan"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="failure_replan",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def build_failure_replan_policy(

@@ -217,6 +217,30 @@ def build_post_merge_validation_evidence(
     return evidence
 
 
+def _mirror_post_merge_evidence(
+    ok: bool,
+    reasons: tuple[str, ...],
+    *,
+    task_id: str = "",
+) -> tuple[bool, tuple[str, ...]]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_id or (reasons[0] if reasons else "") or "post-merge-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="post_merge_validation_evidence",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return ok, reasons
+
+
 def verify_post_merge_validation_evidence(
     value: Mapping[str, Any] | None,
     *,
@@ -227,7 +251,9 @@ def verify_post_merge_validation_evidence(
     """Verify receipt integrity and its optional caller-supplied bindings."""
 
     if not isinstance(value, Mapping):
-        return False, ("post_merge_validation_evidence_missing",)
+        return _mirror_post_merge_evidence(
+            False, ("post_merge_validation_evidence_missing",)
+        )
 
     reasons: list[str] = []
     if value.get("schema") != POST_MERGE_VALIDATION_EVIDENCE_SCHEMA:
@@ -315,7 +341,32 @@ def verify_post_merge_validation_evidence(
     else:
         if value.get("validation_receipt_id") != expected_receipt_id:
             reasons.append("post_merge_validation_receipt_id_mismatch")
-    return not reasons, tuple(dict.fromkeys(reasons))
+    return _mirror_post_merge_evidence(
+        not reasons,
+        tuple(dict.fromkeys(reasons)),
+        task_id=str(task_id or expected_task_id or ""),
+    )
+
+
+def _mirror_proof_test_merge(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = result.get("reason_codes") or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(result.get("task_id") or reason_ref or "proof-test-merge")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_test_merge_admission",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def admit_proof_test_merge(
@@ -338,30 +389,30 @@ def admit_proof_test_merge(
         expected_repository_tree_id=expected_repository_tree_id,
     )
     if not ok or not isinstance(test_evidence, Mapping) or test_evidence.get("passed") is not True:
-        return {
+        return _mirror_proof_test_merge({
             "admitted": False,
             "reason_codes": reasons or ("tests_not_passed",),
             "completion_authority": False,
-        }
+        })
     if not isinstance(proof_evidence, Mapping) or proof_evidence.get("passed") is not True:
-        return {
+        return _mirror_proof_test_merge({
             "admitted": False,
             "reason_codes": ("proofs_not_passed",),
             "completion_authority": False,
-        }
+        })
     if str(proof_evidence.get("repository_tree_id") or "") != expected_repository_tree_id:
-        return {
+        return _mirror_proof_test_merge({
             "admitted": False,
             "reason_codes": ("proof_tree_mismatch",),
             "completion_authority": False,
-        }
-    return {
+        })
+    return _mirror_proof_test_merge({
         "admitted": True,
         "reason_codes": (),
         "completion_authority": False,
         "task_id": expected_task_id,
         "target_commit": expected_target_commit,
-    }
+    })
 
 
 __all__ = [

@@ -71,4 +71,19 @@ class AuthMiddleware:
         request.state.api_key = key_obj
         logger.debug(f"Request authenticated with key: {key_obj.key_id}")
 
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(getattr(key_obj, "key_id", "") or "auth-request")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="auth_request_verification",
+                record_ref=record_ref,
+                subject_kind="key_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return key_obj

@@ -163,12 +163,36 @@ def reserve(daemon: Any, attempt: Any, callback: NativeDoctorCallback) -> dict[s
             return _record(daemon, RESERVED, attempt, receipt)
 
 
+def _mirror_continuation_admission(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        attempt = result.get("attempt") or {}
+        record_ref = str(
+            result.get("receipt_id")
+            or (attempt.get("attempt_id") if isinstance(attempt, dict) else "")
+            or "continuation-admission"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="interruption_continuation_admission",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def admit_continuation(daemon: Any, attempt: Any, callback: NativeDoctorCallback) -> dict[str, Any]:
     """A distinct operator action admits a new attempt after exact custody."""
     with daemon._lock:
         prior_admission = _read(daemon, ADMITTED, attempt)
         if prior_admission is not None and continuation_admitted(daemon, attempt):
-            return prior_admission
+            return _mirror_continuation_admission(prior_admission)
         claim = _require_unknown(daemon, attempt)
         limits = [callback.max_attempts]
         configured = getattr(daemon, "max_task_attempts", 0)
@@ -200,7 +224,7 @@ def admit_continuation(daemon: Any, attempt: Any, callback: NativeDoctorCallback
                 admission=NativeContinuationAdmission(daemon, attempt, held),
                 now_ms=daemon._now_ms(),
             )
-            return admitted
+            return _mirror_continuation_admission(admitted)
 
 
 class NativeContinuationAdmission:
