@@ -341,6 +341,36 @@ class ProductionProviderReviewVerification:
         }
 
 
+def _mirror_provider_review_verification(
+    *args: Any, **kwargs: Any
+) -> ProductionProviderReviewVerification:
+    result = ProductionProviderReviewVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = result.reason_codes or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(
+            result.attestation_id
+            or result.provider_receipt_cid
+            or result.issuer_key_id
+            or reason_ref
+            or "provider-review-attestation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_provider_review_attestation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _receipt_failures(
     value: ProviderExecutionReceipt | Mapping[str, Any],
     *,
@@ -969,7 +999,7 @@ def verify_production_provider_review_attestation(
 
     failures: list[str] = []
     if attestation is None:
-        return ProductionProviderReviewVerification(
+        return _mirror_provider_review_verification(
             False, ("provider_review_attestation_missing",)
         )
     try:
@@ -979,7 +1009,7 @@ def verify_production_provider_review_attestation(
             else ProductionProviderReviewAttestation.from_dict(attestation)
         )
     except (TypeError, ValueError, json.JSONDecodeError):
-        return ProductionProviderReviewVerification(
+        return _mirror_provider_review_verification(
             False, ("provider_review_attestation_invalid",)
         )
 
@@ -1085,7 +1115,7 @@ def verify_production_provider_review_attestation(
             failures.append(f"provider_review_attestation_binding_mismatch:{key}")
 
     reasons = tuple(dict.fromkeys(failures))
-    return ProductionProviderReviewVerification(
+    return _mirror_provider_review_verification(
         verified=not reasons,
         reason_codes=reasons,
         attestation_id=parsed.attestation_id,

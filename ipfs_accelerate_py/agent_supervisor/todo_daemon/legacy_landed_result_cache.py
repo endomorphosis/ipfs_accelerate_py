@@ -653,6 +653,36 @@ class LegacyLandedLeafCacheVerification:
     record: LegacyLandedLeafCacheRecord | None = None
 
 
+def _mirror_legacy_leaf_cache_verification(
+    *args: Any, **kwargs: Any
+) -> LegacyLandedLeafCacheVerification:
+    result = LegacyLandedLeafCacheVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record = result.record
+        reasons = result.reason_codes or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(
+            getattr(record, "record_id", "")
+            or getattr(record, "issuer_key_id", "")
+            or reason_ref
+            or "legacy-landed-leaf-cache"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_landed_leaf_cache",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_legacy_landed_leaf_cache_record(
     value: LegacyLandedLeafCacheRecord | Mapping[str, Any],
     *,
@@ -669,7 +699,7 @@ def verify_legacy_landed_leaf_cache_record(
         # Reparse typed values too; callers cannot bypass closed-shape checks.
         record = LegacyLandedLeafCacheRecord.from_dict(record.to_dict())
     except (TypeError, ValueError, json.JSONDecodeError):
-        return LegacyLandedLeafCacheVerification(
+        return _mirror_legacy_leaf_cache_verification(
             False, ("legacy_leaf_cache_record_malformed",)
         )
     if canonical_json_bytes(record.key.to_dict()) != canonical_json_bytes(
@@ -705,7 +735,7 @@ def verify_legacy_landed_leaf_cache_record(
         except (InvalidSignature, TypeError, ValueError):
             failures.append("legacy_leaf_cache_signature_invalid")
     reasons = tuple(dict.fromkeys(failures))
-    return LegacyLandedLeafCacheVerification(not reasons, reasons, record)
+    return _mirror_legacy_leaf_cache_verification(not reasons, reasons, record)
 
 
 @dataclass(frozen=True, slots=True)

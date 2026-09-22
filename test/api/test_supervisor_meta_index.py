@@ -5908,6 +5908,42 @@ def test_mirror_snapshot_reuse_kernel_and_continuation_surfaces(tmp_path, monkey
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_attestation_landed_review_and_evidence_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("pre_implementation_kernel_receipt", "kernel:1", "metadata", "task_id"),
+        ("promoted_worktree_files", "src/a.py", "filesystem_mtime", "path"),
+        ("native_owner_overlay", "overlay_first_native_admission", "metadata", "record_cid"),
+        ("production_provider_review_attestation", "attest:1", "metadata", "record_cid"),
+        ("legacy_landed_review_attestation", "legacy:1", "metadata", "record_cid"),
+        ("production_reviewed_effect_verification", "binding:1", "metadata", "record_cid"),
+        ("legacy_landed_byte_manifest", "manifest:1", "metadata", "record_cid"),
+        ("legacy_landed_leaf_cache", "leaf:1", "metadata", "record_cid"),
+        ("landed_completion_recovery_receipt", "proof:1", "metadata", "task_id"),
+        ("landed_completion_claim_seed", "seed:1", "metadata", "task_id"),
+        ("production_evidence_authority", "evidence:1", "metadata", "task_id"),
+        ("production_context_slice", "slice:1", "metadata", "task_id"),
+        ("legacy_landed_review_aggregate", "aggregate:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

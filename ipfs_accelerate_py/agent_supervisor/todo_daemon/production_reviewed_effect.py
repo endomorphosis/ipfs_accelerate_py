@@ -960,6 +960,36 @@ class ProductionReviewedEffectVerification:
         }
 
 
+def _mirror_reviewed_effect_verification(
+    *args: Any, **kwargs: Any
+) -> ProductionReviewedEffectVerification:
+    result = ProductionReviewedEffectVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = result.reason_codes or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(
+            result.binding_id
+            or result.implementation_commit
+            or result.implementation_tree_id
+            or reason_ref
+            or "production-reviewed-effect"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_reviewed_effect_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _packet_payload(packet: ProductionContractPacket | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(packet, ProductionContractPacket):
         return _mapping(packet.payload)
@@ -1488,11 +1518,11 @@ def verify_production_reviewed_workspace(
             else ProductionReviewedEffectBinding.from_dict(binding)
         )
     except (TypeError, ValueError):
-        return ProductionReviewedEffectVerification(False, ("reviewed_effect_invalid",))
+        return _mirror_reviewed_effect_verification(False, ("reviewed_effect_invalid",))
     try:
         root = _repository_root(repo_root)
     except ValueError:
-        return ProductionReviewedEffectVerification(
+        return _mirror_reviewed_effect_verification(
             False,
             ("reviewed_effect_repository_root_invalid",),
             binding_id=value.binding_id,
@@ -1527,7 +1557,7 @@ def verify_production_reviewed_workspace(
     except (OSError, TypeError, ValueError):
         failures.append("reviewed_effect_workspace_reconstruction_failed")
     reasons = tuple(dict.fromkeys(failures))
-    return ProductionReviewedEffectVerification(
+    return _mirror_reviewed_effect_verification(
         not reasons,
         reasons,
         binding_id=value.binding_id,
@@ -1616,11 +1646,11 @@ def verify_finalized_production_reviewed_effect(
             else ProductionReviewedEffectBinding.from_dict(binding or {})
         )
     except (TypeError, ValueError):
-        return ProductionReviewedEffectVerification(False, ("reviewed_effect_invalid",))
+        return _mirror_reviewed_effect_verification(False, ("reviewed_effect_invalid",))
     try:
         root = _repository_root(repo_root)
     except ValueError:
-        return ProductionReviewedEffectVerification(
+        return _mirror_reviewed_effect_verification(
             False,
             ("reviewed_effect_repository_root_invalid",),
             binding_id=value.binding_id,
@@ -1716,7 +1746,7 @@ def verify_finalized_production_reviewed_effect(
         commit = _text(expected_implementation_commit)
         tree_id = _text(expected_implementation_tree_id)
     reasons = tuple(dict.fromkeys(failures))
-    return ProductionReviewedEffectVerification(
+    return _mirror_reviewed_effect_verification(
         not reasons,
         reasons,
         binding_id=value.binding_id,

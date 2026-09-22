@@ -1057,7 +1057,10 @@ def verify_promoted_worktree_files(
     repo_root: Path, worktree: Path, changed: Iterable[str]
 ) -> list[str]:
     errors: list[str] = []
+    first = ""
     for rel in changed:
+        if not first:
+            first = str(rel)
         source = worktree / rel
         target = repo_root / rel
         if not source.exists():
@@ -1076,6 +1079,21 @@ def verify_promoted_worktree_files(
             errors.append(
                 f"main worktree target differs from accepted worktree after promotion: {rel}"
             )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(first or (errors[0] if errors else "") or "promoted-worktree")
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="promoted_worktree_files",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return errors
 
 

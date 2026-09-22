@@ -3833,6 +3833,25 @@ def verify_production_evidence_authority(
             "evidence_stale",
             "evidence authority differs from the current task/repository forest",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(rebuilt, "evidence_cid", "")
+            or current_task_id
+            or "production-evidence-authority"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_evidence_authority",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return rebuilt
 
 
@@ -4543,7 +4562,27 @@ def verify_production_context_slice(
                 "manifest_malformed",
                 "source slice is not the deterministic selection for its blob",
             )
-    return ProductionContextSliceManifest(payload)
+    result = ProductionContextSliceManifest(payload)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "manifest_cid", "")
+            or current_task_id
+            or "production-context-slice"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_context_slice",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _covered(

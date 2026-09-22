@@ -1253,6 +1253,32 @@ class LegacyManifestVerification:
     merkle_root: str = ""
 
 
+def _mirror_legacy_manifest_verification(
+    *args: Any, **kwargs: Any
+) -> LegacyManifestVerification:
+    result = LegacyManifestVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = result.reason_codes or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(
+            result.manifest_id or result.merkle_root or reason_ref or "legacy-landed-manifest"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_landed_byte_manifest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_legacy_landed_byte_manifest(
     manifest: Mapping[str, Any],
 ) -> LegacyManifestVerification:
@@ -1262,7 +1288,7 @@ def verify_legacy_landed_byte_manifest(
     try:
         payload = _strict_json_object(canonical_json_bytes(manifest))
     except (TypeError, ValueError, json.JSONDecodeError):
-        return LegacyManifestVerification(False, ("legacy_manifest_invalid",))
+        return _mirror_legacy_manifest_verification(False, ("legacy_manifest_invalid",))
     claimed_manifest = str(payload.get("manifest_id") or "")
     unsigned_manifest = dict(payload)
     unsigned_manifest.pop("manifest_id", None)
@@ -1377,7 +1403,7 @@ def verify_legacy_landed_byte_manifest(
     if root != payload.get("merkle_root"):
         failures.append("legacy_manifest_merkle_root_mismatch")
     reasons = tuple(dict.fromkeys(failures))
-    return LegacyManifestVerification(
+    return _mirror_legacy_manifest_verification(
         not reasons, reasons, claimed_manifest, str(payload.get("merkle_root") or "")
     )
 
@@ -1630,6 +1656,28 @@ def _build_review_aggregate(
     return {**body, "aggregate_id": content_identity(body)}
 
 
+def _mirror_legacy_review_aggregate(
+    reasons: tuple[str, ...], *, aggregate_id: str = ""
+) -> tuple[str, ...]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(aggregate_id or reason_ref or "legacy-review-aggregate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_landed_review_aggregate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return reasons
+
+
 def verify_legacy_landed_review_aggregate(
     aggregate: Mapping[str, Any],
     *,
@@ -1644,7 +1692,7 @@ def verify_legacy_landed_review_aggregate(
     try:
         payload = _strict_json_object(canonical_json_bytes(aggregate))
     except (TypeError, ValueError, json.JSONDecodeError):
-        return ("legacy_review_aggregate_invalid",)
+        return _mirror_legacy_review_aggregate(("legacy_review_aggregate_invalid",))
     aggregate_id = str(payload.get("aggregate_id") or "")
     unsigned = dict(payload)
     unsigned.pop("aggregate_id", None)
@@ -1677,7 +1725,9 @@ def verify_legacy_landed_review_aggregate(
     leaves = manifest.get("leaves")
     if not isinstance(pairs, list) or not isinstance(leaves, list) or len(pairs) != len(leaves):
         failures.append("legacy_review_leaf_coverage_mismatch")
-        return tuple(dict.fromkeys(failures))
+        return _mirror_legacy_review_aggregate(
+            tuple(dict.fromkeys(failures)), aggregate_id=aggregate_id
+        )
     observation_ids: set[str] = set()
     receipt_ids: set[str] = set()
     for index, (pair, leaf) in enumerate(zip(pairs, leaves, strict=True)):
@@ -1864,7 +1914,9 @@ def verify_legacy_landed_review_aggregate(
                 failures.append("legacy_review_observation_reused")
             else:
                 observation_ids.add(observation_id)
-    return tuple(dict.fromkeys(failures))
+    return _mirror_legacy_review_aggregate(
+        tuple(dict.fromkeys(failures)), aggregate_id=aggregate_id
+    )
 
 
 def _scope_adjudication_receipt(

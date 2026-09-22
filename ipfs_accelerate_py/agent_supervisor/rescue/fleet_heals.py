@@ -3079,6 +3079,30 @@ def collapse_extra_gate_recursion(
     }
 
 
+def _mirror_native_owner_overlay(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("board_id")
+            or result.get("reason")
+            or result.get("recipe")
+            or "native-owner-overlay"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="native_owner_overlay",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def admit_native_owner_overlay(
     board: Mapping[str, Any], observation: Mapping[str, Any],
     *,
@@ -3100,12 +3124,18 @@ def admit_native_owner_overlay(
     }
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
-        return {**empty, "reason": "retain_owner_not_rewrapped"}
+        return _mirror_native_owner_overlay(
+            {**empty, "reason": "retain_owner_not_rewrapped"}
+        )
     if board_id not in NATIVE_ADMISSION_OVERLAY_BOARDS:
-        return {**empty, "reason": "board_not_native_admission_overlay"}
+        return _mirror_native_owner_overlay(
+            {**empty, "reason": "board_not_native_admission_overlay"}
+        )
     # Sealed extra-gate scripts pass kwargs overlay build_server does not
     # accept (repository_root). Wrapping ExecStart crash-loops the owner.
-    return {**empty, "reason": "overlay_first_wrap_disabled_mixed_package"}
+    return _mirror_native_owner_overlay(
+        {**empty, "reason": "overlay_first_wrap_disabled_mixed_package"}
+    )
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
     live_unit = str(extra.get("live_owner_unit") or "")

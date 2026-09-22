@@ -433,7 +433,28 @@ def verify_landed_completion_recovery_receipt(
         raise LandedCompletionRecoveryError(
             "landed recovery receipt failed identity verification"
         )
-    return {**value, "proof_id": str(proof_id)}
+    result = {**value, "proof_id": str(proof_id)}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("proof_id")
+            or result.get("task_cid")
+            or task_cid
+            or "landed-completion-recovery"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="landed_completion_recovery_receipt",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def revalidate_landed_completion_repository(
@@ -826,7 +847,28 @@ def verify_landed_completion_claim_seed(
         raise LandedCompletionRecoveryError(
             "landed recovery claim seed failed identity verification"
         )
-    return {**value, "seed_id": str(seed_id)}
+    result = {**value, "seed_id": str(seed_id)}
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("seed_id")
+            or result.get("target_task_cid")
+            or task_cid
+            or "landed-completion-claim-seed"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="landed_completion_claim_seed",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = (

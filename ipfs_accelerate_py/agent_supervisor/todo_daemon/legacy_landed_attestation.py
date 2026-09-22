@@ -452,6 +452,35 @@ class LegacyLandedReviewVerification:
         }
 
 
+def _mirror_legacy_landed_review_verification(
+    *args: Any, **kwargs: Any
+) -> LegacyLandedReviewVerification:
+    result = LegacyLandedReviewVerification(*args, **kwargs)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = result.reason_codes or ()
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(
+            result.attestation_id
+            or result.issuer_key_id
+            or reason_ref
+            or "legacy-landed-review-attestation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_landed_review_attestation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def verify_legacy_landed_review_attestation(
     attestation: LegacyLandedReviewAttestation | Mapping[str, Any] | None,
     *,
@@ -470,7 +499,7 @@ def verify_legacy_landed_review_attestation(
     """Verify signer and every supplied evidence identity fail closed."""
 
     if attestation is None:
-        return LegacyLandedReviewVerification(
+        return _mirror_legacy_landed_review_verification(
             False, ("legacy_landed_review_attestation_missing",)
         )
     try:
@@ -480,7 +509,7 @@ def verify_legacy_landed_review_attestation(
             else LegacyLandedReviewAttestation.from_dict(attestation)
         )
     except (TypeError, ValueError, json.JSONDecodeError):
-        return LegacyLandedReviewVerification(
+        return _mirror_legacy_landed_review_verification(
             False, ("legacy_landed_review_attestation_invalid",)
         )
     failures: list[str] = []
@@ -583,7 +612,7 @@ def verify_legacy_landed_review_attestation(
     elif scope_adjudication_receipt is not None:
         failures.append("legacy_landed_review_unexpected_scope_adjudication")
     reasons = tuple(dict.fromkeys(failures))
-    return LegacyLandedReviewVerification(
+    return _mirror_legacy_landed_review_verification(
         verified=not reasons,
         reason_codes=reasons,
         attestation_id=parsed.attestation_id,
