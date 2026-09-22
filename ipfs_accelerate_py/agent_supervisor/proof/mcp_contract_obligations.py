@@ -1376,7 +1376,28 @@ def compile_contract_claims(
     by_id = {item.compiled_obligation_id: item for item in results}
     if len(by_id) != len(results):
         raise McpContractObligationError("claims compile to duplicate obligations")
-    return tuple(by_id[key] for key in sorted(by_id))
+    compiled = tuple(by_id[key] for key in sorted(by_id))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = compiled[0] if compiled else None
+        record_ref = str(
+            getattr(first, "compiled_obligation_id", "")
+            or getattr(first, "obligation_id", "")
+            or "mcp-contract-claims"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcp_contract_claims",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return compiled
 
 
 # Compatibility spellings for callers emphasizing MCP or code-proof output.

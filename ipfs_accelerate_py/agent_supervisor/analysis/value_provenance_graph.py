@@ -2069,6 +2069,23 @@ class ValueProvenanceCompiler:
                 raise ValueProvenanceError(
                     f"procedure {procedure_name!r} not found in {path}"
                 )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(graph.graph_id or procedure_name or path or "value-provenance-procedure")
+            tree_id = str(getattr(getattr(graph, "roots", None), "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="knowledge_graph",
+                record_kind="value_provenance_procedure",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
         return graph
 
     # ------------------------------------------------------------------

@@ -1982,13 +1982,36 @@ def compile_backlog(
         payload, scopes=resolved_scopes, prior_failures=resolved_prior
     )
     scope_list = resolved_scopes
-    return compile_extraction_wave_tasks(
+    result = compile_extraction_wave_tasks(
         refinement,
         scopes=scope_list,
         worktree_id=worktree_id,
         lease_id=lease_id,
         fence_id=fence_id,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "tree_id", "")
+            or getattr(result, "worktree_id", "")
+            or fence_id
+            or "extraction-backlog"
+        )
+        tree_id = str(getattr(result, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_backlog",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def encode_canonical_receipt(

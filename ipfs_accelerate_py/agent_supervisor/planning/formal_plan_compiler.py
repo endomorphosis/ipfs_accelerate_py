@@ -1525,7 +1525,31 @@ class FormalPlanCompiler:
                     ),
                 ),
             )
-        return self.compile(source)
+        result = self.compile(source)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            plan = getattr(result, "plan", None)
+            record_ref = str(
+                getattr(plan, "plan_id", "")
+                or getattr(result, "source_identity", "")
+                or repository_tree_id
+                or "prompt-graph"
+            )
+            tree_id = str(repository_tree_id or getattr(plan, "repository_tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="prompt_graph_compilation",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def compile_admission(
         self,

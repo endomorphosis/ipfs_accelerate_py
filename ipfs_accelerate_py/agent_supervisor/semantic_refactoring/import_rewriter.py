@@ -1220,7 +1220,30 @@ def compile_reexport_plan(
     plans = compile_reexport_plans(packet, **kwargs)
     if len(plans) != 1:
         raise ImportRewriterError("packet must nominate exactly one reexport plan")
-    return plans[0]
+    plan = plans[0]
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(plan, "packet_cid", "")
+            or getattr(plan, "preimage_cid", "")
+            or getattr(plan, "tree_id", "")
+            or "reexport-plan"
+        )
+        tree_id = str(getattr(plan, "tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reexport_plan",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return plan
 
 
 def compile_import_rewrite_receipt(
