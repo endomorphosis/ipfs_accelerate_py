@@ -2380,11 +2380,27 @@ def evaluate_default_corpus(
     manifest_path = fixture_root / CORPUS_MANIFEST_NAME
     corpus_present = manifest_path.is_file()
     fixtures = load_controlled_fixtures(fixture_root, require_present=False)
-    return evaluate_controlled_fixture_corpus(
+    result = evaluate_controlled_fixture_corpus(
         fixtures,
         corpus_id=corpus_id,
         corpus_present=corpus_present,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "corpus_id", "") or corpus_id or "default-corpus")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="default_fixture_corpus_eval",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=str(getattr(result, "repository_id", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def suite_observation_from_outcomes(

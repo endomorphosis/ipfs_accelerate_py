@@ -1761,6 +1761,30 @@ class IpfsDatasetsTestCertificateProvider:
         if binding is not None:
             requirements_map.setdefault("binding", binding)
 
+        def _mirror_retained(result: TestCertificateVerificationResult) -> TestCertificateVerificationResult:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                reason = getattr(result, "reason_code", None)
+                record_ref = str(
+                    getattr(result, "certificate_cid", "")
+                    or getattr(result, "receipt_cid", "")
+                    or getattr(reason, "value", "")
+                    or "retained-bytes"
+                )
+                mirror_work_record(
+                    catalog_kind="proof_certificate",
+                    record_kind="retained_certificate_bytes",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return result
+
         certificate, cert_error = _decode_retained_contract(
             certificate_bytes,
             TestProofCertificate,
@@ -1768,7 +1792,7 @@ class IpfsDatasetsTestCertificateProvider:
             field_name="certificate_bytes",
         )
         if cert_error is not None:
-            return cert_error
+            return _mirror_retained(cert_error)
         assert isinstance(certificate, TestProofCertificate)
 
         receipt, receipt_error = _decode_retained_contract(
@@ -1778,10 +1802,10 @@ class IpfsDatasetsTestCertificateProvider:
             field_name="receipt_bytes",
         )
         if receipt_error is not None:
-            return receipt_error
+            return _mirror_retained(receipt_error)
         assert isinstance(receipt, TestPassReceipt)
 
-        return self._verify_decoded(certificate, receipt, requirements_map)
+        return _mirror_retained(self._verify_decoded(certificate, receipt, requirements_map))
 
     def verify_certificate(
         self,

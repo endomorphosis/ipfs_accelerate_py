@@ -255,7 +255,23 @@ def admit_hammer_portfolio(
         memory_bytes=memory_bytes,
         process_slots=max(1, process_slots),
     )
-    return admit_portfolio_lane(lease, request)
+    result = admit_portfolio_lane(lease, request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(request_id or getattr(request, "task_id", "") or "hammer-portfolio")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="hammer_portfolio_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _nonnegative(value: Any, name: str) -> int:

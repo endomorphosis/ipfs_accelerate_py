@@ -3030,7 +3030,7 @@ def admit_local_expert_class(
     parsed_risk = RiskClass(risk)
     if parsed_risk not in LOW_MEDIUM_RISKS and parsed_risk not in PROPOSAL_RISKS:
         raise ResidualIntelligenceError(REASON_LOW_MEDIUM_RISK)
-    return admit_expert_class(
+    result = admit_expert_class(
         family,
         requested,
         risk=parsed_risk,
@@ -3040,6 +3040,22 @@ def admit_local_expert_class(
         compared_class=compared_class,
         admission=admission,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.expert_id or result.family_spec_id or "local-expert-class")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="local_expert_class_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = (

@@ -1124,7 +1124,28 @@ def evaluate_identity_bound_deterministic_ladder(**kwargs: Any) -> LadderDecisio
         evaluate_deterministic_stages,
     )
 
-    return evaluate_receipt_to_human_ladder(evaluate_deterministic_stages(**kwargs).evidence)
+    stages = evaluate_deterministic_stages(**kwargs)
+    result = evaluate_receipt_to_human_ladder(stages.evidence)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "selected_stage", "")
+            or getattr(result, "selected_route", "")
+            or "identity-bound-ladder"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="identity_bound_deterministic_ladder",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _human_review_reasons(
