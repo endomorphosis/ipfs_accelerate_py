@@ -231,7 +231,23 @@ def validate_production_review_decision(
             "production review rejection requires a finding code",
             reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
         )
-    return tuple(findings)
+    result = tuple(findings)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decision or (result[0] if result else "production-review-decision"))
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_review_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class ProviderQuotaError(RuntimeError):

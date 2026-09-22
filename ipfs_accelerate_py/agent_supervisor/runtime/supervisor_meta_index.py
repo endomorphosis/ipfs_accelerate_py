@@ -487,18 +487,7 @@ class SupervisorMetaIndex:
             "capsule_composition": True,
             "formal_surfaces": [
                 name
-                for name in (
-                    "filesystem_mtime",
-                    "ast",
-                    "bm25",
-                    "knowledge_graph",
-                    "vector",
-                    "proof_cache",
-                    "proof_certificate",
-                    "world_model",
-                    "capsule",
-                    "taskboard",
-                )
+                for name in sorted(CATALOG_KINDS)
                 if name in kinds or name in (view.get("kinds") or [])
             ],
         }
@@ -523,15 +512,10 @@ class SupervisorMetaIndex:
                 content_cid=content_cid,
                 tree_id=tree_id or subject_ref,
                 capsule_cid=capsule_cid,
-                extra_kinds=(
-                    "ast",
-                    "bm25",
-                    "vector",
-                    "knowledge_graph",
-                    "proof_cache",
-                    "proof_certificate",
-                    "world_model",
-                    "capsule",
+                extra_kinds=tuple(
+                    kind
+                    for kind in sorted(CATALOG_KINDS)
+                    if kind not in {"filesystem_mtime", "taskboard"}
                 ),
             )
         composed = self.compose_semantic_work(
@@ -539,18 +523,7 @@ class SupervisorMetaIndex:
             subject_ref=subject_ref or path or tree_id,
             tree_id=tree_id or subject_ref,
         )
-        required = {
-            "filesystem_mtime",
-            "ast",
-            "bm25",
-            "knowledge_graph",
-            "vector",
-            "proof_cache",
-            "proof_certificate",
-            "world_model",
-            "capsule",
-            "taskboard",
-        }
+        required = set(CATALOG_KINDS)
         present = {str(item.get("kind") or "") for item in (bound.get("catalogs") or [])}
         present.update(composed.get("kinds") or [])
         present.discard("")
@@ -993,30 +966,8 @@ def orchestrate_semantic_work(
             "extra_gate_attached": False,
             "capsule_composition": True,
             "formal_surfaces": [],
-            "required_kinds": [
-                "filesystem_mtime",
-                "ast",
-                "bm25",
-                "knowledge_graph",
-                "vector",
-                "proof_cache",
-                "proof_certificate",
-                "world_model",
-                "capsule",
-                "taskboard",
-            ],
-            "missing_kinds": [
-                "filesystem_mtime",
-                "ast",
-                "bm25",
-                "knowledge_graph",
-                "vector",
-                "proof_cache",
-                "proof_certificate",
-                "world_model",
-                "capsule",
-                "taskboard",
-            ],
+            "required_kinds": sorted(CATALOG_KINDS),
+            "missing_kinds": sorted(CATALOG_KINDS),
             "catalogs_linked": False,
         }
     return index.orchestrate_semantic_work(

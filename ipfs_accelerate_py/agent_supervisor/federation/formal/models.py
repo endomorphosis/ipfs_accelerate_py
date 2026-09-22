@@ -1684,6 +1684,29 @@ def _violations(
     return tuple(violations)
 
 
+def _mirror_federation_scenario(
+    result: HermeticModelCheckReceipt,
+) -> HermeticModelCheckReceipt:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_id or result.scenario_id or "federation-formal-scenario"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="federation_formal_scenario",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def check_federation_scenario(
     scenario: FederationFormalScenario,
     *,
@@ -1722,17 +1745,19 @@ def check_federation_scenario(
                 state=state,
                 trace=trace,
             )
-            return HermeticModelCheckReceipt(
-                scenario_id=scenario.scenario_id,
-                property=scenario.property,
-                status=HermeticCheckStatus.COUNTEREXAMPLE,
-                mutation=selected_mutation,
-                bounds=scenario.generated_model.bounds,
-                explored_states=len(visited),
-                explored_transitions=explored_transitions,
-                goal_reached=goal_reached,
-                reason=f"bounded exploration found {violation[0]}",
-                counterexample=counterexample,
+            return _mirror_federation_scenario(
+                HermeticModelCheckReceipt(
+                    scenario_id=scenario.scenario_id,
+                    property=scenario.property,
+                    status=HermeticCheckStatus.COUNTEREXAMPLE,
+                    mutation=selected_mutation,
+                    bounds=scenario.generated_model.bounds,
+                    explored_states=len(visited),
+                    explored_transitions=explored_transitions,
+                    goal_reached=goal_reached,
+                    reason=f"bounded exploration found {violation[0]}",
+                    counterexample=counterexample,
+                )
             )
         goal_reached = goal_reached or state.stage == scenario.goal_state
         if state.logical_time >= scenario.generated_model.bounds.max_steps:
@@ -1746,16 +1771,18 @@ def check_federation_scenario(
             )
             queue.append((successor, (*trace, step)))
         if len(visited) + len(queue) > MAX_HERMETIC_EXPLORED_STATES:
-            return HermeticModelCheckReceipt(
-                scenario_id=scenario.scenario_id,
-                property=scenario.property,
-                status=HermeticCheckStatus.INCONCLUSIVE,
-                mutation=selected_mutation,
-                bounds=scenario.generated_model.bounds,
-                explored_states=len(visited),
-                explored_transitions=explored_transitions,
-                goal_reached=goal_reached,
-                reason="finite exploration state ceiling was reached",
+            return _mirror_federation_scenario(
+                HermeticModelCheckReceipt(
+                    scenario_id=scenario.scenario_id,
+                    property=scenario.property,
+                    status=HermeticCheckStatus.INCONCLUSIVE,
+                    mutation=selected_mutation,
+                    bounds=scenario.generated_model.bounds,
+                    explored_states=len(visited),
+                    explored_transitions=explored_transitions,
+                    goal_reached=goal_reached,
+                    reason="finite exploration state ceiling was reached",
+                )
             )
     status = HermeticCheckStatus.PASSED if goal_reached else HermeticCheckStatus.INCONCLUSIVE
     reason = (
@@ -1764,16 +1791,18 @@ def check_federation_scenario(
         if goal_reached
         else "no invariant failed, but the goal was not reachable inside the bound"
     )
-    return HermeticModelCheckReceipt(
-        scenario_id=scenario.scenario_id,
-        property=scenario.property,
-        status=status,
-        mutation=selected_mutation,
-        bounds=scenario.generated_model.bounds,
-        explored_states=len(visited),
-        explored_transitions=explored_transitions,
-        goal_reached=goal_reached,
-        reason=reason,
+    return _mirror_federation_scenario(
+        HermeticModelCheckReceipt(
+            scenario_id=scenario.scenario_id,
+            property=scenario.property,
+            status=status,
+            mutation=selected_mutation,
+            bounds=scenario.generated_model.bounds,
+            explored_states=len(visited),
+            explored_transitions=explored_transitions,
+            goal_reached=goal_reached,
+            reason=reason,
+        )
     )
 
 

@@ -342,7 +342,7 @@ class ResourceBudget:
         self, usage: Mapping[str, Any], *, proof_required: bool = False
     ) -> "HermeticValidation":
         exhausted = self.exhausted(usage)
-        return HermeticValidation(
+        result = HermeticValidation(
             safe=True,
             complete=not exhausted,
             disposition=(
@@ -350,6 +350,26 @@ class ResourceBudget:
             ),
             exhausted_resources=exhausted,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                (result.exhausted_resources[0] if result.exhausted_resources else "")
+                or result.disposition
+                or "resource-usage-validation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="resource_usage_validation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 @dataclass(frozen=True)
@@ -791,6 +811,21 @@ class AnalysisExecutionProfile:
             raise ExecutionProfileError(
                 "resource_bounds_evidence must exactly match profile.resource_bounds"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.resource_bounds_evidence or self.resource_class or "resource-bounds")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="resource_bounds_evidence",
+                record_ref=record_ref,
+                subject_kind="path",
+                subject_ref=str(self.resource_bounds_evidence or record_ref),
+            )
+        except Exception:
+            pass
         return budget
 
     def validate(

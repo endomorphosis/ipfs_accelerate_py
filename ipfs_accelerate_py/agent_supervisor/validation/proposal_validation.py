@@ -4221,7 +4221,30 @@ class ProposalValidator:
             findings=tuple(findings),
             gate_trace=ORDERED_PROPOSAL_GATES,
         )
-        return ProposalValidationResult(proposal, policy, receipt)
+        result = ProposalValidationResult(proposal, policy, receipt)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.receipt.proposal_id
+                or result.receipt.diff_digest
+                or result.proposal.task_id
+                or "implementation-proposal-validation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="implementation_proposal_validation",
+                record_ref=record_ref,
+                tree_id=str(result.proposal.repository_tree_id or ""),
+                subject_kind="task_id",
+                subject_ref=str(result.proposal.task_id or record_ref),
+                paths=tuple(str(path) for path in result.receipt.changed_paths)[:16],
+            )
+        except Exception:
+            pass
+        return result
 
 
 class _RepositoryEnvelopeIssue(ProposalValidationError):
