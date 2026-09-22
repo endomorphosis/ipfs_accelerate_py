@@ -1413,8 +1413,32 @@ class SupervisorStateModelChecker:
         configuration = model.configuration_for(selected)
         safety = tuple(SAFETY_PROPERTIES)
         liveness = tuple(LIVENESS_PROPERTIES) if selected is ModelCheckerTool.TLC else ()
+
+        def _mirror(outcome: ModelCheckReceipt) -> ModelCheckReceipt:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    getattr(outcome.model, "model_id", "")
+                    or getattr(outcome.status, "value", "")
+                    or outcome.started_at
+                    or "supervisor-state-model-check"
+                )
+                mirror_work_record(
+                    catalog_kind="proof_cache",
+                    record_kind="supervisor_state_model_check",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return outcome
+
         if not resolved:
-            return ModelCheckReceipt(
+            return _mirror(ModelCheckReceipt(
                 tool=selected,
                 status=ModelCheckStatus.UNAVAILABLE,
                 model=model,
@@ -1437,7 +1461,7 @@ class SupervisorStateModelChecker:
                 reason=(f"{selected.value} executable unavailable; no model check ran"),
                 checked_safety_properties=(),
                 checked_liveness_properties=(),
-            )
+            ))
 
         version_command = (
             (resolved, "--version") if selected is ModelCheckerTool.TLC else (resolved, "version")
@@ -1505,7 +1529,7 @@ class SupervisorStateModelChecker:
                     raw=counterexample.raw,
                     source="checker_counterexample_file",
                 )
-        return ModelCheckReceipt(
+        return _mirror(ModelCheckReceipt(
             tool=selected,
             status=status,
             model=model,
@@ -1529,7 +1553,7 @@ class SupervisorStateModelChecker:
             checked_safety_properties=safety,
             checked_liveness_properties=liveness,
             counterexample=counterexample,
-        )
+        ))
 
     def _call(self, request: CommandRequest) -> CommandResult:
         try:

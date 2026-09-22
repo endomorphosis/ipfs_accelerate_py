@@ -1445,6 +1445,25 @@ class CheckRunner(Protocol):
         """Run the registry argv for ``check_id``."""
 
 
+def _mirror_host_check(result: HostCheckResult) -> HostCheckResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.check_id or "host-check")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="host_check_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class HostCheckRunner:
     """Execute a closed check-id set with a host-fixed interpreter.
@@ -1523,20 +1542,20 @@ class HostCheckRunner:
         if self.scripted_results is not None:
             scripted = self.scripted_results.get(check_id)
             if scripted is None:
-                return HostCheckResult(
+                return _mirror_host_check(HostCheckResult(
                     check_id=check_id,
                     argv=entry.argv,
                     returncode=127,
                     stdout="",
                     stderr=f"{check_id} has no scripted result",
-                )
+                ))
             if tuple(scripted.argv) != entry.argv:
                 raise GuiCheckPlanError(
                     "scripted argv must match the host registry",
                     reason_code=CheckPlanReasonCode.COMMAND_STRING_FORBIDDEN.value,
                     details={"check_id": check_id},
                 )
-            return scripted
+            return _mirror_host_check(scripted)
         try:
             completed = subprocess.run(
                 entry.argv,
@@ -1548,36 +1567,36 @@ class HostCheckRunner:
                 shell=False,
             )
         except FileNotFoundError as exc:
-            return HostCheckResult(
+            return _mirror_host_check(HostCheckResult(
                 check_id=check_id,
                 argv=entry.argv,
                 returncode=127,
                 stdout="",
                 stderr=str(exc),
-            )
+            ))
         except subprocess.TimeoutExpired:
-            return HostCheckResult(
+            return _mirror_host_check(HostCheckResult(
                 check_id=check_id,
                 argv=entry.argv,
                 returncode=124,
                 stdout="",
                 stderr="check operation timed out",
-            )
+            ))
         except OSError as exc:
-            return HostCheckResult(
+            return _mirror_host_check(HostCheckResult(
                 check_id=check_id,
                 argv=entry.argv,
                 returncode=1,
                 stdout="",
                 stderr=str(exc),
-            )
-        return HostCheckResult(
+            ))
+        return _mirror_host_check(HostCheckResult(
             check_id=check_id,
             argv=entry.argv,
             returncode=int(completed.returncode),
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
-        )
+        ))
 
 
 # ---------------------------------------------------------------------------
@@ -2046,7 +2065,7 @@ class GuiAffectedCheckPlanner:
             fallback,
             confidence,
         )
-        return GuiCheckPlan(
+        result = GuiCheckPlan(
             plan_id=plan_id,
             change_set_id=normalized.invalidation.change_set_id,
             invalidation_plan_id=normalized.invalidation.plan_id,
@@ -2063,6 +2082,22 @@ class GuiAffectedCheckPlanner:
             change_kinds=kinds,
             reason_codes=tuple(unique_codes),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.plan_id or result.change_set_id or "gui-check-plan")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="gui_check_plan",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def execute(
         self,
@@ -2153,7 +2188,7 @@ class GuiAffectedCheckPlanner:
         receipt_id = "checkreceipt:" + hashlib.sha256(
             receipt_body.encode("utf-8")
         ).hexdigest()[:32]
-        return GuiCheckExecutionReceipt(
+        result = GuiCheckExecutionReceipt(
             plan_id=plan.plan_id,
             receipt_id=receipt_id,
             disposition=(
@@ -2180,6 +2215,22 @@ class GuiAffectedCheckPlanner:
                 "selected_check_ids": list(plan.selected_check_ids),
             },
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.receipt_id or result.plan_id or "gui-check-execution")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="gui_check_execution",
+                record_ref=record_ref,
+                subject_kind="receipt_id",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def plan_request(self, request: Mapping[str, Any]) -> GuiCheckPlan:
         return self.plan(request)

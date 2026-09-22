@@ -1843,6 +1843,21 @@ def run_all_checks(
     payload = receipt.to_dict()
     payload["report_schema"] = RELEASE_VALIDATOR_SCHEMA
     payload["validator_interface"] = RELEASE_VALIDATOR_INTERFACE
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(payload.get("receipt_id") or "deterministic-doctor-release-report")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="deterministic_doctor_release_report",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return payload
 
 
