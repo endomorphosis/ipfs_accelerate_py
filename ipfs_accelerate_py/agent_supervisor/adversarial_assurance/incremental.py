@@ -1761,11 +1761,29 @@ class IncrementalMutationVerifier:
         units: Sequence[ProofUnit | Mapping[str, Any]],
         invalidation: Sequence[UnitDecision],
     ) -> tuple[UnitDecision, ...]:
-        return evaluate_cache_reuse(
+        result = evaluate_cache_reuse(
             units,
             invalidation,
             require_production_terminal=self.require_production_terminal,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result[0].unit_id if result else "incremental-cache-reuse"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="incremental_cache_reuse",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def broaden_survivors(
         self,

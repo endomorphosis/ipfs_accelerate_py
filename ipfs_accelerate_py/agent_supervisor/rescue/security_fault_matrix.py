@@ -277,7 +277,7 @@ class SecurityFaultMatrix:
         evidence_ids: Sequence[str] = (),
         test_mode: bool = True,
     ) -> IntegratedSecurityReceipt:
-        return evaluate_integrated_security(
+        result = evaluate_integrated_security(
             {
                 "stage": payload.get("stage", SecurityStage.DATASET_INTAKE.value),
                 "payload": payload,
@@ -286,6 +286,27 @@ class SecurityFaultMatrix:
                 "evidence_ids": tuple(evidence_ids),
             }
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(getattr(result, "stage", None), "value", "")
+                or getattr(result, "requirement_id", "")
+                or (result.evidence_ids[0] if result.evidence_ids else "")
+                or "security-fault-payload"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="security_fault_payload_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def inject_rejection(self, reason: str) -> SecurityFaultCase:
         payload = hostile_fixture(reason)

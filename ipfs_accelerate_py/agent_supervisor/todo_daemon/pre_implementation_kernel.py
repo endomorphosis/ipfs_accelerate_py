@@ -703,12 +703,34 @@ def evaluate_pre_implementation(
 ) -> KernelEvaluationResult:
     """Module-level convenience wrapper around :meth:`PreImplementationKernel.evaluate`."""
 
-    return build_pre_implementation_kernel(
+    result = build_pre_implementation_kernel(
         planner_available=planner_available,
         doctor_available=doctor_available,
         analytical_probe=analytical_probe,
         authority_receipt_resolver=authority_receipt_resolver,
     ).evaluate(request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        record_ref = str(
+            getattr(receipt, "content_id", "")
+            or getattr(receipt, "task_cid", "")
+            or result.reason_code
+            or "pre-implementation-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="pre_implementation_evaluation",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

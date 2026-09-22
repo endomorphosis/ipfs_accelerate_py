@@ -704,13 +704,34 @@ def label_neighborhood_result(
     attestations = [
         {"attester_did": peer, "verdict": VERDICT_SUPPORT} for peer in peers
     ]
-    return wire_neighborhood_result(
+    result = wire_neighborhood_result(
         state_id=state_id,
         proposal_cid=proposal_cid,
         attestations=attestations,
         members=peers,
         guarantee=guarantee,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.proposal_cid
+            or result.state_id
+            or state_id
+            or "neighborhood-label"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="neighborhood_label_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

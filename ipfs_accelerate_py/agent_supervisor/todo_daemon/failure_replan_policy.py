@@ -1506,9 +1506,31 @@ def evaluate_failure_replan(
 ) -> FailureReplanResult:
     """Module-level convenience wrapper around :meth:`FailureReplanPolicy.evaluate`."""
 
-    return build_failure_replan_policy(
+    result = build_failure_replan_policy(
         failure_memory=failure_memory,
     ).evaluate(request, cancelled=cancelled)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        packet = getattr(result, "residual_packet", None)
+        record_ref = str(
+            getattr(packet, "content_id", "")
+            or result.reason_code
+            or getattr(result.outcome, "value", "")
+            or "failure-replan-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="failure_replan_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def authorize_llm_retry_after_failure(
