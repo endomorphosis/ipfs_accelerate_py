@@ -1109,16 +1109,22 @@ def _hermetic_build_proof(
     return public_tag + private_tag
 
 
-def _mirror_hmac_verification(result: Any, record_ref: str) -> Any:
+def _mirror_hmac_verification(
+    result: Any,
+    record_ref: str,
+    *,
+    record_kind: str = "hermetic_hmac_verification",
+    catalog_kind: str = "proof_certificate",
+) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
             mirror_work_record,
         )
 
-        ref = str(record_ref or "hermetic-hmac-verification")
+        ref = str(record_ref or record_kind)
         mirror_work_record(
-            catalog_kind="proof_certificate",
-            record_kind="hermetic_hmac_verification",
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
             record_ref=ref,
             subject_kind="receipt_id",
             subject_ref=ref,
@@ -1151,11 +1157,20 @@ class HermeticHmacEngine:
             circuit_id=invocation.circuit_id,
             program_id=invocation.program_id,
         )
-        return ExternalEngineResult(
-            completed=True,
-            proof_bytes=proof,
-            verified=None,
-            durable_artifact_present=True,
+        return _mirror_hmac_verification(
+            ExternalEngineResult(
+                completed=True,
+                proof_bytes=proof,
+                verified=None,
+                durable_artifact_present=True,
+            ),
+            str(
+                invocation.circuit_id
+                or invocation.program_id
+                or "hermetic-hmac-proof"
+            ),
+            record_kind="hermetic_hmac_proof",
+            catalog_kind="proof_cache",
         )
 
     def verify(

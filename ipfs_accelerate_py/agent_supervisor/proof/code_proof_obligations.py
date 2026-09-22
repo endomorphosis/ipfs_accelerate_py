@@ -3885,7 +3885,7 @@ def prove_proof_candidate_non_authority(
 ) -> ProofCandidateNonAuthorityEvidence:
     """Produce the ASI-G102 witness only after revalidating the full chain."""
 
-    return ProofCandidateNonAuthorityEvidence(
+    evidence = ProofCandidateNonAuthorityEvidence(
         objective_id=objective_id,
         candidate_receipt=(
             candidate_receipt
@@ -3901,6 +3901,27 @@ def prove_proof_candidate_non_authority(
         validation_dag=validation_dag,
         required_assurance=required_assurance,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(evidence, "candidate_receipt", None)
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or evidence.objective_id
+            or "proof-candidate-non-authority"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="proof_candidate_non_authority",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return evidence
 
 
 # Concise compatibility spellings for integration callers.

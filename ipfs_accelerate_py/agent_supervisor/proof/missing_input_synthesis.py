@@ -746,6 +746,32 @@ CounterexampleVerifier = Callable[
 ]
 
 
+def _mirror_behavior_proof(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "behavior_id", "")
+            or getattr(result, "refinement_claim_id", "")
+            or tree_id
+            or "behavior-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="behavior_proof_set",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class MissingInputSynthesizer:
     """Route finite change-propagation obligations through admitted logic backends."""
 
@@ -1690,7 +1716,7 @@ class MissingInputSynthesizer:
             sorted({clause for item in results for clause in item.unsatisfied_clauses})
         )
         roots = compilation.roots
-        return BehaviorProofSet(
+        return _mirror_behavior_proof(BehaviorProofSet(
             behavior_id=claim.behavior_id,
             consumer_id=compilation.consumer_id,
             disposition=disposition,
@@ -1703,7 +1729,7 @@ class MissingInputSynthesizer:
             tree_id=roots.candidate_tree_id,
             toolchain_id=roots.toolchain_id,
             policy_id=roots.policy_id,
-        )
+        ))
 
     def _aggregate_value_mapping(
         self,

@@ -2098,6 +2098,33 @@ def default_property_policy(
     )
 
 
+def _mirror_code_contract_proof(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        compiled = getattr(result, "compiled", None)
+        validation = getattr(result, "validation", None)
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or getattr(validation, "receipt_id", "")
+            or getattr(compiled, "obligation_id", "")
+            or getattr(compiled, "claim_id", "")
+            or "code-contract-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="code_contract_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class CodeContractProver:
     """Capability-probed portfolio prover for code-contract IR obligations."""
 
@@ -2518,7 +2545,7 @@ class CodeContractProver:
                     revalidated.disposition is cached.validation.disposition
                     and revalidated.status is cached.validation.status
                 ):
-                    return ProveResult(
+                    return _mirror_code_contract_proof(ProveResult(
                         status=cached.status,
                         reason=cached.reason,
                         detail=cached.detail or "cache hit after independent revalidation",
@@ -2534,7 +2561,7 @@ class CodeContractProver:
                         ),
                         prover_identity=identity,
                         metadata={"cache_key": cache_key},
-                    )
+                    ))
 
         attempts: list[SolverAttempt] = []
         for backend_id in self._admitted:
@@ -2611,7 +2638,7 @@ class CodeContractProver:
         )
         if allow_cache and validation.disposition is not ValidationDisposition.REJECTED:
             self._cache.put(cache_key, result)
-        return result
+        return _mirror_code_contract_proof(result)
 
     def prove_translation(
         self,
@@ -2733,7 +2760,7 @@ class CodeContractProver:
             required_assurance=result.validation.required_assurance,
             policy_id=result.validation.policy_id,
         )
-        return ProveResult(
+        return _mirror_code_contract_proof(ProveResult(
             status=validation.status,
             reason=validation.reason,
             detail=validation.detail or "replayed independent validation",
@@ -2747,7 +2774,7 @@ class CodeContractProver:
             duration_ms=0,
             prover_identity=result.prover_identity,
             metadata={**dict(result.metadata), "replay": True},
-        )
+        ))
 
 
 def verify_kernel_proof_receipt(

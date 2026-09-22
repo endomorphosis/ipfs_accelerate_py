@@ -1540,6 +1540,29 @@ class RefinementEvidence:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_subgoal_proof(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "proof_id", "")
+            or getattr(result, "parent_goal_id", "")
+            or "subgoal-refinement"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="subgoal_refinement_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class LogicPredictionCEGIS:
     """Bounded counterexample-guided tactic refinement engine.
@@ -1822,7 +1845,7 @@ class LogicPredictionCEGIS:
             },
             prefix="subgoal-refinement",
         )
-        return SubgoalRefinementProof(
+        return _mirror_subgoal_proof(SubgoalRefinementProof(
             proof_id=proof_id,
             parent_goal_id=parent_goal.goal_id,
             subgoal_ids=tuple(subgoal_ids),
@@ -1830,7 +1853,7 @@ class LogicPredictionCEGIS:
             required_facet_ids=tuple(sorted(required)),
             independent_source_authority=independent,
             model_proposed=model_proposed,
-        )
+        ))
 
     # -- residual feedback ------------------------------------------------
 
