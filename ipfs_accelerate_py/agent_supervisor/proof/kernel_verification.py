@@ -2043,6 +2043,26 @@ class IndependentKernelVerifier:
             kernel_runner=kernel_runner,
             provider_status=provider_status,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(admission, "theorem_id", "")
+                or getattr(admission, "model_artifact_id", "")
+                or getattr(admission, "declaration_name", "")
+                or "lean-proof-text"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="lean_proof_text_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return admission, result
 
     def reconstruct_and_verify(

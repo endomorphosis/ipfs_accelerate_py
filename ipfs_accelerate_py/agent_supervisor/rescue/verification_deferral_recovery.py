@@ -106,7 +106,27 @@ def verify_blocked(task: Any, execution: Any) -> tuple[dict[str, Any], list[dict
                 and failed[0].get("provider_dispatched") is False
                 and failed[0].get("reason") == REASON,
                 "matching wait did not prove no provider dispatch")
-    return dict(receipt), attempts
+    result = dict(receipt), attempts
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(task, "task_cid", "")
+            or receipt.get("attempt_id")
+            or "verification-deferral-blocked"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="verification_deferral_blocked",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def qualify_snapshot(*, repo: Path, runtime: Path, attempt_root: Path,

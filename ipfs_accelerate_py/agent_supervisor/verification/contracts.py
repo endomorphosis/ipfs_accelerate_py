@@ -1482,6 +1482,25 @@ class VerificationReceiptKey(_VerificationContract):
         return result
 
 
+def _mirror_compiled_receipt_key(key: VerificationReceiptKey) -> VerificationReceiptKey:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key.key_id or key.repository_tree_cid or "compiled-verification-receipt-key")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="compiled_verification_receipt_key",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return key
+
+
 @dataclass(frozen=True)
 class VerificationIdentityCompiler:
     """Compile exact keys from observed values and cross-check caller claims.
@@ -2007,7 +2026,8 @@ class VerificationIdentityCompiler:
                 "fixture_data_bytes contains duplicate identities"
             )
 
-        return VerificationReceiptKey(
+        return _mirror_compiled_receipt_key(
+            VerificationReceiptKey(
             repository_tree_cid=tree_cid,
             repository_tree_observation=tree_observation,
             semantic_state_root_cid=semantic_cid,
@@ -2028,6 +2048,7 @@ class VerificationIdentityCompiler:
             receipt_kind=kind,
             adapter_schema=normalized_adapter_schema,
             proof_backend_binding=normalized_backend,
+            )
         )
 
 

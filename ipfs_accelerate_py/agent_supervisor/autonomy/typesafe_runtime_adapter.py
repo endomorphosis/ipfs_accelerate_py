@@ -150,7 +150,28 @@ class TypesafeSupervisorAdapter:
             raise TypesafeAuthorityError(
                 "decision runtime input with non-advisory evidence is required"
             )
-        return runtime.decide(runtime_input)
+        result = runtime.decide(runtime_input)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(step, "graph_id", "")
+                or getattr(step, "ledger_id", "")
+                or getattr(result, "decision_id", "")
+                or "typesafe-runtime-admission"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="typesafe_decision_runtime_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def handle_wake(
         self,

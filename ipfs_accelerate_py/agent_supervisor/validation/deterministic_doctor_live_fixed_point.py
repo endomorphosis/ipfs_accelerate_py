@@ -950,13 +950,34 @@ def evaluate_live_semantic_discharge(
     """Consume current discharge evidence; None means the gate is inactive."""
 
     if request.semantic_discharge is None and not request.required_obligation_ids:
-        return None
-    evidence = request.semantic_discharge or SemanticDischargeEvidence()
-    return apply_semantic_discharge(
-        evidence,
-        required_obligation_ids=request.required_obligation_ids,
-        plan_ancestry=request.plan_ancestry,
-    )
+        result = None
+    else:
+        evidence = request.semantic_discharge or SemanticDischargeEvidence()
+        result = apply_semantic_discharge(
+            evidence,
+            required_obligation_ids=request.required_obligation_ids,
+            plan_ancestry=request.plan_ancestry,
+        )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            (getattr(result, "successor_fingerprint", "") if result is not None else "")
+            or (request.required_obligation_ids[0] if request.required_obligation_ids else "")
+            or "live-semantic-discharge"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="live_semantic_discharge",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------
