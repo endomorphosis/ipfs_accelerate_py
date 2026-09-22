@@ -611,6 +611,28 @@ def gate_production_execute(
     diverges from the operator-signed binding.
     """
 
+    def _mirror_gate(verdict: DeploymentBindingVerdict) -> DeploymentBindingVerdict:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                verdict.binding_id
+                or verdict.reason
+                or "production-execute-gate"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="production_execute_gate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return verdict
+
     now = time.time() if now_epoch_s is None else float(now_epoch_s)
     actual_ids = normalize_adapter_identities(
         list(_identity_map(runtime_adapter_identities).values())
@@ -628,64 +650,64 @@ def gate_production_execute(
 
     signature_valid = verify_deployment_binding_signature(binding, operator_key)
     if not signature_valid:
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason="invalid_or_missing_binding_signature",
             signature_valid=False,
             **base_kwargs,
-        )
+        ))
 
     if require_production_environment and binding.environment != PRODUCTION_ENVIRONMENT:
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason="binding_environment_not_production",
             signature_valid=True,
             **base_kwargs,
-        )
+        ))
 
     if binding.is_expired_at(now):
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason="binding_expired",
             signature_valid=True,
             **base_kwargs,
-        )
+        ))
 
     if not isinstance(runtime_catalog_digest, str) or not _HEX_SHA256.fullmatch(
         runtime_catalog_digest
     ):
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason="runtime_catalog_digest_invalid",
             signature_valid=True,
             **base_kwargs,
-        )
+        ))
 
     if runtime_catalog_digest != binding.catalog_digest:
         # Confirm cannot override catalog pin.
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason="catalog_digest_mismatch",
             signature_valid=True,
             **base_kwargs,
-        )
+        ))
 
     mismatch = compare_adapter_identities(binding.adapter_identities, actual_ids)
     if mismatch is not None:
         # Confirm cannot override adapter identity pin.
-        return DeploymentBindingVerdict(
+        return _mirror_gate(DeploymentBindingVerdict(
             admitted=False,
             reason=mismatch,
             signature_valid=True,
             **base_kwargs,
-        )
+        ))
 
-    return DeploymentBindingVerdict(
+    return _mirror_gate(DeploymentBindingVerdict(
         admitted=True,
         reason="binding_match_confirmed" if confirmed else "binding_match",
         signature_valid=True,
         **base_kwargs,
-    )
+    ))
 
 
 def require_production_execute(

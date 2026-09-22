@@ -1096,8 +1096,33 @@ def validate_delegated_inference_receipt(
     model: str | None = None,
 ) -> CapabilityOutcome:
     """Validate a delegated inference receipt without inventing success."""
+
+    def _mirror_delegated(result: CapabilityOutcome) -> CapabilityOutcome:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            details = getattr(result, "details", None) or {}
+            record_ref = str(
+                (details.get("receipt_id") if isinstance(details, Mapping) else "")
+                or result.code
+                or model
+                or "delegated-inference"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="delegated_inference_receipt",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
+
     if not receipt:
-        return CapabilityOutcome(
+        return _mirror_delegated(CapabilityOutcome(
             outcome="Unavailable",
             code="delegated_receipt_missing",
             message="delegated inference receipt is missing",
@@ -1105,10 +1130,10 @@ def validate_delegated_inference_receipt(
             backend=normalize_backend(backend) or backend,
             envelope=EvidenceEnvelope(),
             details={"receipt_present": False, "model": model},
-        )
+        ))
 
     if receipt.get("revoked") is True or receipt.get("authority") == "revoked":
-        return CapabilityOutcome(
+        return _mirror_delegated(CapabilityOutcome(
             outcome="Failed",
             code="delegated_receipt_revoked",
             message="delegated inference receipt authority is revoked",
@@ -1116,14 +1141,14 @@ def validate_delegated_inference_receipt(
             backend=normalize_backend(backend) or backend,
             envelope=EvidenceEnvelope(authority="revoked", effect="failed"),
             details={"receipt_id": receipt.get("receipt_id"), "model": model},
-        )
+        ))
 
     has_observation = bool(receipt.get("independent_effect_observation"))
     has_signature = bool(
         receipt.get("signed_receipt") or receipt.get("signature_valid")
     )
     if not has_observation:
-        return CapabilityOutcome(
+        return _mirror_delegated(CapabilityOutcome(
             outcome="Unknown",
             code="delegated_receipt_unobserved",
             message="delegated inference receipt lacks independent effect observation",
@@ -1134,10 +1159,10 @@ def validate_delegated_inference_receipt(
                 integrity="structurally_valid" if has_signature else "unchecked",
             ),
             details={"receipt_id": receipt.get("receipt_id"), "model": model},
-        )
+        ))
 
     if not has_signature:
-        return CapabilityOutcome(
+        return _mirror_delegated(CapabilityOutcome(
             outcome="Unknown",
             code="delegated_receipt_unsigned",
             message="delegated inference receipt observation is unsigned",
@@ -1146,13 +1171,13 @@ def validate_delegated_inference_receipt(
             envelope=EvidenceEnvelope(effect="externally_unknown", integrity="unchecked"),
             evidence=frozenset({"independent_effect_observation"}),
             details={"receipt_id": receipt.get("receipt_id"), "model": model},
-        )
+        ))
 
     attempt = begin_inference_attempt(
         backend=backend,
         model=model or receipt.get("model"),  # type: ignore[arg-type]
     )
-    return bind_inference_observation(
+    return _mirror_delegated(bind_inference_observation(
         attempt,
         observation_present=True,
         observation_id=str(receipt.get("receipt_id") or "delegated-inference"),
@@ -1163,7 +1188,7 @@ def validate_delegated_inference_receipt(
         integrity="signature_valid",
         delegated=True,
         details={"receipt_id": receipt.get("receipt_id"), "model": model},
-    )
+    ))
 
 
 def resolve_inference_outcome(

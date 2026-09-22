@@ -1975,7 +1975,7 @@ def validate_translation(
         else TranslationValidationRequest.from_dict(request)
     )
     verdicts, status, reason = _evaluate_verdicts(resolved)
-    return TranslationValidationResult(
+    result = TranslationValidationResult(
         tree_id=resolved.tree_id,
         request_cid=resolved.request_cid,
         packet_cid=resolved.packet_cid,
@@ -1985,6 +1985,24 @@ def validate_translation(
         status=status,
         terminal_reason=reason,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.request_cid or result.packet_cid or "translation-validation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="translation_validation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def dry_run_translation_validation(

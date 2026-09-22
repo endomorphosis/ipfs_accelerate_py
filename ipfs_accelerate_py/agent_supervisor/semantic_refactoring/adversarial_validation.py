@@ -3436,7 +3436,7 @@ def validate_mutation_campaign(
         survivors,
         unknown,
     ) = _evaluate_campaign(resolved)
-    return MutationCampaignReceipt(
+    result = MutationCampaignReceipt(
         tree_id=resolved.tree_id,
         request_cid=resolved.request_cid,
         packet_cid=resolved.packet_cid,
@@ -3450,6 +3450,24 @@ def validate_mutation_campaign(
         critical_survivors=survivors,
         unknown_required_dynamics=unknown,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(result.tree_id or "")
+        record_ref = str(result.request_cid or result.packet_cid or "mutation-campaign")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mutation_campaign_validation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def dry_run_mutation_campaign(

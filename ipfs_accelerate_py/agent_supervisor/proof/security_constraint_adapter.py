@@ -1902,7 +1902,28 @@ def authorize_security_action(
 ) -> SecurityDecisionReceipt:
     """Compile and evaluate without weakening either receipt boundary."""
 
-    return evaluate_security_authorization(compile_security_constraints(artifact), request)
+    result = evaluate_security_authorization(compile_security_constraints(artifact), request)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.content_id
+            or result.request_id
+            or result.policy_receipt_id
+            or "security-authorize-action"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="security_authorize_action",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [
