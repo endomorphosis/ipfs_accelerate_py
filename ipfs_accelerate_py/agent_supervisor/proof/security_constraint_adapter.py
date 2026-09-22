@@ -1778,7 +1778,7 @@ class SecurityConstraintAdapter:
             outcome = SecurityDecisionOutcome.UNKNOWN
         else:
             outcome = SecurityDecisionOutcome.DENY
-        return SecurityDecisionReceipt(
+        result = SecurityDecisionReceipt(
             outcome=outcome,
             policy_receipt_id=policy.content_id,
             request_id=request.content_id,
@@ -1791,6 +1791,27 @@ class SecurityConstraintAdapter:
             authorization_decision=reference_decision,
             reason_codes=tuple(sorted(reasons)),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.request_id
+                or result.policy_receipt_id
+                or result.security_root_cid_v1
+                or "security-authorization"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="security_authorization",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     authorize = evaluate
     check = evaluate

@@ -443,6 +443,21 @@ def admit_negative_candidate(name: str, payload: Any) -> dict[str, Any]:
             "stale: contract_catalog_cid is not the current PCPR-040 catalog",
             reject_kind="stale",
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(name or admitted.get("schema") or "negative-candidate")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="negative_candidate_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return admitted
 
 
@@ -527,6 +542,26 @@ def evaluate_negative_vectors() -> tuple[dict[str, Any], ...]:
         )
     if len(results) != len(NEGATIVE_RECIPES):
         raise NegativeCrossLanguageVectorError("negative recipe count drifted")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = results[0] if results else {}
+        record_ref = str(
+            (first.get("id") if isinstance(first, Mapping) else "")
+            or len(results)
+            or "negative-vectors"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="negative_vectors",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return results
 
 

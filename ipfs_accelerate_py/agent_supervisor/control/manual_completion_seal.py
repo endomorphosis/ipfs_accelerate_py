@@ -524,6 +524,23 @@ def verify_manual_completion_seal(
         raise ManualCompletionSealError(
             "manual completion seal grant is not activation-only"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            receipt.get("receipt_id") or receipt.get("task_id") or task_id or "manual-completion-seal"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="manual_completion_seal",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return receipt
 
 

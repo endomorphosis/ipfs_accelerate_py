@@ -2370,6 +2370,28 @@ class LegacyLandedReviewService:
             )
 
 
+def _mirror_legacy_review_result(
+    reasons: tuple[str, ...], *, task_id: str = ""
+) -> tuple[str, ...]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason_ref = str(reasons[0]) if reasons else ""
+        record_ref = str(task_id or reason_ref or "legacy-landed-review-result")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_landed_review_result",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return reasons
+
+
 def verify_legacy_landed_review_result(
     result: LegacyLandedReviewResult,
     *,
@@ -2385,7 +2407,10 @@ def verify_legacy_landed_review_result(
 
     failures: list[str] = []
     if not result.reviewed or result.attestation is None:
-        return ("legacy_landed_review_result_not_reviewed",)
+        return _mirror_legacy_review_result(
+            ("legacy_landed_review_result_not_reviewed",),
+            task_id=str(getattr(result, "task_id", "") or ""),
+        )
     resolved_repo = Path(repo_root).resolve()
     try:
         if (
@@ -2394,15 +2419,24 @@ def verify_legacy_landed_review_result(
             or _tree_id(resolved_repo, policy.current_head)
             != policy.current_tree_id
         ):
-            return ("legacy_landed_review_repository_fence_failed",)
+            return _mirror_legacy_review_result(
+                ("legacy_landed_review_repository_fence_failed",),
+                task_id=str(getattr(result, "task_id", "") or ""),
+            )
     except (LegacyLandedReviewError, OSError, ValueError):
-        return ("legacy_landed_review_repository_fence_failed",)
+        return _mirror_legacy_review_result(
+            ("legacy_landed_review_repository_fence_failed",),
+            task_id=str(getattr(result, "task_id", "") or ""),
+        )
     try:
         task = policy.task(result.task_id)
         binding = inspect_legacy_repository_binding(resolved_repo, policy, task)
         rebuilt_manifest = build_legacy_landed_byte_manifest(policy, binding)
     except (LegacyLandedReviewError, ValueError):
-        return ("legacy_landed_review_repository_reverification_failed",)
+        return _mirror_legacy_review_result(
+            ("legacy_landed_review_repository_reverification_failed",),
+            task_id=str(getattr(result, "task_id", "") or ""),
+        )
     if result.manifest is None or canonical_json_bytes(result.manifest) != canonical_json_bytes(rebuilt_manifest):
         failures.append("legacy_landed_review_manifest_reverification_failed")
         manifest = rebuilt_manifest
@@ -2523,7 +2557,9 @@ def verify_legacy_landed_review_result(
     if result.scope_adjudication_receipt is not None and attestation.scope_adjudication_receipt_id != result.scope_adjudication_receipt.get("receipt_id"):
         failures.append("legacy_landed_review_attested_scope_mismatch")
     reasons = tuple(dict.fromkeys(failures))
-    return reasons
+    return _mirror_legacy_review_result(
+        reasons, task_id=str(getattr(result, "task_id", "") or "")
+    )
 
 
 __all__ = [

@@ -3321,6 +3321,35 @@ def _independent_provider_execution_receipt_v2_valid(
     )
 
 
+def _mirror_production_provider_receipt(
+    disposition: ProductionReceiptDisposition,
+    reason: str,
+    *,
+    task_id: str = "",
+) -> tuple[ProductionReceiptDisposition, str]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            task_id
+            or reason
+            or getattr(disposition, "value", "")
+            or "production-provider-receipt"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_provider_receipt",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return disposition, reason
+
+
 def evaluate_production_provider_receipt(
     receipt: ProviderExecutionReceipt | Mapping[str, Any] | None,
     *,
@@ -3338,46 +3367,51 @@ def evaluate_production_provider_receipt(
     without the pinned production Grok/Codex child-execution provenance.
     """
 
+    task_id = str(expected_task_id or "").strip()
     if receipt is None:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_ABSENT,
             ProviderReason.RECEIPT_ABSENT.value,
+            task_id=task_id,
         )
     if isinstance(receipt, ProviderExecutionReceipt):
         payload = receipt.to_dict()
     elif isinstance(receipt, Mapping):
         payload = dict(receipt)
     else:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.REJECTED,
             ProviderReason.PACKET_MALFORMED.value,
+            task_id=task_id,
         )
 
-    task_id = str(expected_task_id or "").strip()
     if not task_id:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.REJECTED,
             ProviderReason.PACKET_MALFORMED.value,
         )
 
     if not _provider_execution_receipt_v2_protocol_valid(payload):
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.REJECTED,
             ProviderReason.PACKET_MALFORMED.value,
+            task_id=task_id,
         )
 
     packet = payload.get("packet")
     packet_map = dict(packet)
     receipt_task = str(packet_map.get("task_id") or "").strip()
     if receipt_task and receipt_task != task_id:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_CROSS_TASK,
             ProviderReason.RECEIPT_CROSS_TASK.value,
+            task_id=task_id,
         )
     if not receipt_task:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_CROSS_TASK,
             ProviderReason.RECEIPT_CROSS_TASK.value,
+            task_id=task_id,
         )
 
     receipt_snapshot = str(
@@ -3386,16 +3420,18 @@ def evaluate_production_provider_receipt(
     expected_snapshot = str(expected_snapshot_id or "").strip()
     current = str(current_snapshot_id or expected_snapshot).strip()
     if not receipt_snapshot or not expected_snapshot:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_STALE,
             ProviderReason.RECEIPT_STALE.value,
+            task_id=task_id,
         )
     if receipt_snapshot != expected_snapshot or (
         current and receipt_snapshot != current
     ):
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_STALE,
             ProviderReason.RECEIPT_STALE.value,
+            task_id=task_id,
         )
 
     presence = str(
@@ -3404,43 +3440,50 @@ def evaluate_production_provider_receipt(
         or ""
     )
     if presence == ReviewPresence.ABSENT.value:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_ABSENT,
             ProviderReason.RECEIPT_ABSENT.value,
+            task_id=task_id,
         )
     if presence == ReviewPresence.DEGRADED.value:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_DEGRADED,
             ProviderReason.RECEIPT_DEGRADED.value,
+            task_id=task_id,
         )
     if presence == ReviewPresence.DECLINED.value:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_DECLINED,
             ProviderReason.REVIEW_DECLINED.value,
+            task_id=task_id,
         )
     if presence != ReviewPresence.INDEPENDENT.value:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
             ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            task_id=task_id,
         )
 
     admitted = (payload.get("admission") or {}).get("provider_result_admitted")
     if not admitted:
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
             ProviderReason.ADMISSION_REQUIRED.value,
+            task_id=task_id,
         )
     if not _independent_provider_execution_receipt_v2_valid(
         payload,
         require_execution_binding=require_execution_binding,
     ):
-        return (
+        return _mirror_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
             ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            task_id=task_id,
         )
-    return (
+    return _mirror_production_provider_receipt(
         ProductionReceiptDisposition.ADMITTED,
         ProviderReason.ROUTED.value,
+        task_id=task_id,
     )
 
 
