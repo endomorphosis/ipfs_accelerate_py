@@ -2736,9 +2736,27 @@ class TaskSplitRefillEvidence:
 
     def verify_integrity(self) -> bool:
         material = self._material()
-        return self.integrity_digest == hashlib.sha256(
+        accepted = self.integrity_digest == hashlib.sha256(
             _task_quality_evidence_bytes(material)
         ).hexdigest() and self.evidence_id == _task_quality_evidence_cid(material)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.evidence_id or self.repository_tree or "task-split-refill")
+            tree_id = str(self.repository_tree or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="task_split_refill_integrity",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     @property
     def proved_requirement_ids(self) -> tuple[str, ...]:

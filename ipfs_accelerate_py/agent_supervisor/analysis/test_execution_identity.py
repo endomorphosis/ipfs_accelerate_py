@@ -978,7 +978,7 @@ def _non_reusable_locator(
     diagnostics: Optional[Mapping[str, Any]] = None,
 ) -> CompiledTestLocator:
     locator_cid = content_identity.cid if content_identity is not None else ""
-    return CompiledTestLocator(
+    result = CompiledTestLocator(
         reusable=False,
         reason_code=reason_code,
         non_reusable_reason=non_reusable_reason,
@@ -988,6 +988,22 @@ def _non_reusable_locator(
         cid_support=cid_support,
         diagnostics=dict(diagnostics or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.locator_cid or result.reason_code or "test-locator")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_locator",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _non_reusable_execution(
@@ -1001,7 +1017,7 @@ def _non_reusable_execution(
     diagnostics: Optional[Mapping[str, Any]] = None,
 ) -> CompiledTestExecutionKey:
     execution_cid = content_identity.cid if content_identity is not None else ""
-    return CompiledTestExecutionKey(
+    result = CompiledTestExecutionKey(
         reusable=False,
         reason_code=reason_code,
         non_reusable_reason=non_reusable_reason,
@@ -1012,6 +1028,22 @@ def _non_reusable_execution(
         cid_support=cid_support,
         diagnostics=dict(diagnostics or {}),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.execution_cid or result.locator_cid or result.reason_code or "test-execution-key")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_execution_key",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1108,7 +1140,7 @@ class TestExecutionIdentityCompiler:
             )
 
         if key.non_reusable_reason:
-            return CompiledTestLocator(
+            result = CompiledTestLocator(
                 reusable=False,
                 reason_code=REASON_NON_REUSABLE,
                 non_reusable_reason=key.non_reusable_reason,
@@ -1118,17 +1150,33 @@ class TestExecutionIdentityCompiler:
                 cid_support=status,
                 diagnostics={"parameter_non_reusable": True},
             )
+        else:
+            result = CompiledTestLocator(
+                reusable=True,
+                reason_code="",
+                non_reusable_reason="",
+                locator=key,
+                content_identity=identity,
+                locator_cid=identity.cid,
+                cid_support=status,
+                diagnostics={},
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
 
-        return CompiledTestLocator(
-            reusable=True,
-            reason_code="",
-            non_reusable_reason="",
-            locator=key,
-            content_identity=identity,
-            locator_cid=identity.cid,
-            cid_support=status,
-            diagnostics={},
-        )
+            record_ref = str(result.locator_cid or result.reason_code or "test-locator")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="test_locator",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def compile_execution_key(
         self,
@@ -1195,7 +1243,7 @@ class TestExecutionIdentityCompiler:
                 non_reusable_reason or key.components["non_reusable_reason"]
             )
         if non_reusable_reason:
-            return CompiledTestExecutionKey(
+            result = CompiledTestExecutionKey(
                 reusable=False,
                 reason_code=REASON_NON_REUSABLE,
                 non_reusable_reason=non_reusable_reason,
@@ -1206,18 +1254,34 @@ class TestExecutionIdentityCompiler:
                 cid_support=status,
                 diagnostics={"eligibility_class": key.eligibility_class.value},
             )
+        else:
+            result = CompiledTestExecutionKey(
+                reusable=True,
+                reason_code="",
+                non_reusable_reason="",
+                execution_key=key,
+                content_identity=identity,
+                execution_cid=identity.cid,
+                locator_cid=key.locator_cid,
+                cid_support=status,
+                diagnostics={},
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
 
-        return CompiledTestExecutionKey(
-            reusable=True,
-            reason_code="",
-            non_reusable_reason="",
-            execution_key=key,
-            content_identity=identity,
-            execution_cid=identity.cid,
-            locator_cid=key.locator_cid,
-            cid_support=status,
-            diagnostics={},
-        )
+            record_ref = str(result.execution_cid or result.locator_cid or result.reason_code or "test-execution-key")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="test_execution_key",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     # -- coercion ------------------------------------------------------------
 

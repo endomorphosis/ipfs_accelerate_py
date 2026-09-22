@@ -243,7 +243,7 @@ class ParallelAcceptanceReceipt:
             or validation.get("target_commit")
             or ""
         )
-        return bool(
+        accepted = bool(
             self._producer_seal is _PARALLEL_ACCEPTANCE_RECEIPT_SEAL
             and self.schema == PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA
             and self.requirement_id == PARALLEL_ACCEPTANCE_EVIDENCE_ID
@@ -259,6 +259,22 @@ class ParallelAcceptanceReceipt:
             and self.mutation_fence_token_digest.startswith("sha256:")
             and len(self.mutation_fence_token_digest) == len("sha256:") + 64
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.request_id or self.canonical_task_id or "parallel-acceptance")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="parallel_acceptance_integrity",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(self.canonical_task_id or record_ref),
+            )
+        except Exception:
+            pass
+        return accepted
 
     def proved_requirement_ids_for(
         self, repository_tree: str

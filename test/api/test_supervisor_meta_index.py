@@ -5770,6 +5770,39 @@ def test_mirror_family_track_and_integrity_surfaces(tmp_path, monkeypatch) -> No
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_integrity_locator_and_assurance_surfaces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("parallel_acceptance_integrity", "request:accept", "metadata", "task_id"),
+        ("task_split_refill_integrity", "evidence:refill", "metadata", "record_cid"),
+        ("distributed_lane_integrity", "lane:evidence", "metadata", "record_cid"),
+        ("task_work_contract_integrity", "contract:work", "metadata", "task_id"),
+        ("inventory_program_verification", "inventory:cid", "ast", "record_cid"),
+        ("test_locator", "locator:cid", "metadata", "record_cid"),
+        ("test_execution_key", "execution:cid", "metadata", "record_cid"),
+        ("incremental_mutation_verification", "mutant:1", "proof_cache", "record_cid"),
+        ("semantic_capsule", "capsule:semantic", "capsule", "capsule_cid"),
+        ("assurance_api_call", "evaluate_remediation", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

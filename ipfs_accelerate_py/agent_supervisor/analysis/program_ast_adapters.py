@@ -867,6 +867,21 @@ class InventoryProgramEvidenceReceipt:
             )
         if self.expected_paths != expected:
             raise ValueError("previous inventory program receipt paths do not match inventory")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(self.inventory_cid or self.receipt_cid or "inventory-program")
+            mirror_work_record(
+                catalog_kind="ast",
+                record_kind="inventory_program_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return True
 
     def to_dict(self) -> dict[str, Any]:

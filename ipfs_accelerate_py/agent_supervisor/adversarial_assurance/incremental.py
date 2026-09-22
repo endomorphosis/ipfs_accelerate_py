@@ -1975,7 +1975,7 @@ class IncrementalMutationVerifier:
             )
         )
 
-        return IncrementalMutationVerificationResult(
+        result = IncrementalMutationVerificationResult(
             mutant_id=mutant,
             repository_tree_cid=tree,
             decisions=final_decisions,
@@ -1992,6 +1992,22 @@ class IncrementalMutationVerifier:
             reason_codes=reasons,
             evidence_subset=self.evidence_subset,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.result_cid or result.mutant_id or "incremental-mutant")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="incremental_mutation_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def to_dict(self) -> dict[str, Any]:
         return {

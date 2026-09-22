@@ -872,7 +872,27 @@ class AssuranceCapsuleAdapter:
 
     def compile_semantic_capsule(self, *args: Any, **kwargs: Any) -> Any:
         surface = self._ensure_loaded()
-        return surface.compile_semantic_capsule(*args, **kwargs)
+        result = surface.compile_semantic_capsule(*args, **kwargs)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "capsule_cid", "")
+                or getattr(result, "content_id", "")
+                or "semantic-capsule"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="semantic_capsule",
+                record_ref=record_ref,
+                subject_kind="capsule_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def runtime_view(self) -> Mapping[str, Any]:
         cap = self.require_available()

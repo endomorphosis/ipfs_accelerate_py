@@ -647,11 +647,29 @@ class TaskWorkContract:
         return self.work_contract_id
 
     def verify_integrity(self) -> bool:
-        return (
+        accepted = (
             self.work_contract_id == canonical_content_cid(self._material())
             and self.task_work_contract_id
             == canonical_content_cid(self._binding_material())
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                self.work_contract_id or self.canonical_task_cid or "task-work-contract"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="task_work_contract_integrity",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(self.canonical_task_cid or record_ref),
+            )
+        except Exception:
+            pass
+        return accepted
 
     def _binding_material(self) -> dict[str, Any]:
         return {
