@@ -1127,7 +1127,7 @@ class FormalVerificationPolicy(CanonicalContract):
                 )
             )
 
-        return PolicyGateDecision(
+        decision = PolicyGateDecision(
             policy_id=self.policy_id,
             selection_id=selection.selection_id,
             repository_tree_id=selection.repository_tree_id,
@@ -1141,6 +1141,29 @@ class FormalVerificationPolicy(CanonicalContract):
             ),
             override_rejection_reasons=override_reasons,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                decision.selection_id
+                or decision.policy_id
+                or decision.repository_tree_id
+                or "policy-gate"
+            )
+            tree_id = str(decision.repository_tree_id or "")
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="policy_gate_decision",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return decision
 
 
 RiskSelectedProofPolicy = VerificationPolicy = FormalVerificationPolicy

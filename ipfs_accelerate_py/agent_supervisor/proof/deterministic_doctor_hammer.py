@@ -1138,6 +1138,26 @@ class DoctorExactLoweringReceipt(CanonicalContract):
             raise DoctorHammerAuthorityError(
                 "exact lowering does not bind the reviewed theorem"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                self.theorem_cid
+                or self.theorem_id
+                or theorem.content_id
+                or "doctor-hammer-theorem"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="doctor_hammer_theorem",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
 
     def _payload(self) -> dict[str, Any]:
         return {

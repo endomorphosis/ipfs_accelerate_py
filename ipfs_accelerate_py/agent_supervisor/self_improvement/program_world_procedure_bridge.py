@@ -196,6 +196,26 @@ class ProgramWorldProcedureBridge:
         if self.compiler is not None and not callable(getattr(self.compiler, "validate", None)):
             raise ProgramWorldProcedureError("procedure authority is not the landed compiler")
         self.remember(candidate)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                candidate.family_cid
+                or candidate.validation_cid
+                or candidate.rollback_cid
+                or "program-world-procedure"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="program_world_procedure_candidate",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return candidate
 
     def match_program_world_procedure(

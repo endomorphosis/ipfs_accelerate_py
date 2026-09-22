@@ -4349,6 +4349,27 @@ class ContextCompiler:
                 raise ContextCompilationError(
                     "selected optional evidence is below the value threshold"
                 )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            capsule = result.capsule
+            receipt = getattr(result, "receipt", None)
+            record_ref = str(
+                getattr(capsule, "capsule_id", "")
+                or getattr(receipt, "receipt_id", "")
+                or "context-compile-result"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="context_compile_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def verify_delta_result(
@@ -4390,6 +4411,25 @@ class ContextCompiler:
             raise ContextDeltaError(
                 "delta no longer qualifies against the effective token budget"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result.receipt, "receipt_id", "")
+                or getattr(result.delta_capsule, "capsule_id", "")
+                or "context-delta-result"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="context_delta_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def verify_prefix_result(

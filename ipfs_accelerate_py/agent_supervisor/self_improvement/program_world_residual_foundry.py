@@ -87,35 +87,75 @@ class ProgramWorldResidualFoundry:
 
     def evaluate_program_world_checkpoint(self, family: str) -> Mapping[str, Any]:
         if not self.monitor.healthy():
-            return {
+            result: Mapping[str, Any] = {
                 "family": family,
                 "abstained": True,
                 "reason_code": "drift_or_ood",
                 "completion_authority": False,
             }
-        prepared = self.prepare_program_world_training(family)
-        if prepared.get("training_unavailable"):
-            return prepared
-        return {
-            "family": family,
-            "evaluated": True,
-            "proposal_only": True,
-            "completion_authority": False,
-        }
+        else:
+            prepared = self.prepare_program_world_training(family)
+            if prepared.get("training_unavailable"):
+                result = prepared
+            else:
+                result = {
+                    "family": family,
+                    "evaluated": True,
+                    "proposal_only": True,
+                    "completion_authority": False,
+                }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("family")
+                or result.get("reason_code")
+                or family
+                or "program-world-checkpoint"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="program_world_checkpoint_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def admit_program_world_checkpoint(self, family: str) -> ProgramWorldCheckpointAdmission:
         evaluation = self.evaluate_program_world_checkpoint(family)
         if evaluation.get("training_unavailable") or evaluation.get("abstained"):
-            return ProgramWorldCheckpointAdmission(
+            result = ProgramWorldCheckpointAdmission(
                 family=family,
                 admitted=False,
                 reason_code=str(evaluation.get("reason_code") or "not_evaluated"),
             )
-        return ProgramWorldCheckpointAdmission(
-            family=family,
-            admitted=True,
-            reason_code="proposal_only_checkpoint",
-        )
+        else:
+            result = ProgramWorldCheckpointAdmission(
+                family=family,
+                admitted=True,
+                reason_code="proposal_only_checkpoint",
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.family or result.reason_code or "program-world-checkpoint-admission")
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="program_world_checkpoint_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 def prepare_program_world_training(
