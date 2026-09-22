@@ -151,6 +151,33 @@ class ValidationResult:
             )
 
 
+def _mirror_a2a_vector(result: ValidationResult, case: Mapping[str, Any] | None = None) -> ValidationResult:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        case_id = ""
+        if isinstance(case, Mapping):
+            case_id = str(case.get("id") or case.get("schema_file") or "")
+        record_ref = str(
+            case_id
+            or (result.metadata or {}).get("case_id")
+            or result.code
+            or "a2a-vector"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="a2a_vector_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class StreamEvent:
     """One A2A-style status or artifact update while a task is open."""
@@ -1892,7 +1919,7 @@ class A2ATaskAdapter:
 
         # For negative vectors, ok=False is success of the suite expectation.
         if expected_valid:
-            return result
+            return _mirror_a2a_vector(result, case)
         # Negative case: adapter must reject.
         if result.ok:
             # Semantic subset failures for profile-request when schema_valid true.
@@ -1902,16 +1929,22 @@ class A2ATaskAdapter:
                 and case.get("semantic_valid") is False
             ):
                 # validate_profile_request should have failed; if not, force fail.
-                return ValidationResult(
-                    ok=False,
-                    code=case.get("expected_error") or ERR_PROFILE_NOT_SUBSET,
-                    errors=["expected semantic profile subset failure"],
+                return _mirror_a2a_vector(
+                    ValidationResult(
+                        ok=False,
+                        code=case.get("expected_error") or ERR_PROFILE_NOT_SUBSET,
+                        errors=["expected semantic profile subset failure"],
+                    ),
+                    case,
                 )
-            return ValidationResult(
-                ok=False,
-                code=ERR_MALFORMED_EXTENSION,
-                errors=["expected rejection but validation passed"],
-                metadata={"case_id": case.get("id")},
+            return _mirror_a2a_vector(
+                ValidationResult(
+                    ok=False,
+                    code=ERR_MALFORMED_EXTENSION,
+                    errors=["expected rejection but validation passed"],
+                    metadata={"case_id": case.get("id")},
+                ),
+                case,
             )
         # Rejected as expected.
         expected_error = case.get("expected_error")
@@ -1925,21 +1958,27 @@ class A2ATaskAdapter:
                 ERR_PROFILE_NOT_SUBSET,
             }
             if result.code not in close or expected_error not in close:
-                return ValidationResult(
-                    ok=False,
-                    code=result.code,
-                    errors=[
-                        f"expected error {expected_error}, got {result.code}: "
-                        f"{result.errors}"
-                    ],
+                return _mirror_a2a_vector(
+                    ValidationResult(
+                        ok=False,
+                        code=result.code,
+                        errors=[
+                            f"expected error {expected_error}, got {result.code}: "
+                            f"{result.errors}"
+                        ],
+                    ),
+                    case,
                 )
-        return ValidationResult(
-            ok=True,
-            metadata={
-                "rejected": True,
-                "code": result.code,
-                "case_id": case.get("id"),
-            },
+        return _mirror_a2a_vector(
+            ValidationResult(
+                ok=True,
+                metadata={
+                    "rejected": True,
+                    "code": result.code,
+                    "case_id": case.get("id"),
+                },
+            ),
+            case,
         )
 
 

@@ -625,11 +625,27 @@ class EnvelopeStore:
         """Load by CID and verify structure + recomputed mcpp-jcs-v1 CID."""
         payload = self.get(cid)
         if payload is None:
-            return EnvelopeVerificationResult(
+            result = EnvelopeVerificationResult(
                 ok=False,
                 cid=None,
                 errors=[f"envelope_not_found:{cid}"],
             )
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(cid or "envelope-not-found")
+                mirror_work_record(
+                    catalog_kind="capsule",
+                    record_kind="mcp_envelope",
+                    record_ref=record_ref,
+                    subject_kind="capsule_cid",
+                    subject_ref=record_ref,
+                )
+            except Exception:
+                pass
+            return result
         return verify_envelope(payload, expected_cid=str(cid))
 
     def save_json(self, file_path: str) -> int:

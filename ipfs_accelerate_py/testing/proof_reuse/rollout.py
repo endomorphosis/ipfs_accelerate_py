@@ -744,11 +744,31 @@ class ProofReuseRollbackDecision:
             target = ProofReuseRolloutStage.OFF
         else:
             target = ProofReuseRolloutStage.SHADOW
-        return cls(
+        result = cls(
             current_stage=stage,
             effective_stage=target,
             triggers=triggers,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.effective_stage.value
+                or result.current_stage.value
+                or "proof-reuse-rollback"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="proof_reuse_rollback",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     @property
     def triggered(self) -> bool:
@@ -1120,7 +1140,7 @@ class ProofReuseRolloutPolicy:
             ),
         )
         promoted = all(gate.passed for gate in gates)
-        return ProofReuseRolloutDecision(
+        result = ProofReuseRolloutDecision(
             current_stage=current,
             requested_stage=target,
             effective_stage=target if promoted else current,
@@ -1134,6 +1154,24 @@ class ProofReuseRolloutPolicy:
             policy_id=self.policy_id,
             policy_revision=self.policy_revision,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.decision_id or result.evidence_id or "proof-reuse-promotion")
+            tree_id = str(getattr(evidence, "tree_id", "") or "")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="proof_reuse_promotion",
+                record_ref=record_ref,
+                tree_id=tree_id,
+                subject_kind="tree_id" if tree_id else "record_cid",
+                subject_ref=tree_id or record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def evaluate_rollback(
         self,

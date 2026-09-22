@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Final
+from typing import Any, Final
 
 
 PROJECT_ADAPTER_INVENTORY_SCHEMA: Final[str] = (
@@ -370,18 +370,35 @@ class ProjectAdapter:
             SupportOutcome.PREVIEW_ONLY,
             SupportOutcome.INSUFFICIENT_VALIDATION,
         }:
-            return support
-        return ProjectSupport(
-            outcome=SupportOutcome.MUTATION_NOT_ADMITTED,
-            languages=support.languages,
-            build_systems=support.build_systems,
-            test_signals=support.test_signals,
-            static_signals=support.static_signals,
-            signals=support.signals,
-            skipped_paths=support.skipped_paths,
-            files_visited=support.files_visited,
-            reason="generic adapter never admits mutation",
-        )
+            result = support
+        else:
+            result = ProjectSupport(
+                outcome=SupportOutcome.MUTATION_NOT_ADMITTED,
+                languages=support.languages,
+                build_systems=support.build_systems,
+                test_signals=support.test_signals,
+                static_signals=support.static_signals,
+                signals=support.signals,
+                skipped_paths=support.skipped_paths,
+                files_visited=support.files_visited,
+                reason="generic adapter never admits mutation",
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.adapter_id or result.outcome.value or result.reason or "project-mutation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="project_mutation_admission",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
 
 GenericProjectAdapter = ProjectAdapter

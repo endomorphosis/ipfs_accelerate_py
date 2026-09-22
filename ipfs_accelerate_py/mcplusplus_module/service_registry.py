@@ -246,7 +246,23 @@ class ServiceRecord:
             expected = hmac.new(signing_key, self.signing_payload(), hashlib.sha256).hexdigest()
         except (TypeError, ValueError):
             return False
-        return hmac.compare_digest(self.signature, expected)
+        accepted = hmac.compare_digest(self.signature, expected)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(getattr(self, "peer_id", "") or getattr(self, "service_id", "") or "service-signature")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="service_signature_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return accepted
 
     def to_dict(self) -> Dict[str, Any]:
         result = self._unsigned_dict()

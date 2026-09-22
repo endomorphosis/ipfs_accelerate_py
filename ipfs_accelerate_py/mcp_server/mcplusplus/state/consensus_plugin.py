@@ -638,7 +638,7 @@ def wire_neighborhood_result(
             f"({count} < {thr_used}) among {len(evidence.members)} members"
         )
 
-    return ConsensusResult(
+    result = ConsensusResult(
         plugin_id=evidence.plugin_id,
         guarantee=evidence.guarantee,
         state_id=evidence.state_id,
@@ -653,6 +653,22 @@ def wire_neighborhood_result(
         source=evidence.source,
         evidence=evidence.to_dict(),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.proposal_cid or result.state_id or result.plugin_id or "neighborhood-consensus")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="neighborhood_consensus",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 def label_neighborhood_result(
@@ -950,7 +966,7 @@ class DeterministicTestAdapter(ConsensusPlugin):
                 else f"majority_approval not met ({count} < {thr})"
             )
 
-        return ConsensusResult(
+        result = ConsensusResult(
             plugin_id=self.plugin_id,
             guarantee=current.guarantee,
             state_id=current.state_id,
@@ -965,6 +981,22 @@ class DeterministicTestAdapter(ConsensusPlugin):
             source=current.source or "deterministic_test_adapter",
             evidence=current.to_dict(),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.proposal_cid or result.state_id or result.plugin_id or "neighborhood-consensus")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="neighborhood_consensus",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def evaluate_neighborhood(
         self,

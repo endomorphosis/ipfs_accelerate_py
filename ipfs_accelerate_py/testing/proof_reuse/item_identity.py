@@ -407,6 +407,26 @@ class CurrentRuntimeTraceEvidence:
         )
         if actual != expected:
             raise ValueError("runtime evidence does not bind current item inputs")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(self.binding_identity, "cid", "")
+                or self.node_id
+                or self.identity_components_cid
+                or "item-identity"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="item_identity_current",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
 
 
 @dataclass(frozen=True)

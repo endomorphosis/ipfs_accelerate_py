@@ -449,7 +449,7 @@ class LegalParserParityOptimizer(BaseOptimizer):
         if proof_ready_rate < 0.90:
             coverage_gaps.append(f"proof_ready_rate_below_target: {proof_ready_rate:.3f}")
 
-        return {
+        result = {
             "status": "evaluated",
             "metrics": {
                 **summary,
@@ -465,6 +465,22 @@ class LegalParserParityOptimizer(BaseOptimizer):
             "repair_required_details": repair_required_details,
             "formula_errors": formula_errors,
         }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(result.get("status") or "legal-parser-evaluation")
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="legal_parser_evaluation",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def request_llm_patch(
         self,
