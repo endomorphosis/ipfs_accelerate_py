@@ -1055,6 +1055,25 @@ def validate_task_family_membership(
     }[membership.membership]
     if membership.trajectory_cid not in expected:
         raise TaskFamilyContractError("membership class contradicts the declared boundary")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            membership.trajectory_cid
+            or membership.task_family_cid
+            or "task-family-membership"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_membership_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return membership
 
 

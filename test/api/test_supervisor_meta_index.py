@@ -6659,6 +6659,36 @@ def test_mirror_code_vector_worktree_plan_hole_and_lifecycle_surfaces(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_resolved_paths_handoff_procedure_family_and_typed_goals(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("merge_resolved_paths", "src/mod.py", "filesystem_mtime", "path"),
+        ("handoff_event_sequence", "event:1", "metadata", "record_cid"),
+        ("procedure_spec_validation", "proc:1", "metadata", "record_cid"),
+        ("task_family_membership_validation", "traj:1", "metadata", "record_cid"),
+        ("objective_typed_goals_validation", "heap:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

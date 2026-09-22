@@ -2478,6 +2478,25 @@ def validate_objective_typed_goals(
             "objective typed goals goal coverage does not match "
             f"the current heap ({'; '.join(details)})"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            document.objective_heap_id
+            or (document.goals[0].goal_id if document.goals else "")
+            or "objective-typed-goals"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_typed_goals_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return document
 
 

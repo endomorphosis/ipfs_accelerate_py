@@ -1943,7 +1943,28 @@ def validate_event_sequence(events: Sequence[HandoffEvent]) -> tuple[str, ...]:
             raise HandoffIdentityError("event sequence must not contain duplicate identities")
         seen.add(identity)
         identities.append(identity)
-    return tuple(identities)
+    result = tuple(identities)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = events[0] if events else None
+        record_ref = str(
+            (result[0] if result else "")
+            or getattr(first, "session_id", "")
+            or "handoff-event-sequence"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="handoff_event_sequence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)

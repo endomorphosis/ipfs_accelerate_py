@@ -705,6 +705,26 @@ def validate_procedure_spec(spec: ProcedureSpec) -> ProcedureSpec:
     # Force canonical serialization here so unsupported values cannot survive
     # a subclass or mapping implementation at this final boundary.
     canonical_json_bytes(spec.to_dict())
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(spec, "content_id", "")
+            or spec.name
+            or spec.task_family_id
+            or "procedure-spec"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_spec_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return spec
 
 

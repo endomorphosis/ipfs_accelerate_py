@@ -1033,7 +1033,7 @@ def validate_resolved_paths(repo_root: Path, paths: Sequence[str]) -> dict[str, 
                     }
                 )
 
-    return {
+    result = {
         "valid": not invalid_paths and not marker_findings and not syntax_errors,
         "checked_paths": checked_paths,
         "expanded_paths": expanded_paths,
@@ -1041,6 +1041,24 @@ def validate_resolved_paths(repo_root: Path, paths: Sequence[str]) -> dict[str, 
         "marker_findings": marker_findings,
         "syntax_errors": syntax_errors,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        checked = result.get("checked_paths") or ()
+        record_ref = str((checked[0] if checked else "") or str(root) or "resolved-paths")
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="merge_resolved_paths",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=tuple(str(item) for item in checked)[:16],
+        )
+    except Exception:
+        pass
+    return result
 
 
 def merge_event_workspace(event: Mapping[str, Any], repo_root: Path) -> Path:
