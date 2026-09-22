@@ -3026,11 +3026,31 @@ class DeterministicDoctorHammer:
         reloaded_receipt = self._authoritative_store.reload(
             final_ref, DoctorAuthoritativeProofReceipt
         )
-        return replace(
+        result = replace(
             reloaded_receipt,
             authority_store_ref=final_ref,
             authority_store=self._authoritative_store,
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.receipt_id
+                or getattr(result.theorem, "content_id", "")
+                or "doctor-authoritative-proof"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="doctor_authoritative_proof",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     def reverify_authoritative(
         self,
@@ -3122,7 +3142,7 @@ class DeterministicDoctorHammer:
         disposition: DoctorProofAuthorityDisposition,
         reason: DoctorHammerReasonCode,
     ) -> DoctorAuthoritativeProofReceipt:
-        return DoctorAuthoritativeProofReceipt(
+        result = DoctorAuthoritativeProofReceipt(
             roots=roots,
             receipt_id=_stable_id(
                 "doctor-authoritative-proof",
@@ -3135,6 +3155,26 @@ class DeterministicDoctorHammer:
             disposition=disposition,
             reason_codes=(reason.value,),
         )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.receipt_id
+                or getattr(reason, "value", "")
+                or "doctor-authoritative-proof"
+            )
+            mirror_work_record(
+                catalog_kind="proof_cache",
+                record_kind="doctor_authoritative_proof",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
+        return result
 
     @staticmethod
     def _executable_digest(pin: DoctorPinnedExecutable) -> str:

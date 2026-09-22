@@ -225,6 +225,22 @@ def verify_receipts(receipts: object) -> dict[str, dict[str, Any]]:
                 reason_code="malformed",
             )
         verified[name] = verify_receipt(receipt, kind=name)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        first = next(iter(verified), "")
+        record_ref = str(first or "external-merge-receipts")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="external_merge_receipts",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return verified
 
 

@@ -225,6 +225,8 @@ class ProgramWorldProcedureBridge:
         current_generation: int | None = None,
     ) -> ProcedureCandidate | None:
         generation = self.current_generation if current_generation is None else current_generation
+        normalized = None
+        candidate = None
         try:
             normalized = (
                 query
@@ -232,16 +234,35 @@ class ProgramWorldProcedureBridge:
                 else normalize_accepted_trajectory(query)
             )
         except ProgramWorldTrajectoryError:
-            return None
-        candidate = self._library.get(normalized.family_cid)
-        if candidate is None:
-            return None
-        if candidate.generation < generation:
-            raise ProgramWorldProcedureError("stale procedure")
-        if candidate.environment_cid != normalized.environment_cid:
-            raise ProgramWorldProcedureError("stale or scope-mismatched procedure")
-        if candidate.policy_cid != normalized.policy_cid:
-            raise ProgramWorldProcedureError("stale or scope-mismatched procedure")
+            candidate = None
+        else:
+            candidate = self._library.get(normalized.family_cid)
+            if candidate is not None:
+                if candidate.generation < generation:
+                    raise ProgramWorldProcedureError("stale procedure")
+                if candidate.environment_cid != normalized.environment_cid:
+                    raise ProgramWorldProcedureError("stale or scope-mismatched procedure")
+                if candidate.policy_cid != normalized.policy_cid:
+                    raise ProgramWorldProcedureError("stale or scope-mismatched procedure")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(candidate, "family_cid", "")
+                or getattr(normalized, "family_cid", "")
+                or "program-world-procedure-match"
+            )
+            mirror_work_record(
+                catalog_kind="world_model",
+                record_kind="program_world_procedure_match",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return candidate
 
     def request_promotion(self, candidate: ProcedureCandidate) -> ProcedurePromotionProposal:

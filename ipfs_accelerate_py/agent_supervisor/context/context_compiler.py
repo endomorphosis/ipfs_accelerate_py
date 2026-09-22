@@ -4475,6 +4475,25 @@ class ContextCompiler:
             raise PrefixContextError(
                 "prefix reuse exceeds the remeasured stable prefix"
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result.receipt, "receipt_id", "")
+                or getattr(result.capsule, "capsule_id", "")
+                or "context-prefix-result"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="context_prefix_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def compile_prefix_context(
@@ -6241,6 +6260,25 @@ class DecisionContextCompiler:
             != result.reconstructed_compilation.complete_input_tokens
         ):
             raise DecisionContextRetryError("retry token accounting is forged")
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                getattr(result, "retry_id", "")
+                or getattr(result, "parent_context_id", "")
+                or "decision-context-retry"
+            )
+            mirror_work_record(
+                catalog_kind="capsule",
+                record_kind="decision_context_retry_verification",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return result
 
     def compile_retry(
