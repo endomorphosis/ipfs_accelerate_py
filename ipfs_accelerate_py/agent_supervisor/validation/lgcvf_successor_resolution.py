@@ -759,7 +759,7 @@ def validate_successor_resolution(
                 expected_evidence,
             )
         resolved.add(task_id)
-    return {
+    result = {
         "schema": "lgcvf-successor-resolution-validation@1",
         "valid": True,
         "resolution_cid": resolution_cid,
@@ -767,6 +767,26 @@ def validate_successor_resolution(
         "resolved_task_ids": list(EXPECTED_TASK_IDS),
         **DERIVED_STATES,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("resolution_cid")
+            or result.get("predecessor_successor_tasks_cid")
+            or "lgcvf-successor-resolution"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="lgcvf_successor_resolution",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = (

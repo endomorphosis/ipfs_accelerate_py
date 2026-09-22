@@ -11024,6 +11024,26 @@ class DatabasePortalExecutionBridge:
             result["accepted_source_transition"] = dict(
                 effect_result["accepted_source_transition"]
             )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("portal_receipt_id")
+                or result.get("evidence_digest")
+                or result.get("task_cid")
+                or "portal-effect-validation"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="portal_effect_validation",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(result.get("task_cid") or record_ref),
+            )
+        except Exception:
+            pass
         return result
 
 

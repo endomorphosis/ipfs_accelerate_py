@@ -6490,6 +6490,25 @@ def validate_vrif_runtime_settlement_receipt(
     receipt_content.pop("receipt_cid")
     if supplied_receipt_cid != _content_id(receipt_content):
         raise VRIFRuntimeSettlementError("runtime settlement receipt CID differs")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            normalized.get("receipt_cid")
+            or normalized.get("snapshot_cid")
+            or "vrif-runtime-settlement"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="vrif_runtime_settlement_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return normalized
 
 

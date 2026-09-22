@@ -924,7 +924,7 @@ def validate_lgcvf_production_declined_r_and_d_receipt(
     payload_cid, receipt_cid = _verify_envelope(
         receipt, payload_fields=_PRODUCTION_PAYLOAD_FIELDS, trust=trust
     )
-    return ValidatedLgcvfRAndDReceipt(
+    result = ValidatedLgcvfRAndDReceipt(
         receipt_kind=receipt["receipt_kind"],
         disposition=receipt["disposition"],
         signer_identity=trust.identity,
@@ -933,6 +933,27 @@ def validate_lgcvf_production_declined_r_and_d_receipt(
         payload_cid=payload_cid,
         receipt_cid=receipt_cid,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_cid
+            or result.payload_cid
+            or result.signer_identity
+            or "lgcvf-production-declined-rnd"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="lgcvf_production_declined_rnd_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=str(result.receipt_cid or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 __all__ = [

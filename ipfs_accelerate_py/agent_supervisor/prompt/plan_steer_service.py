@@ -2204,6 +2204,26 @@ class PlanSteerService:
             admission_receipt_cid="",
         )
         assert_delta_preserves_history(delta)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                delta.request_cid
+                or delta.scan_receipt_cid
+                or delta.base_plan_root
+                or "plan-steer-closed-delta"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="plan_steer_closed_delta",
+                record_ref=record_ref,
+                subject_kind="record_cid",
+                subject_ref=record_ref,
+            )
+        except Exception:
+            pass
         return delta
 
     def apply_delta_in_memory(
