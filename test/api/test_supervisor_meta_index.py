@@ -6509,6 +6509,36 @@ def test_mirror_federation_intent_worktree_parallel_root_and_capsule_bindings(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_federation_proof_seal_index_kg_and_live_tools_bindings(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("federation_proof_binding", "obl:1", "proof_cache", "obligation_ref"),
+        ("federation_seal_binding", "receipt:1", "proof_certificate", "receipt_id"),
+        ("federation_retrieval_index_binding", "index:1", "vector", "tree_id"),
+        ("federation_kg_relation_binding", "rel:1", "knowledge_graph", "record_cid"),
+        ("live_tools_list_binding", "cap:1", "metadata", "tree_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

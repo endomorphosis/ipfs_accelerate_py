@@ -531,7 +531,7 @@ def bind_live_tools_list(
         tools.append(dict(normalized))
     tools.sort(key=lambda item: str(item["name"]))
     canonical = _canonical_json(tools)
-    return LiveToolsListEvidence(
+    result = LiveToolsListEvidence(
         capability_id=capability.capability_id,
         provider=capability.provider,
         transport=capability.transport,
@@ -541,6 +541,28 @@ def bind_live_tools_list(
         fixture_sha256="sha256:"
         + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.capability_id
+            or result.fixture_sha256
+            or result.endpoint_identity
+            or "live-tools-list"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="live_tools_list_binding",
+            record_ref=record_ref,
+            tree_id=str(result.repository_tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(result.repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _dotted(node: ast.AST | None) -> str:

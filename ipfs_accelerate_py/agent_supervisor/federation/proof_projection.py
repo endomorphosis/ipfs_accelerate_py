@@ -238,6 +238,27 @@ def bind_proof(
         raise ProofProjectionAuthorityError("proof tree identity mismatches")
     if projection.repository_id != binding.repository_ids[0]:
         raise ProofProjectionAuthorityError("proof repository is not bound")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.obligation_ref
+            or projection.content_ref
+            or "federation-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="federation_proof_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="obligation_ref",
+            subject_ref=str(projection.obligation_ref or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 
@@ -336,6 +357,27 @@ def bind_seal(
     )
     if projection.tree_id != binding.repository_tree_ids[0]:
         raise ProofProjectionAuthorityError("seal tree identity mismatches")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.proof_receipt_id
+            or projection.proof_unit_id
+            or "federation-seal"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="federation_seal_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="receipt_id",
+            subject_ref=str(projection.proof_receipt_id or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 

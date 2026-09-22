@@ -198,6 +198,32 @@ def bind_index(
         raise RetrievalProjectionAuthorityError("retrieval index tree identity mismatches")
     if projection.repository_id != binding.repository_ids[0]:
         raise RetrievalProjectionAuthorityError("retrieval index repository is not bound")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.index_root
+            or projection.content_ref
+            or "federation-index"
+        )
+        catalog = (
+            "bm25"
+            if str(projection.retrieval_method or "").lower() in {"bm25", "lexical"}
+            else "vector"
+        )
+        mirror_work_record(
+            catalog_kind=catalog,
+            record_kind="federation_retrieval_index_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="tree_id",
+            subject_ref=str(projection.tree_id or record_ref),
+        )
+    except Exception:
+        pass
     return projection
 
 
@@ -291,6 +317,27 @@ def bind_kg_relation(
     )
     if projection.tree_id != binding.repository_tree_ids[0]:
         raise RetrievalProjectionAuthorityError("knowledge-graph tree identity mismatches")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            projection.record_id
+            or projection.content_ref
+            or f"{projection.source_node_id}->{projection.target_node_id}"
+            or "federation-kg"
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="federation_kg_relation_binding",
+            record_ref=record_ref,
+            tree_id=str(projection.tree_id or ""),
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
     return projection
 
 
