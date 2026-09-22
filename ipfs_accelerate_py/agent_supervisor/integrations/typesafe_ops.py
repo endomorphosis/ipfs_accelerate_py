@@ -83,7 +83,19 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "watchdog": _advisory(last_watchdog_classification()),
         "calibration": recommend_skip_policy(),
         "autoresearch": _advisory(_last_autoresearch()),
+        "closed_recovery": _advisory(_last_closed_recovery()),
     }
+
+
+def _last_closed_recovery() -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.autonomy.closed_recovery import (
+            last_closed_recovery,
+        )
+
+        return last_closed_recovery()
+    except Exception:
+        return {}
 
 
 def _last_autoresearch() -> dict[str, Any]:

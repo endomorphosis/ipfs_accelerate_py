@@ -168,6 +168,20 @@ class TypesafeSupervisorAdapter:
         ``model_called`` on the cycle receipt must stay false.
         """
 
+        from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
+            AutonomyWakeEvent,
+        )
+
+        bound = (
+            event
+            if isinstance(event, AutonomyWakeEvent)
+            else AutonomyWakeEvent.from_runtime_wake(event)
+        )
+        merged = dict(state)
+        if bound.lane_id and not merged.get("lane_id"):
+            merged["lane_id"] = bound.lane_id
+        if bound.subject_id and not merged.get("subject_id"):
+            merged["subject_id"] = bound.subject_id
         controller = runtime.controller
         question = controller.next_unresolved_question()
         advice = None
@@ -179,7 +193,7 @@ class TypesafeSupervisorAdapter:
                     controller.decision_graph,
                     question,
                     candidates,
-                    state=state,
+                    state=merged,
                     privacy_class=self.privacy_class,
                     remote_disclosure_permitted=remote,
                     timeout=self.timeout,
@@ -187,10 +201,11 @@ class TypesafeSupervisorAdapter:
             except Exception:
                 prepared, advice = tuple(candidates), None
         result = runtime.handle_wake(
-            event,
+            bound,
             candidates=tuple(prepared),
             context=context,
             typesafe_prepare=False,
+            typesafe_state=merged,
             **wake_kwargs,
         )
         if getattr(result, "model_called", False):

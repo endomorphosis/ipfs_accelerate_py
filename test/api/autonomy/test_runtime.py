@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -685,11 +686,150 @@ def test_cancellation_and_stale_evidence_stop_honestly_without_model_calls() -> 
         candidates=candidates,
         context=_context(),
     )
-    assert stale.status is AutonomyRuntimeStatus.BLOCKED
-    assert stale.reason_codes == ("stale_evidence",)
-    assert stale.scanned is False
+    assert stale.status is AutonomyRuntimeStatus.IDLE
+    assert stale.reason_codes[0] == "stale_invalidated"
+    assert stale.scanned is True
+    assert stale.step is None
     assert runtime.metrics.model_calls == 0
     assert runtime.metrics.refills == 0
+
+
+def test_stale_wake_admits_declared_replan_only() -> None:
+    action = _action(MetaAction.REPLAN_AFFECTED_SUFFIX)
+    question = _question(criterion="AC-replan", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(AutonomyWakeKind.FRESHNESS, cursor_id="cursor:stale-replan", stale=True),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert result.status is AutonomyRuntimeStatus.PROGRESSING
+    assert result.step is not None
+    assert result.step.candidate is not None
+    assert result.step.candidate.resolution_action.action is MetaAction.REPLAN_AFFECTED_SUFFIX
+    assert result.model_called is False
+
+
+def test_stale_wake_blocks_when_another_owner_holds_lease() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    table.try_acquire("task", "cursor:busy", "other-lane", ttl_seconds=3600)
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="this-lane",
+        recovery_leases=table,
+    )
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(AutonomyWakeKind.FRESHNESS, cursor_id="cursor:busy", stale=True),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert result.status is AutonomyRuntimeStatus.BLOCKED
+    assert result.reason_codes == ("lease_held",)
+    assert result.acknowledged is False
+    assert result.model_called is False
+
+
+def test_non_stale_wake_blocks_when_task_lease_is_held() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    table.try_acquire("task", "cursor:work", "other-lane", ttl_seconds=3600)
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="this-lane",
+        recovery_leases=table,
+    )
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(AutonomyWakeKind.TASK, cursor_id="cursor:work"),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert result.status is AutonomyRuntimeStatus.BLOCKED
+    assert result.reason_codes == ("lease_held",)
+    assert result.acknowledged is False
+
+
+def test_provider_down_reason_retries_without_admitting_work() -> None:
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(
+            AutonomyWakeKind.PROVIDER,
+            cursor_id="cursor:provider-down",
+            reason="provider_down",
+        ),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert result.status is AutonomyRuntimeStatus.IDLE
+    assert result.reason_codes == ("retry_provider",)
+    assert result.step is None
+    assert result.model_called is False
+
+
+def test_lane_lease_blocks_without_acking() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    table.try_acquire("lane", "lane-7", "other-lane", ttl_seconds=3600)
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    runtime = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="this-lane",
+        recovery_leases=table,
+    )
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(AutonomyWakeKind.TASK, cursor_id="cursor:lane-work"),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+        typesafe_state={"lane_id": "lane-7"},
+    )
+    assert result.status is AutonomyRuntimeStatus.BLOCKED
+    assert result.reason_codes == ("lease_held",)
+    assert result.acknowledged is False
+    assert table.inspect("task", "cursor:lane-work") is None
+
+
+def test_human_stall_admits_declared_human_meta() -> None:
+    action = _action(MetaAction.REQUEST_HUMAN_DECISION)
+    question = _question(criterion="AC-human", action=action)
+    runtime = AutonomyRuntime(controller=_controller(question))
+    compiled = runtime.controller.decision_graph.graph.questions[0]
+    result = runtime.handle_wake(
+        _wake(
+            AutonomyWakeKind.HUMAN,
+            cursor_id="cursor:human",
+            reason="needs_human",
+        ),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert result.status is AutonomyRuntimeStatus.PROGRESSING
+    assert result.step is not None
+    assert result.step.candidate is not None
+    assert (
+        result.step.candidate.resolution_action.action
+        is MetaAction.REQUEST_HUMAN_DECISION
+    )
 
 
 def test_insufficient_evidence_authority_and_budget_are_typed_stops() -> None:
@@ -794,6 +934,225 @@ def test_runtime_wake_aliases_map_onto_the_closed_vocabulary() -> None:
     )
     assert adapted.kind is AutonomyWakeKind.VALIDATION
     assert adapted.cursor_id == "path-metadata:sha256:abc"
+
+
+def test_coordinator_wake_binds_stable_task_and_lane_ids() -> None:
+    adapted = AutonomyWakeEvent.from_runtime_wake(
+        type(
+            "CoordinatorWake",
+            (),
+            {
+                "kinds": ("task_board",),
+                "cursor_ids": ("path-metadata:sha256:unique-per-notify",),
+                "semantic_cursors": {
+                    "task_id": "TASK-42",
+                    "lane_id": "lane-3",
+                },
+                "safety_timer": False,
+                "reason": "stale_evidence",
+                "sequence": 9,
+            },
+        )()
+    )
+    assert adapted.kind is AutonomyWakeKind.TASK
+    assert adapted.subject_id == "TASK-42"
+    assert adapted.lane_id == "lane-3"
+    assert adapted.stale is True
+
+
+def test_two_runtimes_contend_on_the_same_subject_not_unique_cursors() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    first = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-0",
+        recovery_leases=table,
+    )
+    second = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-1",
+        recovery_leases=table,
+    )
+    compiled = first.controller.decision_graph.graph.questions[0]
+    event = _wake(
+        AutonomyWakeKind.TASK,
+        cursor_id="cursor:lane-0-notify",
+        subject_id="TASK-42",
+    )
+    progressing = first.handle_wake(
+        event,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    assert progressing.status is AutonomyRuntimeStatus.PROGRESSING
+    blocked = second.handle_wake(
+        _wake(
+            AutonomyWakeKind.TASK,
+            cursor_id="cursor:lane-1-notify",
+            subject_id="TASK-42",
+        ),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert blocked.status is AutonomyRuntimeStatus.BLOCKED
+    assert blocked.reason_codes == ("lease_held",)
+    assert blocked.acknowledged is False
+    first.acknowledge(event)
+
+
+def test_two_phase_replay_does_not_drop_task_lease() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    first = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-0",
+        recovery_leases=table,
+    )
+    second = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-1",
+        recovery_leases=table,
+    )
+    compiled = first.controller.decision_graph.graph.questions[0]
+    event = _wake(
+        AutonomyWakeKind.TASK,
+        cursor_id="cursor:replay",
+        subject_id="TASK-replay",
+    )
+    candidates = (_candidate(compiled, action),)
+    first.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    first.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    blocked = second.handle_wake(
+        _wake(
+            AutonomyWakeKind.TASK,
+            cursor_id="cursor:peer-replay",
+            subject_id="TASK-replay",
+        ),
+        candidates=candidates,
+        context=_context(),
+    )
+    assert blocked.status is AutonomyRuntimeStatus.BLOCKED
+    assert blocked.reason_codes == ("lease_held",)
+    first.acknowledge(event)
+
+
+def test_replay_adding_lane_does_not_drop_task_lease() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    first = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-0",
+        recovery_leases=table,
+    )
+    second = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-1",
+        recovery_leases=table,
+    )
+    compiled = first.controller.decision_graph.graph.questions[0]
+    event = _wake(
+        AutonomyWakeKind.TASK,
+        cursor_id="cursor:add-lane",
+        subject_id="TASK-lane",
+    )
+    candidates = (_candidate(compiled, action),)
+    first.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    first.handle_wake(
+        event,
+        candidates=candidates,
+        context=_context(),
+        typesafe_state={"lane_id": "lane-0"},
+        auto_acknowledge=False,
+    )
+    blocked = second.handle_wake(
+        _wake(
+            AutonomyWakeKind.TASK,
+            cursor_id="cursor:peer-lane",
+            subject_id="TASK-lane",
+        ),
+        candidates=candidates,
+        context=_context(),
+    )
+    assert blocked.status is AutonomyRuntimeStatus.BLOCKED
+    first.acknowledge(event)
+
+
+def test_unacked_progressing_lease_heartbeat_outlives_short_ttl() -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        RecoveryLeaseTable,
+    )
+
+    table = RecoveryLeaseTable()
+    action = _action()
+    question = _question(criterion="AC-1", action=action)
+    first = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-0",
+        recovery_leases=table,
+        lease_ttl_seconds=0.4,
+    )
+    second = AutonomyRuntime(
+        controller=_controller(question),
+        owner_id="lane-1",
+        recovery_leases=table,
+        lease_ttl_seconds=0.4,
+    )
+    compiled = first.controller.decision_graph.graph.questions[0]
+    event = _wake(
+        AutonomyWakeKind.TASK,
+        cursor_id="cursor:hold",
+        subject_id="TASK-hold",
+    )
+    progressing = first.handle_wake(
+        event,
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+        auto_acknowledge=False,
+    )
+    assert progressing.status is AutonomyRuntimeStatus.PROGRESSING
+    time.sleep(0.55)
+    blocked = second.handle_wake(
+        _wake(
+            AutonomyWakeKind.TASK,
+            cursor_id="cursor:peer",
+            subject_id="TASK-hold",
+        ),
+        candidates=(_candidate(compiled, action),),
+        context=_context(),
+    )
+    assert blocked.status is AutonomyRuntimeStatus.BLOCKED
+    first.acknowledge(event)
 
 
 def test_bounded_safety_timer_does_not_poll_between_intervals() -> None:

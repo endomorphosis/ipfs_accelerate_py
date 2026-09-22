@@ -5419,6 +5419,7 @@ class PortalImplementationDaemon:
         self._pending_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_kinds: set[str] = set()
+        self._wake_lease_session: Any | None = None
         self._runtime_checkpoint = self._load_runtime_checkpoint()
         checkpoint_source_identity = self._runtime_checkpoint.get(
             "task_source_identity"
@@ -14335,6 +14336,7 @@ class PortalImplementationDaemon:
         result: Mapping[str, Any],
         projection_delta: Mapping[str, Any],
     ) -> dict[str, Any]:
+        self._renew_wake_lease_session()
         projection = {
             "schema": RUNTIME_CHECKPOINT_SCHEMA,
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
@@ -14417,7 +14419,101 @@ class PortalImplementationDaemon:
                     kinds.add(selected)
         return kinds
 
+    def _wake_lease_owner_id(self) -> str:
+        import os
+
+        owner = str(os.environ.get("AUTONOMY_OWNER_ID") or "").strip()
+        if owner:
+            return owner[:256]
+        return str(self.state_path)[-256:]
+
+    def _renew_wake_lease_session(self) -> None:
+        session = self._wake_lease_session
+        if session is None:
+            return
+        try:
+            session.renew()
+        except Exception:
+            pass
+
+    def _begin_wake_lease_session(self, events: list[Any]) -> None:
+        previous = self._wake_lease_session
+        if previous is not None:
+            try:
+                previous.release()
+            except Exception:
+                pass
+            self._wake_lease_session = None
+        extras: list[tuple[str, str]] = [
+            ("task", ident) for ident in self._active_task_lease_ids()
+        ]
+        if not events and not extras:
+            return
+        try:
+            from ..autonomy.wake_lease_gate import safe_begin_wake_leases
+            from ..autonomy.recovery_leases import (
+                DEFAULT_DAEMON_RECOVERY_LEASE_TTL_SECONDS,
+                recovery_lease_ttl_from_env,
+            )
+
+            self._wake_lease_session = safe_begin_wake_leases(
+                events,
+                owner_id=self._wake_lease_owner_id(),
+                extra_resources=tuple(extras),
+                ttl_seconds=recovery_lease_ttl_from_env(
+                    default=DEFAULT_DAEMON_RECOVERY_LEASE_TTL_SECONDS
+                ),
+            )
+        except Exception:
+            self._wake_lease_session = None
+
+    def _active_task_lease_ids(self) -> tuple[str, ...]:
+        """Stable task ids to lease even when the wake is only a window tick."""
+
+        try:
+            state = PortalTaskState.load(self.state_path)
+        except Exception:
+            return ()
+        ordered: list[str] = []
+        for value in (
+            getattr(state, "active_task_cid", ""),
+            getattr(state, "active_task_id", ""),
+        ):
+            ident = str(value or "").strip()
+            if ident and ident not in ordered:
+                ordered.append(ident)
+        return tuple(ordered[:2])
+
+    def _lease_held_runtime_result(self, wake_kinds: set[str]) -> dict[str, Any]:
+        from ..autonomy.wake_lease_gate import apply_lease_held_backoff
+
+        result = {
+            "state_path": str(self.state_path),
+            "strategy_path": str(self.strategy_path),
+            "events_path": str(self.events_path),
+            "unchanged": True,
+            "write_count": 0,
+            "projection_delta": {},
+            "implementation_result": None,
+            "merge_reconciliation": [],
+            "wake_kinds": sorted(wake_kinds),
+            "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+        }
+        self._attach_runtime_retry_schedule(result)
+        apply_lease_held_backoff(result, self._wake_lease_session)
+        # Ack so the coordinator does not tight-loop. The incumbent lease
+        # TTL (or the next real change) is the next wake.
+        self._acknowledge_runtime_events()
+        return result
+
     def _acknowledge_runtime_events(self) -> None:
+        session = self._wake_lease_session
+        self._wake_lease_session = None
+        if session is not None:
+            try:
+                session.release()
+            except Exception:
+                pass
         coordinator = self._runtime_wake_coordinator
         if coordinator is None:
             self._current_runtime_wake_events = []
@@ -14459,15 +14555,23 @@ class PortalImplementationDaemon:
         if kind not in RUNTIME_WAKE_KINDS:
             raise ValueError(f"unsupported runtime wake kind: {kind}")
         coordinator = self._ensure_runtime_wake_coordinator()
-        revision = "sha256:" + hashlib.sha256(
-            json.dumps(
-                dict(payload or {}),
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ).encode("utf-8")
-        ).hexdigest()
+        payload_map = dict(payload or {})
+        task_id = str(
+            payload_map.get("task_id") or payload_map.get("canonical_task_cid") or ""
+        ).strip()
+        revision = task_id or (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    payload_map,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         coordinator.notify(kind, revision=revision)
+        self._renew_wake_lease_session()
 
     def _ensure_runtime_wake_coordinator(self) -> Any:
         if self._runtime_wake_coordinator is None:
@@ -14494,10 +14598,18 @@ class PortalImplementationDaemon:
         self._runtime_wake_coordinator = None
         self._pending_runtime_wake_events = []
         self._current_runtime_wake_events = []
+        session = self._wake_lease_session
+        self._wake_lease_session = None
+        if session is not None:
+            try:
+                session.release()
+            except Exception:
+                pass
         if coordinator is not None:
             coordinator.close()
 
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
+        self._renew_wake_lease_session()
         state = PortalTaskState.load(self.state_path)
         now = utc_now()
         if task_id:
@@ -16924,6 +17036,10 @@ class PortalImplementationDaemon:
                     source_digest=source_digest,
                     wake_kinds=wake_kinds,
                 )
+        self._begin_wake_lease_session(self._current_runtime_wake_events)
+        lease_session = self._wake_lease_session
+        if lease_session is not None and bool(getattr(lease_session, "blocked", False)):
+            return self._lease_held_runtime_result(wake_kinds)
         self._last_safety_reconciliation_monotonic = time.monotonic()
         if self.manual_completion_authority_revalidation_only:
             event_log_repair = self._inspect_event_log_file_read_only()
@@ -74563,6 +74679,34 @@ class DatabaseImplementationDaemon:
             self._retained_attempt_fairness = None
             self._idle_recovery_prefix = None
 
+    def _task_recovery_lease(self, task_cid: str) -> Any:
+        """File lease around a DuckDB resume so two processes cannot both run it."""
+
+        ident = str(task_cid or "").strip()
+        owner = str(
+            getattr(self, "owner_session_id", "")
+            or os.environ.get("AUTONOMY_OWNER_ID")
+            or ""
+        ).strip()[:256]
+        if not ident or not owner:
+            return None
+        try:
+            from ..autonomy.wake_lease_gate import session_for_task
+            from ..autonomy.recovery_leases import (
+                DEFAULT_DAEMON_RECOVERY_LEASE_TTL_SECONDS,
+                recovery_lease_ttl_from_env,
+            )
+
+            return session_for_task(
+                ident,
+                owner_id=owner,
+                ttl_seconds=recovery_lease_ttl_from_env(
+                    default=DEFAULT_DAEMON_RECOVERY_LEASE_TTL_SECONDS
+                ),
+            )
+        except Exception:
+            return None
+
     def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
@@ -74600,7 +74744,30 @@ class DatabaseImplementationDaemon:
             dispatch_control = getattr(self, "_native_dispatch_control", None)
             if dispatch_control is not None and retained.attempt is None:
                 dispatch_control.retained_work(running[0])
-            result = self._resume_attempt_without_process_crash(running[0])
+            resume_lease = self._task_recovery_lease(running[0].task_cid)
+            if resume_lease is not None and bool(getattr(resume_lease, "blocked", False)):
+                from ..autonomy.wake_lease_gate import apply_lease_held_backoff
+
+                return apply_lease_held_backoff(
+                    {
+                        "unchanged": True,
+                        "write_count": reconciliation_write_count,
+                        "active_task_id": running[0].task_alias
+                        or running[0].task_cid,
+                        "implementation_result": None,
+                        "authority_mode": self.authority_mode,
+                        "task_source_kind": self.task_source_kind,
+                    },
+                    resume_lease,
+                )
+            try:
+                result = self._resume_attempt_without_process_crash(running[0])
+            finally:
+                if resume_lease is not None:
+                    try:
+                        resume_lease.release()
+                    except Exception:
+                        pass
             return {
                 "unchanged": False,
                 "write_count": 1 + reconciliation_write_count,

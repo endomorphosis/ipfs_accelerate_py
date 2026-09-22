@@ -3979,6 +3979,16 @@ def _spawn_accepted_lane(
         repo_root,
         existing=env.get("PYTHONPATH", ""),
     )
+    env["AUTONOMY_OWNER_ID"] = str(lane.parallel_lane or lane.bundle_key)[:256]
+    env.setdefault("AGENT_SUPERVISOR_STATE_ROOT", str(lane.state_dir.parent))
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
+        bundle_recovery_lease_ttl_seconds,
+    )
+
+    env.setdefault(
+        "AUTONOMY_RECOVERY_LEASE_TTL_SECONDS",
+        str(int(bundle_recovery_lease_ttl_seconds(lease_ms))),
+    )
     handle = lane.log_path.open("ab")
     try:
         process = subprocess.Popen(

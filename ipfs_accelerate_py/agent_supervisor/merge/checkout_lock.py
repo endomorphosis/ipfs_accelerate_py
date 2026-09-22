@@ -178,6 +178,8 @@ class CheckoutMaintenanceLease:
         self._lease_id = lease_id
         self.metadata.setdefault("kind", "checkout-maintenance")
         self.metadata.setdefault("pid", os.getpid())
+        if "expires_at" not in self.metadata:
+            self.metadata["expires_at"] = time.time() + self.max_hold_seconds
         self.metadata.setdefault("owner_script", Path(sys.argv[0]).name)
 
     @property
@@ -302,6 +304,23 @@ class CheckoutMaintenanceLease:
                         "reason": "checkout_maintenance_lease_malformed",
                         "lock_path": str(self.lock_path),
                     }
+                try:
+                    expires_at = float(existing.get("expires_at") or 0.0)
+                except (TypeError, ValueError):
+                    expires_at = 0.0
+                if expires_at > 0 and expires_at <= time.time():
+                    try:
+                        self.lock_path.unlink()
+                    except FileNotFoundError:
+                        continue
+                    except OSError as exc:
+                        return False, {
+                            "blocked": True,
+                            "reason": "checkout_maintenance_lease_cleanup_failed",
+                            "lock_path": str(self.lock_path),
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    continue
                 active = True
                 if owner_is_active is not None:
                     try:

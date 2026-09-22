@@ -28,6 +28,7 @@ representation.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -520,6 +521,7 @@ class AutonomyWakeEvent:
     stale: bool = False
     safety_timer: bool = False
     reason: str = "notification"
+    lane_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", coerce_autonomy_wake_kind(self.kind))
@@ -539,6 +541,11 @@ class AutonomyWakeEvent:
         )
         object.__setattr__(self, "cancelled", _bounded_bool(self.cancelled, "cancelled"))
         object.__setattr__(self, "stale", _bounded_bool(self.stale, "stale"))
+        object.__setattr__(
+            self,
+            "lane_id",
+            _bounded_identifier(self.lane_id, "lane_id", required=False),
+        )
         object.__setattr__(
             self, "safety_timer", _bounded_bool(self.safety_timer, "safety_timer")
         )
@@ -585,6 +592,7 @@ class AutonomyWakeEvent:
             "stale": self.stale,
             "safety_timer": self.safety_timer,
             "reason": self.reason,
+            "lane_id": self.lane_id,
         }
         payload["event_id"] = self.event_id
         return MappingProxyType(payload)
@@ -605,6 +613,7 @@ class AutonomyWakeEvent:
             stale=bool(payload.get("stale", False)),
             safety_timer=bool(payload.get("safety_timer", False)),
             reason=str(payload.get("reason") or "notification"),
+            lane_id=str(payload.get("lane_id") or ""),
         )
 
     @classmethod
@@ -621,18 +630,46 @@ class AutonomyWakeEvent:
         cursor_ids = tuple(getattr(event, "cursor_ids", ()) or ())
         cursor_id = cursor_ids[0] if cursor_ids else str(getattr(event, "cursor_id", "") or "")
         semantic = getattr(event, "semantic_cursors", None) or {}
-        if not cursor_id and isinstance(semantic, Mapping) and semantic:
+        if not isinstance(semantic, Mapping):
+            semantic = {}
+        if not cursor_id and semantic:
             cursor_id = str(next(iter(semantic.values())))
+
+        def _first(*values: Any) -> str:
+            for value in values:
+                text = str(value or "").strip()
+                if text:
+                    return text
+            return ""
+
+        subject_id = _first(
+            getattr(event, "subject_id", ""),
+            getattr(event, "task_id", ""),
+            semantic.get("subject_id"),
+            semantic.get("task_id"),
+            semantic.get("task_board"),
+            semantic.get("board_item"),
+        )
+        lane_id = _first(
+            getattr(event, "lane_id", ""),
+            semantic.get("lane_id"),
+            semantic.get("parallel_lane"),
+        )
+        reason = str(getattr(event, "reason", "") or "notification")
+        stale = bool(getattr(event, "stale", False))
+        if not stale and "stale" in reason.casefold():
+            stale = True
         return cls(
             kind=kind,
             cursor_id=cursor_id,
             sequence=_bounded_int(getattr(event, "sequence", 0) or 0, "sequence"),
-            subject_id=str(getattr(event, "subject_id", "") or ""),
+            subject_id=subject_id,
             evidence_id=str(getattr(event, "evidence_id", "") or ""),
             cancelled=bool(getattr(event, "cancelled", False)),
-            stale=bool(getattr(event, "stale", False)),
+            stale=stale,
             safety_timer=bool(getattr(event, "safety_timer", False)),
-            reason=str(getattr(event, "reason", "") or "notification"),
+            reason=reason,
+            lane_id=lane_id,
         )
 
 
@@ -1119,6 +1156,9 @@ class AutonomyRuntime:
         checkpoint_sink: AutonomyCheckpointSink | None = None,
         safety_interval_ms: int = DEFAULT_SAFETY_INTERVAL_MS,
         now_ms: int = 0,
+        owner_id: str = "",
+        recovery_leases: Any | None = None,
+        lease_ttl_seconds: float = 30.0,
     ) -> None:
         if not isinstance(controller, AutonomousMetaController):
             raise AutonomousMetaControllerError(
@@ -1146,6 +1186,23 @@ class AutonomyRuntime:
         self._healthy_idle = self._board_is_idle()
         self._healthy_exhausted = False
         self._last_durable_identity = self._durable_identity()
+        self._held_work_leases: dict[str, Any] = {}
+        owner = (
+            str(owner_id or "").strip()
+            or str(os.environ.get("AUTONOMY_OWNER_ID") or "").strip()
+            or f"pid:{os.getpid()}"
+        )
+        self._owner_id = owner
+        ttl = float(lease_ttl_seconds)
+        if ttl <= 0:
+            raise AutonomousMetaControllerError("lease_ttl_seconds must be positive")
+        self._lease_ttl_seconds = ttl
+        if recovery_leases is None:
+            from .recovery_leases import recovery_leases_from_env
+
+            self._recovery_leases = recovery_leases_from_env()
+        else:
+            self._recovery_leases = recovery_leases
 
     @property
     def controller(self) -> AutonomousMetaController:
@@ -1202,6 +1259,7 @@ class AutonomyRuntime:
             self._remember_cursor(bound.cursor_id)
         if self._pending_cursor_id == bound.cursor_id:
             self._pending_cursor_id = ""
+        self._release_held_work_lease(bound.cursor_id)
 
     def safety_timer_event(self, *, now_ms: int) -> AutonomyWakeEvent | None:
         """Emit a window wake only when the bounded safety interval elapsed."""
@@ -1348,176 +1406,256 @@ class AutonomyRuntime:
                 wrote_state=wrote,
                 acknowledged=acknowledged,
             )
-        if bound.stale:
-            try:
-                from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_unstall import (
-                    nominate_unstall_action,
+        keep_lease = False
+        wake_session: Any | None = None
+        wake_candidates = tuple(candidates)
+        try:
+            cached_idle = self._healthy_idle or self._healthy_exhausted
+            if bound.safety_timer and cached_idle:
+                reason = (
+                    "healthy_exhaustion"
+                    if self._healthy_exhausted
+                    else "unchanged_complete_board"
+                )
+                self._metrics.record_idle(status="idle", reason_codes=(reason,))
+                acknowledged = False
+                if auto_acknowledge:
+                    self.acknowledge(bound)
+                    acknowledged = True
+                return self._result(
+                    status=(
+                        AutonomyRuntimeStatus.EXHAUSTED
+                        if self._healthy_exhausted
+                        else AutonomyRuntimeStatus.IDLE
+                    ),
+                    event=bound,
+                    reason_codes=(reason,),
+                    scanned=False,
+                    wrote_state=False,
+                    acknowledged=acknowledged,
                 )
 
-                possible_ids: list[str] = []
-                action_meta_by_id: dict[str, str] = {}
+            suffix_receipt: PlanSuffixInvalidationReceipt | None = None
+            if self._horizon is not None and horizon_evidence is not None:
+                suffix_receipt = self._horizon.observe(
+                    horizon_evidence,
+                    now_milliseconds=now_ms,
+                    deadline_milliseconds=deadline_milliseconds,
+                    cancelled=bound.cancelled,
+                )
+
+            self._metrics.record_scan()
+            idle_now = self._board_is_idle()
+            self._healthy_idle = idle_now and not self._healthy_exhausted
+            if idle_now and not self._healthy_exhausted:
+                self._metrics.record_idle(
+                    status="idle",
+                    reason_codes=("no_unresolved_mandatory_question",),
+                )
+                wrote = self._persist_if_changed()
+                acknowledged = False
+                if auto_acknowledge:
+                    self.acknowledge(bound)
+                    acknowledged = True
+                return self._result(
+                    status=AutonomyRuntimeStatus.IDLE,
+                    event=bound,
+                    reason_codes=("no_unresolved_mandatory_question",),
+                    scanned=True,
+                    wrote_state=wrote,
+                    acknowledged=acknowledged,
+                    suffix_receipt=suffix_receipt,
+                )
+
+            wake_session = self._bind_wake_session(bound, typesafe_state)
+            if wake_session.blocked:
+                self._metrics.record_status(
+                    "blocked",
+                    reason_codes=("lease_held", str(wake_session.reason or "")),
+                )
+                wrote = self._persist_if_changed()
+                return self._result(
+                    status=AutonomyRuntimeStatus.BLOCKED,
+                    event=bound,
+                    reason_codes=("lease_held",),
+                    scanned=True,
+                    wrote_state=wrote,
+                    acknowledged=False,
+                    suffix_receipt=suffix_receipt,
+                )
+
+            from .closed_recovery import (
+                apply_recovery_plan,
+                collect_recovery_bindings,
+                plan_closed_recovery,
+                should_recover,
+            )
+
+            if should_recover(
+                stale=bound.stale,
+                wake_kind=bound.kind.value,
+                reason=bound.reason,
+                state=typesafe_state,
+            ):
+                question = None
                 try:
                     question = self._controller.next_unresolved_question()
-                    if question is not None:
-                        possible_ids.extend(
-                            str(item).strip()
-                            for item in question.possible_resolution_action_ids
-                            if str(item).strip()
-                        )
                 except Exception:
-                    possible_ids = []
-                extra = (typesafe_state or {}).get("possible_resolution_action_ids") or ()
-                if isinstance(extra, (list, tuple)):
-                    possible_ids.extend(
-                        str(item).strip() for item in extra if str(item).strip()
+                    question = None
+                possible_ids, action_meta_by_id, extra_declared = (
+                    collect_recovery_bindings(
+                        wake_candidates,
+                        question=question,
+                        state=typesafe_state,
                     )
-                for candidate in candidates or ():
-                    resolution = getattr(candidate, "resolution_action", None)
-                    ident = str(getattr(resolution, "action_id", "") or "").strip()
-                    meta = str(
-                        getattr(
-                            getattr(resolution, "action", None),
-                            "value",
-                            getattr(resolution, "action", ""),
-                        )
-                        or ""
-                    ).strip()
-                    if ident and meta:
-                        action_meta_by_id[ident] = meta
-                nominate_unstall_action(
-                    {
-                        "reason": "stale_evidence",
-                        "wake_kind": bound.kind.value,
-                    },
+                )
+                recovery = plan_closed_recovery(
+                    reason=bound.reason,
+                    wake_kind=bound.kind.value,
+                    candidates=wake_candidates,
+                    extra_declared=extra_declared,
                     possible_resolution_action_ids=possible_ids,
                     action_meta_by_id=action_meta_by_id,
+                    typesafe_state=typesafe_state,
+                    call_typesafe=typesafe_prepare,
+                    stale=bound.stale,
                 )
-            except Exception:
-                pass
-            self._metrics.record_status(
-                "blocked", reason_codes=("stale_evidence",)
+                disposition, recovered, extra_reasons = apply_recovery_plan(
+                    recovery, wake_candidates, stale=bound.stale
+                )
+                if disposition == "admit":
+                    wake_candidates = recovered
+                    if wake_session is not None:
+                        wake_session.renew()
+                elif disposition == "idle":
+                    self._metrics.record_status("idle", reason_codes=extra_reasons)
+                    wrote = self._persist_if_changed()
+                    acknowledged = False
+                    if auto_acknowledge:
+                        self.acknowledge(bound)
+                        acknowledged = True
+                    return self._result(
+                        status=AutonomyRuntimeStatus.IDLE,
+                        event=bound,
+                        reason_codes=extra_reasons,
+                        scanned=True,
+                        wrote_state=wrote,
+                        acknowledged=acknowledged,
+                        suffix_receipt=suffix_receipt,
+                    )
+
+            if typesafe_prepare and wake_candidates:
+                try:
+                    from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision import (
+                        prepare_step_candidates,
+                    )
+
+                    question = self._controller.next_unresolved_question()
+                    if question is not None:
+                        remote = bool(getattr(context, "remote_disclosure_permitted", False))
+                        wake_candidates, _, _ = prepare_step_candidates(
+                            self._controller.decision_graph,
+                            question,
+                            wake_candidates,
+                            state=dict(typesafe_state or {}),
+                            remote_disclosure_permitted=remote,
+                        )
+                except Exception:
+                    pass
+            step = self._controller.step(
+                candidates=wake_candidates,
+                context=context,
+                meaningful_change=True,
             )
+            status = _status_from_step(step)
+            if step.admitted:
+                action = (
+                    None
+                    if step.candidate is None
+                    else step.candidate.resolution_action.action
+                )
+                self._metrics.record_model_action(action)
+            self._metrics.record_status(status.value, reason_codes=step.reason_codes)
+            self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
+            self._healthy_idle = status is AutonomyRuntimeStatus.IDLE
             wrote = self._persist_if_changed()
             acknowledged = False
             if auto_acknowledge:
                 self.acknowledge(bound)
                 acknowledged = True
+            elif status is AutonomyRuntimeStatus.PROGRESSING:
+                keep_lease = True
             return self._result(
-                status=AutonomyRuntimeStatus.BLOCKED,
+                status=status,
                 event=bound,
-                reason_codes=("stale_evidence",),
-                scanned=False,
-                wrote_state=wrote,
-                acknowledged=acknowledged,
-            )
-
-        cached_idle = self._healthy_idle or self._healthy_exhausted
-        if bound.safety_timer and cached_idle:
-            reason = (
-                "healthy_exhaustion"
-                if self._healthy_exhausted
-                else "unchanged_complete_board"
-            )
-            self._metrics.record_idle(status="idle", reason_codes=(reason,))
-            acknowledged = False
-            if auto_acknowledge:
-                self.acknowledge(bound)
-                acknowledged = True
-            return self._result(
-                status=(
-                    AutonomyRuntimeStatus.EXHAUSTED
-                    if self._healthy_exhausted
-                    else AutonomyRuntimeStatus.IDLE
-                ),
-                event=bound,
-                reason_codes=(reason,),
-                scanned=False,
-                wrote_state=False,
-                acknowledged=acknowledged,
-            )
-
-        suffix_receipt: PlanSuffixInvalidationReceipt | None = None
-        if self._horizon is not None and horizon_evidence is not None:
-            suffix_receipt = self._horizon.observe(
-                horizon_evidence,
-                now_milliseconds=now_ms,
-                deadline_milliseconds=deadline_milliseconds,
-                cancelled=bound.cancelled,
-            )
-
-        self._metrics.record_scan()
-        idle_now = self._board_is_idle()
-        self._healthy_idle = idle_now and not self._healthy_exhausted
-        if idle_now and not self._healthy_exhausted:
-            self._metrics.record_idle(
-                status="idle",
-                reason_codes=("no_unresolved_mandatory_question",),
-            )
-            wrote = self._persist_if_changed()
-            acknowledged = False
-            if auto_acknowledge:
-                self.acknowledge(bound)
-                acknowledged = True
-            return self._result(
-                status=AutonomyRuntimeStatus.IDLE,
-                event=bound,
-                reason_codes=("no_unresolved_mandatory_question",),
+                reason_codes=step.reason_codes,
                 scanned=True,
                 wrote_state=wrote,
                 acknowledged=acknowledged,
+                step=step,
                 suffix_receipt=suffix_receipt,
             )
+        finally:
+            if wake_session is not None:
+                if keep_lease:
+                    old = self._held_work_leases.get(bound.cursor_id)
+                    if old is not None and old is not wake_session:
+                        try:
+                            old.detach()
+                        except Exception:
+                            pass
+                    self._held_work_leases[bound.cursor_id] = wake_session
+                else:
+                    stored = self._held_work_leases.get(bound.cursor_id)
+                    if stored is wake_session:
+                        self._held_work_leases.pop(bound.cursor_id, None)
+                    try:
+                        wake_session.release()
+                    except Exception:
+                        pass
 
-        wake_candidates = tuple(candidates)
-        if typesafe_prepare and wake_candidates:
+    def _bind_wake_session(
+        self,
+        bound: AutonomyWakeEvent,
+        typesafe_state: Mapping[str, Any] | None,
+    ) -> Any:
+        resource_id = bound.subject_id or bound.cursor_id
+        lane_id = str(
+            bound.lane_id or (typesafe_state or {}).get("lane_id") or ""
+        ).strip()
+        extras: list[tuple[str, str]] = [("task", resource_id)]
+        if lane_id:
+            extras.append(("lane", lane_id))
+        existing = self._held_work_leases.get(bound.cursor_id)
+        held_set = set(getattr(existing, "held", ()) or ())
+        if (
+            existing is not None
+            and not bool(getattr(existing, "blocked", False))
+            and set(extras) <= held_set
+        ):
             try:
-                from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_decision import (
-                    prepare_step_candidates,
-                )
-
-                question = self._controller.next_unresolved_question()
-                if question is not None:
-                    remote = bool(getattr(context, "remote_disclosure_permitted", False))
-                    wake_candidates, _, _ = prepare_step_candidates(
-                        self._controller.decision_graph,
-                        question,
-                        wake_candidates,
-                        state=dict(typesafe_state or {}),
-                        remote_disclosure_permitted=remote,
-                    )
+                existing.renew()
             except Exception:
-                wake_candidates = tuple(candidates)
-        step = self._controller.step(
-            candidates=wake_candidates,
-            context=context,
-            meaningful_change=True,
+                pass
+            return existing
+        from .wake_lease_gate import safe_begin_wake_leases
+
+        return safe_begin_wake_leases(
+            (),
+            owner_id=self._owner_id,
+            table=self._recovery_leases,
+            extra_resources=tuple(extras),
+            ttl_seconds=self._lease_ttl_seconds,
         )
-        status = _status_from_step(step)
-        if step.admitted:
-            action = (
-                None
-                if step.candidate is None
-                else step.candidate.resolution_action.action
-            )
-            self._metrics.record_model_action(action)
-        self._metrics.record_status(status.value, reason_codes=step.reason_codes)
-        self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
-        self._healthy_idle = status is AutonomyRuntimeStatus.IDLE
-        wrote = self._persist_if_changed()
-        acknowledged = False
-        if auto_acknowledge:
-            self.acknowledge(bound)
-            acknowledged = True
-        return self._result(
-            status=status,
-            event=bound,
-            reason_codes=step.reason_codes,
-            scanned=True,
-            wrote_state=wrote,
-            acknowledged=acknowledged,
-            step=step,
-            suffix_receipt=suffix_receipt,
-        )
+
+    def _release_held_work_lease(self, cursor_id: str) -> None:
+        session = self._held_work_leases.pop(cursor_id, None)
+        if session is None:
+            return
+        try:
+            session.release()
+        except Exception:
+            pass
 
     ingest = handle_wake
     run_cycle = handle_wake

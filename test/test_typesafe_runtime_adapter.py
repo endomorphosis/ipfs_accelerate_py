@@ -424,6 +424,30 @@ def test_dispatch_autonomy_wake_without_key_keeps_original_ranking(
     assert not handoff.result.authorizes_effect
 
 
+def test_dispatch_autonomy_wake_forwards_stall_reason_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "TYPESAFE_API_KEY",
+        "ipfs_accelerate_py_TYPESAFE_API_KEY",
+        "IPFS_ACCELERATE_PY_TYPESAFE_API_KEY",
+        "IPFS_DATASETS_PY_TYPESAFE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    runtime, event, candidates = _proof_wake_fixture()
+    handoff = dispatch_autonomy_wake(
+        runtime,
+        event,
+        candidates=candidates,
+        context=_context(),
+        state={"reason": "provider_down"},
+    )
+    assert handoff.model_called is False
+    assert handoff.result.status is AutonomyRuntimeStatus.IDLE
+    assert handoff.result.reason_codes == ("retry_provider",)
+    assert handoff.result.step is None
+
+
 def test_dispatch_autonomy_wake_with_advice_prefers_smt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
