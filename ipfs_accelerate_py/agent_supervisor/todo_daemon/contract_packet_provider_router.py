@@ -3516,7 +3516,7 @@ def bind_applied_patch_to_review_chain(
     lease = writer_lease_id or (
         route_result.writer_lease_id if route_result.write_performed else ""
     )
-    return ProductionReviewChainBinding(
+    result = ProductionReviewChainBinding(
         receipt_id=receipt.receipt_id,
         task_id=task_id,
         packet_id=packet_id,
@@ -3534,6 +3534,27 @@ def bind_applied_patch_to_review_chain(
         merge_commit=str(merge_commit or ""),
         disposition=ProductionReceiptDisposition.ADMITTED.value,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.receipt_id
+            or result.review_chain_digest
+            or result.task_id
+            or "review-chain-patch"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="applied_patch_review_chain",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(result.task_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def build_production_contract_packet(

@@ -305,7 +305,28 @@ def validate_binding(binding: Mapping[str, Any]) -> dict[str, Any]:
             )
         ):
             raise Error("retained callback cooldown binding changed")
-        return {**value, "binding_id": binding_id}
+        result = {**value, "binding_id": binding_id}
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                mirror_work_record,
+            )
+
+            record_ref = str(
+                result.get("binding_id")
+                or result.get("task_cid")
+                or result.get("source_receipt_cid")
+                or "callback-cooldown-binding"
+            )
+            mirror_work_record(
+                catalog_kind="metadata",
+                record_kind="retained_callback_cooldown_binding",
+                record_ref=record_ref,
+                subject_kind="task_id",
+                subject_ref=str(result.get("task_cid") or record_ref),
+            )
+        except Exception:
+            pass
+        return result
     except (KeyError, TypeError, IndexError, ValueError, RecursionError) as exc:
         raise Error("retained callback cooldown binding is malformed") from exc
 

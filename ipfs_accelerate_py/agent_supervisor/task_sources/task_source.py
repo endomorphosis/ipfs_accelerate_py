@@ -3807,7 +3807,7 @@ def bind_active_plan_revision(
         if str(task_id).strip() and str(rev).strip()
     }
 
-    return ActivePlanBinding(
+    result = ActivePlanBinding(
         revision_cid=revision_cid or plan_root_cid,
         plan_root_cid=plan_root_cid,
         execution_plan_cid=execution_plan_cid or plan_id,
@@ -3836,6 +3836,28 @@ def bind_active_plan_revision(
         capacity_snapshot_id=str(plan_payload.get("capacity_snapshot_id") or ""),
         provider_snapshot_ids=_string_tuple(plan_payload.get("provider_snapshot_ids")),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.revision_cid
+            or result.plan_root_cid
+            or result.execution_plan_cid
+            or "active-plan-revision"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="active_plan_revision_binding",
+            record_ref=record_ref,
+            tree_id=str(result.repository_tree_id or ""),
+            subject_kind="tree_id" if result.repository_tree_id else "record_cid",
+            subject_ref=str(result.repository_tree_id or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def assert_revision_is_active(

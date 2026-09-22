@@ -1254,21 +1254,42 @@ class IsolatedWorktree:
                 )
                 self.phase = WorktreePhase.REJECTED
                 self._write_journal(validation=result.to_dict())
-                return result
-            result = validate_patch(
-                patch_text,
-                scope,
-                worktree_root=self.worktree_path,
-                expected_base_commit=self.base_commit,
-                expected_base_tree=self.base_tree,
-                visible_sources=visible_sources,
-                run_apply_check=True,
-            )
-            self.phase = (
-                WorktreePhase.READY if result.accepted else WorktreePhase.REJECTED
-            )
-            self._write_journal(validation=result.to_dict())
-            self.assert_root_unmutated()
+            else:
+                result = validate_patch(
+                    patch_text,
+                    scope,
+                    worktree_root=self.worktree_path,
+                    expected_base_commit=self.base_commit,
+                    expected_base_tree=self.base_tree,
+                    visible_sources=visible_sources,
+                    run_apply_check=True,
+                )
+                self.phase = (
+                    WorktreePhase.READY if result.accepted else WorktreePhase.REJECTED
+                )
+                self._write_journal(validation=result.to_dict())
+                self.assert_root_unmutated()
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+                    mirror_work_record,
+                )
+
+                record_ref = str(
+                    result.patch_digest
+                    or self.base_tree
+                    or self.base_commit
+                    or "isolated-patch-validation"
+                )
+                mirror_work_record(
+                    catalog_kind="metadata",
+                    record_kind="isolated_worktree_patch_validation",
+                    record_ref=record_ref,
+                    subject_kind="record_cid",
+                    subject_ref=record_ref,
+                    paths=tuple(result.paths)[:16],
+                )
+            except Exception:
+                pass
             return result
 
     def apply_patch(

@@ -437,7 +437,7 @@ def bind_exact_sources(repo_root: Path | None = None) -> LogicRepairSourceBindin
         raise LogicRepairRolloutError(f"missing exact sources: {sorted(missing)}")
     scheduler = json.loads(paths["scheduler"].read_text(encoding="utf-8"))
     source = scheduler.get("source_binding") or {}
-    return LogicRepairSourceBinding(
+    result = LogicRepairSourceBinding(
         repository_root=str(root),
         board_namespace=str(scheduler.get("board_namespace") or BOARD_NAMESPACE),
         task_prefix=str(scheduler.get("task_prefix") or TASK_PREFIX),
@@ -457,6 +457,27 @@ def bind_exact_sources(repo_root: Path | None = None) -> LogicRepairSourceBindin
         rollout_module_identity=file_identity(paths["rollout_module"]),
         validate_script_identity=file_identity(paths["validate_script"]),
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "binding_id", "")
+            or result.board_namespace
+            or result.scheduler_identity
+            or "logic-repair-sources"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logic_repair_exact_sources",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @dataclass(frozen=True)
