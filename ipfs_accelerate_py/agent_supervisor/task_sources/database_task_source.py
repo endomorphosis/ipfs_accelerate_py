@@ -1287,6 +1287,25 @@ def admit_leftover_wait_deferral_budget_recovery(
         raise TypedDeferralRecoveryError(
             "leftover-wait recovery evidence digest is absent or foreign"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            recovery.get("task_cid")
+            or recovery.get("receipt_id")
+            or "leftover-wait-recovery"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="leftover_wait_deferral_recovery",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(recovery.get("task_cid") or record_ref),
+        )
+    except Exception:
+        pass
     return recovery
 
 
@@ -1603,7 +1622,7 @@ def _admit_owner_typed_deferral_provider_evidence(
         "owner_store_id": store_id,
         "owner_store_generation": store_generation,
     }
-    return _TypedDeferralProviderEvidenceAdmission(
+    result = _TypedDeferralProviderEvidenceAdmission(
         admission_json=_canonical_typed_deferral_mapping_json(
             body, noun="provider evidence admission"
         ),
@@ -1616,6 +1635,22 @@ def _admit_owner_typed_deferral_provider_evidence(
         admission_id=content_identity(body),
         seal=_TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL,
     )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.admission_id or task_cid or "typed-deferral-provider-evidence")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="typed_deferral_provider_evidence",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(task_cid or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def build_typed_deferral_budget_supersession_request(
@@ -1654,7 +1689,7 @@ def build_typed_deferral_budget_supersession_request(
         repair_head=repair_head_text,
         repair_tree=repair_tree_text,
     )
-    return {
+    result = {
         "schema": TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA,
         "operation": TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
         "task_cid": task_cid,
@@ -1667,6 +1702,26 @@ def build_typed_deferral_budget_supersession_request(
         "repair_tree": repair_tree_text,
         "provider_evidence_admission": provider_evidence_admission,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            result.get("exhausted_receipt_id")
+            or result.get("task_cid")
+            or "typed-deferral-supersession-request"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_deferral_supersession_request",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(result.get("task_cid") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
 
 
 def _build_owner_typed_deferral_budget_supersession_request(
@@ -1813,6 +1868,25 @@ def admit_typed_deferral_budget_supersession(
         "control_expected_revision": int(task_revision),
     }
     durable["supersession_id"] = content_identity(durable)
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            durable.get("supersession_id")
+            or durable.get("task_cid")
+            or "typed-deferral-supersession"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_deferral_budget_supersession",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(durable.get("task_cid") or record_ref),
+        )
+    except Exception:
+        pass
     return durable
 
 
@@ -1965,6 +2039,26 @@ def validate_typed_deferral_budget_supersession(
         raise TypedDeferralRecoveryError(
             "typed-deferral provider admission identity does not reproduce"
         )
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            raw.get("supersession_id")
+            or raw.get("task_cid")
+            or task_cid
+            or "typed-deferral-validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_deferral_supersession_validation",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=str(raw.get("task_cid") or task_cid or record_ref),
+        )
+    except Exception:
+        pass
     return raw
 
 
