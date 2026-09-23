@@ -8945,6 +8945,37 @@ def test_mirror_expert_bootstrap_callbacks_bundle_and_engine(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_shadow_fixed_point_world_root_extraction_and_status(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("shadow_plan_nomination", "tree:shadow", "metadata", "tree_id"),
+        ("fixed_point_nomination", "tree:fixed", "metadata", "tree_id"),
+        ("world_root_integration", "tree:root", "world_model", "tree_id"),
+        ("cst_extraction_dry_run", "tree:cst", "metadata", "tree_id"),
+        ("database_status_scope", "tree:status", "metadata", "tree_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+            tree_id=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

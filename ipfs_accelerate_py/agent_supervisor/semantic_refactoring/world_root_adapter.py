@@ -1765,6 +1765,29 @@ def _unchanged_world_root(
     )
 
 
+def _mirror_world_root_integration(receipt: WorldRootReceipt) -> WorldRootReceipt:
+    """Record a world-root nomination. Persist and completion stay unadmitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        record_ref = str(getattr(receipt, "receipt_cid", "") or tree_id or "world-root")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_root_integration",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "receipt_id",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def integrate_world_root(
     evidence: Mapping[str, Any],
     *,
@@ -1845,7 +1868,7 @@ def integrate_world_root(
             resulting_root_generation=current_root_generation,
             artifacts=artifacts,
         )
-        return WorldRootReceipt(
+        return _mirror_world_root_integration(WorldRootReceipt(
             tree_id=tree_id,
             status=AdapterStatus.TYPED_TERMINAL.value,
             world_root=world_root,
@@ -1857,7 +1880,7 @@ def integrate_world_root(
             lease_id=lease_id,
             fence_id=fence_id,
             negative_evidence_cids=list(payload.get("negative_evidence_cids") or ()),
-        )
+        ))
 
     if crash is True:
         last_committed_world_root_cid = _cid(
@@ -1889,7 +1912,7 @@ def integrate_world_root(
         )
         negative = list(payload.get("negative_evidence_cids") or ())
         negative.extend(pending_outbox_cids)
-        return WorldRootReceipt(
+        return _mirror_world_root_integration(WorldRootReceipt(
             tree_id=tree_id,
             status=AdapterStatus.RECOVERED.value,
             world_root=world_root,
@@ -1901,7 +1924,7 @@ def integrate_world_root(
             lease_id=lease_id,
             fence_id=fence_id,
             negative_evidence_cids=negative,
-        )
+        ))
 
     if cas_binding.stale_writer:
         rejection = StaleWriterRejection(
@@ -1918,7 +1941,7 @@ def integrate_world_root(
             resulting_root_generation=current_root_generation,
             artifacts=artifacts,
         )
-        return WorldRootReceipt(
+        return _mirror_world_root_integration(WorldRootReceipt(
             tree_id=tree_id,
             status=AdapterStatus.REJECTED_STALE_WRITER.value,
             world_root=world_root,
@@ -1930,7 +1953,7 @@ def integrate_world_root(
             lease_id=lease_id,
             fence_id=fence_id,
             negative_evidence_cids=[rejection.rejection_cid],
-        )
+        ))
 
     if cas_binding.root_conflict:
         world_root = _unchanged_world_root(
@@ -1941,7 +1964,7 @@ def integrate_world_root(
             resulting_root_generation=current_root_generation,
             artifacts=artifacts,
         )
-        return WorldRootReceipt(
+        return _mirror_world_root_integration(WorldRootReceipt(
             tree_id=tree_id,
             status=AdapterStatus.REJECTED_ROOT_CONFLICT.value,
             world_root=world_root,
@@ -1952,7 +1975,7 @@ def integrate_world_root(
             lease_id=lease_id,
             fence_id=fence_id,
             negative_evidence_cids=[cas_binding.binding_cid],
-        )
+        ))
 
     if not (
         artifacts["packet_cids"]
@@ -1978,7 +2001,7 @@ def integrate_world_root(
         resulting_root_generation=expected_root_generation + 1,
         **artifacts,
     )
-    return WorldRootReceipt(
+    return _mirror_world_root_integration(WorldRootReceipt(
         tree_id=tree_id,
         status=AdapterStatus.NOMINATED_PERSIST.value,
         world_root=world_root,
@@ -1988,7 +2011,7 @@ def integrate_world_root(
         worktree_id=worktree_id,
         lease_id=lease_id,
         fence_id=fence_id,
-    )
+    ))
 
 
 def dry_run_world_root(evidence: Mapping[str, Any]) -> WorldRootReceipt:

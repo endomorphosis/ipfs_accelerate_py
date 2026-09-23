@@ -1366,6 +1366,29 @@ def _receipt_from_payload(
     )
 
 
+def _mirror_shadow_plan_nomination(receipt: ShadowPlanReceipt) -> ShadowPlanReceipt:
+    """Record a nomination. Mutation stays denied and completion is not admitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        record_ref = str(getattr(receipt, "receipt_cid", "") or tree_id or "shadow-plan")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shadow_plan_nomination",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "receipt_id",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def run_shadow_plan(
     evidence: Mapping[str, Any],
     *,
@@ -1398,20 +1421,20 @@ def run_shadow_plan(
             reason="required planning capability is unavailable",
         )
     if terminal is not None:
-        return _receipt_from_payload(
+        return _mirror_shadow_plan_nomination(_receipt_from_payload(
             payload,
             status=GateStatus.TYPED_TERMINAL.value,
             current_mode=current_mode,
             comparison=comparison,
             terminal=terminal,
-        )
+        ))
     _require_complete_analysis_and_planning(payload)
-    return _receipt_from_payload(
+    return _mirror_shadow_plan_nomination(_receipt_from_payload(
         payload,
         status=GateStatus.NOMINATED_SHADOW_PLAN.value,
         current_mode=current_mode,
         comparison=comparison,
-    )
+    ))
 
 
 def activate_shadow_plan(evidence: Mapping[str, Any]) -> ShadowPlanReceipt:

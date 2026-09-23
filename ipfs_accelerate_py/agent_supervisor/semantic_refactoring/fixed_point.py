@@ -1485,6 +1485,29 @@ def rebuild_after_wave(evidence: Mapping[str, Any]) -> FixedPointIteration:
     )
 
 
+def _mirror_fixed_point_nomination(receipt: FixedPointReceipt) -> FixedPointReceipt:
+    """Record one rebuild epoch. A nomination never accepts the fixed point."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        record_ref = str(getattr(receipt, "receipt_cid", "") or tree_id or "fixed-point")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="fixed_point_nomination",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "receipt_id",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def run_fixed_point_controller(
     evidence: Mapping[str, Any],
     *,
@@ -1521,14 +1544,14 @@ def run_fixed_point_controller(
             terminal=terminal,
         )
         status = _decide_status(iteration, max_iterations=max_iterations)
-    return FixedPointReceipt(
+    return _mirror_fixed_point_nomination(FixedPointReceipt(
         tree_id=iteration.tree_id,
         iteration=iteration,
         status=status,
         worktree_id=str(payload.get("worktree_id") or ""),
         lease_id=str(payload.get("lease_id") or ""),
         fence_id=str(payload.get("fence_id") or ""),
-    )
+    ))
 
 
 def dry_run_fixed_point(evidence: Mapping[str, Any]) -> FixedPointReceipt:

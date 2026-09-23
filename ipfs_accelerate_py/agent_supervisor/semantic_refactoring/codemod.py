@@ -1480,6 +1480,29 @@ def extract_with_cst_codemod(
     )
 
 
+def _mirror_cst_extraction_dry_run(receipt: CodemodReceipt) -> CodemodReceipt:
+    """Record a no-write extraction preview. Completion stays unadmitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        record_ref = str(getattr(receipt, "receipt_cid", "") or tree_id or "cst-extraction-dry-run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="cst_extraction_dry_run",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "receipt_id",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def dry_run_cst_extraction(
     packet: RefactorTransformationPacket | Mapping[str, Any],
     *,
@@ -1498,7 +1521,7 @@ def dry_run_cst_extraction(
         backend=backend,
         dry_run=True,
     )
-    return result.receipt()
+    return _mirror_cst_extraction_dry_run(result.receipt())
 
 
 def apply_cst_extraction(

@@ -5328,6 +5328,28 @@ class TypedOwnerResult:
         return row
 
 
+def _mirror_database_status_scope(binding: Mapping[str, Any]) -> None:
+    """Record a sealed status scope. Task identities and profiles are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(binding.get("repository_tree_id") or "")
+        record_ref = str(binding.get("plan_root_cid") or tree_id or "database-status-scope")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="database_status_scope",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_status_bootstrap_scope(scope: Mapping[str, Any]) -> None:
     """Record a bootstrap binding. Scope values are not stored."""
 
@@ -5844,6 +5866,7 @@ class TypedStateOwnerGateway:
                 raise
             with self._grants_lock:
                 self._status_bootstrap_scope = scope
+        _mirror_database_status_scope(binding)
 
     def bind_status_bootstrap_scope(self) -> None:
         """Monotonically bind status reads to one admitted federation slice."""
