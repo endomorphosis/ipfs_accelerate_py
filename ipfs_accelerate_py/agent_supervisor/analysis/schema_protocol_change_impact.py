@@ -2549,6 +2549,27 @@ def _build_obligation(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_schema_protocol_analyzer_binding(tree_id: str) -> None:
+    """Record a bound analyzer tree. The analyzer does not run."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(tree_id or "schema-protocol-analyzer")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schema_protocol_analyzer_binding",
+            record_ref=record_ref,
+            tree_id=str(tree_id or ""),
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class SchemaProtocolChangeAnalyzer:
     """Analyze schema/constructor/serialization/protocol impacts for one delta."""
@@ -2560,6 +2581,12 @@ class SchemaProtocolChangeAnalyzer:
     ) -> "SchemaProtocolChangeAnalyzer":
         if roots is not None:
             self.roots = _roots(roots)
+            tree_id = str(
+                getattr(self.roots, "tree_id", "")
+                or getattr(self.roots, "repository_tree_id", "")
+                or ""
+            )
+            _mirror_schema_protocol_analyzer_binding(tree_id)
         return self
 
     def analyze(

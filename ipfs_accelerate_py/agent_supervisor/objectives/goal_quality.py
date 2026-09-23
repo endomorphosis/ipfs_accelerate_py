@@ -1674,6 +1674,27 @@ def validate_goal(
     return report
 
 
+def _mirror_goal_quality_acceptance(report: GoalQualityReport) -> GoalQualityReport:
+    """Record an accepted quality report. Acceptance is not changed."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "content_id", "") or "goal-quality-acceptance")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_quality_acceptance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
+
+
 class GoalQualityLinter:
     """Small policy-bound facade for planner and refinement call sites."""
 
@@ -1707,7 +1728,7 @@ class GoalQualityLinter:
         report = self.lint(goal, known_goal_ids=known_goal_ids)
         if not report.accepted:
             raise GoalAdmissionError(report)
-        return report
+        return _mirror_goal_quality_acceptance(report)
 
 
 def assert_frozen_root(parent: TypedGoal, refinement: TypedGoal) -> None:

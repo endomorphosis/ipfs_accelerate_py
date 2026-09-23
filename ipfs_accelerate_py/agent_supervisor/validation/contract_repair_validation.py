@@ -1091,6 +1091,33 @@ class CandidatePatchEvidence:
         )
 
 
+def _mirror_contract_repair_validation_receipt(
+    receipt: ContractRepairCompletionReceipt,
+) -> ContractRepairCompletionReceipt:
+    """Record an already-complete repair validation receipt. Completion is not granted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "completion_id", "")
+            or getattr(receipt, "content_id", "")
+            or "contract-repair-validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_repair_validation_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass(frozen=True)
 class ValidationOutcome:
     """Either a completion receipt or a failed validation report."""
@@ -1108,7 +1135,7 @@ class ValidationOutcome:
             raise ContractRepairValidationError(
                 "contract repair post-edit validation rejected: " + reasons
             )
-        return self.receipt
+        return _mirror_contract_repair_validation_receipt(self.receipt)
 
 
 # Optional adapters so callers can supply live reindex/resolve/prove runners.

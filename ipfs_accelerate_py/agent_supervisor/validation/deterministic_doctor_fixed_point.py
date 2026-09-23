@@ -1417,6 +1417,29 @@ class DoctorFixedPointReport:
         return content_identity(self.to_dict())
 
 
+def _mirror_doctor_fixed_point_receipt(
+    receipt: DoctorFixedPointReceipt,
+) -> DoctorFixedPointReceipt:
+    """Record an already-complete fixed-point receipt. Completion is not granted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "receipt_id", "") or "doctor-fixed-point")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_fixed_point_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass(frozen=True)
 class DoctorFixedPointOutcome:
     """Fixed-point outcome: receipt or compensating rollback / quarantine."""
@@ -1498,7 +1521,7 @@ class DoctorFixedPointOutcome:
             raise DeterministicDoctorFixedPointError(
                 "deterministic doctor fixed-point validation rejected: " + reasons
             )
-        return self.fixed_point
+        return _mirror_doctor_fixed_point_receipt(self.fixed_point)
 
     def to_dict(self) -> dict[str, Any]:
         return {

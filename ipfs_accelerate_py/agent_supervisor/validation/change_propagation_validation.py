@@ -878,6 +878,33 @@ class PropagationValidationReport:
         return {**self.to_dict(), "report_id": self.report_id}
 
 
+def _mirror_propagation_validation_receipt(
+    receipt: PropagationCompletionReceipt,
+) -> PropagationCompletionReceipt:
+    """Record an already-complete validation receipt. Completion is not granted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "completion_id", "")
+            or getattr(receipt, "content_id", "")
+            or "propagation-validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="propagation_validation_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass(frozen=True)
 class PropagationValidationOutcome:
     """Either a completion receipt or a failed/incomplete validation report."""
@@ -917,7 +944,7 @@ class PropagationValidationOutcome:
             raise ChangePropagationValidationError(
                 "change propagation fixed-point validation rejected: " + reasons
             )
-        return self.completion
+        return _mirror_propagation_validation_receipt(self.completion)
 
 
 # ---------------------------------------------------------------------------
