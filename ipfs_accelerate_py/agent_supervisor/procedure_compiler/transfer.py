@@ -955,6 +955,33 @@ def _family_matches_certificate(family: TaskFamily, certificate: ProcedureCertif
     return certificate.task_family_cid in {family.name, family.content_id}
 
 
+def _mirror_generalization_boundary(result: Any) -> Any:
+    """Record a boundary decision. can_authorize and can_promote stay false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        artifact = getattr(result, "artifact", None)
+        reason = getattr(result, "reason_code", None)
+        record_ref = str(
+            getattr(artifact, "subject_cid", "")
+            or getattr(reason, "value", reason)
+            or "generalization_boundary"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="generalization_boundary",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class GeneralizationBoundaryEvaluator:
     """Evaluate whether a target stays inside a family's declared boundary."""
 
@@ -1122,7 +1149,7 @@ class GeneralizationBoundaryEvaluator:
             },
             created_at_ms=emitted_at_ms,
         )
-        return GeneralizationBoundaryEvaluation(
+        return _mirror_generalization_boundary(GeneralizationBoundaryEvaluation(
             admitted=admitted,
             reason_code=reason,
             changed_dimensions=changed,
@@ -1130,7 +1157,7 @@ class GeneralizationBoundaryEvaluator:
             violation_classes=violations,
             missing_dimensions=missing,
             artifact=artifact,
-        )
+        ))
 
 
 def _check_operation(

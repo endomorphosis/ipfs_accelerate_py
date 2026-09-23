@@ -4462,6 +4462,31 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     return packet_evidence_terms() + language_edge_resolution_evidence_terms()
 
 
+def _mirror_ast_index_claim(claim: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record an AST index claim. It does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            claim.get("analysis_index_id")
+            or claim.get("evidence")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_objective_validation_repair(
     index: ProgramEvidenceIndex | None = None,
 ) -> dict[str, Any]:
@@ -4487,7 +4512,7 @@ def prove_objective_validation_repair(
         truncated = index.truncated
         reason_codes = list(index.reason_codes)
         reused_result_count = index.reused_result_count
-    return {
+    claim = {
         "schema": ("ipfs_accelerate_py/agent-supervisor/objective-validation-repair-claim@1"),
         "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
         "evidence_terms": list(objective_validation_repair_evidence_terms()),
@@ -4517,6 +4542,7 @@ def prove_objective_validation_repair(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_ast_index_claim(claim, record_kind="objective_validation_repair_claim")
 
 
 def index_satisfies_incremental_ast_index(
@@ -4572,7 +4598,7 @@ def prove_incremental_ast_index(
         raise TypeError("index must be a ProgramEvidenceIndex")
     satisfied = index_satisfies_incremental_ast_index(index)
     languages = sorted({item.language for item in index.results})
-    return {
+    claim = {
         "schema": "ipfs_accelerate_py/agent-supervisor/incremental-ast-index-claim@1",
         "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
         "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -4601,6 +4627,7 @@ def prove_incremental_ast_index(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_ast_index_claim(claim, record_kind="incremental_ast_index_claim")
 
 
 # Narrow compatibility surface for software-verification source adapters

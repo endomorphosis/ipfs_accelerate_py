@@ -1703,6 +1703,27 @@ def _vector_from_identity(
     )
 
 
+def _mirror_content_identity_conformance(result: Any) -> Any:
+    """Record CID conformance. Passing it does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "capability_id", "") or "content_identity_conformance")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="content_identity_conformance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def prove_content_identity_conformance(
     *,
     agreement_payload: Mapping[str, Any] | None = None,
@@ -2289,7 +2310,7 @@ def prove_content_identity_conformance(
     else:
         reason_codes.append("conformance_failed")
 
-    return ContentIdentityConformanceReceipt(
+    receipt = ContentIdentityConformanceReceipt(
         schema=DATASETS_CONTENT_IDENTITY_SCHEMA,
         schema_version=DATASETS_CONTENT_IDENTITY_SCHEMA_VERSION,
         interface=CONTENT_IDENTITY_BRIDGE_INTERFACE,
@@ -2307,6 +2328,7 @@ def prove_content_identity_conformance(
         multiformats_invoked=multiformats_invoked,
         reason_codes=tuple(dict.fromkeys(reason_codes)),
     )
+    return _mirror_content_identity_conformance(receipt)
 
 
 def build_datasets_content_identity_capability(

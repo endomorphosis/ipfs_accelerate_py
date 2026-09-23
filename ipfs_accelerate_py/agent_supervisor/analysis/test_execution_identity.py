@@ -438,6 +438,27 @@ def reject_pseudo_cid(value: str, *, field_name: str = "cid") -> str:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_test_execution_identity(result: Any) -> Any:
+    """Record a retained-byte identity check. It does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "cid", "") or "test_execution_identity")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_execution_identity_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class ContentIdentity:
     """Retained canonical bytes bound to a verified CIDv1 under the frozen profile.
@@ -586,7 +607,7 @@ class ContentIdentity:
                 "retained canonical bytes do not re-encode identically"
             )
         self.rehash_cid(bridge_import=importer)
-        return self
+        return _mirror_test_execution_identity(self)
 
 
 def _reject_json_constant(name: str) -> None:

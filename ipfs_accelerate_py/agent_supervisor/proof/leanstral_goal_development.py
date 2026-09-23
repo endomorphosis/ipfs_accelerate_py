@@ -660,6 +660,31 @@ def _records(
 
 
 @dataclass(frozen=True)
+def _mirror_goal_context_validation(request: Any) -> None:
+    """Record a context binding check. Success does not admit the goal."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(request, "root_goal_content_id", "")
+            or getattr(request, "root_goal_id", "")
+            or "goal_context"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_development_context_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(request, "repository_tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+
+
 class GoalDevelopmentContext:
     """Bounded, reference-only context offered to the model."""
 
@@ -795,6 +820,7 @@ class GoalDevelopmentContext:
                 raise ContractValidationError("reusable receipt escapes request scope")
             if receipt.assurance_id not in self.allowed_assurance_ids:
                 raise ContractValidationError("reusable receipt assurance ID is not allowlisted")
+        _mirror_goal_context_validation(request)
 
     @property
     def context_id(self) -> str:
