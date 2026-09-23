@@ -156,6 +156,33 @@ def task_contract_set_cid_from_route_entries(entries: Iterable[Any]) -> str:
     return content_identity({"schema": TASK_CONTRACT_SET_SCHEMA, "tasks": records})
 
 
+def _mirror_launch_git_amendment(amendment: LaunchSourceAmendment) -> None:
+    """Record a matching launch generation. A match does not mint a successor."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(amendment, "launch_repository_tree_id", "") or "")
+        record_ref = str(
+            getattr(amendment, "amendment_id", "")
+            or getattr(amendment, "immutable_plan_cid", "")
+            or tree_id
+            or "launch-git-amendment"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="launch_git_amendment_validation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class LaunchSourceAmendment:
     """Closed content-addressed current-source amendment for one plan lineage."""
@@ -419,6 +446,7 @@ class LaunchSourceAmendment:
             raise LaunchSourceAmendmentError(
                 "launch Git generation differs from its source amendment"
             )
+        _mirror_launch_git_amendment(self)
 
     def successor_for_current_generation(
         self,

@@ -972,6 +972,27 @@ class ContractProfileAdapter:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_surface_artifact_integrity(artifact: SurfaceArtifact) -> None:
+    """Record a matching artifact identity. A match does not admit the surface."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        content_id = str(getattr(artifact, "content_id", "") or "")
+        record_ref = content_id or str(getattr(artifact, "artifact_id", "") or "surface-artifact")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="surface_artifact_integrity",
+            record_ref=record_ref,
+            subject_kind="content_cid" if content_id else "record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class SurfaceArtifact:
     """One inventory artifact observed on a surface role."""
@@ -1115,6 +1136,7 @@ class SurfaceArtifact:
                     f"forged artifact content_id for {self.artifact_id!r}",
                     reason_codes=("forged_artifact",),
                 )
+        _mirror_surface_artifact_integrity(self)
 
 
 def make_artifact(

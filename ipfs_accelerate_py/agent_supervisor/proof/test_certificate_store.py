@@ -1373,6 +1373,26 @@ class TestCertificateIndex:
             )
 
 
+def _mirror_certificate_write_fence(key: str) -> None:
+    """Record a live fence match. The fencing token is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(key or "certificate-write-fence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="certificate_write_fence_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class CertificateWriteFence:
     """Cross-process publication fence with monotonic fencing tokens.
 
@@ -1504,16 +1524,18 @@ class CertificateWriteFence:
         with _exclusive_lock(self.lock_path, timeout_seconds=self.lock_timeout_seconds):
             current = self._read_lease(path)
             now = _now_ms(self._clock)
-            if current is None:
-                return False
-            if current.expires_at_ms <= now:
-                return False
-            return (
-                current.key == lease.key
-                and current.owner_id == lease.owner_id
-                and current.token == lease.token
-                and current.fencing_token == lease.fencing_token
-            )
+            if current is None or current.expires_at_ms <= now:
+                matched = False
+            else:
+                matched = (
+                    current.key == lease.key
+                    and current.owner_id == lease.owner_id
+                    and current.token == lease.token
+                    and current.fencing_token == lease.fencing_token
+                )
+        if matched:
+            _mirror_certificate_write_fence(lease.key)
+        return matched
 
     def release(self, lease: FenceLease) -> bool:
         """Drop ownership while retaining the fencing-token high-water mark.

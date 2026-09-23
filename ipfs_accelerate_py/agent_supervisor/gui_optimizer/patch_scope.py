@@ -1999,6 +1999,28 @@ def _scope_decision(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_patch_scope_decision(decision: GuiPatchScopeDecision) -> GuiPatchScopeDecision:
+    """Record a scope verdict. The verdict is unchanged and no patch is applied."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        details = getattr(decision, "details", {}) or {}
+        record_ref = str(details.get("proposal_id") or "patch-scope")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="patch_scope_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 @dataclass(frozen=True)
 class GuiPatchScopeGate:
     """Admit a bounded patch only when every observed mutation is in scope.
@@ -2052,7 +2074,9 @@ class GuiPatchScopeGate:
                 _require_mapping(observation, "observation")
             )
         )
-        return self._evaluate_typed(proposal_view, observation_view, invalidation)
+        return _mirror_patch_scope_decision(
+            self._evaluate_typed(proposal_view, observation_view, invalidation)
+        )
 
     def evaluate_request(
         self, request: Mapping[str, Any]

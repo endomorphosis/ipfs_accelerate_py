@@ -704,6 +704,30 @@ def verify_worker_network_authorization(
     return decision
 
 
+def _mirror_worker_network_effect_binding(profile: WorkerNetworkProfile) -> None:
+    """Record an effect match. The match does not open a network."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(profile, "effect_cid", "")
+            or getattr(profile, "approval_cid", "")
+            or "worker-network-effect"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worker_network_effect_binding",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class WorkerNetworkProfile:
     """Effect-bound approval for one provider container and one lease."""
@@ -810,6 +834,7 @@ class WorkerNetworkProfile:
             or lease_root.resolve(strict=False) != self.lease_root
         ):
             raise ValueError("worker network profile does not bind this provider effect")
+        _mirror_worker_network_effect_binding(self)
 
     def docker_arguments(self) -> tuple[str, ...]:
         arguments = (
