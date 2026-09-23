@@ -261,6 +261,27 @@ class DirtyStateEvidence:
         }
 
 
+def _mirror_reuse_eligibility(result: Any) -> Any:
+    """Record an eligibility check. is_skip stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "decision_cid", "") or getattr(result, "cid", "") or "reuse_eligibility")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_reuse_eligibility_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class TestReuseEligibilityDecision:
     """Immutable content-addressed eligibility classification."""
@@ -352,7 +373,7 @@ class TestReuseEligibilityDecision:
         self.content_identity.verify()
         if canonical_json_bytes(self.to_dict()) != self.retained_canonical_bytes:
             raise TestReuseEligibilityError("eligibility decision bytes are not canonical")
-        return self
+        return _mirror_reuse_eligibility(self)
 
     def as_reuse_reason(self) -> ReuseReasonCode:
         """Map to the plugin/cache :class:`ReuseReasonCode` vocabulary."""

@@ -734,6 +734,26 @@ class NegotiatedAnalysisCapability:
         }
 
 
+def _mirror_analysis_request_bounds(request: Any) -> None:
+    """Record a request that fits its bounds. It does not send the request."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(request, "request_id", "") or "analysis_request")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="analysis_request_bounds",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class AnalysisRequest:
     """Compact question and content-addressed inputs for one analysis."""
@@ -854,6 +874,7 @@ class AnalysisRequest:
         )
         if len(_json_bytes(self.to_dict(), name="request")) > bounds.max_request_bytes:
             raise AnalysisTransportError(f"request exceeds {bounds.max_request_bytes} bytes")
+        _mirror_analysis_request_bounds(self)
 
 
 @dataclass(frozen=True)

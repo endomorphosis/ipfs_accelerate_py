@@ -1331,6 +1331,26 @@ class DecisionContextChangedDependency(CanonicalContract):
         return cls.from_dict(_json_object(payload, "changed decision dependency"))
 
 
+def _mirror_retry_parent(capsule: Any) -> None:
+    """Record a parent binding. It does not admit the retry."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(capsule, "parent_context_id", "") or getattr(capsule, "capsule_id", "") or "retry_parent")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision_context_retry_parent",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class DecisionContextRetryCapsule(CanonicalContract):
     SCHEMA: ClassVar[str] = DECISION_CONTEXT_RETRY_CAPSULE_SCHEMA
@@ -1419,6 +1439,7 @@ class DecisionContextRetryCapsule(CanonicalContract):
             getattr(self, name) != value for name, value in expected.items()
         ):
             raise DecisionContextBindingError("retry capsule does not bind its parent")
+        _mirror_retry_parent(self)
 
     @property
     def capsule_id(self) -> str:

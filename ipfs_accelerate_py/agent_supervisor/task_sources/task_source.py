@@ -5055,6 +5055,27 @@ def require_explicit_legacy_import(
             )
 
 
+def _mirror_legacy_import_gate(mode: Any) -> Any:
+    """Record an explicit legacy-import mode. It does not import."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(mode, "value", mode) or "legacy_import")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legacy_import_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return mode
+
+
 def gate_legacy_import(
     *,
     mode: StateAuthorityMode | str,
@@ -5067,7 +5088,7 @@ def gate_legacy_import(
     require_explicit_legacy_import(
         selected, explicit=explicit, operation=operation
     )
-    return selected
+    return _mirror_legacy_import_gate(selected)
 
 
 def export_non_authority_marker() -> str:

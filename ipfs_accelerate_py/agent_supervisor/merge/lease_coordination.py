@@ -688,6 +688,26 @@ class ImmutableLaneInputArtifact:
         )
 
 
+def _mirror_worker_receipt_freshness(receipt: Any, *, record_kind: str) -> None:
+    """Record a receipt that is current. Freshness does not grant the worker."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "receipt_id", "") or getattr(receipt, "worker_id", "") or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class WorkerCapabilityReceipt:
     """Expiring declaration of the exact capabilities offered by one worker."""
@@ -774,6 +794,7 @@ class WorkerCapabilityReceipt:
             raise ValueError("capability receipt is not yet valid")
         if now >= self.expires_at_ms:
             raise ValueError("capability receipt has expired")
+        _mirror_worker_receipt_freshness(self, record_kind="worker_capability_freshness")
 
 
 @dataclass(frozen=True)
@@ -858,6 +879,7 @@ class WorkerEnvironmentReceipt:
             raise ValueError("environment receipt is not yet valid")
         if now >= self.expires_at_ms:
             raise ValueError("environment receipt has expired")
+        _mirror_worker_receipt_freshness(self, record_kind="worker_environment_freshness")
 
 
 def _link(value: Any) -> str:
