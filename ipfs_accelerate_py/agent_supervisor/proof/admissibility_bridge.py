@@ -421,6 +421,28 @@ def _mirror_admissibility(result: Any) -> Any:
     return result
 
 
+def _mirror_admissibility_decision(result: Any) -> Any:
+    """Record a datasets gate decision. It does not admit the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason = getattr(result, "reason_code", None)
+        record_ref = str(getattr(reason, "value", reason) or getattr(result, "decision", "") or "admissibility")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="admissibility_bridge_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SupervisorAdmissibilityBridge:
     """SupervisorAdmissibilityBridge@1 — lazy, fail-closed gate adapter.
 
@@ -600,7 +622,7 @@ class SupervisorAdmissibilityBridge:
         active_profile = (
             profile.strip() if isinstance(profile, str) and profile.strip() else self.profile_id
         )
-        return gate.evaluate(normalized, active_profile)
+        return _mirror_admissibility_decision(gate.evaluate(normalized, active_profile))
 
     def check(
         self,

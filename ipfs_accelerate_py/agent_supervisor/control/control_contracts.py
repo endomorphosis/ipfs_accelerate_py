@@ -3456,6 +3456,28 @@ class EventPage(_ControlCanonicalContract):
         return result
 
 
+def _mirror_control_bounds(descriptor: Any, requested: Any) -> Any:
+    """Record bounds that fit the catalog. It does not run the operation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        operation = getattr(descriptor, "operation", None)
+        record_ref = str(getattr(operation, "value", operation) or "control_bounds")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="control_operation_bounds",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return requested
+
+
 @dataclass(frozen=True)
 class ControlOperationDescriptor(_ControlCanonicalContract):
     """Complete, immutable policy declaration for one control operation."""
@@ -3652,7 +3674,7 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
                     f"{self.operation.value}"
                 )
         self.pagination.validate_limit(page_limit)
-        return requested
+        return _mirror_control_bounds(self, requested)
 
     def _payload(self) -> dict[str, Any]:
         return {

@@ -2154,6 +2154,28 @@ class ControlMutationPolicy:
         return tuple(item.decision_id for item in self.permits)
 
 
+def _mirror_control_mutation(request: Any, accepted: bool) -> bool:
+    """Record a mutation check. Acceptance does not dispatch the operation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(request, "request_id", "") or getattr(request, "operation", "") or "control_mutation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="control_mutation_authorization",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(request, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return accepted
+
+
 class ControlMutationAuthorizer:
     """Validate policy provenance and current target/lease state before dispatch."""
 
@@ -2174,7 +2196,7 @@ class ControlMutationAuthorizer:
         if not isinstance(request, OperationRequest):
             raise AuthorizationValidationError("control authorization requires an OperationRequest")
         if request.operation not in MUTATION_OPERATIONS or request.dry_run:
-            return True
+            return _mirror_control_mutation(request, True)
         policy = self._policy(request) if callable(self._policy) else self._policy
         if not isinstance(policy, ControlMutationPolicy):
             raise AuthorizationValidationError(
@@ -2209,7 +2231,7 @@ class ControlMutationAuthorizer:
             raise AuthorizationValidationError("permit decision is not yet valid")
         if decision.expires_at_ms is not None and now >= decision.expires_at_ms:
             raise AuthorizationValidationError("permit decision has expired")
-        return True
+        return _mirror_control_mutation(request, True)
 
     authorize = validate
     check = validate

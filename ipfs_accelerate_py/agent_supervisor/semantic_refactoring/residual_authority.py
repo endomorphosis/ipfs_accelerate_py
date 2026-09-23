@@ -247,6 +247,26 @@ def build_spar_residual_authority_resolver(
     return resolve
 
 
+def _mirror_spar_residual_binding(namespace: str) -> None:
+    """Record installed residual materials. Binding does not admit the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = namespace or "spar_residual_authority"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="spar_residual_authority_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def bind_spar_residual_authority(
     daemon: Any,
     *,
@@ -272,6 +292,7 @@ def bind_spar_residual_authority(
     daemon.pre_implementation_authority_materials_resolver = (
         build_spar_residual_authority_resolver(resolved_store)
     )
+    _mirror_spar_residual_binding(board_namespace)
 
 
 __all__ = [

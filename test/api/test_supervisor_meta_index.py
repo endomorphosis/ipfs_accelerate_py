@@ -8760,6 +8760,37 @@ def test_mirror_runtime_trace_sources_inventory_and_projection(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_mutation_bounds_residual_cid_and_admissibility(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("control_mutation_authorization", "request:1", "metadata", "record_cid"),
+        ("control_operation_bounds", "read", "metadata", "record_cid"),
+        ("spar_residual_authority_binding", "board:1", "metadata", "record_cid"),
+        ("test_identity_bridge_cid", "bafyrei1", "metadata", "content_cid"),
+        ("semantic_refactor_dry_run", "request:1", "metadata", "record_cid"),
+        ("admissibility_bridge_decision", "allow", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

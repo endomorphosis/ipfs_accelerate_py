@@ -96,6 +96,26 @@ class TestExecutionIdentityError(ValueError):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_test_identity_bridge_cid(value: str) -> str:
+    """Record a test-identity CID check. It does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_identity_bridge_cid",
+            record_ref=value,
+            subject_kind="content_cid",
+            subject_ref=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
 class _LocalContentIdentityBridge:
     """Hermetic CIDv1/base32/dag-json/sha2-256 bridge.
 
@@ -204,7 +224,7 @@ class _LocalContentIdentityBridge:
             # Pure structural admission: formal / multiformats-compatible base32
             # CIDv1 strings only. Digest extraction still rehashes retained bytes
             # at ContentIdentity construction time.
-            return value
+            return _mirror_test_identity_bridge_cid(value)
         except Exception as exc:
             raise TestExecutionIdentityError("CID failed to decode") from exc
         if parsed.version != CID_VERSION:
@@ -222,7 +242,7 @@ class _LocalContentIdentityBridge:
             )
         # Decode success under the frozen profile implies canonical form for the
         # multiformats versions we support (lowercase base32 CIDv1).
-        return value
+        return _mirror_test_identity_bridge_cid(value)
 
     def digest_hex_from_cid(
         self,

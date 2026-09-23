@@ -1085,6 +1085,27 @@ def _context_binding(parameters: Mapping[str, Any]) -> str:
     return _cid(context_cid, "context_receipt_cid")
 
 
+def _mirror_semantic_refactor_dry_run(result: Any) -> Any:
+    """Record a forced dry run. It does not apply a mutation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "request_id", "") or getattr(result, "operation", "") or "semantic_refactor_dry_run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_refactor_dry_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SemanticRefactoringService:
     """Canonical SPAR-044 Python service. Adapters decode only."""
 
@@ -1113,7 +1134,7 @@ class SemanticRefactoringService:
             request = ControlRequest.from_dict(request)
         payload = request.to_dict()
         payload["dry_run"] = True
-        return self.execute(ControlRequest.from_dict(payload))
+        return _mirror_semantic_refactor_dry_run(self.execute(ControlRequest.from_dict(payload)))
 
     def _execute_read(self, request: ControlRequest) -> ControlResult:
         if request.operation == "spar.capabilities":
