@@ -2125,6 +2125,31 @@ class ResourceAdmissionLease:
         }
 
 
+def _mirror_resource_admission(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "decision_id", "")
+            or getattr(result, "lane_id", "")
+            or getattr(result, "provider_id", "")
+            or getattr(result, "reason", "")
+            or "resource-admission"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="resource_scheduler_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ResourceScheduler:
     """Evaluate and reserve host/provider capacity for a reconciliation cycle."""
 
@@ -2945,7 +2970,7 @@ class ResourceScheduler:
             "fairness_key": req.fairness_key,
         }
         if cancellation_reason:
-            return AdmissionDecision(
+            return _mirror_resource_admission(AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=False,
                 stage=req.stage,
@@ -2954,7 +2979,7 @@ class ResourceScheduler:
                 resource_class=req.resource_class,
                 resource_pool=req.resource_pool,
                 **decision_signals,
-            )
+            ))
         occupied_processes = sum(item.process_slots for item in active_items)
         host_slots = max(
             0,
@@ -3093,7 +3118,7 @@ class ResourceScheduler:
             if stage_occupied + req.process_slots > capacity.effective_limit:
                 host_reasons.append("stage_concurrency")
         if host_reasons:
-            return AdmissionDecision(
+            return _mirror_resource_admission(AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=False,
                 stage=req.stage,
@@ -3104,12 +3129,12 @@ class ResourceScheduler:
                 resource_class=req.resource_class,
                 resource_pool=req.resource_pool,
                 **decision_signals,
-            )
+            ))
 
         # Backwards compatibility: non-LLM lanes do not require provider
         # telemetry, even when a provider monitor is temporarily unavailable.
         if not req.provider_required:
-            return AdmissionDecision(
+            return _mirror_resource_admission(AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
                 stage=req.stage,
@@ -3125,12 +3150,12 @@ class ResourceScheduler:
                 reserved_gpu_memory_bytes=req.gpu_memory_bytes,
                 reserved_disk_bytes=req.disk_bytes,
                 **decision_signals,
-            )
+            ))
 
         candidates = [item for item in normalized if not req.provider_id or item.provider_id == req.provider_id]
         if not candidates:
             reason = "provider_telemetry_unavailable" if self.policy.require_provider_telemetry else "provider_unavailable"
-            return AdmissionDecision(
+            return _mirror_resource_admission(AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=not self.policy.require_provider_telemetry,
                 stage=req.stage,
@@ -3152,7 +3177,7 @@ class ResourceScheduler:
                 ),
                 reserved_disk_bytes=req.disk_bytes if not self.policy.require_provider_telemetry else 0,
                 **decision_signals,
-            )
+            ))
 
         reserved = reservations or {}
         rejected: list[tuple[ProviderCapacity, list[str]]] = []
@@ -3163,7 +3188,7 @@ class ResourceScheduler:
                 rejected.append((provider, reasons))
                 continue
             provider_slots = max(0, provider.available_concurrency - reservation.requests)
-            return AdmissionDecision(
+            return _mirror_resource_admission(AdmissionDecision(
                 lane_id=req.lane_id,
                 admitted=True,
                 stage=req.stage,
@@ -3182,13 +3207,13 @@ class ResourceScheduler:
                 reserved_gpu_memory_bytes=req.gpu_memory_bytes,
                 reserved_disk_bytes=req.disk_bytes,
                 **decision_signals,
-            )
+            ))
 
         # Preserve all distinct constraint failures. This makes backpressure
         # explainable when multiple providers are unsuitable for different reasons.
         reasons = tuple(dict.fromkeys(reason for _provider, items in rejected for reason in items))
         selected = min((provider for provider, _items in rejected), key=self._provider_sort_key)
-        return AdmissionDecision(
+        return _mirror_resource_admission(AdmissionDecision(
             lane_id=req.lane_id,
             admitted=False,
             stage=req.stage,
@@ -3201,7 +3226,7 @@ class ResourceScheduler:
             resource_class=req.resource_class,
             resource_pool=req.resource_pool,
             **decision_signals,
-        )
+        ))
 
     def acquire(
         self,

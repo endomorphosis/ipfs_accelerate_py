@@ -8145,6 +8145,36 @@ def test_mirror_doctor_coordination_repair_goal_and_ptr_gate(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_provider_scheduler_overlay_doctor_and_v2(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("production_provider_gate", "gate:1", "metadata", "record_cid"),
+        ("resource_scheduler_admission", "lane:1", "metadata", "record_cid"),
+        ("candidate_overlay_gate", "proposal:1", "metadata", "record_cid"),
+        ("doctor_policy_decision", "decision:1", "metadata", "record_cid"),
+        ("v2_self_evaluation", "corpus:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -304,6 +304,31 @@ def classify_change_approval_classes(
 
 
 @dataclass(frozen=True)
+def _mirror_doctor_policy_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "decision_id", "")
+            or getattr(result, "content_id", "")
+            or getattr(result, "reason_code", "")
+            or getattr(getattr(result, "disposition", None), "value", "")
+            or "doctor-policy"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_policy_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DeterministicDoctorPolicy(CanonicalContract):
     """Closed deterministic-doctor policy (scheduler schema @1).
 
@@ -711,63 +736,63 @@ class DeterministicDoctorPolicy(CanonicalContract):
             )
             self.reject_semantic_authority_claims(semantic_authority_flags)
         except DeterministicDoctorSafetyError as exc:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(str(exc),),
                 policy_id=self.policy_id,
-            )
+            ))
 
         if forged_cid:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.FORGED_CID.value,),
                 policy_id=self.policy_id,
-            )
+            ))
         if has_body_or_secret:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.BODY_OR_SECRET.value,),
                 policy_id=self.policy_id,
-            )
+            ))
         if has_cycle:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.CYCLE.value,),
                 policy_id=self.policy_id,
-            )
+            ))
         if unbounded:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.UNBOUNDED_DATA.value,),
                 policy_id=self.policy_id,
-            )
+            ))
         if partial_plan:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.PARTIAL_PLAN.value,),
                 policy_id=self.policy_id,
-            )
+            ))
 
         if effective_mode not in self.allowed_modes:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.MODE_FORBIDS_OPERATION.value,),
                 policy_id=self.policy_id,
-            )
+            ))
 
         if not self.mode_allows_operation(effective_mode, op):
             # Read-only ops under report_only: always allowed for inspect/explain/plan-as-report.
@@ -779,65 +804,65 @@ class DeterministicDoctorPolicy(CanonicalContract):
                 elif op in (DoctorOperation.INSPECT, DoctorOperation.EXPLAIN, DoctorOperation.REPLAY):
                     pass
                 else:
-                    return DoctorPolicyDecision(
+                    return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                         verdict=PolicyVerdict.REJECT,
                         operation=op,
                         mode=effective_mode,
                         reason_codes=(DoctorRejectionReason.MODE_FORBIDS_OPERATION.value,),
                         policy_id=self.policy_id,
-                    )
+                    ))
             elif op is DoctorOperation.PLAN and effective_mode is DoctorMode.REPORT_ONLY:
                 pass
             else:
-                return DoctorPolicyDecision(
+                return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                     verdict=PolicyVerdict.REJECT,
                     operation=op,
                     mode=effective_mode,
                     reason_codes=(DoctorRejectionReason.MODE_FORBIDS_OPERATION.value,),
                     policy_id=self.policy_id,
-                )
+                ))
 
         for path in write_paths:
             if self.is_path_protected(path):
                 classes.add(DoctorApprovalClass.DOCTOR_TRUSTED_COMPUTING_BASE.value)
-                return DoctorPolicyDecision(
+                return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                     verdict=PolicyVerdict.REJECT,
                     operation=op,
                     mode=effective_mode,
                     reason_codes=(DoctorRejectionReason.TCB_PATH.value,),
                     approval_classes=tuple(sorted(classes)),
                     policy_id=self.policy_id,
-                )
+                ))
 
         if open_required_frontiers and op is DoctorOperation.REPAIR:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.ABSTAIN,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.OPEN_REQUIRED_FRONTIER.value,),
                 policy_id=self.policy_id,
-            )
+            ))
 
         if classes & set(self.approval_required_classes):
             if op is DoctorOperation.REPAIR or write_paths:
-                return DoctorPolicyDecision(
+                return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                     verdict=PolicyVerdict.APPROVAL_REQUIRED,
                     operation=op,
                     mode=effective_mode,
                     reason_codes=(DoctorRejectionReason.APPROVAL_REQUIRED.value,),
                     approval_classes=tuple(sorted(classes)),
                     policy_id=self.policy_id,
-                )
+                ))
 
         if op is DoctorOperation.REPAIR:
             if not self.enabled and effective_mode is DoctorMode.NARROW_AUTO:
-                return DoctorPolicyDecision(
+                return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                     verdict=PolicyVerdict.REJECT,
                     operation=op,
                     mode=effective_mode,
                     reason_codes=(DoctorRejectionReason.MODE_FORBIDS_OPERATION.value,),
                     policy_id=self.policy_id,
-                )
+                ))
             try:
                 admitted = self.require_repair_prerequisites(
                     plan=plan,
@@ -857,27 +882,27 @@ class DeterministicDoctorPolicy(CanonicalContract):
                     if "frontier" in reason
                     else PolicyVerdict.REJECT
                 )
-                return DoctorPolicyDecision(
+                return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                     verdict=verdict,
                     operation=op,
                     mode=effective_mode,
                     reason_codes=(reason,),
                     policy_id=self.policy_id,
-                )
+                ))
             reasons.append("admitted_plan")
             _ = admitted
 
         # Feature may be disabled while still allowing pure report/inspect.
         if not self.enabled and op is DoctorOperation.REPAIR:
-            return DoctorPolicyDecision(
+            return _mirror_doctor_policy_decision(DoctorPolicyDecision(
                 verdict=PolicyVerdict.REJECT,
                 operation=op,
                 mode=effective_mode,
                 reason_codes=(DoctorRejectionReason.MODE_FORBIDS_OPERATION.value,),
                 policy_id=self.policy_id,
-            )
+            ))
 
-        return DoctorPolicyDecision(
+        return _mirror_doctor_policy_decision(DoctorPolicyDecision(
             verdict=PolicyVerdict.ALLOW,
             operation=op,
             mode=effective_mode,
@@ -885,7 +910,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
             approval_classes=tuple(sorted(classes)),
             policy_id=self.policy_id,
             read_only=operation_is_read_only(op),
-        )
+        ))
 
     def _payload(self) -> dict[str, Any]:
         return {

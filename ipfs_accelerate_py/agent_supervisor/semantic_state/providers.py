@@ -520,6 +520,30 @@ def _attribution_verified(attribution: Any) -> bool:
     return attribution is not None
 
 
+def _mirror_production_provider_gate(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reasons = getattr(result, "reason_codes", ()) or ()
+        record_ref = str(
+            (reasons[0] if reasons else "")
+            or getattr(result, "mode", "")
+            or "production-provider-gate"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="production_provider_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProductionProviderGate:
     """Fail-closed promotion gate applied to ProviderExecutionGateway results.
 
@@ -626,7 +650,7 @@ class ProductionProviderGate:
             # Development paths may simulate but can never verify/commit.
             if simulated or not granted:
                 reasons.append("development_simulation")
-                return ProductionGateVerdict(
+                return _mirror_production_provider_gate(ProductionGateVerdict(
                     admitted=False,
                     can_verify=False,
                     can_commit=False,
@@ -638,10 +662,10 @@ class ProductionProviderGate:
                     ),
                     simulated=True,
                     mode=mode_value,
-                )
+                ))
             # Non-simulated development results still cannot authorize production
             # verification; they remain observational.
-            return ProductionGateVerdict(
+            return _mirror_production_provider_gate(ProductionGateVerdict(
                 admitted=True,
                 can_verify=False,
                 can_commit=False,
@@ -653,7 +677,7 @@ class ProductionProviderGate:
                 ),
                 simulated=False,
                 mode=mode_value,
-            )
+            ))
 
         # ---- production fail-closed path ----
         if exec_mode and exec_mode != "enforce":
@@ -718,7 +742,7 @@ class ProductionProviderGate:
                 simulated=simulated,
             )
 
-        return ProductionGateVerdict(
+        return _mirror_production_provider_gate(ProductionGateVerdict(
             admitted=True,
             can_verify=True,
             can_commit=True,
@@ -726,7 +750,7 @@ class ProductionProviderGate:
             diagnostic=_clip("production provider result admitted"),
             simulated=False,
             mode=mode_value,
-        )
+        ))
 
     def _reject(
         self,
@@ -736,7 +760,7 @@ class ProductionProviderGate:
         *,
         simulated: bool,
     ) -> ProductionGateVerdict:
-        return ProductionGateVerdict(
+        return _mirror_production_provider_gate(ProductionGateVerdict(
             admitted=False,
             can_verify=False,
             can_commit=False,
@@ -744,7 +768,7 @@ class ProductionProviderGate:
             diagnostic=_clip(diagnostic),
             simulated=simulated,
             mode=mode,
-        )
+        ))
 
 
 def build_llm_router_invoker(

@@ -2410,6 +2410,29 @@ def _ablation_result(
     )
 
 
+def _mirror_v2_self_evaluation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "corpus_id", "")
+            or getattr(result, "policy_id", "")
+            or "v2-self-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="v2_self_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class V2SelfImprovementEvaluator:
     """Deterministic bounded evaluator for the complete v2 population."""
 
@@ -2573,7 +2596,7 @@ class V2SelfImprovementEvaluator:
             and not any(anti_gaming.values())
             and not non_compensable_tuple
         )
-        return V2SelfEvaluationReport(
+        return _mirror_v2_self_evaluation(V2SelfEvaluationReport(
             corpus_id=corpus.corpus_id,
             policy_id=self.policy_id,
             producer_receipt_ids=tuple(item.receipt_id for item in producer_receipts),
@@ -2586,7 +2609,7 @@ class V2SelfImprovementEvaluator:
             pareto_passed=pareto_passed,
             decision=(V2EvaluationDecision.PROVISIONAL if passed else V2EvaluationDecision.SHADOW),
             passed=passed,
-        )
+        ))
 
 
 def _sample(numerator: int, denominator: int, unit: str) -> V2MetricSample:

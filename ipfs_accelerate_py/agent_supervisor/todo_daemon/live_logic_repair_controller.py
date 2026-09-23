@@ -1007,6 +1007,36 @@ def bridge_predictions_into_proof_bundle(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_candidate_overlay_gate(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(
+            getattr(result, "candidate_tree_id", "")
+            or getattr(result, "base_tree_id", "")
+            or ""
+        )
+        record_ref = str(
+            getattr(result, "proposal_id", "")
+            or tree_id
+            or getattr(getattr(result, "disposition", None), "value", "")
+            or "candidate-overlay"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="candidate_overlay_gate",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class CandidateOverlayContractDeltaGate:
     """Intercept ordinary provider proposals as read-only candidate overlays.
 
@@ -1043,24 +1073,24 @@ class CandidateOverlayContractDeltaGate:
         auto_discover_callers: bool = True,
     ) -> CandidateOverlayGateResult:
         if not self.policy.enable_live_logic_repair:
-            return CandidateOverlayGateResult(
+            return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.DISABLED,
                 detail="enable_live_logic_repair is false",
                 stages_completed=(),
                 mutation_allowed=False,
-            )
+            ))
 
         completed: list[str] = []
         write_set_t = tuple(
             sorted({str(p).strip() for p in write_set if str(p).strip()})
         )
         if not proposal_id or not repository_id:
-            return CandidateOverlayGateResult(
+            return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.REJECTED,
                 detail="proposal_id and repository_id are required",
                 reason_codes=("malformed_overlay_input",),
                 mutation_allowed=False,
-            )
+            ))
 
         # 1. Materialize read-only overlay identity.
         stage = "overlay_materialize"
@@ -1157,7 +1187,7 @@ class CandidateOverlayContractDeltaGate:
             )
             completed.append("caller_disposition")
             completed.append("admit_or_reject")
-            return CandidateOverlayGateResult(
+            return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.ABSTAINED,
                 detail=(
                     "required unknown frontier present; "
@@ -1167,7 +1197,7 @@ class CandidateOverlayContractDeltaGate:
                 stages_completed=tuple(completed),
                 overlay=overlay,
                 mutation_allowed=False,
-            )
+            ))
         completed.append(stage)
 
         # 5. Disposition every resolved caller.
@@ -1313,7 +1343,7 @@ class CandidateOverlayContractDeltaGate:
                     delta_id=delta_id,
                     mutation_allowed=True,
                 )
-                return CandidateOverlayGateResult(
+                return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                     disposition=OverlayGateDisposition.EXPANDED,
                     detail=(
                         "signature change omitted callers; write set expanded "
@@ -1327,7 +1357,7 @@ class CandidateOverlayContractDeltaGate:
                     overlay=overlay,
                     mutation_allowed=True,
                     expanded_write_set=tuple(sorted(set(expanded))),
-                )
+                ))
             if self.policy.reject_omitted_callers:
                 completed.append(stage)
                 overlay = CandidateOverlayReceipt(
@@ -1354,7 +1384,7 @@ class CandidateOverlayContractDeltaGate:
                     delta_id=delta_id,
                     mutation_allowed=False,
                 )
-                return CandidateOverlayGateResult(
+                return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                     disposition=OverlayGateDisposition.REJECTED,
                     detail=(
                         "signature change omits resolved callers from write set"
@@ -1366,7 +1396,7 @@ class CandidateOverlayContractDeltaGate:
                     stages_completed=tuple(completed),
                     overlay=overlay,
                     mutation_allowed=False,
-                )
+                ))
             completed.append(stage)
             overlay = CandidateOverlayReceipt(
                 overlay_id=overlay_id,
@@ -1392,14 +1422,14 @@ class CandidateOverlayContractDeltaGate:
                 delta_id=delta_id,
                 mutation_allowed=False,
             )
-            return CandidateOverlayGateResult(
+            return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
                 disposition=OverlayGateDisposition.DEFERRED,
                 detail="omitted callers deferred for expansion/re-admission",
                 reason_codes=("omitted_callers_deferred",),
                 stages_completed=tuple(completed),
                 overlay=overlay,
                 mutation_allowed=False,
-            )
+            ))
 
         completed.append(stage)
         overlay = CandidateOverlayReceipt(
@@ -1425,7 +1455,7 @@ class CandidateOverlayContractDeltaGate:
             delta_id=delta_id,
             mutation_allowed=True,
         )
-        return CandidateOverlayGateResult(
+        return _mirror_candidate_overlay_gate(CandidateOverlayGateResult(
             disposition=OverlayGateDisposition.ADMITTED,
             detail="all resolved callers dispositioned; mutation may proceed",
             reason_codes=("callers_complete",),
@@ -1433,7 +1463,7 @@ class CandidateOverlayContractDeltaGate:
             overlay=overlay,
             mutation_allowed=True,
             expanded_write_set=write_set_t,
-        )
+        ))
 
 
 # ---------------------------------------------------------------------------
