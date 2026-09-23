@@ -693,6 +693,27 @@ class TrajectoryAdmissionDecision:
 
 
 @dataclass(frozen=True)
+def _mirror_trajectory_admission(result: Any) -> Any:
+    """Record an admitted episode. admitted is unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "source_episode_cid", "") or getattr(result, "reason_code", "") or "trajectory_admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="trajectory_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TrajectoryAdmissionPolicy:
     """Fail-closed current-tree admission rules for independently validated episodes."""
 
@@ -760,7 +781,7 @@ class TrajectoryAdmissionPolicy:
                 decision.message or decision.reason_code,
                 reason_code=decision.reason_code,
             )
-        return decision
+        return _mirror_trajectory_admission(decision)
 
     def _prepare(self, payload: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[str, ...]]:
         _reject_forbidden_evidence(payload)

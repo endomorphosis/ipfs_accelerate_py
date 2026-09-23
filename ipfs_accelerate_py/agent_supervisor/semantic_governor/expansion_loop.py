@@ -491,6 +491,27 @@ class ExpansionModelPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+def _mirror_expansion_verification(policy: Any, accepted: bool) -> bool:
+    """Record a policy check. Acceptance does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(policy, "policy_id", "") or getattr(policy, "policy_cid", "") or "expansion_verification")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="expansion_verification_policy",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return accepted
+
+
 class ExpansionVerificationPolicy:
     """Verification gates applied after each context expansion / retry.
 
@@ -582,21 +603,16 @@ class ExpansionVerificationPolicy:
     def evaluate(self, attempt: "ExpansionAttemptResult") -> bool:
         """Return True when the attempt satisfies this verification policy."""
 
-        if not self.accept_on_verification_pass:
-            return False
-        if attempt.status != ExpansionAttemptStatus.SUCCEEDED.value:
-            return False
-        if self.require_selected_tests and not attempt.selected_tests_passed:
-            return False
-        if self.require_full_suite and not attempt.full_suite_passed:
-            return False
-        if self.require_proofs and not attempt.proofs_passed:
-            return False
-        if self.require_static_checks and not attempt.static_checks_passed:
-            return False
-        if self.require_no_counterexample and attempt.counterexample_present:
-            return False
-        return True
+        accepted = (
+            self.accept_on_verification_pass
+            and attempt.status == ExpansionAttemptStatus.SUCCEEDED.value
+            and (not self.require_selected_tests or attempt.selected_tests_passed)
+            and (not self.require_full_suite or attempt.full_suite_passed)
+            and (not self.require_proofs or attempt.proofs_passed)
+            and (not self.require_static_checks or attempt.static_checks_passed)
+            and (not self.require_no_counterexample or not attempt.counterexample_present)
+        )
+        return _mirror_expansion_verification(self, accepted)
 
 
 def default_model_policy(**overrides: Any) -> ExpansionModelPolicy:

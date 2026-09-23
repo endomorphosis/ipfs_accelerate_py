@@ -798,6 +798,27 @@ def _mirror_value_mapping(results: Any, candidate_id: str, compilation: Any) -> 
     return results
 
 
+def _mirror_facet_proof(result: Any) -> Any:
+    """Record one facet outcome. Cache hits do not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "obligation_id", "") or "facet_proof")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="change_propagation_facet_proof",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class MissingInputSynthesizer:
     """Route finite change-propagation obligations through admitted logic backends."""
 
@@ -1049,7 +1070,7 @@ class MissingInputSynthesizer:
         unsatisfied_clauses: Sequence[str] = (),
         from_cache: bool = False,
     ) -> CandidateFacetResult:
-        return CandidateFacetResult(
+        return _mirror_facet_proof(CandidateFacetResult(
             obligation_id=obligation.obligation_id,
             obligation_kind=obligation.kind,
             candidate_id=candidate_id,
@@ -1060,7 +1081,7 @@ class MissingInputSynthesizer:
             counterexample=counterexample,
             unsatisfied_clauses=tuple(unsatisfied_clauses),
             from_cache=from_cache,
-        )
+        ))
 
     def _reconstruction_receipt(
         self,

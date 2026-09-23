@@ -89,6 +89,26 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> str:
         raise HarnessError(f"{name} has unsupported value {value!r}") from exc
 
 
+def _mirror_opaque_cid(value: str) -> str:
+    """Record an opaque CID shape check. It does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="opaque_cid_validation",
+            record_ref=value,
+            subject_kind="content_cid",
+            subject_ref=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
 def validate_opaque_cid(value: Any, name: str) -> str:
     """Accept a Kubo-compatible CIDv1 base32 string as an opaque reference."""
 
@@ -99,7 +119,7 @@ def validate_opaque_cid(value: Any, name: str) -> str:
         raise HarnessError(f"{name} is not a lowercase base32 CID")
     if text.startswith("cidv1-sha256-") or text.startswith("sim:") or text.startswith("degraded:"):
         raise HarnessError(f"{name} is a forged or non-Kubo CID")
-    return text
+    return _mirror_opaque_cid(text)
 
 
 def _optional_cid(value: Any, name: str) -> str | None:

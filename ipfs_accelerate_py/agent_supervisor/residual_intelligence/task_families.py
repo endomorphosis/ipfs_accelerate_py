@@ -157,6 +157,26 @@ def _expert_class_letters(values: Any, name: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+def _mirror_compact_features(spec: Any) -> None:
+    """Record a feature check that did not raise. candidate_only stays true."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(spec, "spec_id", "") or "compact_features")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="compact_feature_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_residual_task_input(spec: Any, task_input: Any) -> None:
     """Record a family input check. candidate_only stays true."""
 
@@ -454,6 +474,7 @@ class ResidualTaskFamilySpec:
             raise ResidualIntelligenceError(
                 f"{REASON_MISSING_COMPACT_FEATURE}: {', '.join(missing)}"
             )
+        _mirror_compact_features(self)
 
     def validate_task_input(self, task_input: ResidualTaskInput) -> None:
         if not isinstance(task_input, ResidualTaskInput):

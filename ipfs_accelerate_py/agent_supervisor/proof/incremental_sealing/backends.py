@@ -957,6 +957,27 @@ def run_bounded_recursion_probe(
 
 
 @dataclass
+def _mirror_recursive_probe(result: Any) -> Any:
+    """Record a test-only recursive probe. test_only stays true."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "circuit_id", "") or getattr(result, "child_root", "") or "recursive_probe")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="recursive_probe_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class HermeticTestOnlyRecursiveBackend:
     """In-process recursive probe backend using only preconfigured test material.
 
@@ -1035,14 +1056,14 @@ class HermeticTestOnlyRecursiveBackend:
             + b"recursive",
             hashlib.sha256,
         ).digest()
-        return RecursionProbeArtifact(
+        return _mirror_recursive_probe(RecursionProbeArtifact(
             kind="recursive",
             proof_bytes=proof,
             public_input_digest=material.public_input_digest(),
             circuit_id=material.circuit_id,
             test_only=True,
             child_root=child_root,
-        )
+        ))
 
     def verify_recursive(
         self, artifact: RecursionProbeArtifact, material: RecursionProbeMaterial
