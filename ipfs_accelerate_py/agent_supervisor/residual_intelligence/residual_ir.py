@@ -158,6 +158,26 @@ class ResidualTaskInput:
         return result
 
 
+def _mirror_residual_output_validation(output_class: str) -> None:
+    """Record an output class that fits its input. The task is not admitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(output_class or "residual-output")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_output_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ResidualTaskOutput:
     """Strict structured candidate returned by any learned expert.
@@ -286,6 +306,7 @@ class ResidualTaskOutput:
             raise ResidualIntelligenceError(
                 "R4/R5 learned outputs must abstain or remain explicitly validation-required"
             )
+        _mirror_residual_output_validation(self.output_class)
 
 
 @dataclass(frozen=True)

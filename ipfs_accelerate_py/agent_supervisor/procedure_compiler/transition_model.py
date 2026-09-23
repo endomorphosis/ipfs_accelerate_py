@@ -207,6 +207,26 @@ class TransitionMeasurements(CanonicalContract):
         return record
 
 
+def _mirror_transition_prediction_use(use: str) -> None:
+    """Record an allowed prediction use. Completion and proof uses stay refused."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(use or "transition-prediction-use")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="transition_prediction_use",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class TransitionPrediction(CanonicalContract):
     """One bounded prediction emitted by a proposal-only transition model."""
@@ -325,6 +345,7 @@ class TransitionPrediction(CanonicalContract):
             admitted_conservative_evidence_ids=admitted_conservative_evidence_ids,
         ):
             raise PredictionUseError("transition prediction cannot discharge the requested use")
+        _mirror_transition_prediction_use(str(getattr(use, "value", use) or ""))
 
     def _payload(self) -> dict[str, Any]:
         return {

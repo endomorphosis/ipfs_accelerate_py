@@ -1539,6 +1539,26 @@ class ProofAttempt(CanonicalContract):
         return result
 
 
+def _mirror_kernel_verified_receipt(receipt: ProofReceipt) -> None:
+    """Record kernel-verified eligibility. The check does not attest the receipt."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "obligation_id", "") or "kernel-verified-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="kernel_verified_receipt_requirement",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ProofReceipt(CanonicalContract):
     """Immutable proof result binding all semantic and execution inputs.
@@ -1783,6 +1803,7 @@ class ProofReceipt(CanonicalContract):
             raise ContractValidationError(
                 "attestation requires an existing kernel-verified receipt"
             )
+        _mirror_kernel_verified_receipt(self)
 
     def _payload(self) -> Dict[str, Any]:
         assessment = self.assurance_assessment

@@ -13,6 +13,26 @@ from .merge_queue import MergeQueueFenceError, MergeRequest
 from .owner_merge_queue import OwnerMergeQueueClient, OwnerMergeQueueError
 
 
+def _mirror_owner_queue_adapter_target(repository_id: str) -> None:
+    """Record an unchanged admitted target. The adapter does not retarget."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(repository_id or "owner-queue-target")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="owner_queue_adapter_target",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_owner_recovery_binding(adapter: Any) -> None:
     """Record a recovery-runtime binding. It does not replay recovery."""
 
@@ -64,6 +84,7 @@ class OwnerMergeQueueAdapter:
             True,
         ):
             raise MergeQueueFenceError("adapter cannot change its admitted target")
+        _mirror_owner_queue_adapter_target(self._client.repository_id)
 
     def _consumer(self, consumer_id):
         if consumer_id not in (None, self._client.consumer_id):

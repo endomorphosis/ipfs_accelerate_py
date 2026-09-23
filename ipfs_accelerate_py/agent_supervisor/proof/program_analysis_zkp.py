@@ -1564,6 +1564,26 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
         return result
 
 
+def _mirror_zkp_capability_epoch(capability_epoch: str) -> None:
+    """Record a matching capability epoch. The check does not grant authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(capability_epoch or "zkp-capability-epoch")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="zkp_capability_epoch",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_program_zkp_replay(public_input_digest: str) -> None:
     """Record a matching replay digest. Keys and ceremony material are not stored."""
 
@@ -1824,6 +1844,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             raise ProgramZkpCapabilityError(
                 "capability loss invalidates prior authoritative projection"
             )
+        _mirror_zkp_capability_epoch(expected)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramZkpVerificationReceipt":
