@@ -11,6 +11,26 @@ PUBLICATION_LEDGER_PATH = "train/distributed-publications.json"
 PUBLICATION_LEDGER_KEY = "distributed-publications"
 
 
+def _mirror_train_import_coverage(names: set[str]) -> None:
+    """Record explicit import coverage. It does not admit the train."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ",".join(sorted(names))[:180] or "train_import_coverage"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="train_import_coverage",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def validate_train_import_coverage(
     *,
     file_names: Iterable[str],
@@ -79,3 +99,4 @@ def validate_train_import_coverage(
             raise ValueError("canonical train receipt revision is invalid")
         if any(r is not head and r["revision"] >= head["revision"] for r in versions):
             raise ValueError("canonical train receipt must remain the receipt head")
+    _mirror_train_import_coverage(names)

@@ -622,6 +622,26 @@ class FormalPlanResponseBinding:
 
 
 @dataclass(frozen=True)
+def _mirror_plan_context_limits(capsule: Any) -> None:
+    """Record a limit check that did not raise. It does not admit the plan."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(capsule, "capsule_cid", "") or "formal_plan_context")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_plan_context_limits",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class FormalPlanContextCapsule:
     """Immutable, already-budgeted model input for one checked transition."""
 
@@ -898,6 +918,7 @@ class FormalPlanContextCapsule:
         for passed, message in checks:
             if not passed:
                 raise FormalPlanContextBudgetError(message)
+        _mirror_plan_context_limits(self)
 
     @classmethod
     def from_dict(

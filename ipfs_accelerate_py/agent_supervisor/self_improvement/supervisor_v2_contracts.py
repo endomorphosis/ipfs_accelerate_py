@@ -672,6 +672,26 @@ class ResultBinding(_V2Contract):
 
 
 @dataclass(frozen=True)
+def _mirror_artifact_bounds(*, projection: bool) -> None:
+    """Record a bounds check that did not raise. It does not admit the artifact."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = "projection" if projection else "receipt"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="artifact_bounds_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ArtifactBounds(_V2Contract):
     """Policy bounds for receipts, projections, references, and nesting."""
 
@@ -714,6 +734,7 @@ class ArtifactBounds(_V2Contract):
         maximum = self.max_projection_bytes if projection else self.max_receipt_bytes
         if len(canonical_json_bytes(payload)) > maximum:
             raise ContractBoundsError(f"payload exceeds configured {maximum} byte bound")
+        _mirror_artifact_bounds(projection=projection)
 
     def _payload(self) -> dict[str, Any]:
         return {

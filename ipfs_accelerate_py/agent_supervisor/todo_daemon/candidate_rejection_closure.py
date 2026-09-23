@@ -51,32 +51,57 @@ def exact_seal(value: object, field: str = "receipt_id") -> bool:
         return False
 
 
+def _mirror_lifecycle_pair(record_ref: str, matched: bool) -> bool:
+    """Record a lifecycle comparison. A match does not complete the work."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lifecycle_pair_validation",
+            record_ref=record_ref or "lifecycle_pair",
+            subject_kind="record_cid",
+            subject_ref=record_ref or "lifecycle_pair",
+        )
+    except Exception:
+        pass
+    return matched
+
+
 def validate_lifecycle_pair(prior: object, terminal: object) -> bool:
     """Require native record shapes and one exact terminal transition."""
-    if not isinstance(prior, Mapping) or not isinstance(terminal, Mapping):
-        return False
-    try:
-        before = WorkspaceLifecycleRecord.from_dict(prior)
-        after = WorkspaceLifecycleRecord.from_dict(terminal)
-    except (TypeError, ValueError, RuntimeError):
-        return False
-    if before.to_dict() != dict(prior) or after.to_dict() != dict(terminal):
-        return False
-    if (
-        before.record_id != before.compute_record_id()
-        or after.record_id != after.compute_record_id()
-    ):
-        return False
-    changes = {"state", "fence", "updated_at", "expires_at", "terminal_reason"}
-    return (
-        before.is_nonterminal
-        and after.is_terminal
-        and after.fence == before.fence + 1
-        and after.terminal_reason == "worktree_cleaned"
-        and before.owner.pid > 0
-        and before.owner.start_time_ticks > 0
-        and all(prior[name] == terminal[name] for name in prior if name not in changes)
-    )
+    record_ref = "lifecycle_pair"
+    matched = False
+    if isinstance(prior, Mapping) and isinstance(terminal, Mapping):
+        try:
+            before = WorkspaceLifecycleRecord.from_dict(prior)
+            after = WorkspaceLifecycleRecord.from_dict(terminal)
+            record_ref = str(before.record_id or after.record_id or record_ref)
+            if before.to_dict() == dict(prior) and after.to_dict() == dict(terminal):
+                if (
+                    before.record_id == before.compute_record_id()
+                    and after.record_id == after.compute_record_id()
+                ):
+                    changes = {"state", "fence", "updated_at", "expires_at", "terminal_reason"}
+                    matched = (
+                        before.is_nonterminal
+                        and after.is_terminal
+                        and after.fence == before.fence + 1
+                        and after.terminal_reason == "worktree_cleaned"
+                        and before.owner.pid > 0
+                        and before.owner.start_time_ticks > 0
+                        and all(
+                            prior[name] == terminal[name]
+                            for name in prior
+                            if name not in changes
+                        )
+                    )
+        except (TypeError, ValueError, RuntimeError):
+            matched = False
+    return _mirror_lifecycle_pair(record_ref, matched)
 
 
 class CandidateLifecycleHandoff:

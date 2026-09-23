@@ -32,52 +32,73 @@ class GuardedQualificationReceipt:
 
 
 @dataclass
+def _mirror_guarded_influence(result: Any) -> Any:
+    """Record an influence decision. completion_authority stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "reason_code", "") or "guarded_influence")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="guarded_program_world_influence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProgramWorldGuardedGate:
     def evaluate_guarded_program_world_influence(
         self, request: Mapping[str, Any]
     ) -> GuardedInfluenceDecision:
         kind = str(request.get("kind") or "")
         if request.get("shadow_unqualified"):
-            return GuardedInfluenceDecision(
+            return _mirror_guarded_influence(GuardedInfluenceDecision(
                 allowed=False,
                 reason_code="shadow_unqualified",
                 influences_planning=False,
                 neural_only_context=False,
-            )
+            ))
         if kind == "exact_hit" and request.get("current") is True:
-            return GuardedInfluenceDecision(
+            return _mirror_guarded_influence(GuardedInfluenceDecision(
                 allowed=True,
                 reason_code="exact_current_state_hit",
                 influences_planning=True,
                 neural_only_context=False,
-            )
+            ))
         if kind == "verified_procedure" and request.get("verified") is True:
-            return GuardedInfluenceDecision(
+            return _mirror_guarded_influence(GuardedInfluenceDecision(
                 allowed=True,
                 reason_code="verified_procedure",
                 influences_planning=True,
                 neural_only_context=False,
-            )
+            ))
         if kind == "proof_backed" and request.get("independent_proof") is True:
-            return GuardedInfluenceDecision(
+            return _mirror_guarded_influence(GuardedInfluenceDecision(
                 allowed=True,
                 reason_code="independent_proof",
                 influences_planning=True,
                 neural_only_context=False,
-            )
+            ))
         if kind == "neural":
-            return GuardedInfluenceDecision(
+            return _mirror_guarded_influence(GuardedInfluenceDecision(
                 allowed=True,
                 reason_code="neural_context_only",
                 influences_planning=False,
                 neural_only_context=True,
-            )
-        return GuardedInfluenceDecision(
+            ))
+        return _mirror_guarded_influence(GuardedInfluenceDecision(
             allowed=False,
             reason_code="unguarded_influence",
             influences_planning=False,
             neural_only_context=False,
-        )
+        ))
 
 
 def evaluate_guarded_program_world_influence(

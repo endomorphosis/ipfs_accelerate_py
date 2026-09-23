@@ -54,6 +54,28 @@ class PlanObligation:
         )
 
 
+def _mirror_plan_obligations(proven: tuple[Any, ...]) -> tuple[Any, ...]:
+    """Record obligations that hold. Holding them does not grant authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        kinds = tuple(str(getattr(item, "kind", "") or "") for item in proven)
+        record_ref = ",".join(kinds) or "plan_obligations"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_obligation_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return proven
+
+
 def prove(obligations: Sequence[Mapping[str, Any] | PlanObligation]) -> tuple[PlanObligation, ...]:
     compiled = []
     for item in obligations:
@@ -72,4 +94,4 @@ def prove(obligations: Sequence[Mapping[str, Any] | PlanObligation]) -> tuple[Pl
         raise ObligationError(f"missing obligation {sorted(missing)[0]}")
     if any(not item.holds for item in compiled):
         raise ObligationError("plan obligations do not all hold")
-    return tuple(compiled)
+    return _mirror_plan_obligations(tuple(compiled))
