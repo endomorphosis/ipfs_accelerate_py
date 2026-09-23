@@ -52,6 +52,28 @@ class AdmittedSourceEditError(ValueError):
     """A proposed source edit lacks the evidence needed to mutate bytes."""
 
 
+def _mirror_source_edit_validation(checked: tuple[Any, ...], *, path: str) -> tuple[Any, ...]:
+    """Record a byte-binding check. Validation does not write the target."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = path or "source_edit"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="source_edit_validation",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=(record_ref,),
+        )
+    except Exception:
+        pass
+    return checked
+
+
 @dataclass(frozen=True)
 class AdmittedSourceEditOperator:
     """One exact, reversible, owner-bound byte replacement.
@@ -167,7 +189,7 @@ class AdmittedSourceEditOperator:
             or self.new_digest not in self.inverse_diff
         ):
             raise AdmittedSourceEditError("source_edit_diff_inverse_unbound")
-        return target, old_bytes, new_bytes
+        return _mirror_source_edit_validation((target, old_bytes, new_bytes), path=str(target))
 
 
 @dataclass

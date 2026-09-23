@@ -232,6 +232,33 @@ class PromotionRequest:
         object.__setattr__(self, "authorization_subject", subject)
 
 
+def _mirror_autonomy_promotion(result: Any) -> Any:
+    """Record a pointer receipt. The mirror does not promote or roll back."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        status = getattr(result, "status", None)
+        record_ref = str(
+            getattr(result, "compare_and_swap_receipt_id", "")
+            or getattr(result, "candidate_policy_id", "")
+            or getattr(status, "value", status)
+            or "autonomy_promotion"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="autonomy_promotion_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AutonomyPromotionController:
     """Evaluate gates and CAS the policy pointer, or name exact blockers."""
 
@@ -269,7 +296,7 @@ class AutonomyPromotionController:
     def apply(self, request: PromotionRequest) -> AutonomyPromotionReceipt:
         blockers, eligible = self.evaluate(request)
         if not eligible:
-            return AutonomyPromotionReceipt(
+            return _mirror_autonomy_promotion(AutonomyPromotionReceipt(
                 candidate_policy_id=request.candidate_policy_id,
                 expected_old_policy_id=request.expected_old_policy_id,
                 resulting_policy_id=self._store.current_policy_id,
@@ -282,14 +309,14 @@ class AutonomyPromotionController:
                 rollback_policy_id=request.expected_old_policy_id,
                 blocker_codes=blockers,
                 self_authorized=False,
-            )
+            ))
         cas = self._store.compare_and_swap(
             expected_old=request.expected_old_policy_id,
             candidate=request.candidate_policy_id,
             observed_generation=self._store.generation,
         )
         if cas.get("applied") is not True:
-            return AutonomyPromotionReceipt(
+            return _mirror_autonomy_promotion(AutonomyPromotionReceipt(
                 candidate_policy_id=request.candidate_policy_id,
                 expected_old_policy_id=request.expected_old_policy_id,
                 resulting_policy_id=str(cas.get("current_policy_id") or self._store.current_policy_id),
@@ -302,8 +329,8 @@ class AutonomyPromotionController:
                 rollback_policy_id=request.expected_old_policy_id,
                 blocker_codes=(str(cas.get("reason") or "cas_failed"),),
                 self_authorized=False,
-            )
-        return AutonomyPromotionReceipt(
+            ))
+        return _mirror_autonomy_promotion(AutonomyPromotionReceipt(
             candidate_policy_id=request.candidate_policy_id,
             expected_old_policy_id=request.expected_old_policy_id,
             resulting_policy_id=str(cas["resulting_policy_id"]),
@@ -316,7 +343,7 @@ class AutonomyPromotionController:
             rollback_policy_id=request.expected_old_policy_id,
             blocker_codes=(),
             self_authorized=False,
-        )
+        ))
 
     def rollback(
         self,
@@ -334,7 +361,7 @@ class AutonomyPromotionController:
             observed_generation=self._store.generation,
         )
         if cas.get("applied") is not True:
-            return AutonomyPromotionReceipt(
+            return _mirror_autonomy_promotion(AutonomyPromotionReceipt(
                 candidate_policy_id=receipt.candidate_policy_id,
                 expected_old_policy_id=receipt.expected_old_policy_id,
                 resulting_policy_id=str(cas.get("current_policy_id") or self._store.current_policy_id),
@@ -347,8 +374,8 @@ class AutonomyPromotionController:
                 rollback_policy_id=receipt.rollback_policy_id,
                 blocker_codes=(str(cas.get("reason") or "rollback_cas_failed"),),
                 self_authorized=False,
-            )
-        return AutonomyPromotionReceipt(
+            ))
+        return _mirror_autonomy_promotion(AutonomyPromotionReceipt(
             candidate_policy_id=receipt.candidate_policy_id,
             expected_old_policy_id=receipt.expected_old_policy_id,
             resulting_policy_id=str(cas["resulting_policy_id"]),
@@ -361,7 +388,7 @@ class AutonomyPromotionController:
             rollback_policy_id=receipt.rollback_policy_id,
             blocker_codes=(),
             self_authorized=False,
-        )
+        ))
 
 
 __all__ = (

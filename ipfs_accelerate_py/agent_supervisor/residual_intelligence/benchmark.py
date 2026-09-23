@@ -744,6 +744,35 @@ def lineage_root(cases: Sequence[FrozenBenchmarkCase]) -> str:
     )
 
 
+def _mirror_frozen_benchmark_validation(manifest: Any) -> None:
+    """Record a successful freeze check. It does not promote the benchmark."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        freeze = getattr(manifest, "benchmark_freeze", None)
+        freeze_id = ""
+        source_tree = ""
+        if isinstance(freeze, Mapping):
+            freeze_id = str(freeze.get("freeze_id") or "")
+            source = freeze.get("source")
+            if isinstance(source, Mapping):
+                source_tree = str(source.get("tree") or "")
+        record_ref = freeze_id or str(getattr(manifest, "source_revision", "") or "frozen_benchmark")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="frozen_benchmark_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=source_tree,
+        )
+    except Exception:
+        pass
+
+
 def validate_frozen_benchmark(
     manifest: ResidualBenchmarkManifest,
     cases: Sequence[FrozenBenchmarkCase],
@@ -785,6 +814,7 @@ def validate_frozen_benchmark(
         )
     if freeze != expected_freeze:
         raise ResidualIntelligenceError("benchmark freeze does not verify")
+    _mirror_frozen_benchmark_validation(manifest)
 
 
 @dataclass(frozen=True)

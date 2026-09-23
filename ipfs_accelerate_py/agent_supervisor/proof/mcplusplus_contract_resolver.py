@@ -4442,6 +4442,33 @@ def result_satisfies_mcplusplus_manifest_parity(
     return True
 
 
+def _mirror_mcplusplus_claim(claim: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record a static MCP++ claim. It does not grant runtime conformance."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            claim.get("result_id")
+            or claim.get("path_id")
+            or claim.get("evidence")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(claim.get("forest_id") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_mcplusplus_call_path(
     path: MCPlusPlusCallPath | Mapping[str, Any],
     *,
@@ -4476,7 +4503,7 @@ def prove_mcplusplus_call_path(
     frontier_explicit = path_obj.has_frontier or any(
         hop.reason_code in _FRONTIER_REASON_CODES for hop in path_obj.hops
     )
-    return {
+    claim = {
         "schema": MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA,
         "evidence": EVIDENCE_CALL_PATH,
         "evidence_terms": list(mcplusplus_call_path_evidence_terms()),
@@ -4512,6 +4539,7 @@ def prove_mcplusplus_call_path(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_mcplusplus_claim(claim, record_kind="mcplusplus_call_path_claim")
 
 
 def prove_mcplusplus_manifest_parity(
@@ -4584,7 +4612,7 @@ def prove_mcplusplus_manifest_parity(
     parity_status = "matched" if satisfied else (
         "mismatch" if drift_kinds or mismatch_aspects else "unverified"
     )
-    return {
+    claim = {
         "schema": MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA,
         "evidence": EVIDENCE_MANIFEST_PARITY,
         "evidence_terms": list(mcplusplus_manifest_parity_evidence_terms()),
@@ -4643,6 +4671,7 @@ def prove_mcplusplus_manifest_parity(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_mcplusplus_claim(claim, record_kind="mcplusplus_manifest_parity_claim")
 
 
 def prove_mcplusplus_static_packet(
@@ -4693,7 +4722,7 @@ def prove_mcplusplus_static_packet(
         call_path_satisfied = False
     parity_satisfied = bool(parity_claim.get("satisfied"))
     satisfied = call_path_satisfied and parity_satisfied
-    return {
+    claim = {
         "schema": MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(packet_evidence_terms()),
         "requirement_ids": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -4715,6 +4744,7 @@ def prove_mcplusplus_static_packet(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_mcplusplus_claim(claim, record_kind="mcplusplus_static_packet_claim")
 
 
 __all__ = [
