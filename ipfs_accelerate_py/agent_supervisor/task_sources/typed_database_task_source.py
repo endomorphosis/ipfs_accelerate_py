@@ -401,6 +401,26 @@ def _cursor_decode(cursor: str, *, revision: int) -> int:
     return int(payload["offset"])
 
 
+def _mirror_strict_resume_floor(task_cid: str) -> None:
+    """Record a stable scheduling floor. The task is not requeued."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_cid or "strict-resume-floor")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="strict_resume_attempt_floor",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class TypedDatabaseTaskSource:
     """Closed named-operation adapter consumed by DatabaseImplementationDaemon."""
 
@@ -3383,6 +3403,7 @@ class TypedDatabaseTaskSource:
                 raise TaskSourceIntegrityError(
                     "typed strict-resume ready floor differs from control truth"
                 )
+            _mirror_strict_resume_floor(str(task.task_cid))
             return int(validated["attempt_number"])
         raise TaskSourceConflictError(
             "typed strict-resume ready floor changed during bounded validation"

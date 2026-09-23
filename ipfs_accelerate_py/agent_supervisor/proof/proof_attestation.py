@@ -2609,6 +2609,27 @@ CORE_CODE_PROOF_ZK_USE_CASE_DECISION = ZkUseCaseDecisionRecord(
 )
 
 
+def _mirror_zk_backend_selection(decision: ZkUseCaseDecisionRecord) -> ZkUseCaseDecisionRecord:
+    """Record an authorized use case. The decision is unchanged and no backend is selected."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(decision, "use_case_id", "") or "zk-backend-selection")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="zk_backend_selection_authorization",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 def require_zk_backend_selection_authorized(
     decision: ZkUseCaseDecisionRecord | Mapping[str, Any],
     *,
@@ -2646,7 +2667,7 @@ def require_zk_backend_selection_authorized(
             "backend family %s is not authorized by reviewed use-case decision %s"
             % (family, checked.use_case_id)
         )
-    return checked
+    return _mirror_zk_backend_selection(checked)
 
 
 def core_code_proof_zk_use_case_decision() -> ZkUseCaseDecisionRecord:

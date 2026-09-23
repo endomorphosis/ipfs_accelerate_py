@@ -1011,6 +1011,26 @@ def _same_user_namespace_ptrace_capability_pids() -> tuple[int, ...]:
     return tuple(sorted(set(offenders)))
 
 
+def _mirror_state_authority_ptrace(scope: int) -> None:
+    """Record a qualified ptrace scope. Peer identities are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(scope)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="state_authority_ptrace_protection",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_state_authority_handoff_ptrace_protection() -> None:
     """Fail closed unless the post-exec handoff has a qualified ptrace gate.
 
@@ -1044,6 +1064,7 @@ def require_state_authority_handoff_ptrace_protection() -> None:
         raise StateAuthorityProcessIsolationError(
             "state-authority handoff has a same-namespace CAP_SYS_PTRACE peer"
         )
+    _mirror_state_authority_ptrace(scope)
 
 
 def env_secret_handle_target(secret_handle: str) -> str:

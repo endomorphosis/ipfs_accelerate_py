@@ -1769,6 +1769,29 @@ def create_failed_attestation(
     )
 
 
+def _mirror_planner_doctor_replay(
+    verification: PlannerDoctorVerification,
+    public_input_digest: str,
+) -> None:
+    """Record a matching replay. Authority flags are not changed."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(public_input_digest or "planner-doctor-replay")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_lineage_replay",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class PlannerDoctorVerification(CanonicalContract):
     """Independent verification result for a planner/doctor attestation envelope.
@@ -1957,6 +1980,7 @@ class PlannerDoctorVerification(CanonicalContract):
                 raise LineageReplayError(
                     "verification replay failed: circuit_id mismatch"
                 )
+        _mirror_planner_doctor_replay(self, wanted_digest)
 
     def _payload(self) -> Dict[str, Any]:
         return {

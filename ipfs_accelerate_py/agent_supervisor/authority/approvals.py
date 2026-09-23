@@ -68,6 +68,27 @@ class ApprovalRecord:
         return content_identity(dict(self.to_dict()))
 
 
+def _mirror_approval_requirement(record: ApprovalRecord) -> ApprovalRecord:
+    """Record the approved action. The input binding is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(record, "action", "") or "approval")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="approval_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 class ApprovalLog:
     """Preserve denials; require authenticated input-bound approval."""
 
@@ -126,7 +147,7 @@ class ApprovalLog:
         ]
         if not matches:
             raise ApprovalError(f"{action} requires authenticated input-bound approval")
-        return matches[-1]
+        return _mirror_approval_requirement(matches[-1])
 
     def records(self) -> tuple[ApprovalRecord, ...]:
         return tuple(self._records)
