@@ -2267,6 +2267,25 @@ def analyze_ast_symbol_change(
     return ASTSymbolAnalyzer().analyze_change(before_sources, after_sources)
 
 
+def _mirror_ast_before_model() -> None:
+    """Record that the AST stage completed with zero model calls. Sources are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="ast_before_model",
+            record_ref="ast-before-model",
+            subject_kind="record_cid",
+            subject_ref="ast-before-model",
+        )
+    except Exception:
+        pass
+
+
 def require_ast_before_model(report: ASTSymbolChangeReport) -> None:
     """Reject model analysis unless this exact deterministic stage has completed."""
 
@@ -2274,6 +2293,7 @@ def require_ast_before_model(report: ASTSymbolChangeReport) -> None:
         raise ModelAnalysisBeforeASTError("model analysis requires a completed AST/symbol receipt")
     if report.model_invocation_count != 0:
         raise ModelAnalysisBeforeASTError("AST/symbol analysis must record zero model invocations")
+    _mirror_ast_before_model()
 
 
 __all__ = [

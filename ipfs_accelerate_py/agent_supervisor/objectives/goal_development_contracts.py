@@ -348,6 +348,26 @@ class GoalDevelopmentPolicy(GoalDevelopmentContract):
         return result
 
 
+def _mirror_goal_development_policy(request: GoalDevelopmentRequest) -> None:
+    """Record a matching policy digest. The request is not admitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(request, "policy_digest", "") or "goal-development-policy")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_development_policy_binding",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class GoalDevelopmentRequest(GoalDevelopmentContract):
     """Immutable semantic envelope supplied to a decomposition producer."""
@@ -435,6 +455,7 @@ class GoalDevelopmentRequest(GoalDevelopmentContract):
             raise ContractValidationError("request policy digest does not match policy")
         if self.mode is not policy.mode:
             raise ContractValidationError("request mode does not match policy")
+        _mirror_goal_development_policy(self)
 
     def _payload(self) -> dict[str, Any]:
         return self._versioned(

@@ -82,6 +82,25 @@ def _state(pid: int) -> str:
     return raw[raw.rfind(")") + 2 :].split()[0]
 
 
+def _mirror_controller_pause() -> None:
+    """Record that a controller is still paused. Process identity is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="controller_pause_requirement",
+            record_ref="controller-paused",
+            subject_kind="record_cid",
+            subject_ref="controller-paused",
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ControllerPause:
     identity: ProcessBirthIdentity
@@ -97,6 +116,7 @@ class ControllerPause:
             raise ControllerPauseError("controller process birth changed")
         if _state(self.identity.pid) not in {"T", "t"}:
             raise ControllerPauseError("controller is no longer paused")
+        _mirror_controller_pause()
 
 
 @contextmanager

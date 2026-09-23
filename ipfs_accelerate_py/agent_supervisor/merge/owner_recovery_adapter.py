@@ -38,6 +38,26 @@ class OwnerRecoveryCursorConflict(OwnerRecoveryRuntimeError):
     """A reconstructed consumer observed a newer durable cursor revision."""
 
 
+def _mirror_owner_recovery_factory(plan_cid: str) -> None:
+    """Record a matching factory plan id. Paths are not stored and recovery is not replayed."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(plan_cid or "owner-recovery-factory")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="owner_recovery_factory_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_owner_recovery_train(runtime: OwnerMergeRecoveryRuntime) -> None:
     """Record a matching train. Paths are not stored and recovery is not replayed."""
 
@@ -159,6 +179,7 @@ class OwnerMergeRecoveryRuntime:
             raise OwnerRecoveryRuntimeError(
                 "factory differs from its admitted native recovery namespace"
             )
+        _mirror_owner_recovery_factory(str(admitted_plan_cid or ""))
 
     def validate_train(
         self, queue, *, repository_root, target_branch, owner_id, state_dir

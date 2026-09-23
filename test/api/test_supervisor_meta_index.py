@@ -9308,6 +9308,36 @@ def test_mirror_reuse_backend_resolver_lease_and_template(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_ast_policy_pause_receipt_and_factory(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("ast_before_model", "ast-before-model", "ast", "record_cid"),
+        ("goal_development_policy_binding", "sha256:policy", "metadata", "content_cid"),
+        ("controller_pause_requirement", "controller-paused", "metadata", "record_cid"),
+        ("live_receipt_requirement", "receipt:live", "metadata", "receipt_id"),
+        ("owner_recovery_factory_binding", "plan:factory", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

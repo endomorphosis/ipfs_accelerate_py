@@ -2019,6 +2019,27 @@ def capsules_from_graph(
     return compile_semantic_capsules(graph, **kwargs)
 
 
+def _mirror_live_receipt(receipt: HistoricalReceipt) -> HistoricalReceipt:
+    """Record a non-demoted receipt id. Reuse is not authorized."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "receipt_id", "") or "live-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="live_receipt_requirement",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def require_live_receipt(receipt: HistoricalReceipt) -> HistoricalReceipt:
     """Fail closed when a demoted receipt is used as live authority."""
 
@@ -2026,7 +2047,7 @@ def require_live_receipt(receipt: HistoricalReceipt) -> HistoricalReceipt:
         raise StaleReceiptError(
             f"receipt {receipt.receipt_id} is demoted and cannot authorize reuse"
         )
-    return receipt
+    return _mirror_live_receipt(receipt)
 
 
 def assert_reuse_allowed(capsule: SemanticCapsuleRecord) -> None:
