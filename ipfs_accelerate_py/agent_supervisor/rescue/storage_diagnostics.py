@@ -21,6 +21,26 @@ def _absolute_path(value: Any) -> bool:
             and not any(char in value for char in "\0\r\n"))
 
 
+def _mirror_storage_checks(config: dict[str, Any]) -> None:
+    """Record which check groups were accepted. Paths and thresholds are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ",".join(sorted(str(key) for key in config)) or "storage-checks"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="storage_checks_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def validate_storage_checks(config: Any) -> None:
     if not isinstance(config, dict) or set(config) - {"filesystems", "git_worktrees"}:
         raise ValueError("storage_checks must contain filesystems and/or git_worktrees")
@@ -43,6 +63,7 @@ def validate_storage_checks(config: Any) -> None:
             if (type(minimum_percent) not in (int, float)
                     or not math.isfinite(minimum_percent) or not 0 <= minimum_percent <= 100):
                 raise ValueError("min_available_percent must be finite and between 0 and 100")
+    _mirror_storage_checks(config)
 
 
 def _read_pointer(path: Path) -> str:

@@ -77,6 +77,26 @@ class RescueGuidanceStep(str, Enum):
     QUARANTINE_INCIDENT = "quarantine_incident"
 
 
+def _mirror_rescue_parameter(name: str) -> None:
+    """Record a parameter name that fits its schema. The value is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(name or "rescue-parameter")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="rescue_parameter_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class RescueParameterSpec:
     """One closed parameter in an operation schema."""
@@ -156,6 +176,7 @@ class RescueParameterSpec:
                 f"parameter {name!r} is outside its closed enum",
                 reason_code="invalid_parameters",
             )
+        _mirror_rescue_parameter(name)
 
 
 @dataclass(frozen=True)

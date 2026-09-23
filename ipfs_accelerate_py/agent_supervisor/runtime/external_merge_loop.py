@@ -244,6 +244,27 @@ def verify_receipts(receipts: object) -> dict[str, dict[str, Any]]:
     return verified
 
 
+def _mirror_independent_reviewer(reviewer: str) -> str:
+    """Record a distinct reviewer. The check does not merge."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(reviewer or "independent-reviewer")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="independent_reviewer_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return reviewer
+
+
 def require_independent_reviewer(
     *,
     worker_principal_id: object,
@@ -269,7 +290,7 @@ def require_independent_reviewer(
             "worker self-merge is forbidden",
             reason_code="worker_self_merge",
         )
-    return reviewer
+    return _mirror_independent_reviewer(reviewer)
 
 
 def _files_mapping(value: object, name: str) -> dict[str, str]:

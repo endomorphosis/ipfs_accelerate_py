@@ -1857,6 +1857,26 @@ class PlanCreateRequest(CanonicalContract):
         return value
 
 
+def _mirror_plan_steer_freshness(request: PlanSteerRequest) -> None:
+    """Record a fresh steer request. Freshness does not admit the revision."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(request, "request_cid", "") or "plan-steer-freshness")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_steer_freshness",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class PlanSteerRequest(CanonicalContract):
     """Canonical steer-plan request bound to an exact base revision."""
@@ -2103,6 +2123,7 @@ class PlanSteerRequest(CanonicalContract):
             raise PlanRevisionStaleRootError("claimed population is stale")
         if accepted_evidence_root != self.accepted_evidence_root:
             raise PlanRevisionStaleRootError("accepted evidence root is stale")
+        _mirror_plan_steer_freshness(self)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanSteerRequest":

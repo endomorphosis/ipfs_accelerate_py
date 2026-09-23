@@ -639,6 +639,30 @@ def _identity_digest(value: str) -> str:
     return content_identity({"identity": _text(value, field_name="identity", required=True)})
 
 
+def _mirror_code_proof_public_bindings(
+    statement: ReceiptAttestationStatement,
+    bindings: dict[str, str],
+) -> dict[str, str]:
+    """Record that public bindings are present. Binding values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(statement, "receipt_id", "") or "code-proof-bindings")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="code_proof_public_bindings",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return bindings
+
+
 @dataclass(frozen=True)
 class ReceiptAttestationStatement(CanonicalContract):
     """The complete public statement proven by a receipt attestation.
@@ -845,7 +869,7 @@ class ReceiptAttestationStatement(CanonicalContract):
             raise AttestationValidationError(
                 "Code-proof attestation public bindings missing: %s" % ", ".join(missing)
             )
-        return dict(bindings)
+        return _mirror_code_proof_public_bindings(self, dict(bindings))
 
     # Deprecated board-prefix spellings (prefer code_proof_*).
     @property
