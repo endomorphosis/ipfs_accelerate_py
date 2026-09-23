@@ -317,6 +317,26 @@ class ModelSizePolicy:
 DEFAULT_MODEL_SIZE_POLICY: Final[ModelSizePolicy] = ModelSizePolicy()
 
 
+def _mirror_expert_evaluation_admission(spec: Any) -> None:
+    """Record an admission binding. It does not grant training completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(spec, "evaluation_corpus_admission_id", "") or getattr(spec, "expert_id", "") or "expert_admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="expert_evaluation_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ResidualExpertSpec:
     """One family-bounded expert contract at a single class A-E."""
@@ -548,6 +568,7 @@ class ResidualExpertSpec:
             raise ResidualIntelligenceError("evaluation corpus admission identity mismatch")
         if admission.admission_decision is not TrainingAvailability.ADMITTED:
             raise ResidualIntelligenceError(REASON_TRAINING_UNAVAILABLE)
+        _mirror_expert_evaluation_admission(self)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         result: dict[str, Any] = {

@@ -1837,6 +1837,26 @@ class SemanticOutcomeComparison:
         return result
 
 
+def _mirror_governor_identity(record_ref: str, *, record_kind: str) -> str:
+    """Record a recomputed identity. A match does not admit the plan."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref or record_kind,
+            subject_kind="content_cid",
+            subject_ref=record_ref or record_kind,
+        )
+    except Exception:
+        pass
+    return record_ref
+
+
 def verify_plan_identity(plan: ShadowExecutionPlan | Mapping[str, Any]) -> str:
     """Recompute and return plan_cid; raise on forged or malformed input."""
 
@@ -1846,7 +1866,7 @@ def verify_plan_identity(plan: ShadowExecutionPlan | Mapping[str, Any]) -> str:
         raise SemanticGovernorExecutionError(
             "plan_cid does not match recomputed identity"
         )
-    return recomputed
+    return _mirror_governor_identity(recomputed, record_kind="shadow_plan_identity")
 
 
 def verify_result_identity(result: ShadowExecutionResult | Mapping[str, Any]) -> str:
@@ -1862,7 +1882,7 @@ def verify_result_identity(result: ShadowExecutionResult | Mapping[str, Any]) ->
         raise SemanticGovernorExecutionError(
             "result_cid does not match recomputed identity"
         )
-    return recomputed
+    return _mirror_governor_identity(recomputed, record_kind="shadow_result_identity")
 
 
 def verify_report_identity(report: DifferentialPatchReport | Mapping[str, Any]) -> str:
@@ -1878,7 +1898,7 @@ def verify_report_identity(report: DifferentialPatchReport | Mapping[str, Any]) 
         raise SemanticGovernorExecutionError(
             "report_cid does not match recomputed identity"
         )
-    return recomputed
+    return _mirror_governor_identity(recomputed, record_kind="differential_report_identity")
 
 
 def verify_comparison_identity(
@@ -1896,7 +1916,7 @@ def verify_comparison_identity(
         raise SemanticGovernorExecutionError(
             "comparison_cid does not match recomputed identity"
         )
-    return recomputed
+    return _mirror_governor_identity(recomputed, record_kind="outcome_comparison_identity")
 
 
 __all__ = [

@@ -1853,6 +1853,28 @@ def compile_extraction_wave_receipt(
     return receipt
 
 
+def _mirror_extraction_wave_dry_run(receipt: Any) -> Any:
+    """Record a no-mutation dry run. mutated stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "rollback_cid", "") or getattr(receipt, "worktree_id", "") or "extraction_wave_dry_run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="extraction_wave_dry_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(receipt, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def dry_run_extraction_wave(
     packets: Sequence[RefactorTransformationPacket | Mapping[str, Any]]
     | RefactorTransformationPacket
@@ -1866,7 +1888,7 @@ def dry_run_extraction_wave(
     receipt = execute_extraction_wave(packets, **kwargs)
     if receipt.mutated:
         raise ExtractionWaveError("dry-run cannot mutate")
-    return receipt
+    return _mirror_extraction_wave_dry_run(receipt)
 
 
 def rollback_extraction_wave(
