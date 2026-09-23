@@ -893,6 +893,26 @@ class SemanticDedupKey(_FindingContract):
         return result
 
 
+def _mirror_severity_binding(*, status: str, severity: str, claim_level: str) -> None:
+    """Record a severity check that did not raise. It does not change the finding."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{status}:{severity}:{claim_level}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="severity_binding_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def validate_severity_binding(
     *,
     status: FindingStatus | str,
@@ -953,6 +973,11 @@ def validate_severity_binding(
             )
         if not has_counterexample:
             raise PoisonedSeverityError("contract_broken requires a counterexample reference")
+    _mirror_severity_binding(
+        status=status_e.value,
+        severity=severity_e.value,
+        claim_level=claim_e.value,
+    )
 
 
 def is_partial_finding(

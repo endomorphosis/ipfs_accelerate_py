@@ -3103,6 +3103,37 @@ def result_satisfies_kernel_proof_receipt(
     return True
 
 
+def _mirror_formal_proof_claim(claim: dict[str, Any], *, record_kind: str, catalog_kind: str) -> dict[str, Any]:
+    """Record a formal-proof claim. authoritative stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        translation = claim.get("logic_translation_claim")
+        translation_ref = ""
+        if isinstance(translation, dict):
+            translation_ref = str(translation.get("receipt_cid") or translation.get("request_cid") or "")
+        record_ref = str(
+            claim.get("validation_receipt_id")
+            or translation_ref
+            or claim.get("goal_packet_id")
+            or record_kind
+        )
+        subject_kind = "receipt_id" if claim.get("validation_receipt_id") or translation_ref else "record_cid"
+        mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_kernel_proof_receipt(
     result: ProveResult | Mapping[str, Any],
     *,
@@ -3133,7 +3164,7 @@ def prove_kernel_proof_receipt(
         for attempt in result_obj.attempts
         if attempt.authoritative
     ]
-    return {
+    claim = {
         "schema": KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA,
         "evidence": KERNEL_PROOF_RECEIPT_EVIDENCE,
         "evidence_terms": list(kernel_proof_receipt_evidence_terms()),
@@ -3164,6 +3195,11 @@ def prove_kernel_proof_receipt(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_formal_proof_claim(
+        claim,
+        record_kind="kernel_proof_receipt_claim",
+        catalog_kind="proof_certificate",
+    )
 
 
 def prove_formal_proof_packet(
@@ -3204,7 +3240,7 @@ def prove_formal_proof_packet(
     if result is None:
         kernel_satisfied = False
     satisfied = translation_satisfied and kernel_satisfied
-    return {
+    claim = {
         "schema": FORMAL_PROOF_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(packet_evidence_terms()),
         "requirement_ids": list(FORMAL_PROOF_PACKET_EVIDENCE_TERMS),
@@ -3225,6 +3261,11 @@ def prove_formal_proof_packet(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_formal_proof_claim(
+        claim,
+        record_kind="formal_proof_packet_claim",
+        catalog_kind="proof_cache",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -2869,6 +2869,27 @@ def translation_satisfies_logic_translation(
     return True
 
 
+def _mirror_logic_translation_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record a translation claim. It does not make the proof authoritative."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("receipt_cid") or claim.get("request_cid") or "logic_translation_claim")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="logic_translation_claim",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_logic_translation(
     result: TranslationResult | Mapping[str, Any],
     *,
@@ -2898,7 +2919,7 @@ def prove_logic_translation(
     predicate_kinds = tuple(
         sorted({predicate.kind.value for predicate in result_obj.predicates})
     )
-    return {
+    claim = {
         "schema": LOGIC_TRANSLATION_CLAIM_SCHEMA,
         "evidence": LOGIC_TRANSLATION_EVIDENCE,
         "evidence_terms": list(logic_translation_evidence_terms()),
@@ -2929,6 +2950,7 @@ def prove_logic_translation(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_logic_translation_claim(claim)
 
 
 __all__ = [

@@ -291,6 +291,26 @@ def resolved_authorization_scope_identity(
     )
 
 
+def _mirror_hmac_authentication(request: Any) -> None:
+    """Record a successful HMAC check. It does not admit federation work."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(request, "cid", "") or "hmac_authentication")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="hmac_authentication_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class HmacAuthenticationAuthority:
     """Loopback/server-side HMAC authenticator using opaque key handles."""
 
@@ -334,6 +354,7 @@ class HmacAuthenticationAuthority:
         expected = self.sign_request(request, key)
         if not hmac.compare_digest(expected, evidence.signature):
             raise AuthenticationRejected("authentication signature mismatch")
+        _mirror_hmac_authentication(request)
 
 
 class HmacDelegationAuthority:

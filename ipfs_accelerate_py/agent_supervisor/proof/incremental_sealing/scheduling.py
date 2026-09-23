@@ -168,6 +168,27 @@ def build_proof_schedule(
     return tuple(scheduled)
 
 
+def _mirror_proof_work_admission(verdict: Any, item: Any) -> Any:
+    """Record a capacity verdict. Admission is not task completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(item, "work_id", "") or getattr(verdict, "value", verdict) or "proof_work")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_work_admission",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verdict
+
+
 class ProofWorkScheduler:
     """Admit scheduled proof work under a closed resource policy.
 
@@ -188,26 +209,26 @@ class ProofWorkScheduler:
 
     def admit(self, item: ProofWorkItem) -> AdmissionVerdict:
         if item.simulated_gpu and self.policy.reject_simulated_gpu:
-            return AdmissionVerdict.UNAVAILABLE
+            return _mirror_proof_work_admission(AdmissionVerdict.UNAVAILABLE, item)
         if item.gpu > 0 and self.policy.max_gpu <= 0:
-            return AdmissionVerdict.UNAVAILABLE
+            return _mirror_proof_work_admission(AdmissionVerdict.UNAVAILABLE, item)
         if item.cpu > self.policy.max_cpu or item.memory_mb > self.policy.max_memory_mb:
-            return AdmissionVerdict.UNAVAILABLE
+            return _mirror_proof_work_admission(AdmissionVerdict.UNAVAILABLE, item)
         if item.gpu > self.policy.max_gpu:
-            return AdmissionVerdict.UNAVAILABLE
+            return _mirror_proof_work_admission(AdmissionVerdict.UNAVAILABLE, item)
         if len(self._in_flight) >= self.policy.max_parallel:
-            return AdmissionVerdict.WAIT
+            return _mirror_proof_work_admission(AdmissionVerdict.WAIT, item)
         if (
             self._used_cpu + item.cpu > self.policy.max_cpu
             or self._used_memory + item.memory_mb > self.policy.max_memory_mb
             or self._used_gpu + item.gpu > self.policy.max_gpu
         ):
-            return AdmissionVerdict.WAIT
+            return _mirror_proof_work_admission(AdmissionVerdict.WAIT, item)
         self._in_flight[item.work_id] = item
         self._used_cpu += item.cpu
         self._used_memory += item.memory_mb
         self._used_gpu += item.gpu
-        return AdmissionVerdict.ADMITTED
+        return _mirror_proof_work_admission(AdmissionVerdict.ADMITTED, item)
 
     def release(self, work_id: str) -> None:
         item = self._in_flight.pop(work_id, None)
