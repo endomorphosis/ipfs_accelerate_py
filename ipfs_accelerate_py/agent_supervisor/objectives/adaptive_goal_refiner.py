@@ -1372,6 +1372,27 @@ class NewCounterexampleRefinementEvidence:
 
 
 @dataclass(frozen=True)
+def _mirror_backoff_source(evidence: Any) -> None:
+    """Record a matching backoff source. It stays non-authoritative."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(evidence, "evidence_id", "") or getattr(evidence, "source_failure_receipt_id", "") or "backoff_source")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="unchanged_failure_backoff_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(evidence, "repository_tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+
+
 class UnchangedFailureBackoffEvidence:
     """Concrete causal witness for the ASI-G115 no-second-call criterion.
 
@@ -1549,6 +1570,7 @@ class UnchangedFailureBackoffEvidence:
             raise AdaptiveGoalRefinementError(
                 "backoff source is not the exact non-authoritative repeated failure attempt"
             )
+        _mirror_backoff_source(self)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "UnchangedFailureBackoffEvidence":

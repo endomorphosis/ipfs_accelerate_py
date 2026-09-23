@@ -95,6 +95,26 @@ class CompletionAuthorityDecision:
 
 
 @dataclass(frozen=True)
+def _mirror_residual_gap(gap: Any) -> None:
+    """Record a gap shape check. It does not admit refill completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(gap, "identity", "") or getattr(gap, "goal_cid", "") or "residual_gap")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_gap_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ResidualGap:
     """Smallest actionable unit emitted by the evidence evaluator."""
 
@@ -123,6 +143,7 @@ class ResidualGap:
         required = ("priority", "track", "parallel_lane", "resource_class")
         if any(not self.scheduler_metadata.get(name) for name in required):
             raise ValueError("residual gap is missing scheduler metadata")
+        _mirror_residual_gap(self)
 
 
 @dataclass(frozen=True)

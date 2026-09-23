@@ -243,6 +243,27 @@ class UnknownDependencyFrontier:
 
 
 @dataclass(frozen=True)
+def _mirror_static_dependency_trace(result: Any) -> Any:
+    """Record a static trace check. It does not admit the tests."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "trace_cid", "") or getattr(result, "cid", "") or "static_trace")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="static_test_dependency_trace",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class StaticTestDependencyTrace:
     """Immutable canonical result of one static closure computation."""
 
@@ -320,7 +341,7 @@ class StaticTestDependencyTrace:
         )
         if payload_frontier != tuple(item.frontier_id for item in self.unknown_frontier):
             raise StaticTraceError("frontier projection does not match canonical trace")
-        return self
+        return _mirror_static_dependency_trace(self)
 
 
 @dataclass

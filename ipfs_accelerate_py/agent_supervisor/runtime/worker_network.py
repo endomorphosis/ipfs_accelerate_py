@@ -853,6 +853,26 @@ def is_proxy_variable(name: str) -> bool:
     return lowered in _PROXY_VARIABLES or lowered.endswith("_proxy")
 
 
+def _mirror_worker_boundary(record_ref: str, *, record_kind: str) -> str:
+    """Record a boundary check. It does not start a container or open a network."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref or record_kind,
+            subject_kind="record_cid",
+            subject_ref=record_ref or record_kind,
+        )
+    except Exception:
+        pass
+    return record_ref
+
+
 def validate_provider_hostname(profile: WorkerNetworkProfile, hostname: str) -> str:
     """Validate a CONNECT destination before any DNS lookup occurs."""
 
@@ -867,7 +887,7 @@ def validate_provider_hostname(profile: WorkerNetworkProfile, hostname: str) -> 
         raise ValueError("provider proxy destination is not canonical")
     if candidate not in profile.allowed_hostnames:
         raise ValueError("provider proxy destination is not approved")
-    return candidate
+    return _mirror_worker_boundary(candidate, record_kind="provider_hostname_validation")
 
 
 def validate_worker_network_inspection(
@@ -924,6 +944,10 @@ def validate_worker_network_inspection(
     raw_proxy_ip = str(proxy.get("IPv4Address") or "").partition("/")[0]
     if raw_proxy_ip != str(proxy_address):
         raise ValueError("worker proxy container address drifted")
+    _mirror_worker_boundary(
+        str(getattr(authorization, "proxy_container_id", "") or "worker_network"),
+        record_kind="worker_network_inspection",
+    )
 
 
 def validate_provider_worker_command(
@@ -1211,6 +1235,10 @@ def validate_provider_worker_command(
         observed_mounts[target] = len(fields) == 4
     if expected_mounts is not None and observed_mounts != expected_mounts:
         raise ValueError("provider worker signed mount binding drifted")
+    _mirror_worker_boundary(
+        str(getattr(profile, "approval_cid", "") or getattr(profile, "container_name", "") or "provider_worker"),
+        record_kind="provider_worker_command_validation",
+    )
 
 
 __all__ = [
