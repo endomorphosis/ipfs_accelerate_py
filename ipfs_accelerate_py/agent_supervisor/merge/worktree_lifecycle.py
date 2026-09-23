@@ -633,6 +633,26 @@ def classify_lifecycle_race(reason: str) -> CleanupDecision:
     )
 
 
+def _mirror_worktree_dead_owner_precheck(task_cid: str) -> None:
+    """Record a dead-owner precheck. Paths are not stored and the owner is not retired."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_cid or "dead-owner-precheck")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worktree_dead_owner_precheck",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class WorktreeLifecycleStore:
     """Durable CAS store for fenced worktree lifecycle records.
@@ -1717,6 +1737,9 @@ class WorktreeLifecycleStore:
             expected_binding=expected_binding,
             index_path=index_path,
             allow_terminal=allow_terminal,
+        )
+        _mirror_worktree_dead_owner_precheck(
+            str(expected_canonical_task_cid or expected_task_id or "")
         )
         return current
 

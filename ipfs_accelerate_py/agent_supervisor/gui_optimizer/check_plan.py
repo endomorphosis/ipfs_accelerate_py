@@ -1485,6 +1485,26 @@ def _mirror_host_check(result: HostCheckResult) -> HostCheckResult:
     return result
 
 
+def _mirror_host_check_argv(check_id: str) -> None:
+    """Record a registry check id. The check is not run."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(check_id or "host-check-argv")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="host_check_argv_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class HostCheckRunner:
     """Execute a closed check-id set with a host-fixed interpreter.
@@ -1556,6 +1576,12 @@ class HostCheckRunner:
                 reason_code=CheckPlanReasonCode.COMMAND_STRING_FORBIDDEN.value,
                 details={"argv": list(tokens)},
             )
+        check_id = ""
+        for entry in CHECK_REGISTRY.values():
+            if entry.argv == tokens:
+                check_id = str(entry.check_id)
+                break
+        _mirror_host_check_argv(check_id)
 
     def run(self, check_id: str) -> HostCheckResult:
         entry = require_registered(check_id)

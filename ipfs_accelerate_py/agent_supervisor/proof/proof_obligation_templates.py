@@ -604,6 +604,26 @@ class TemplateSelection:
         raise error(self.reason or self.status.value)
 
 
+def _mirror_proof_obligation_template(template_id: str) -> None:
+    """Record a reviewed template id. The template body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(template_id or "proof-obligation-template")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_obligation_template_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ProofObligationTemplateRegistry:
     """Immutable exact-match index of reviewed obligation templates."""
 
@@ -664,6 +684,7 @@ class ProofObligationTemplateRegistry:
     def require(self, template_id: str, version: str | None = None) -> ProofObligationTemplate:
         template = self.get(template_id, version)
         if template is not None:
+            _mirror_proof_obligation_template(str(template.template_id))
             return template
         versions = [item.version for item in self._templates if item.template_id == template_id]
         if len(versions) > 1 and version is None:

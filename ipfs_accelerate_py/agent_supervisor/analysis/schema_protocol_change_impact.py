@@ -2996,6 +2996,26 @@ def build_schema_protocol_impact(
     return impact
 
 
+def _mirror_schema_protocol_ast_precondition(uncertainty_count: int) -> None:
+    """Record that AST evidence was present. Uncertainty paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"uncertainties:{int(uncertainty_count)}"
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="schema_protocol_ast_precondition",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_ast_before_schema_protocol_analysis(report: Any | None) -> tuple[str, ...]:
     """Validate optional AST-stage evidence before schema impact consumes it.
 
@@ -3018,7 +3038,9 @@ def require_ast_before_schema_protocol_analysis(report: Any | None) -> tuple[str
     refs = tuple(
         sorted(set(str(item) for item in getattr(report, "uncertainty_refs", ())))
     )
-    return tuple(f"ast_uncertainty:{item}" for item in refs)
+    evidence = tuple(f"ast_uncertainty:{item}" for item in refs)
+    _mirror_schema_protocol_ast_precondition(len(evidence))
+    return evidence
 
 
 def required_consumer_roles() -> frozenset[str]:

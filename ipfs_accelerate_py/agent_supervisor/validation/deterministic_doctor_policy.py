@@ -329,6 +329,31 @@ def _mirror_doctor_policy_decision(result: Any) -> Any:
     return result
 
 
+def _mirror_doctor_repair_prerequisites(plan: DeterministicDoctorPlan) -> DeterministicDoctorPlan:
+    """Record an admitted plan id. The repair is not run."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(plan, "plan_id", "")
+            or getattr(plan, "content_id", "")
+            or "doctor-repair-prerequisites"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_repair_prerequisites",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return plan
+
+
 class DeterministicDoctorPolicy(CanonicalContract):
     """Closed deterministic-doctor policy (scheduler schema @1).
 
@@ -674,7 +699,7 @@ class DeterministicDoctorPolicy(CanonicalContract):
             model_invocation_count=plan.model_invocation_count,
             llm_router_invoked=plan.llm_router_enabled,
         )
-        return plan
+        return _mirror_doctor_repair_prerequisites(plan)
 
     def evaluate(
         self,
