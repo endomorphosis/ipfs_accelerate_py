@@ -719,6 +719,27 @@ def load_runtime_component_catalog(path: str | Path) -> RuntimeComponentCatalog:
     )
 
 
+def _mirror_runtime_sources(root: str) -> None:
+    """Record a source-existence check. It does not admit the catalog."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = root or "runtime_sources"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_source_validation",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=(record_ref,),
+        )
+    except Exception:
+        pass
+
+
 def validate_runtime_sources(
     catalog: RuntimeComponentCatalog,
     swissknife_root: str | Path,
@@ -748,6 +769,7 @@ def validate_runtime_sources(
                 reason_code="runtime_symbol_missing",
                 details={"sourcePath": source_path, "symbol": symbol},
             )
+    _mirror_runtime_sources(str(root))
 
 
 __all__ = [

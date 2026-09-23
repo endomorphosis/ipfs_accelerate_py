@@ -13,6 +13,27 @@ from .merge_queue import MergeQueueFenceError, MergeRequest
 from .owner_merge_queue import OwnerMergeQueueClient, OwnerMergeQueueError
 
 
+def _mirror_owner_recovery_binding(adapter: Any) -> None:
+    """Record a recovery-runtime binding. It does not replay recovery."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(adapter, "target_repository_id", "") or "owner_merge_recovery")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="owner_merge_recovery_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(adapter, "target_branch", "") or ""),
+        )
+    except Exception:
+        pass
+
+
 class OwnerMergeQueueAdapter:
     """Ordinary merge operations; no local files or implicit legacy fallback."""
 
@@ -30,6 +51,7 @@ class OwnerMergeQueueAdapter:
         if self.recovery_runtime is not None and self.recovery_runtime is not runtime:
             raise OwnerMergeQueueError("queue recovery runtime is already bound")
         self.recovery_runtime = runtime
+        _mirror_owner_recovery_binding(self)
 
     def bind_target(self, target_repository_id, target_branch, *, required=True):
         if type(required) is not bool or (

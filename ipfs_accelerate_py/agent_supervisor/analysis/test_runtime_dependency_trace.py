@@ -151,6 +151,27 @@ class RuntimeTraceLimits:
         }
 
 
+def _mirror_runtime_dependency_trace(result: Any) -> Any:
+    """Record a runtime trace check. It does not admit the tests."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "trace_cid", "") or getattr(result, "cid", "") or "runtime_trace")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_test_dependency_trace",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class RuntimeTestDependencyTrace:
     """Immutable canonical result of a bounded tracing session."""
@@ -223,7 +244,7 @@ class RuntimeTestDependencyTrace:
         self.content_identity.verify()
         if canonical_json_bytes(self.to_dict()) != self.retained_canonical_bytes:
             raise RuntimeTraceError("runtime trace bytes are not canonical")
-        return self
+        return _mirror_runtime_dependency_trace(self)
 
 
 _AUDIT_LOCK = threading.RLock()

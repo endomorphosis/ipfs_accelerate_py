@@ -550,6 +550,27 @@ def safe_public_value(value: Any, *, _depth: int = 0) -> Any:
     return _text(value)
 
 
+def _note_public_projection(depth: int) -> None:
+    """Record only the top-level projection check."""
+
+    if depth != 0:
+        return
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_metrics_public_projection",
+            record_ref="public_projection",
+            subject_kind="record_cid",
+            subject_ref="public_projection",
+        )
+    except Exception:
+        pass
+
+
 def validate_public_projection(value: Any, *, _depth: int = 0) -> None:
     """Reject private or unbounded fields in an already-projected snapshot."""
 
@@ -558,6 +579,7 @@ def validate_public_projection(value: Any, *, _depth: int = 0) -> None:
     if isinstance(value, str):
         if len(value.encode("utf-8")) > MAX_PUBLIC_TEXT_BYTES:
             raise ValueError("proof metrics projection contains unbounded text")
+        _note_public_projection(_depth)
         return
     if isinstance(value, Mapping):
         if len(value) > MAX_PUBLIC_MAPPING_ITEMS * 4:
@@ -570,12 +592,14 @@ def validate_public_projection(value: Any, *, _depth: int = 0) -> None:
             } and _private_key(key):
                 raise ValueError(f"private proof material is not queryable: {key}")
             validate_public_projection(item, _depth=_depth + 1)
+        _note_public_projection(_depth)
         return
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         # Top-level tables are allowed to exceed the per-cell sequence bound;
         # their query results remain bounded by artifact_store.MAX_QUERY_ROWS.
         for item in value:
             validate_public_projection(item, _depth=_depth + 1)
+    _note_public_projection(_depth)
 
 
 def normalize_proof_metric_identity(

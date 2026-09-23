@@ -1267,6 +1267,28 @@ def _default_node_ref(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_change_consumer_inventory(inventory: Any) -> Any:
+    """Record a consumer binding. It does not admit propagation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        graph = getattr(inventory, "graph", None)
+        record_ref = str(getattr(graph, "graph_id", "") or "change_consumer_inventory")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="change_consumer_inventory_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return inventory
+
+
 @dataclass
 class ChangeConsumerInventory:
     """Build a :class:`ConsumerCompatibilityLedger` for one contract delta.
@@ -1315,7 +1337,7 @@ class ChangeConsumerInventory:
             self.resolver = resolver
             if self.graph is not None and self.resolver.graph is None:
                 self.resolver.bind(self.graph)
-        return self
+        return _mirror_change_consumer_inventory(self)
 
     # -- public API ---------------------------------------------------------
 

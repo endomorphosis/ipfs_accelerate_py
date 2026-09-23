@@ -202,6 +202,26 @@ def _mirror_residual_task_input(spec: Any, task_input: Any) -> None:
         pass
 
 
+def _mirror_family_evaluation_admission(spec: Any) -> None:
+    """Record a family admission binding. It does not grant training completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(spec, "evaluation_corpus_admission_id", "") or getattr(spec, "spec_id", "") or "family_admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="family_evaluation_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ResidualTaskFamilySpec:
     """Exact shared semantic boundary, schemas, limits, and gates for one family."""
 
@@ -503,6 +523,7 @@ class ResidualTaskFamilySpec:
             raise ResidualIntelligenceError("evaluation corpus admission identity mismatch")
         if admission.admission_decision.value != "admitted":
             raise ResidualIntelligenceError(REASON_TRAINING_UNAVAILABLE)
+        _mirror_family_evaluation_admission(self)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         result: dict[str, Any] = {
