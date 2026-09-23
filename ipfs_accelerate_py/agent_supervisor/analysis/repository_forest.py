@@ -2885,6 +2885,27 @@ def forest_satisfies_repository_forest_replay(
     return True
 
 
+def _mirror_repository_forest_replay(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record a forest replay claim. It does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("forest_id") or claim.get("evidence") or "repository_forest_replay")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="repository_forest_replay_claim",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_repository_forest_replay(
     forest: RepositoryForest | Mapping[str, Any],
     *,
@@ -2917,7 +2938,7 @@ def prove_repository_forest_replay(
     portable = freeze_repository_forest(forest)
     replayed = replay_repository_forest(portable)
     aliases = tuple(item.alias for item in forest.descriptors)
-    return {
+    claim = {
         "schema": REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA,
         "evidence": REPOSITORY_FOREST_REPLAY_EVIDENCE,
         "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -2945,6 +2966,7 @@ def prove_repository_forest_replay(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_repository_forest_replay(claim)
 
 
 __all__ = [

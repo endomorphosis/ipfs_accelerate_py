@@ -109,6 +109,25 @@ def _fleet_templates() -> tuple[StatementTemplate, ...]:
     )
 
 
+def _mirror_fleet_owner_manifest(record_ref: str) -> None:
+    """Record a matching owner manifest. It has no completion authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="fleet_owner_manifest",
+            record_ref=record_ref or "fleet_owner_manifest",
+            subject_kind="receipt_id",
+            subject_ref=record_ref or "fleet_owner_manifest",
+        )
+    except Exception:
+        pass
+
+
 def validate_owner_manifest(command: Any, manifest: Sequence[tuple[str, Mapping[str, Any]]]) -> None:
     """Owner-side coupling: exactly one immutable artifact and matching receipt."""
     domain = [(name, bound) for name, bound in manifest if name in MUTATIONS]
@@ -125,6 +144,7 @@ def validate_owner_manifest(command: Any, manifest: Sequence[tuple[str, Mapping[
                         "issuer_id": command.parameters["issuer_id"], "content_ref": cid, "recorded_at": value["observed_at"]}
     if artifact != expected_artifact or receipt != expected_receipt or command.parameters.get("observation_cid") != cid:
         raise ValueError("fleet observation manifest differs from its content-addressed command")
+    _mirror_fleet_owner_manifest(cid)
 
 
 class FleetObservationStore:

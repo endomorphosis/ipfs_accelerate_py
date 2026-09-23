@@ -157,6 +157,31 @@ def _expert_class_letters(values: Any, name: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+def _mirror_residual_task_input(spec: Any, task_input: Any) -> None:
+    """Record a family input check. candidate_only stays true."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(task_input, "input_id", "")
+            or getattr(task_input, "task_cid", "")
+            or getattr(spec, "spec_id", "")
+            or "residual_task_input"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="residual_task_input_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ResidualTaskFamilySpec:
     """Exact shared semantic boundary, schemas, limits, and gates for one family."""
 
@@ -444,6 +469,7 @@ class ResidualTaskFamilySpec:
             raise ResidualIntelligenceError(REASON_OUTPUT_CLASS)
         if self.always_abstain and tuple(task_input.allowed_outputs) != (ABSTAIN_OUTPUT_CLASS,):
             raise ResidualIntelligenceError("always-abstain families only allow ABSTAIN")
+        _mirror_residual_task_input(self, task_input)
 
     def bind_evaluation_admission(self, admission: TrainingCorpusAdmission) -> None:
         """Dataset references are declarative and must resolve to an admitted corpus."""

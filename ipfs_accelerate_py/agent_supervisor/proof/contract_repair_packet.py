@@ -3051,6 +3051,38 @@ def measure_repair_context(
     }
 
 
+def _mirror_repair_packet_claim(claim: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record a repair-packet claim. It stays non-authoritative."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        nested = claim.get("compact_repair_packet")
+        nested_id = ""
+        if isinstance(nested, dict):
+            nested_id = str(nested.get("packet_id") or "")
+        record_ref = str(
+            claim.get("packet_id")
+            or claim.get("delta_id")
+            or nested_id
+            or claim.get("evidence")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(claim.get("tree_id") or claim.get("parent_tree_id") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_compact_repair_packet(
     packet: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
     *,
@@ -3075,7 +3107,7 @@ def prove_compact_repair_packet(
         symbolic_analysis=symbolic_analysis,
         repository_files=repository_files,
     )
-    return {
+    claim = {
         "schema": COMPACT_REPAIR_PACKET_CLAIM_SCHEMA,
         "evidence": COMPACT_REPAIR_PACKET_EVIDENCE,
         "evidence_terms": list(compact_repair_packet_evidence_terms()),
@@ -3105,6 +3137,7 @@ def prove_compact_repair_packet(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_repair_packet_claim(claim, record_kind="compact_repair_packet_claim")
 
 
 def prove_delta_repair_context(
@@ -3136,7 +3169,7 @@ def prove_delta_repair_context(
     satisfied = delta_satisfies_delta_repair_context(
         delta_obj, parent=parent_obj
     )
-    return {
+    claim = {
         "schema": DELTA_REPAIR_CONTEXT_CLAIM_SCHEMA,
         "evidence": DELTA_REPAIR_CONTEXT_EVIDENCE,
         "evidence_terms": list(delta_repair_context_evidence_terms()),
@@ -3169,6 +3202,7 @@ def prove_delta_repair_context(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_repair_packet_claim(claim, record_kind="delta_repair_context_claim")
 
 
 def prove_repair_packet_evidence(
@@ -3194,7 +3228,7 @@ def prove_repair_packet_evidence(
     satisfied = bool(compact_claim.get("satisfied"))
     if delta_claim is not None:
         satisfied = satisfied and bool(delta_claim.get("satisfied"))
-    return {
+    claim = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/repair-packet-evidence-claim@1"
         ),
@@ -3212,6 +3246,7 @@ def prove_repair_packet_evidence(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_repair_packet_claim(claim, record_kind="repair_packet_evidence_claim")
 
 
 __all__ = [
