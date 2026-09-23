@@ -1225,6 +1225,30 @@ class DoctorSynthesisReceipt(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_doctor_zero_model_calls(receipt: DoctorSynthesisReceipt) -> None:
+    """Record a zero-invocation proof. The synthesizer does not run."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "content_id", "")
+            or getattr(receipt, "receipt_id", "")
+            or "doctor-zero-model-calls"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_zero_model_calls",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class DeterministicDoctorSynthesizer:
     """Materialize only proof-admitted deterministic repair overlays.
 
@@ -1269,12 +1293,15 @@ class DeterministicDoctorSynthesizer:
 
         if not isinstance(receipt, DoctorSynthesisReceipt):
             return False
-        return (
+        proved = (
             receipt.llm_invocation_count == 0
             and receipt.model_provider_call_count == 0
             and receipt.provider_invoked is False
             and receipt.source_write_count == 0
         )
+        if proved:
+            _mirror_doctor_zero_model_calls(receipt)
+        return proved
 
     @staticmethod
     def synthesize_exact(request: ExactTransformRequest) -> ExactTransformResult:

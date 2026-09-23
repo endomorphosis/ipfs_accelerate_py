@@ -2119,6 +2119,25 @@ def probe_sealer_capability(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_assurance_execution_surfaces() -> None:
+    """Record that non-optional execution surfaces are available. None are launched."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_execution_surfaces",
+            record_ref="execution_surfaces",
+            subject_kind="record_cid",
+            subject_ref="execution_surfaces",
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class AssuranceRuntimeAdapters:
     """Bundle of probed AAE runtime authorities."""
@@ -2162,6 +2181,7 @@ class AssuranceRuntimeAdapters:
         self.policy.require_available()
         self.state.require_available()
         self.storage.require_available()
+        _mirror_assurance_execution_surfaces()
 
     def require_sealer(self) -> SealerCapability:
         self.sealer.require_available()

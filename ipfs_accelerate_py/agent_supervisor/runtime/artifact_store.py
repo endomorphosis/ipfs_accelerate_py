@@ -4765,6 +4765,26 @@ def _bounded_adapter_bytes(value: Any, *, maximum: int, label: str) -> int:
     return min(value, maximum)
 
 
+def _mirror_queryable_artifact_reference(digest: str) -> None:
+    """Record a matching artifact digest. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(digest or "queryable-artifact")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="queryable_artifact_reference",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class QueryableArtifactCASAdapter:
     """Read-only CAS adapter over the existing JSON/DuckDB artifact pair.
 
@@ -4796,7 +4816,10 @@ class QueryableArtifactCASAdapter:
             current = self.reference().to_dict()
         except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError):
             return False
-        return all(current.get(name) == value for name, value in constraints.items())
+        matched = all(current.get(name) == value for name, value in constraints.items())
+        if matched:
+            _mirror_queryable_artifact_reference(str(current.get("digest") or ""))
+        return matched
 
     def _verified_reference(
         self,

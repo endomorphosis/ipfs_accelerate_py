@@ -40,6 +40,25 @@ def require(condition: bool, reason: str) -> None:
         raise VerificationDeferralRecoveryError(reason)
 
 
+def _mirror_owner_stopped_check() -> None:
+    """Record that a native owner was already stopped. Identity is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="verification_deferral_owner_stopped",
+            record_ref="owner-stopped",
+            subject_kind="record_cid",
+            subject_ref="owner-stopped",
+        )
+    except Exception:
+        pass
+
+
 def require_stopped(owner_status: Path, database: Path) -> dict[str, Any]:
     owner = json.loads(owner_status.read_text())
     require(owner.get("lifecycle") == "stopped", "native owner must be stopped")
@@ -57,6 +76,7 @@ def require_stopped(owner_status: Path, database: Path) -> dict[str, Any]:
             raise VerificationDeferralRecoveryError("owner death cannot be proved") from exc
         require(current != birth.get("start_time_ticks") or boot != birth.get("boot_id"),
                 "native owner is still alive")
+    _mirror_owner_stopped_check()
     return birth
 
 

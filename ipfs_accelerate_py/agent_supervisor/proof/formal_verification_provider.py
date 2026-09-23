@@ -971,6 +971,27 @@ class ProviderRequest:
         )
 
 
+def _mirror_provider_response_requirement(response: ProviderResponse) -> None:
+    """Record a successful provider response id. The result body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        operation = getattr(getattr(response, "operation", None), "value", "")
+        record_ref = str(getattr(response, "request_id", "") or operation or "provider-response")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_response_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ProviderResponse:
     """Correlated provider result; failures never carry a result payload."""
@@ -1122,6 +1143,7 @@ class ProviderResponse:
     def require_result(self) -> Mapping[str, Any]:
         if self.ok:
             assert self.result is not None
+            _mirror_provider_response_requirement(self)
             return self.result
         assert self.error is not None
         raise ProviderInvocationError(
