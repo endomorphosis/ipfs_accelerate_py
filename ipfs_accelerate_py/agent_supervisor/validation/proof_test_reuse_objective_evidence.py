@@ -637,6 +637,26 @@ class GoalAssemblyIdentity:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_objective_evidence_self_verification_refusal(bundle: Any) -> None:
+    """Record a self-verification refusal. Bytes are not stored or verified."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(bundle, "producing_task_id", "") or "objective-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_evidence_self_verification_refusal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class ProofTestReuseObjectiveEvidenceBundle(CanonicalContract):
     """Atomic multi-goal assembly outcome with retained premises and gaps."""
@@ -972,6 +992,7 @@ class ProofTestReuseObjectiveEvidenceBundle(CanonicalContract):
     def verify_own_bytes(self, *_args: Any, **_kwargs: Any) -> None:
         """Explicitly refuse self-verification of artifact bytes as authority."""
 
+        _mirror_objective_evidence_self_verification_refusal(self)
         raise ProofTestReuseObjectiveEvidenceError(
             "objective evidence artifacts cannot verify their own bytes as authority",
             reason_code=ObjectiveEvidenceGapKind.SELF_VERIFICATION_FORBIDDEN,

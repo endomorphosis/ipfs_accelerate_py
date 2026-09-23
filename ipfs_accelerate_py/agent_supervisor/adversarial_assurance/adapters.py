@@ -315,6 +315,26 @@ class AssuranceCapabilityUnavailable(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_assurance_surface_capability(adapter_id: str, operation: str) -> None:
+    """Record an available assurance surface. The check does not launch it."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{adapter_id}:{operation}" if adapter_id else str(operation or "assurance-surface")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_surface_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class SurfaceCapability:
     """Closed capability witness for one adapted authority surface."""
@@ -356,6 +376,7 @@ class SurfaceCapability:
                 retryable=self.retryable,
                 status=self.status,
             )
+        _mirror_assurance_surface_capability(str(self.adapter_id), str(operation))
 
     def to_mapping(self) -> Mapping[str, Any]:
         return MappingProxyType(

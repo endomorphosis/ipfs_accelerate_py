@@ -193,6 +193,26 @@ class SemanticStateAdapterError(ValueError):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_semantic_state_capability(adapter_id: str, operation: str) -> None:
+    """Record an available semantic-state surface. The check does not launch it."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{adapter_id}:{operation}" if adapter_id else str(operation or "semantic-state")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_state_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticStateCapability:
     """Closed capability witness for the pinned datasets semantic-state surface."""
@@ -222,6 +242,7 @@ class SemanticStateCapability:
                 self.diagnostic or "datasets semantic-state surface unavailable",
                 retryable=False,
             )
+        _mirror_semantic_state_capability(str(self.adapter_id), str(operation))
 
 
 # ---------------------------------------------------------------------------

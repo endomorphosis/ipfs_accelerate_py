@@ -748,6 +748,26 @@ class MutationWorkerTask:
         }
 
 
+def _mirror_mutation_worker_not_cancelled(task_id: str) -> None:
+    """Record that a worker is still running. Process identity is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_id or "mutation-worker")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mutation_worker_not_cancelled",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class MutationWorkerContext:
     """Runtime context passed to in-process worker callables."""
@@ -784,6 +804,7 @@ class MutationWorkerContext:
                 "worker task exceeded its wall-time limit",
                 reason_code="timeout",
             )
+        _mirror_mutation_worker_not_cancelled(str(getattr(self.task, "task_id", "") or ""))
 
 
 @dataclass(frozen=True)
