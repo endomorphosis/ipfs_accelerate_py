@@ -832,6 +832,26 @@ def _attempted_after_source(
     return before_source
 
 
+def _mirror_scope_gate(results: Any, path: str) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(path or "repair-scope")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_candidate_scope_gate",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=(record_ref,) if path else (),
+        )
+    except Exception:
+        pass
+    return results
+
+
 class RepairCandidateScopeGate:
     """Scope/type/effect/proof/test/authority gate over one sketch."""
 
@@ -961,7 +981,7 @@ class RepairCandidateScopeGate:
                 reasons=tuple(authority_reasons),
             )
         )
-        return tuple(results)
+        return _mirror_scope_gate(tuple(results), path)
 
 
 class RepairCounterexampleRefiner:

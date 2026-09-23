@@ -14,7 +14,7 @@ import re
 import select
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,30 @@ def _birth(pid: int) -> tuple[int, int, int, int]:
         raise RuntimeError("maintenance process observation oversized")
     fields = raw[raw.rfind(")") + 2:].split()
     return int(fields[1]), int(fields[19]), int(fields[2]), int(fields[3])
+
+
+def _mirror_maintenance_binding(result: Any) -> None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "source_tree", "") or "")
+        record_ref = str(
+            tree_id
+            or getattr(result, "source_head", "")
+            or "maintenance-child"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="maintenance_child_binding",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
 
 
 class SourceMaintenanceDrain:
@@ -107,6 +131,7 @@ class SourceMaintenanceDrain:
                 parent, parent_start, child.pid, start_time_ticks, boot,
                 source_head, source_tree,
             )
+            _mirror_maintenance_binding(self.binding)
             self._descriptor = descriptor
         except BaseException:
             os.close(descriptor)

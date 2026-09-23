@@ -1432,6 +1432,30 @@ def _mapping_from_result(raw: Any) -> Mapping[str, Any]:
     return payload
 
 
+def _mirror_assurance_campaign(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "candidate_id", "")
+            or getattr(result, "plan_cid", "")
+            or getattr(result, "counterexample_set_cid", "")
+            or "assurance-campaign"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_campaign_report",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AssuranceCounterexampleAdapter:
     """Narrow adapter over existing ``AssuranceCampaignApi@1``.
 
@@ -1724,7 +1748,7 @@ class AssuranceCounterexampleAdapter:
             campaign_confirmed=campaign_confirmed,
         )
         self.last_report = report
-        return report
+        return _mirror_assurance_campaign(report)
 
     def __call__(
         self,

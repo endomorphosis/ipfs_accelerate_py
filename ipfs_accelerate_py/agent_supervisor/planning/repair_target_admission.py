@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final
+from typing import Any, Final
 
 from ..analysis.contract_repair_contracts import (
     AuthorityRoots,
@@ -323,6 +323,34 @@ class AdmissionResult:
             raise RepairTargetAdmissionError("abstention cannot carry write spans")
 
 
+def _mirror_repair_target(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        decision = getattr(result, "decision", None)
+        roots = getattr(decision, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(decision, "content_id", "")
+            or getattr(decision, "candidate_set_id", "")
+            or "repair-target"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_target_admission",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(getattr(decision, "permitted_write_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 class RepairTargetAdmission:
     """Replay a deterministic rerank and issue one exact decision or abstain."""
 
@@ -430,10 +458,12 @@ class RepairTargetAdmission:
                 )
                 spans = authority.permitted_read_spans
                 write_spans = authority.permitted_write_spans
-                return self._result(
+                return _mirror_repair_target(self._result(
                     decision, rerank_receipt, expiry, spans, write_spans
-                )
-        return self._result(decision, rerank_receipt, expiry, (), ())
+                ))
+        return _mirror_repair_target(
+            self._result(decision, rerank_receipt, expiry, (), ())
+        )
 
     assess = decide
     evaluate = decide

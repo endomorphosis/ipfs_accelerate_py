@@ -858,6 +858,29 @@ class ReceiptAdmission:
 
 
 @dataclass
+def _mirror_compiled_receipt(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "receipt_cid", "")
+            or getattr(result, "output_cid", "")
+            or "compiled-receipt"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="compiled_verification_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ReceiptCompiler:
     """Compile, content-address, optionally store, and rehash verification receipts."""
 
@@ -953,7 +976,7 @@ class ReceiptCompiler:
 
         if store:
             self.store(receipt)
-        return receipt
+        return _mirror_compiled_receipt(receipt)
 
     def store(self, receipt: CompiledReceipt) -> str:
         """Store the receipt body before any external reference (store-before-ref)."""
