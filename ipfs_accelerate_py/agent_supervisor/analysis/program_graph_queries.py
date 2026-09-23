@@ -2399,6 +2399,28 @@ def slice_satisfies_minimal_call_slice(
     return True
 
 
+def _mirror_minimal_call_slice(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record the slice claim. It stays non-authoritative for completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("graph_id") or claim.get("evidence") or "minimal_call_slice")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="minimal_call_slice_claim",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(claim.get("forest_id") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_minimal_call_slice(
     graph: ProgramGraph,
     *,
@@ -2542,7 +2564,7 @@ def prove_minimal_call_slice(
         for name, item in slices.items()
     }
 
-    return {
+    claim = {
         "schema": MINIMAL_CALL_SLICE_CLAIM_SCHEMA,
         "evidence": MINIMAL_CALL_SLICE_EVIDENCE,
         "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -2565,6 +2587,7 @@ def prove_minimal_call_slice(
         "promotion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_minimal_call_slice(claim)
 
 
 def prove_minimal_call_slice_evidence(

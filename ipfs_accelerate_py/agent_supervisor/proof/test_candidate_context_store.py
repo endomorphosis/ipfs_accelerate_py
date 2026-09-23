@@ -1182,6 +1182,33 @@ class CandidateContextIndex:
             )
 
 
+def _mirror_candidate_context_admission(result: Any) -> Any:
+    """Record component rehash. Admission never authorizes a skip."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason = getattr(result, "reason_code", None)
+        reason_ref = str(getattr(reason, "value", reason) or "candidate_context")
+        record_ref = str(
+            getattr(result, "envelope_cid", "")
+            or getattr(result, "candidate_context_cid", "")
+            or reason_ref
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="candidate_context_admission",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TestCandidateContextStore:
     """Facade combining immutable CAS, locator index, and write fencing.
 
@@ -1845,9 +1872,9 @@ class TestCandidateContextStore:
         try:
             token = _validate_cid_token(envelope_cid, field_name="envelope_cid")
         except CertificateStoreIntegrityError:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False, CandidateContextStoreReason.PATH_ESCAPE, envelope_cid=str(envelope_cid)
-            )
+            ))
 
         envelope_get = self.get_bytes(token)
         if not getattr(envelope_get, "hit", False) or envelope_get.data is None:
@@ -1857,22 +1884,22 @@ class TestCandidateContextStore:
                 and remote_diag.get("reason")
                 == CandidateContextStoreReason.TRANSPORT_ABSENT.value
             ):
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.TRANSPORT_ABSENT,
                     envelope_cid=token,
-                )
+                ))
             if (
                 isinstance(remote_diag, Mapping)
                 and remote_diag.get("reason")
                 == CandidateContextStoreReason.REMOTE_FAILURE.value
             ):
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.REMOTE_FAILURE,
                     envelope_cid=token,
-                )
-            return CandidateContextAdmission(
+                ))
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 _map_cas_reason(
                     getattr(
@@ -1882,34 +1909,34 @@ class TestCandidateContextStore:
                     )
                 ),
                 envelope_cid=token,
-            )
+            ))
 
         data = envelope_get.data
         if len(data) > self.max_blob_bytes:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.SIZE_EXCEEDED,
                 envelope_cid=token,
                 byte_length=len(data),
-            )
+            ))
 
         try:
             external_cid = _cid_for_canonical_bytes(data)
         except CertificateStoreIntegrityError:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.CORRUPT,
                 envelope_cid=token,
                 byte_length=len(data),
-            )
+            ))
         if external_cid != token:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.INTERNAL_EXTERNAL_CID_MISMATCH,
                 envelope_cid=token,
                 diagnostics={"actual_cid": external_cid},
                 byte_length=len(data),
-            )
+            ))
 
         try:
             envelope = CandidateContextEnvelope.from_bytes(data)
@@ -1919,33 +1946,33 @@ class TestCandidateContextStore:
                 reason = CandidateContextStoreReason(reason_value)
             except ValueError:
                 reason = CandidateContextStoreReason.CORRUPT
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False, reason, envelope_cid=token, byte_length=len(data)
-            )
+            ))
 
         if envelope.version != ENVELOPE_VERSION:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.VERSION_MISMATCH,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"version": envelope.version},
-            )
+            ))
 
         current = _now_ms(self._clock) if now_ms is None else now_ms
         if (
             envelope.expires_at_ms is not None
             and envelope.expires_at_ms <= current
         ):
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.EXPIRED,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
-            )
+            ))
 
         if expected_generation is not None and envelope.generation != expected_generation:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.STALE_GENERATION,
                 envelope_cid=token,
@@ -1954,14 +1981,14 @@ class TestCandidateContextStore:
                     "envelope_generation": envelope.generation,
                     "expected_generation": expected_generation,
                 },
-            )
+            ))
         if (
             index_generation is not None
             and envelope.generation > index_generation
         ):
             # Envelope from a future generation relative to the index document
             # is inconsistent (poison / partial write).
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.STALE_GENERATION,
                 envelope_cid=token,
@@ -1970,58 +1997,58 @@ class TestCandidateContextStore:
                     "envelope_generation": envelope.generation,
                     "index_generation": index_generation,
                 },
-            )
+            ))
 
         # Descriptor internal identity.
         desc_get = self.get_bytes(envelope.candidate_context_cid)
         if not getattr(desc_get, "hit", False) or desc_get.data is None:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.COMPONENT_MISSING,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"stage": "descriptor_missing"},
-            )
+            ))
         boundary = admit_content_addressed_boundary(
             role=ArtifactRole.IMMUTABLE_CANDIDATE_CONTEXT,
             claimed_cid=envelope.candidate_context_cid,
             canonical_bytes=desc_get.data,
         )
         if not boundary.admitted:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.INTEGRITY_FAILED,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"stage": "descriptor_rehash"},
-            )
+            ))
         try:
             descriptor = CandidateExecutionContext.from_dict(
                 json.loads(desc_get.data.decode("utf-8"))
             )
         except Exception:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.CORRUPT,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
-            )
+            ))
         if descriptor.candidate_context_id != envelope.candidate_context_cid:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.INTERNAL_EXTERNAL_CID_MISMATCH,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"stage": "descriptor_identity"},
-            )
+            ))
         if descriptor.may_authorize_skip:
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.MALFORMED,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"stage": "descriptor_claims_skip"},
-            )
+            ))
 
         # Cross-check envelope binding fields against descriptor.
         if (
@@ -2029,13 +2056,13 @@ class TestCandidateContextStore:
             or descriptor.execution_key_cid != envelope.execution_key_cid
             or descriptor.pass_receipt_cid != envelope.pass_receipt_cid
         ):
-            return CandidateContextAdmission(
+            return _mirror_candidate_context_admission(CandidateContextAdmission(
                 False,
                 CandidateContextStoreReason.INTERNAL_EXTERNAL_CID_MISMATCH,
                 envelope_cid=token,
                 candidate_context_cid=envelope.candidate_context_cid,
                 diagnostics={"stage": "envelope_descriptor_binding"},
-            )
+            ))
 
         verified_components: dict[str, str] = {}
         for name, claimed_cid in envelope.component_cids.items():
@@ -2047,26 +2074,26 @@ class TestCandidateContextStore:
                     and remote_diag.get("reason")
                     == CandidateContextStoreReason.TRANSPORT_ABSENT.value
                 ):
-                    return CandidateContextAdmission(
+                    return _mirror_candidate_context_admission(CandidateContextAdmission(
                         False,
                         CandidateContextStoreReason.TRANSPORT_ABSENT,
                         envelope_cid=token,
                         candidate_context_cid=envelope.candidate_context_cid,
                         diagnostics={"component": name},
-                    )
+                    ))
                 if (
                     isinstance(remote_diag, Mapping)
                     and remote_diag.get("reason")
                     == CandidateContextStoreReason.REMOTE_FAILURE.value
                 ):
-                    return CandidateContextAdmission(
+                    return _mirror_candidate_context_admission(CandidateContextAdmission(
                         False,
                         CandidateContextStoreReason.REMOTE_FAILURE,
                         envelope_cid=token,
                         candidate_context_cid=envelope.candidate_context_cid,
                         diagnostics={"component": name},
-                    )
-                return CandidateContextAdmission(
+                    ))
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.COMPONENT_MISSING
                     if _map_cas_reason(
@@ -2087,27 +2114,27 @@ class TestCandidateContextStore:
                     envelope_cid=token,
                     candidate_context_cid=envelope.candidate_context_cid,
                     diagnostics={"component": name},
-                )
+                ))
             if len(blob.data) > self.max_component_bytes:
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.SIZE_EXCEEDED,
                     envelope_cid=token,
                     candidate_context_cid=envelope.candidate_context_cid,
                     diagnostics={"component": name, "byte_length": len(blob.data)},
-                )
+                ))
             try:
                 actual = _cid_for_canonical_bytes(blob.data)
             except CertificateStoreIntegrityError:
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.CORRUPT,
                     envelope_cid=token,
                     candidate_context_cid=envelope.candidate_context_cid,
                     diagnostics={"component": name},
-                )
+                ))
             if actual != claimed_cid:
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.INTERNAL_EXTERNAL_CID_MISMATCH,
                     envelope_cid=token,
@@ -2117,13 +2144,13 @@ class TestCandidateContextStore:
                         "claimed_cid": claimed_cid,
                         "actual_cid": actual,
                     },
-                )
+                ))
             # Internal field agreement for known components.
             field_name = COMPONENT_FIELD_MAP.get(name)
             if field_name is not None:
                 expected_field = getattr(descriptor, field_name, "")
                 if expected_field and expected_field != claimed_cid:
-                    return CandidateContextAdmission(
+                    return _mirror_candidate_context_admission(CandidateContextAdmission(
                         False,
                         CandidateContextStoreReason.INTERNAL_EXTERNAL_CID_MISMATCH,
                         envelope_cid=token,
@@ -2134,20 +2161,20 @@ class TestCandidateContextStore:
                             "field_cid": expected_field,
                             "component_cid": claimed_cid,
                         },
-                    )
+                    ))
             verified_components[name] = claimed_cid
 
         for required in REQUIRED_COMPONENT_KEYS:
             if required not in verified_components:
-                return CandidateContextAdmission(
+                return _mirror_candidate_context_admission(CandidateContextAdmission(
                     False,
                     CandidateContextStoreReason.COMPONENT_MISSING,
                     envelope_cid=token,
                     candidate_context_cid=envelope.candidate_context_cid,
                     diagnostics={"missing": required},
-                )
+                ))
 
-        return CandidateContextAdmission(
+        return _mirror_candidate_context_admission(CandidateContextAdmission(
             True,
             CandidateContextStoreReason.OK,
             envelope_cid=token,
@@ -2155,7 +2182,7 @@ class TestCandidateContextStore:
             component_cids=verified_components,
             byte_length=len(data),
             diagnostics={"generation": envelope.generation},
-        )
+        ))
 
     def lookup_by_context_cid(
         self, candidate_context_cid: str

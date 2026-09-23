@@ -4268,6 +4268,27 @@ def build_language_edge_program_graph(
     )
 
 
+def _mirror_language_edge_ast_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record the AST-side edge claim. It does not forge direct calls."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("evidence") or claim.get("goal_id") or "language_edge_ast")
+        mirror_work_record(
+            catalog_kind="ast",
+            record_kind="language_edge_resolution_ast",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_language_edge_resolution(
     index: ProgramEvidenceIndex | None = None,
     *,
@@ -4322,7 +4343,7 @@ def prove_language_edge_resolution(
             if item.allows_direct_call:
                 satisfied = False
 
-    return {
+    claim = {
         "schema": LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA,
         "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
         "evidence_terms": list(language_edge_resolution_evidence_terms()),
@@ -4346,6 +4367,7 @@ def prove_language_edge_resolution(
         "completion_authoritative": False,
         "forges_direct_calls": False,
     }
+    return _mirror_language_edge_ast_claim(claim)
 
 
 # ---------------------------------------------------------------------------

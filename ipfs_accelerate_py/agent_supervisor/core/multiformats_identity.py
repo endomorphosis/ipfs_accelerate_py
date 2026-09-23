@@ -594,6 +594,26 @@ def cid_for_dag_json(
     return _cross_check_cid_for_bytes(encoded, cid, codec="dag-json")
 
 
+def _mirror_validated_cid(value: str) -> str:
+    """Record one canonical CIDv1. Validation does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="validated_cid",
+            record_ref=value,
+            subject_kind="content_cid",
+            subject_ref=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
 def validate_cid(
     value: Any,
     *,
@@ -646,7 +666,7 @@ def validate_cid(
     _validate_cid_with_multiformats(
         value, codecs=allowed, mh_type=mh_type, version=version, base=base
     )
-    return value
+    return _mirror_validated_cid(value)
 
 
 def _validate_cid_with_multiformats(

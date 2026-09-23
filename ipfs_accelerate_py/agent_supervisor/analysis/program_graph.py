@@ -1660,6 +1660,28 @@ def language_edge_resolution_evidence_terms() -> tuple[str, ...]:
     return (LANGUAGE_EDGE_RESOLUTION_EVIDENCE,)
 
 
+def _mirror_language_edge_graph_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record the graph-side edge claim. It does not forge direct calls."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("graph_id") or claim.get("evidence") or "language_edge_graph")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="language_edge_resolution_graph",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(claim.get("forest_id") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_language_edge_resolution(
     graph: ProgramGraph | None = None,
 ) -> dict[str, Any]:
@@ -1716,7 +1738,7 @@ def prove_language_edge_resolution(
                     "forged_reason": forge_reason,
                 }
             )
-    return {
+    claim = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "language-edge-resolution-graph-claim@1"
@@ -1742,6 +1764,7 @@ def prove_language_edge_resolution(
         "completion_authoritative": False,
         "forges_direct_calls": False,
     }
+    return _mirror_language_edge_graph_claim(claim)
 
 
 def build_program_graph(

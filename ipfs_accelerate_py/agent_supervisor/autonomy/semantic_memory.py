@@ -226,6 +226,27 @@ class MemoryInvalidationReceipt:
 
 
 @dataclass
+def _mirror_semantic_memory_admission(entry: Any) -> Any:
+    """Record a sealed memory entry. Frequency and admission do not grant authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(entry, "entry_id", "") or getattr(entry, "artifact_id", "") or "semantic_memory")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="semantic_memory_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return entry
+
+
 class SemanticMemory:
     """Bounded in-process index over sealed artifact identities."""
 
@@ -250,9 +271,9 @@ class SemanticMemory:
                 raise SemanticMemoryError("withdrawn memory cannot be revived")
             current = self._entries.get(entry.entry_id)
             if current is not None:
-                return current
+                return _mirror_semantic_memory_admission(current)
             self._entries[entry.entry_id] = entry
-            return entry
+            return _mirror_semantic_memory_admission(entry)
 
     def observe(self, entry_id: str) -> MemoryEntry:
         """Increment frequency. Rank changes; authority does not."""
