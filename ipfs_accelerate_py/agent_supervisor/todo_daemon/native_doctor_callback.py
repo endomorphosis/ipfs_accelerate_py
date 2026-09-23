@@ -221,6 +221,26 @@ def claim_profile(daemon: Any) -> dict[str, Any] | None:
     return callback.bind(daemon) if type(callback) is NativeDoctorCallback else None
 
 
+def _mirror_declared_native_callback(attempt_id: str) -> None:
+    """Record that the declared callback matched. The callback itself is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(attempt_id or "declared-native-callback")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="declared_native_callback",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_declared_callback(daemon: Any, attempt: Any, callback: Any) -> None:
     profile = attempt.body.get(PROFILE_KEY)
     if profile is None:
@@ -238,3 +258,4 @@ def require_declared_callback(daemon: Any, attempt: Any, callback: Any) -> None:
         raise DoctorCallbackDenied("native callback attempt budget is invalid")
     if attempt.attempt_number > min(callback.max_attempts, configured or callback.max_attempts):
         raise DoctorCallbackDenied("native callback spent attempt budget is exhausted")
+    _mirror_declared_native_callback(str(getattr(attempt, "attempt_id", "") or ""))

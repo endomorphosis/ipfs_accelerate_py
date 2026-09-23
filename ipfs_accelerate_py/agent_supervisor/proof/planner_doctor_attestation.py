@@ -872,6 +872,26 @@ def verify_lineage_merkle_root(
     return recomputed
 
 
+def _mirror_planner_doctor_run_replay(run_id: str) -> None:
+    """Record a matching run replay. The root and preimages are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(run_id or "planner-doctor-run-replay")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="planner_doctor_run_replay",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_run_replay(
     manifest: ReasoningRunManifest,
     *,
@@ -905,6 +925,7 @@ def require_run_replay(
     verify_lineage_merkle_root(manifest, expected_root=lineage_merkle_root)
     if preimages is not None:
         verify_lineage_preimages(manifest, preimages)
+    _mirror_planner_doctor_run_replay(manifest.run_id)
 
 
 def reject_collapsed_evidence_types(manifest: ReasoningRunManifest) -> None:
@@ -1088,6 +1109,29 @@ def public_input_vector_digest(public_inputs: Mapping[str, str]) -> str:
     )
 
 
+def _mirror_planner_doctor_public_inputs(
+    inputs: PlannerDoctorPublicInputs,
+) -> PlannerDoctorPublicInputs:
+    """Record the run id only. Proving and verifying keys stay off the index."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(inputs, "run_id", "") or "planner-doctor-public-inputs")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_public_inputs",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return inputs
+
+
 def build_public_inputs_from_manifest(
     manifest: ReasoningRunManifest,
     *,
@@ -1106,7 +1150,7 @@ def build_public_inputs_from_manifest(
         raise PlannerDoctorAttestationError("manifest must be a ReasoningRunManifest")
     verify_lineage_merkle_root(manifest)
     reject_collapsed_evidence_types(manifest)
-    return PlannerDoctorPublicInputs(
+    return _mirror_planner_doctor_public_inputs(PlannerDoctorPublicInputs(
         run_id=manifest.run_id,
         manifest_id=manifest.manifest_id,
         lineage_merkle_root=manifest.lineage_merkle_root,
@@ -1118,7 +1162,7 @@ def build_public_inputs_from_manifest(
         verifying_key_id=verifying_key_id,
         ceremony_id=ceremony_id,
         predicate=predicate,
-    )
+    ))
 
 
 class PrivatePlannerDoctorWitness:

@@ -347,6 +347,27 @@ def assert_compatible_resume(
         raise IncompatibleResumeError("incompatible resume: progress forked at the same cursor")
 
 
+def _mirror_learning_resume_decision(payload: dict[str, Any]) -> dict[str, Any]:
+    """Record the decision id. Promotion stays false and lineage ids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(payload.get("decision_id") or "learning-resume-decision")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="learning_resume_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return payload
+
+
 def resume_decision(
     stored: LearningCheckpointBinding,
     requested: LearningCheckpointBinding,
@@ -367,7 +388,7 @@ def resume_decision(
         "promotion_authority": False,
     }
     payload["decision_id"] = content_identity(payload)
-    return payload
+    return _mirror_learning_resume_decision(payload)
 
 
 def checkpoint_state_payload(

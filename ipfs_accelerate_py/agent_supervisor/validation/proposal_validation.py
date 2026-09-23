@@ -2140,6 +2140,28 @@ class ProposalValidationReceipt:
         )
 
 
+def _mirror_proposal_admitted_binding(result: Any) -> Any:
+    """Record the receipt id. Accepted stays as already decided; completion is not granted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        record_ref = str(getattr(receipt, "receipt_id", "") or "proposal-admitted-binding")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proposal_admitted_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass(frozen=True)
 class ProposalValidationResult:
     proposal: ImplementationProposal
@@ -2317,7 +2339,7 @@ class ProposalValidationResult:
             raise ProposalValidationError(
                 "proposal admission binding mismatch: " + ", ".join(mismatched)
             )
-        return self
+        return _mirror_proposal_admitted_binding(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
