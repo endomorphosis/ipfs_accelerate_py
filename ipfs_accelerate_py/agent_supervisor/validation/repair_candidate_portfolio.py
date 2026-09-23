@@ -1593,6 +1593,27 @@ def derive_selection_replay_identities(
     return selection_identity, replay_identity
 
 
+def _mirror_selection_replay(decision: Any, matched: bool) -> bool:
+    """Record a replay comparison. A match does not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(decision, "selection_identity", "") or "selection_replay")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="selection_replay_identity",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return matched
+
+
 def prove_selection_replay_identity(
     first: RepairCandidateDecision,
     second: RepairCandidateDecision,
@@ -1606,24 +1627,29 @@ def prove_selection_replay_identity(
             "both arguments must be RepairCandidateDecision",
             reason_code=PortfolioReason.MALFORMED_INPUT,
         )
-    if first.selection_identity != second.selection_identity:
-        return False
-    if first.replay_identity != second.replay_identity:
-        return False
-    if first.disposition != second.disposition:
-        return False
-    if first.selected_candidate_id != second.selected_candidate_id:
-        return False
-    if first.ranked_admissible != second.ranked_admissible:
-        return False
-    # Recompute from sealed payloads to catch forged identity fields.
-    first_sel, first_rep = derive_selection_replay_identities(first)
-    second_sel, second_rep = derive_selection_replay_identities(second)
-    if first.selection_identity != first_sel or first.replay_identity != first_rep:
-        return False
-    if second.selection_identity != second_sel or second.replay_identity != second_rep:
-        return False
-    return first_sel == second_sel and first_rep == second_rep
+    matched = True
+    if (
+        first.selection_identity != second.selection_identity
+        or first.replay_identity != second.replay_identity
+        or first.disposition != second.disposition
+        or first.selected_candidate_id != second.selected_candidate_id
+        or first.ranked_admissible != second.ranked_admissible
+    ):
+        matched = False
+    else:
+        # Recompute from sealed payloads to catch forged identity fields.
+        first_sel, first_rep = derive_selection_replay_identities(first)
+        second_sel, second_rep = derive_selection_replay_identities(second)
+        if (
+            first.selection_identity != first_sel
+            or first.replay_identity != first_rep
+            or second.selection_identity != second_sel
+            or second.replay_identity != second_rep
+        ):
+            matched = False
+        else:
+            matched = first_sel == second_sel and first_rep == second_rep
+    return _mirror_selection_replay(first, matched)
 
 
 # ---------------------------------------------------------------------------

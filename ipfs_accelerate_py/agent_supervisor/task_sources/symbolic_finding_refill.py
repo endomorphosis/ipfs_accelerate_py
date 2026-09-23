@@ -1965,6 +1965,36 @@ def refill_idempotency_acceptance_dimensions(
     }
 
 
+def _mirror_refill_claim(claim: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record a refill claim. It does not authorize execution or completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        epoch = claim.get("symbolic_refill_epoch")
+        epoch_id = ""
+        if isinstance(epoch, dict):
+            epoch_id = str(epoch.get("epoch_id") or "")
+        record_ref = str(
+            claim.get("epoch_id")
+            or claim.get("idempotency_id")
+            or epoch_id
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_symbolic_refill_epoch(
     outcome: RefillOutcome,
     *,
@@ -1993,7 +2023,7 @@ def prove_symbolic_refill_epoch(
     verified = verify_symbolic_refill_epoch(outcome)
     epoch = outcome.epoch_evidence
     satisfied = verified and all(dimensions.values())
-    return {
+    claim = {
         "schema": SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA,
         "evidence": SYMBOLIC_REFILL_EPOCH_EVIDENCE,
         "evidence_terms": list(symbolic_refill_epoch_evidence_terms()),
@@ -2027,6 +2057,7 @@ def prove_symbolic_refill_epoch(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_refill_claim(claim, record_kind="symbolic_refill_epoch_claim")
 
 
 def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
@@ -2050,7 +2081,7 @@ def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
     verified = verify_refill_idempotency(outcome)
     evidence = outcome.idempotency_evidence
     satisfied = verified and all(dimensions.values())
-    return {
+    claim = {
         "schema": REFILL_IDEMPOTENCY_CLAIM_SCHEMA,
         "evidence": REFILL_IDEMPOTENCY_EVIDENCE,
         "evidence_terms": list(refill_idempotency_evidence_terms()),
@@ -2081,6 +2112,7 @@ def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_refill_claim(claim, record_kind="refill_idempotency_claim")
 
 
 def prove_autonomous_refill_packet(
@@ -2103,7 +2135,7 @@ def prove_autonomous_refill_packet(
     satisfied = bool(epoch_claim.get("satisfied")) and bool(
         idempotency_claim.get("satisfied")
     )
-    return {
+    claim = {
         "schema": AUTONOMOUS_REFILL_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(packet_evidence_terms()),
         "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -2120,6 +2152,7 @@ def prove_autonomous_refill_packet(
         "completion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_refill_claim(claim, record_kind="autonomous_refill_packet_claim")
 
 
 # Concise compatibility alias for callers that treat refill as a pure planner.

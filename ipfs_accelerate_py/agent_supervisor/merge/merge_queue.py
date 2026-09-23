@@ -1239,6 +1239,29 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
             pass
 
 
+def _mirror_merge_queue_target(queue: Any) -> None:
+    """Record a process-local target binding. It does not merge or enqueue."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        repository_id = str(getattr(queue, "target_repository_id", "") or "")
+        branch = str(getattr(queue, "target_branch", "") or "")
+        record_ref = repository_id or "unbound"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="merge_queue_target_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=branch,
+        )
+    except Exception:
+        pass
+
+
 class MergeQueue:
     """DuckDB-backed priority queue with atomic claims and bounded retries.
 
@@ -1352,6 +1375,7 @@ class MergeQueue:
         self.require_target_binding = bool(
             self.require_target_binding or required
         )
+        _mirror_merge_queue_target(self)
 
     def _connect(self) -> DuckDBConnection:
         return open_duckdb_connection(self.database_path)

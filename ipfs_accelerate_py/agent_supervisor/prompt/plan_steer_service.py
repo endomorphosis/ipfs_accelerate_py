@@ -1751,6 +1751,30 @@ class PlanSteerPreviewMaterials:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_plan_steer_validation(candidate: Any) -> None:
+    """Record a steer validation. It does not admit the revision."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(candidate, "plan_root_cid", "")
+            or getattr(candidate, "delta_cid", "")
+            or "plan_steer_validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_steer_result_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class PlanSteerService:
     """Revision-bound steer preview.  Interface: ``PlanSteerService@1``.
 
@@ -2610,6 +2634,7 @@ class PlanSteerService:
                         code=PlanSteerRejectionCode.RUNNING_EDIT,
                     )
         assert_delta_preserves_history(delta)
+        _mirror_plan_steer_validation(candidate)
 
     # -- integrity ---------------------------------------------------------
 
