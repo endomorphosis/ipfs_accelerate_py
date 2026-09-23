@@ -856,6 +856,29 @@ _REASON_PRIORITY: Final = (
 )
 
 
+def _mirror_authorization_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "request_identity", "")
+            or getattr(result, "policy_identity", "")
+            or "authorization-decision"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorization_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ReferenceAuthorizationEvaluator:
     """Evaluate a finite parent-linked delegation graph without ambient rights."""
 
@@ -880,7 +903,7 @@ class ReferenceAuthorizationEvaluator:
                 continue
             chain, chain_failure = self._authority_chain(policy, request, leaf)
             if chain_failure is None:
-                return AuthorizationDecision(
+                return _mirror_authorization_decision(AuthorizationDecision(
                     verdict=AuthorizationVerdict.PERMIT,
                     reason=DenialReason.ALLOWED,
                     policy_identity=policy.content_id,
@@ -888,21 +911,21 @@ class ReferenceAuthorizationEvaluator:
                     evaluated_at_ms=request.evaluated_at_ms,
                     matched_statement_ids=tuple(item.statement_id for item in chain),
                     detail="a current, scope-preserving delegation chain authorizes the action",
-                )
+                ))
             failures.append(chain_failure)
 
         reason = next(
             (item for item in _REASON_PRIORITY if item in failures),
             DenialReason.NO_APPLICABLE_GRANT,
         )
-        return AuthorizationDecision(
+        return _mirror_authorization_decision(AuthorizationDecision(
             verdict=AuthorizationVerdict.DENY,
             reason=reason,
             policy_identity=policy.content_id,
             request_identity=request.content_id,
             evaluated_at_ms=request.evaluated_at_ms,
             detail=self._detail(reason),
-        )
+        ))
 
     authorize = evaluate
     check = evaluate

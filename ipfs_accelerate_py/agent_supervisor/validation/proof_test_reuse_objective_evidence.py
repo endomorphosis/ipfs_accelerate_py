@@ -491,6 +491,31 @@ class GoalCompletionArtifactGap(CanonicalContract):
 
 
 @dataclass(frozen=True, slots=True)
+def _mirror_proof_test_reuse_binding(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(result, "git_tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "goal_id", "")
+            or tree_id
+            or "proof-test-reuse"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_test_reuse_binding",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class GoalAssemblyIdentity:
     """Shared repository / policy identity applied to every goal binding."""
 
@@ -532,7 +557,7 @@ class GoalAssemblyIdentity:
             object.__setattr__(self, name, _text(getattr(self, name)))
 
     def binding_for(self, goal_id: str) -> ProofTestReuseObjectiveBinding:
-        return ProofTestReuseObjectiveBinding(
+        return _mirror_proof_test_reuse_binding(ProofTestReuseObjectiveBinding(
             goal_id=_require_text(goal_id, field_name="goal_id"),
             repository_id=self.repository_id,
             git_tree_id=self.git_tree_id,
@@ -548,7 +573,7 @@ class GoalAssemblyIdentity:
             git_commit_id=self.git_commit_id,
             gitlink_state_cid=self.gitlink_state_cid,
             repository_state_cid=self.repository_state_cid,
-        )
+        ))
 
     def to_daemon_binding(self) -> dict[str, Any]:
         """Envelope binding accepted by objective-daemon evidence loaders."""

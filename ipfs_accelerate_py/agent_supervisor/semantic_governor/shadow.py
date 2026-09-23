@@ -796,6 +796,25 @@ class ShadowResourceGate(Protocol):
     def release(self, lease: ShadowResourceLease) -> None: ...
 
 
+def _mirror_shadow_lease(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "lease_id", "") or "shadow-resource-lease")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shadow_resource_lease",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AlwaysAdmitResourceGate:
     """Default gate: always admits (budget ledger remains authoritative)."""
 
@@ -815,9 +834,9 @@ class AlwaysAdmitResourceGate:
             self._counter += 1
             lease_id = f"shadow.resource.{role_value}.{self._counter}"
             self.admissions.append(lease_id)
-        return ShadowResourceLease(
+        return _mirror_shadow_lease(ShadowResourceLease(
             lease_id=lease_id, role=role_value, admitted=True
-        )
+        ))
 
     def release(self, lease: ShadowResourceLease) -> None:
         if not isinstance(lease, ShadowResourceLease):
@@ -899,9 +918,9 @@ class ResourceSchedulerGate:
         )
         if not safe or not safe[0].isalpha():
             safe = f"lease.{safe}" if safe else f"lease.{role_value}"
-        return ShadowResourceLease(
+        return _mirror_shadow_lease(ShadowResourceLease(
             lease_id=safe[:128], role=role_value, admitted=True
-        )
+        ))
 
     def release(self, lease: ShadowResourceLease) -> None:
         release = getattr(self._scheduler, "release", None)

@@ -798,6 +798,31 @@ def _receipt_strings(value: Any) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+def _mirror_evidence_source_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "requirement", "")
+            or getattr(result, "reference", "")
+            or "evidence-source"
+        )
+        source_path = str(getattr(result, "source_path", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="evidence_source_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=(source_path,) if source_path else (),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class EvidenceSourcePolicy:
     """Policy for objective discovery and completion-evidence admission.
 
@@ -1147,7 +1172,7 @@ class EvidenceSourcePolicy:
                 if isinstance(projected, Mapping):
                     receipt = projected
             if receipt is None:
-                return EvidenceSourceDecision(
+                return _mirror_evidence_source_decision(EvidenceSourceDecision(
                     normalized,
                     kind,
                     tier,
@@ -1155,7 +1180,7 @@ class EvidenceSourcePolicy:
                     source_path,
                     reference,
                     reason_codes=("typed_receipt_required",),
-                )
+                ))
             tier = self._receipt_tier(receipt)
             if self.classify_path(source_path) is EvidenceSourceTier.PROPOSAL:
                 tier = EvidenceSourceTier.PROPOSAL
@@ -1268,7 +1293,7 @@ class EvidenceSourcePolicy:
             reasons = [reason for reason in reasons if reason != "semantic_match_nomination_only"]
         elif not reasons:
             reasons.append("source_not_authoritative_for_requirement")
-        return EvidenceSourceDecision(
+        return _mirror_evidence_source_decision(EvidenceSourceDecision(
             requirement=normalized,
             requirement_kind=kind,
             source_tier=tier,
@@ -1278,7 +1303,7 @@ class EvidenceSourcePolicy:
             satisfies=satisfies,
             nominated=True,
             reason_codes=tuple(dict.fromkeys(reasons)),
-        )
+        ))
 
     def validate_completion_evidence(
         self,

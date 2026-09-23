@@ -567,6 +567,32 @@ class TaskExecutionRouteBinding:
 
 
 @dataclass(frozen=True)
+def _mirror_task_route_binding(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "task_cid", "")
+            or getattr(result, "policy_id", "")
+            or getattr(result, "plan_root_cid", "")
+            or "task-execution-route"
+        )
+        tree_id = str(getattr(result, "repository_tree_id", "") or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_execution_route_binding",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="task_id",
+            subject_ref=str(getattr(result, "task_cid", "") or record_ref),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TaskExecutionRoutePolicy:
     """One immutable plan-root policy over an exact task population."""
 
@@ -757,7 +783,7 @@ class TaskExecutionRoutePolicy:
             raise TaskSourceIntegrityError(
                 "task alias or revision differs from the launch route policy"
             )
-        return TaskExecutionRouteBinding(
+        return _mirror_task_route_binding(TaskExecutionRouteBinding(
             policy_id=self.policy_id,
             plan_root_cid=self.plan_root_cid,
             repository_tree_id=self.repository_tree_id,
@@ -767,7 +793,7 @@ class TaskExecutionRoutePolicy:
             task_revision=entry.task_revision,
             task_contract_cid=entry.task_contract_cid,
             execution_mode=entry.execution_mode,
-        )
+        ))
 
     def validate_binding(
         self,
