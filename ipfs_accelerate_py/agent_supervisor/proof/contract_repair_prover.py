@@ -231,6 +231,29 @@ class CandidateProofBundle:
 CounterexampleVerifier = Callable[[ProofObligation, Mapping[str, Any]], FormalCounterexample | Mapping[str, Any] | None]
 
 
+def _mirror_contract_repair_proof(result: Any) -> Any:
+    """Record one obligation outcome. Cache hits and proofs do not admit repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "obligation_id", "") or "contract_repair_proof")
+        receipt = getattr(result, "receipt", None)
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_repair_proof_obligation",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+            tree_id=str(getattr(receipt, "repository_tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairProver:
     """Run compiled repair claims through the admitted datasets logic backend."""
 
@@ -355,7 +378,7 @@ class ContractRepairProver:
     def _result(self, obligation: ProofObligation, *, receipt: ProofReceipt, disposition: ContractRepairProofDisposition,
                 reasons: Sequence[str], key: ProofCacheKey, counterexample: FormalCounterexample | None = None,
                 from_cache: bool = False) -> CandidateProofResult:
-        return CandidateProofResult(obligation.obligation_id, receipt, disposition, tuple(reasons), key.key_id, counterexample, from_cache)
+        return _mirror_contract_repair_proof(CandidateProofResult(obligation.obligation_id, receipt, disposition, tuple(reasons), key.key_id, counterexample, from_cache))
 
     def _reconstruction_receipt(
         self,

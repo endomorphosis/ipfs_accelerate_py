@@ -249,6 +249,27 @@ def current_target(reg: Mapping[str, Any], git: Callable[..., str], *,
     _require(previous == head, "source repair canonical tail target differs")
 
 
+def _mirror_source_repair_continuity(value: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record a continuity receipt. It is not task or queue completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(value.get("receipt_cid") or "source_repair_continuity")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return value
+
+
 def bind(reg: Mapping[str, Any], *, pin: str, canonical_prefix: Mapping[str, Any] | None,
          witness: Mapping[str, Any], guard: Mapping[str, Any],
          canonical_tail: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -261,7 +282,7 @@ def bind(reg: Mapping[str, Any], *, pin: str, canonical_prefix: Mapping[str, Any
              "canonical_tail": canonical_tail,
              "active_witness": dict(witness), "active_guard_sha256": digest(guard)}
     value["receipt_cid"] = "sha256:" + digest(value)
-    return value
+    return _mirror_source_repair_continuity(value, record_kind="source_repair_continuity_binding")
 
 
 def validate(value: Mapping[str, Any], reg: Mapping[str, Any], *, pin: str,
@@ -296,4 +317,4 @@ def validate(value: Mapping[str, Any], reg: Mapping[str, Any], *, pin: str,
     expected = bind(reg, pin=pin, canonical_prefix=prefix, canonical_tail=tail,
                     witness=witness, guard=guard)
     _require(dict(value) == expected, "source repair continuity or active custody changed")
-    return expected
+    return _mirror_source_repair_continuity(expected, record_kind="source_repair_continuity_validation")

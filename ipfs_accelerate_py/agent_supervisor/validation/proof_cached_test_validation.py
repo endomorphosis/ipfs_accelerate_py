@@ -591,6 +591,32 @@ class _RepositoryObservation:
     reason: str = ""
 
 
+def _mirror_proof_cached_test_validation(result: Any) -> Any:
+    """Record the validation receipt. A passing skip does not admit the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "receipt_id", "")
+            or getattr(result, "content_id", "")
+            or "proof_cached_test_validation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="proof_cached_test_validation",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+            tree_id=str(getattr(result, "git_tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProofCachedTestValidation:
     """Re-verify proof-backed pytest skips for supervisor completion."""
 
@@ -723,7 +749,7 @@ class ProofCachedTestValidation:
     ) -> ProofCachedTestValidationReceipt:
         descriptor = observation.descriptor
         closure = descriptor.portable_closure if descriptor is not None else None
-        return ProofCachedTestValidationReceipt(
+        receipt = ProofCachedTestValidationReceipt(
             task_id=task_id or "unknown-task",
             goal_id=goal_id or "unknown-goal",
             goal_revision=goal_revision,
@@ -766,6 +792,7 @@ class ProofCachedTestValidation:
             fresh_until_ms=observed_at_ms + self._freshness_ms,
             reason_codes=reason_codes,
         )
+        return _mirror_proof_cached_test_validation(receipt)
 
     def validate(
         self,

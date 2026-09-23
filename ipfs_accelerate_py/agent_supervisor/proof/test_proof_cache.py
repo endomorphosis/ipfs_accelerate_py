@@ -264,6 +264,33 @@ def _decode_contract(
     return contract, None
 
 
+def _mirror_test_proof_cache_admission(result: Any) -> Any:
+    """Record cache admission. Admitted skips stay non-authoritative for tasks."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reason = getattr(result, "reason_code", None)
+        reason_ref = str(getattr(reason, "value", reason) or "test_proof_cache")
+        record_ref = str(
+            getattr(result, "receipt_cid", "")
+            or getattr(result, "certificate_cid", "")
+            or reason_ref
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="test_proof_cache_admission",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TestProofCache:
     """Revalidate test proof candidates under current, caller-owned authority.
 
@@ -346,14 +373,14 @@ class TestProofCache:
         receipt: TestPassReceipt | None = None,
         certificate: TestProofCertificate | None = None,
     ) -> TestProofCacheAdmission:
-        return TestProofCacheAdmission(
+        return _mirror_test_proof_cache_admission(TestProofCacheAdmission(
             admitted=False,
             reason_code=reason_code,
             receipt=receipt,
             certificate=certificate,
             receipt_cid=receipt.receipt_id if receipt is not None else "",
             certificate_cid=(certificate.certificate_id if certificate is not None else ""),
-        )
+        ))
 
     def _resolve_policy(
         self,
@@ -701,14 +728,14 @@ class TestProofCache:
                 certificate=certificate,
             )
 
-        return TestProofCacheAdmission(
+        return _mirror_test_proof_cache_admission(TestProofCacheAdmission(
             admitted=True,
             reason_code=ReuseReasonCode.PROOF_CACHE_HIT,
             receipt=receipt,
             certificate=certificate,
             receipt_cid=receipt.receipt_id,
             certificate_cid=certificate.certificate_id,
-        )
+        ))
 
     def _load_candidates(
         self, locator: TestLocatorKey, candidates: Iterable[Any] | Any | None

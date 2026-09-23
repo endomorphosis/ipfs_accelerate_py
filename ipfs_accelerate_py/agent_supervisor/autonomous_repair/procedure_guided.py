@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final
+from typing import Any, Final
 
 from ..procedure_compiler.contracts import RiskClass
 from ..procedure_compiler.registry import ProcedureRegistry, RegistryLifecycleState
@@ -153,6 +153,32 @@ class ProcedureGuidedRepairResult:
         return self.disposition is ProcedureRepairDisposition.MERGE_READY
 
 
+def _mirror_procedure_guided_repair(result: Any) -> Any:
+    """Record the repair decision. completion_authoritative stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        disposition = getattr(result, "disposition", None)
+        record_ref = str(
+            getattr(result, "procedure_revision_id", "")
+            or getattr(disposition, "value", disposition)
+            or "procedure_guided_repair"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_guided_repair",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProcedureGuidedRepairAdapter:
     """Evaluate procedure/currentness and every merge ceiling before integration."""
 
@@ -206,14 +232,14 @@ class ProcedureGuidedRepairAdapter:
             return self._result(ProcedureRepairDisposition.REVIEW_REQUIRED, "post_merge_tree_missing", revision_id=decision.procedure_revision_id, invoked=True)
         if self._ceiling.require_post_merge_tree and observed_tree != request.post_merge_tree_id:
             return self._result(ProcedureRepairDisposition.REVIEW_REQUIRED, "post_merge_tree_mismatch", revision_id=decision.procedure_revision_id, invoked=True)
-        return ProcedureGuidedRepairResult(
+        return _mirror_procedure_guided_repair(ProcedureGuidedRepairResult(
             disposition=ProcedureRepairDisposition.MERGED,
             reason_codes=("merge_observed_under_all_ceilings",),
             procedure_revision_id=decision.procedure_revision_id,
             merge_invoked=True,
             merged=True,
             completion_authoritative=False,
-        )
+        ))
 
     def _evidence_failures(self, request: ProcedureGuidedRepairRequest) -> list[str]:
         admission, validation, reproof, publication = request.admission, request.validation, request.reproof, request.publication
@@ -270,7 +296,7 @@ class ProcedureGuidedRepairAdapter:
         revision_id: str = "",
         invoked: bool = False,
     ) -> ProcedureGuidedRepairResult:
-        return ProcedureGuidedRepairResult(disposition, tuple(sorted(set(reasons))), revision_id, invoked, False, False)
+        return _mirror_procedure_guided_repair(ProcedureGuidedRepairResult(disposition, tuple(sorted(set(reasons))), revision_id, invoked, False, False))
 
 
 __all__ = [
