@@ -1068,6 +1068,26 @@ def assert_populations_disjoint(
             seen[mid] = kind
 
 
+def _mirror_assurance_metrics_identity(record_ref: str) -> str:
+    """Record a recomputed metrics CID. It does not change the populations."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_metrics_identity",
+            record_ref=record_ref or "assurance_metrics",
+            subject_kind="content_cid",
+            subject_ref=record_ref or "assurance_metrics",
+        )
+    except Exception:
+        pass
+    return record_ref
+
+
 def verify_assurance_metrics_identity(
     metrics: AssuranceMetrics | Mapping[str, Any],
 ) -> str:
@@ -1101,7 +1121,7 @@ def verify_assurance_metrics_identity(
             reason_code="identity_mismatch",
         )
     assert_populations_disjoint(sealed.populations)
-    return recomputed
+    return _mirror_assurance_metrics_identity(recomputed)
 
 
 def assurance_metrics_from_dict(data: Mapping[str, Any]) -> AssuranceMetrics:

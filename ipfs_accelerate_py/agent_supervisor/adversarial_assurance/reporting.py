@@ -492,6 +492,26 @@ class AssuranceReport:
         return payload
 
 
+def _mirror_assurance_report_identity(record_ref: str) -> str:
+    """Record a recomputed report CID. It does not change production policy."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="assurance_report_identity",
+            record_ref=record_ref or "assurance_report",
+            subject_kind="content_cid",
+            subject_ref=record_ref or "assurance_report",
+        )
+    except Exception:
+        pass
+    return record_ref
+
+
 def verify_assurance_report_identity(
     report: AssuranceReport | Mapping[str, Any],
 ) -> str:
@@ -524,7 +544,7 @@ def verify_assurance_report_identity(
             "report_cid identity mismatch with recomputed identity",
             reason_code="identity_mismatch",
         )
-    return recomputed
+    return _mirror_assurance_report_identity(recomputed)
 
 
 def assurance_report_from_dict(data: Mapping[str, Any]) -> AssuranceReport:

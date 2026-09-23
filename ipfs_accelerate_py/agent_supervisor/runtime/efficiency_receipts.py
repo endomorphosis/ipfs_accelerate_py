@@ -506,6 +506,25 @@ def _canonical_item(value: Any) -> bytes:
     return canonical_bytes(value)
 
 
+def _mirror_efficiency_schema() -> None:
+    """Record one top-level schema check. Nested calls stay local."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="efficiency_schema_validation",
+            record_ref="$",
+            subject_kind="record_cid",
+            subject_ref="$",
+        )
+    except Exception:
+        pass
+
+
 def validate_against_schema(
     instance: Any,
     schema: Mapping[str, Any],
@@ -542,6 +561,8 @@ def validate_against_schema(
             raise EfficiencyReceiptError(
                 f"{path}: does not uniquely match a closed variant{detail}"
             )
+        if path == "$":
+            _mirror_efficiency_schema()
         return
 
     if "const" in resolved and instance != resolved["const"]:
@@ -631,6 +652,8 @@ def validate_against_schema(
                 encoded_items = [_canonical_item(item) for item in instance]
                 if len(set(encoded_items)) != len(encoded_items):
                     raise EfficiencyReceiptError(f"{path}: items must be unique")
+    if path == "$":
+        _mirror_efficiency_schema()
 
 
 # ---------------------------------------------------------------------------

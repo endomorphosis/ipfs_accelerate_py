@@ -584,6 +584,26 @@ class SupervisorTransitionSchema:
 
 
 @dataclass(frozen=True)
+def _mirror_model_check_bounds(bounds: Any) -> None:
+    """Record a schema that fits the bounds. It does not admit a transition."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(bounds, "identity", "") or "model_check_bounds")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="model_check_bounds_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ModelCheckBounds:
     """Finite semantic and execution bounds bound into a generated model."""
 
@@ -649,6 +669,7 @@ class ModelCheckBounds:
             self.max_fence < 1
         ):  # pragma: no cover - max_fence already positive
             raise ModelValidationError("max_fence cannot represent accepted claims")
+        _mirror_model_check_bounds(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {

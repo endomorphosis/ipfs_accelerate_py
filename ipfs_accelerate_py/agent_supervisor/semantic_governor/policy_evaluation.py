@@ -1314,6 +1314,26 @@ def evaluate_rule_candidate(
     return report
 
 
+def _mirror_evaluation_report_identity(record_ref: str) -> str:
+    """Record a recomputed evaluation CID. It does not admit the candidate."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="evaluation_report_identity",
+            record_ref=record_ref or "evaluation_report",
+            subject_kind="content_cid",
+            subject_ref=record_ref or "evaluation_report",
+        )
+    except Exception:
+        pass
+    return record_ref
+
+
 def verify_evaluation_report_identity(report: RuleEvaluationReport) -> str:
     """Recompute and return the report CID; raises if the claim does not match."""
 
@@ -1326,7 +1346,7 @@ def verify_evaluation_report_identity(report: RuleEvaluationReport) -> str:
     restored = RuleEvaluationReport.from_dict(report.to_dict())
     if restored.report_cid != recomputed:
         raise PolicyEvaluationError("RuleEvaluationReport report_cid does not verify")
-    return recomputed
+    return _mirror_evaluation_report_identity(recomputed)
 
 
 __all__ = [

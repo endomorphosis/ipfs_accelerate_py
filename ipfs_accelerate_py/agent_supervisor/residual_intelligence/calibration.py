@@ -248,6 +248,26 @@ class CalibrationGroup:
 
 
 @dataclass(frozen=True)
+def _mirror_calibration_admission(evidence: Any) -> None:
+    """Record an admission match. It does not grant training completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(evidence, "admission_id", "") or "calibration_admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="calibration_admission_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class CalibrationEvidence:
     """Held-out metrics and CIDs for exactly one calibration group."""
 
@@ -470,6 +490,7 @@ class CalibrationEvidence:
             raise ResidualIntelligenceError(
                 "calibration holdout_root is not covered by the admitted holdout roots"
             )
+        _mirror_calibration_admission(self)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         result: dict[str, Any] = {
