@@ -44,6 +44,27 @@ def _tuple_text(values: object, name: str) -> tuple[str, ...]:
     return result
 
 
+def _mirror_external_goal_contract(contract: Any) -> Any:
+    """Record a compiled goal contract. It does not admit the goal."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(contract, "content_id", "") or getattr(contract, "objective_id", "") or "external_goal_contract")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="external_goal_contract",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return contract
+
+
 @dataclass(frozen=True)
 class ExternalGoalContract:
     """Desired/prohibited outcomes, scope, budgets, authority and evidence."""
@@ -129,7 +150,7 @@ class ExternalGoalContract:
             raise GoalContractError("objective must be an object")
         if objective.get("self_granted_authority"):
             raise GoalContractError("goals cannot self-grant authority")
-        return cls(
+        return _mirror_external_goal_contract(cls(
             objective_id=str(objective.get("objective_id") or ""),
             desired_outcomes=objective.get("desired_outcomes") or (),
             prohibited_outcomes=objective.get("prohibited_outcomes") or (),
@@ -142,4 +163,4 @@ class ExternalGoalContract:
             timeout_seconds=int(objective.get("timeout_seconds") or 0),
             cpu_millicores=int(objective.get("cpu_millicores") or 0),
             ram_mib=int(objective.get("ram_mib") or 0),
-        )
+        ))

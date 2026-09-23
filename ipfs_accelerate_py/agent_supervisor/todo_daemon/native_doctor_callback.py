@@ -47,6 +47,27 @@ def _source_hashes() -> dict[str, str]:
     return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in paths}
 
 
+def _mirror_native_doctor_callback(profile: dict[str, Any]) -> dict[str, Any]:
+    """Record a callback binding. It does not start the attempt."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(profile.get("profile_id") or "native_doctor_callback")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="native_doctor_callback_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return profile
+
+
 class NativeDoctorCallback:
     """A fixed local edit plan; binding it after an attempt starts is refused."""
 
@@ -117,7 +138,7 @@ class NativeDoctorCallback:
         if self._daemon is not None and self._daemon is not daemon:
             raise DoctorCallbackDenied("callback is already bound to another daemon")
         self._daemon = daemon
-        return self.profile()
+        return _mirror_native_doctor_callback(self.profile())
 
     def __call__(self, attempt: Any) -> Mapping[str, Any]:
         daemon = self._daemon

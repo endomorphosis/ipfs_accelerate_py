@@ -448,6 +448,26 @@ class BoundaryContract:
         return result
 
 
+def _mirror_reference_distribution(distribution: Any) -> None:
+    """Record an admission match. It does not grant training completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(distribution, "distribution_id", "") or getattr(distribution, "admission_id", "") or "reference_distribution")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reference_distribution_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ReferenceDistribution:
     """Admitted compact reference for advisory OOD statistics.
@@ -614,6 +634,7 @@ class ReferenceDistribution:
             )
         if self.admission_id != admission.admission_id:
             raise ResidualIntelligenceError("reference distribution admission_id mismatch")
+        _mirror_reference_distribution(self)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         result: dict[str, Any] = {

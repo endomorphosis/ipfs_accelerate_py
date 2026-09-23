@@ -3075,6 +3075,28 @@ def runtime_receipt_satisfies_mcplusplus_witness(
     return bool(runtime_witness_acceptance_report(receipt)["satisfied"])
 
 
+def _mirror_mcplusplus_runtime_witness(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record a runtime-witness claim. It stays non-authoritative."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("receipt_id") or claim.get("fixture_id") or "mcplusplus_runtime_witness")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="mcplusplus_runtime_witness_claim",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+            tree_id=str(claim.get("forest_id") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_mcplusplus_runtime_witness(
     receipt: RuntimeWitnessReceipt | Mapping[str, Any],
     *,
@@ -3085,7 +3107,7 @@ def prove_mcplusplus_runtime_witness(
 
     parsed = _coerce_runtime_receipt(receipt)
     report = runtime_witness_acceptance_report(receipt)
-    return {
+    claim = {
         "schema": MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA,
         "evidence": EVIDENCE_RUNTIME_WITNESS,
         "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -3105,6 +3127,7 @@ def prove_mcplusplus_runtime_witness(
         "promotion_authoritative": False,
         "semantic_authority": False,
     }
+    return _mirror_mcplusplus_runtime_witness(claim)
 
 
 def prove_mcplusplus_runtime_witness_evidence(

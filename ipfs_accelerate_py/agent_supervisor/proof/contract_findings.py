@@ -1047,6 +1047,25 @@ def vulnerability_evidence_requirements_met(
     return (not missing, tuple(missing))
 
 
+def _mirror_vulnerability_evidence(record_ref: str) -> None:
+    """Record a policy check that did not raise. It does not change the finding."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="vulnerability_evidence_policy",
+            record_ref=record_ref or "vulnerability_evidence",
+            subject_kind="record_cid",
+            subject_ref=record_ref or "vulnerability_evidence",
+        )
+    except Exception:
+        pass
+
+
 def validate_vulnerability_evidence_policy(
     *,
     labels: Sequence[str] | None,
@@ -1061,6 +1080,7 @@ def validate_vulnerability_evidence_policy(
         impact=impact,
     )
     if ok:
+        _mirror_vulnerability_evidence((threat_path_cid or "").strip() or "non_vulnerability")
         return
     raise VulnerabilityEvidencePolicyError(
         "vulnerability label requires threat path and impact; missing " + ", ".join(missing)

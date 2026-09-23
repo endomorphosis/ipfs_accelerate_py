@@ -219,6 +219,27 @@ def encode_certificate_statement(statement: Mapping[str, Any]) -> bytes:
     return canonical_json_bytes(dict(statement))
 
 
+def _mirror_certificate_key_verification(issuer_id: str, matched: bool) -> bool:
+    """Record a signature check. Key bytes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = issuer_id or "certificate_key"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="certificate_key_verification",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return matched
+
+
 class CertificateKeyRing:
     """In-memory HMAC keys for allowlisted issuers.
 
@@ -252,13 +273,14 @@ class CertificateKeyRing:
         try:
             expected = self.sign(issuer_id, payload)
         except ProcedureCertificateError:
-            return False
+            return _mirror_certificate_key_verification(issuer_id, False)
         if not isinstance(signature, str) or not signature:
-            return False
+            return _mirror_certificate_key_verification(issuer_id, False)
         try:
-            return hmac.compare_digest(expected, signature)
+            matched = hmac.compare_digest(expected, signature)
         except (TypeError, ValueError):
-            return False
+            matched = False
+        return _mirror_certificate_key_verification(issuer_id, matched)
 
 
 @dataclass(frozen=True)
