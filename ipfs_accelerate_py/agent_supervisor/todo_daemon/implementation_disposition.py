@@ -496,6 +496,26 @@ def implementation_disposition_cid(value: Any) -> str:
     return content_identity(value)
 
 
+def _mirror_implementation_forest_root_match(roots: Any) -> None:
+    """Record an exact forest-root match. The match does not dispose the work."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(roots, "content_id", "") or "implementation-forest-roots")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="implementation_forest_root_match",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Nested contract records
 # ---------------------------------------------------------------------------
@@ -580,6 +600,7 @@ class ImplementationForestRoots(CanonicalContract):
             raise ImplementationDispositionAuthorityError(
                 "forest roots are stale relative to the expected snapshot"
             )
+        _mirror_implementation_forest_root_match(self)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationForestRoots":

@@ -748,6 +748,26 @@ def plan_revision_cid(value: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_plan_authority_root_match(roots: Any) -> None:
+    """Record an exact plan-root match. The match does not revise the plan."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(roots, "content_id", "") or "plan-authority-roots")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="plan_authority_root_match",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class PlanAuthorityRoots(CanonicalContract):
     """Exact roots whose drift invalidates a create/steer or revision record."""
@@ -824,6 +844,7 @@ class PlanAuthorityRoots(CanonicalContract):
             raise PlanRevisionStaleRootError(
                 "authority roots are stale relative to the expected snapshot"
             )
+        _mirror_plan_authority_root_match(self)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanAuthorityRoots":

@@ -463,6 +463,26 @@ def canonical_dag_json_bytes(
     return require_canonical_dag_json_bytes(encoded)
 
 
+def _mirror_canonical_dag_json(data: bytes) -> None:
+    """Record the digest of accepted canonical bytes. The bytes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = hashlib.sha256(data).hexdigest()
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="canonical_dag_json_bytes",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_canonical_dag_json_bytes(data: bytes) -> bytes:
     """Accept only exact canonical (sorted-key, compact, finite) DAG-JSON bytes."""
 
@@ -490,6 +510,7 @@ def require_canonical_dag_json_bytes(data: bytes) -> bytes:
             "DAG-JSON bytes are not canonical (unsorted keys, non-compact "
             "separators, or non-normalized form)"
         )
+    _mirror_canonical_dag_json(data)
     return data
 
 

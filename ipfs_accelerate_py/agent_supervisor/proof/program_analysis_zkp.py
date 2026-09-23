@@ -2631,6 +2631,26 @@ class ProgramZkpCapabilityCheck(CanonicalContract):
         )
 
 
+def _mirror_zkp_capability_production_eligibility(report: Any) -> None:
+    """Record a passing capability check. The check does not grant authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "circuit_id", "") or "zkp-capability")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="zkp_capability_production_eligibility",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ProgramZkpCapabilityConformanceReport(CanonicalContract):
     """Aggregate production ZK capability and conformance probe report.
@@ -2811,6 +2831,7 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         if not self.production_eligible:
             reasons = ", ".join(self.denial_reasons) or "capability_probe_failed"
             raise ProgramZkpAuthorityError("production ZK authority denied: %s" % reasons)
+        _mirror_zkp_capability_production_eligibility(self)
 
     def _payload(self) -> Dict[str, Any]:
         return {

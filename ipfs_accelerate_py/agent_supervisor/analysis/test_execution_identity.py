@@ -116,6 +116,28 @@ def _mirror_test_identity_bridge_cid(value: str) -> str:
     return value
 
 
+def _mirror_test_execution_dag_json(data: bytes) -> None:
+    """Record the digest of accepted canonical bytes. The bytes are not stored."""
+
+    try:
+        import hashlib
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = hashlib.sha256(data).hexdigest()
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="canonical_dag_json_bytes",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class _LocalContentIdentityBridge:
     """Hermetic CIDv1/base32/dag-json/sha2-256 bridge.
 
@@ -155,6 +177,7 @@ class _LocalContentIdentityBridge:
                 "DAG-JSON bytes are not canonical (unsorted keys, non-compact "
                 "separators, or non-normalized form)"
             )
+        _mirror_test_execution_dag_json(data)
         return data
 
     def cid_for_bytes(

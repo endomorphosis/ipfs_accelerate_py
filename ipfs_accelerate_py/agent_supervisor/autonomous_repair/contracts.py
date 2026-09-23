@@ -240,6 +240,26 @@ def assert_deterministic_repair_transition(
 assert_authority_stage_transition = assert_deterministic_repair_transition
 
 
+def _mirror_repair_authority_root_match(roots: Any) -> None:
+    """Record an exact repair-root match. The match does not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(roots, "content_id", "") or "repair-authority-roots")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_authority_root_match",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class RepairAuthorityRoots(CanonicalContract):
     """Exact observation and RPR authority roots for one deterministic repair."""
@@ -285,6 +305,7 @@ class RepairAuthorityRoots(CanonicalContract):
             raise DeterministicRepairAuthorityError(
                 "repair authority roots are missing, stale, or do not match exactly"
             )
+        _mirror_repair_authority_root_match(self)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> RepairAuthorityRoots:
