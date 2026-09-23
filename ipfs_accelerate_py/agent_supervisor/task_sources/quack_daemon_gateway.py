@@ -474,6 +474,26 @@ def quack_daemon_owner_operation_dispositions() -> Mapping[str, Mapping[str, Any
     )
 
 
+def _mirror_quack_daemon_operation(operation: str) -> None:
+    """Record a vocabulary check that passed. The check does not dispatch."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(operation or "quack-daemon-operation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_daemon_operation_vocabulary",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class QuackDaemonCanonicalOwnerOperationHandler:
     """Built-in, closed owner handler for the complete daemon vocabulary.
 
@@ -524,6 +544,7 @@ class QuackDaemonCanonicalOwnerOperationHandler:
         reason = _OWNER_TRANSACTION_NO_GO_REASONS.get(name)
         if reason:
             raise QuackDaemonOwnerOperationNoGo(name, reason)
+        _mirror_quack_daemon_operation(name)
 
     @staticmethod
     def _active_connection(transaction: Any) -> Any:

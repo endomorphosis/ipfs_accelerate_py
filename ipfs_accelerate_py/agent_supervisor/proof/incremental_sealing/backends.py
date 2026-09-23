@@ -978,6 +978,31 @@ def _mirror_recursive_probe(result: Any) -> Any:
     return result
 
 
+def _mirror_recursion_child_proof(artifact: Any) -> Any:
+    """Record a test-only child proof. Proof bytes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(artifact, "circuit_id", "")
+            or getattr(artifact, "public_input_digest", "")
+            or "recursion-child-proof"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="recursion_child_proof",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return artifact
+
+
 class HermeticTestOnlyRecursiveBackend:
     """In-process recursive probe backend using only preconfigured test material.
 
@@ -1001,13 +1026,13 @@ class HermeticTestOnlyRecursiveBackend:
         self, material: RecursionProbeMaterial
     ) -> RecursionProbeArtifact:
         proof = self._child_mac(material)
-        return RecursionProbeArtifact(
+        return _mirror_recursion_child_proof(RecursionProbeArtifact(
             kind="child",
             proof_bytes=proof,
             public_input_digest=material.public_input_digest(),
             circuit_id=material.circuit_id,
             test_only=True,
-        )
+        ))
 
     def verify_child(
         self, artifact: RecursionProbeArtifact, material: RecursionProbeMaterial

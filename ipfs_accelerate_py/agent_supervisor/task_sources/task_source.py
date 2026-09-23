@@ -563,6 +563,26 @@ class CanonicalProjectionSnapshot:
         )
 
 
+def _mirror_task_source_parity(report: Any) -> None:
+    """Record a valid parity report. The report does not promote."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "parity_id", "") or "task-source-parity")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_source_parity_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class TaskSourceParityReport:
     valid: bool
@@ -582,6 +602,7 @@ class TaskSourceParityReport:
             raise TaskSourceIntegrityError(
                 "task-source parity disagreement: " + ", ".join(self.mismatches)
             )
+        _mirror_task_source_parity(self)
         return self
 
     def to_dict(self) -> dict[str, Any]:
@@ -823,6 +844,32 @@ class TaskSourceWatchResult:
         return self.cursor
 
 
+def _mirror_task_source_integrity_requirement(report: Any) -> None:
+    """Record a valid integrity report. Issue text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identity = getattr(report, "identity", None)
+        record_ref = str(
+            getattr(identity, "content_id", "")
+            or getattr(identity, "source_id", "")
+            or getattr(report, "revision", "")
+            or "task-source-integrity"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_source_integrity_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class TaskSourceIntegrityReport:
     valid: bool
@@ -840,6 +887,7 @@ class TaskSourceIntegrityReport:
             raise TaskSourceIntegrityError(
                 "task-source integrity failed: " + ", ".join(self.issues)
             )
+        _mirror_task_source_integrity_requirement(self)
         return self
 
 
@@ -893,7 +941,9 @@ class TaskSource(Protocol):
         limit: int = DEFAULT_QUERY_LIMIT,
     ) -> TaskSourceWatchResult: ...
 
-    
+    def check_integrity(self) -> TaskSourceIntegrityReport: ...
+
+
 def _mirror_task_source_integrity(
     report: TaskSourceIntegrityReport,
 ) -> TaskSourceIntegrityReport:
@@ -920,9 +970,6 @@ def _mirror_task_source_integrity(
     except Exception:
         pass
     return report
-
-
-def check_integrity(self) -> TaskSourceIntegrityReport: ...
 
 
 def _encode_cursor(

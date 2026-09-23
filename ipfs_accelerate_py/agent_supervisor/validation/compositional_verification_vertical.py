@@ -688,6 +688,26 @@ def _install_fragment_smt_adapter() -> None:
 _install_fragment_smt_adapter()
 
 
+def _mirror_vertical_stage_trace(stages: tuple[str, ...]) -> None:
+    """Record a complete stage trace. Stage details are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ",".join(stages) or "vertical-stages"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="vertical_stage_trace",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class _StageTrace:
     def __init__(self) -> None:
         self.records: list[dict[str, Any]] = []
@@ -712,6 +732,7 @@ class _StageTrace:
                 "vertical stage trace mismatch: "
                 f"observed={list(observed)} expected={list(REQUIRED_VERTICAL_STAGES)}"
             )
+        _mirror_vertical_stage_trace(observed)
 
 
 def _plain(value: Any) -> Any:
