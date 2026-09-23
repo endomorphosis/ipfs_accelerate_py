@@ -884,6 +884,30 @@ class NativeExecutionDecision:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_native_execution_requirement(
+    decision: NativeExecutionDecision,
+) -> NativeExecutionDecision:
+    """Record an authorized operation. The decision is unchanged and nothing is launched."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        operation = getattr(getattr(decision, "operation", None), "value", "")
+        record_ref = str(operation or "native-execution")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="native_execution_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 @dataclass(frozen=True)
 class NativeExecutionAuthorizationGate:
     """Fail-closed gate: native execution is disabled until explicitly permitted.
@@ -1308,7 +1332,7 @@ class NativeExecutionAuthorizationGate:
                 f"native execution denied for {decision.operation.value}: "
                 + ",".join(decision.reason_codes)
             )
-        return decision
+        return _mirror_native_execution_requirement(decision)
 
 
 __all__ = [

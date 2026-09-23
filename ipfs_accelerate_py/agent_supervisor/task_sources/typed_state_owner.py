@@ -5328,6 +5328,25 @@ class TypedOwnerResult:
         return row
 
 
+def _mirror_owner_binding(record_kind: str) -> None:
+    """Record that an owner binding was installed. Callables and tokens are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_kind,
+            subject_kind="record_cid",
+            subject_ref=record_kind,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_legacy_merge_binding(record_kind: str, repository_id: str, target_branch: str) -> None:
     """Record a queue or recovery binding. Identity payloads are not stored."""
 
@@ -5657,7 +5676,8 @@ class TypedStateOwnerGateway:
             token = secrets.token_hex(32)
             self._derived_coordination_service = service
             self._derived_bootstrap_token_digest = hashlib.sha256(token.encode()).digest()
-            return token
+        _mirror_owner_binding("derived_coordination_binding")
+        return token
 
     def configure_status_bootstrap(self) -> str:
         """Create the owner-local credential for peer-bound status sessions.
@@ -5996,12 +6016,13 @@ class TypedStateOwnerGateway:
             )
         with self._grants_lock:
             if self._commit_observer is not None:
-                if self._commit_observer is observer:
-                    return
-                raise TypedStateOwnerProtocolError(
-                    "typed state-owner commit observer is already bound"
-                )
-            self._commit_observer = observer
+                if self._commit_observer is not observer:
+                    raise TypedStateOwnerProtocolError(
+                        "typed state-owner commit observer is already bound"
+                    )
+            else:
+                self._commit_observer = observer
+        _mirror_owner_binding("commit_observer_binding")
 
     def bind_event_wait_handlers(
         self,
@@ -6028,14 +6049,15 @@ class TypedStateOwnerGateway:
                 self._event_wait_clear_handler,
             )
             if any(item is not None for item in existing):
-                if existing == (wait, cancel, clear_cancellation):
-                    return
-                raise TypedStateOwnerProtocolError(
-                    "typed event wait handlers are already bound"
-                )
-            self._event_wait_handler = wait
-            self._event_wait_cancel_handler = cancel
-            self._event_wait_clear_handler = clear_cancellation
+                if existing != (wait, cancel, clear_cancellation):
+                    raise TypedStateOwnerProtocolError(
+                        "typed event wait handlers are already bound"
+                    )
+            else:
+                self._event_wait_handler = wait
+                self._event_wait_cancel_handler = cancel
+                self._event_wait_clear_handler = clear_cancellation
+        _mirror_owner_binding("event_wait_handler_binding")
 
     def issue_grant(
         self,
@@ -13016,12 +13038,13 @@ class TypedStateOwnerGateway:
             )
         with self._grants_lock:
             if self._database_task_command_handler is not None:
-                if self._database_task_command_handler is handler:
-                    return
-                raise TypedStateOwnerProtocolError(
-                    "database-task command handler is already bound"
-                )
-            self._database_task_command_handler = handler
+                if self._database_task_command_handler is not handler:
+                    raise TypedStateOwnerProtocolError(
+                        "database-task command handler is already bound"
+                    )
+            else:
+                self._database_task_command_handler = handler
+        _mirror_owner_binding("database_task_command_handler_binding")
 
     def _admit_open_grant(
         self,
