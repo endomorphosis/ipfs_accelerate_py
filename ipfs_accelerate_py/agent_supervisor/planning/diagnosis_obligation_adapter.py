@@ -1442,6 +1442,32 @@ def compile_contract_mismatch_obligations(
     return graph
 
 
+def _mirror_diagnosis_compilation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        proof_ids = getattr(result, "proof_obligation_ids", ()) or ()
+        bridge_ids = getattr(result, "bridge_ids", ()) or ()
+        record_ref = str(
+            (proof_ids[0] if proof_ids else "")
+            or (bridge_ids[0] if bridge_ids else "")
+            or getattr(result, "repository_id", "")
+            or "diagnosis-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="diagnosis_obligation_compilation",
+            record_ref=record_ref,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DiagnosisObligationAdapter:
     """Checked Doctor-to-Planner obligation adapter."""
 
@@ -1837,7 +1863,7 @@ class DiagnosisObligationAdapter:
         if checked_bridge.root_bridge is not None:
             bridge_ids.add(checked_bridge.root_bridge.content_id)
 
-        return DiagnosisObligationCompilation(
+        return _mirror_diagnosis_compilation(DiagnosisObligationCompilation(
             repository_id=checked_bridge.repository_id,
             bridge_ids=tuple(bridge_ids),
             issue_ids=tuple(
@@ -1878,7 +1904,7 @@ class DiagnosisObligationAdapter:
                 parts.abstention_predicate_ids
             ),
             reason_codes=tuple(parts.reasons),
-        )
+        ))
 
     compile_diagnosis = compile
     adapt = compile

@@ -918,6 +918,29 @@ def _ips_value_bp(pairs: Sequence[ComparisonEvidence]) -> int:
     return int(round(total / len(pairs)))
 
 
+def _mirror_route_policy_evaluation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "evaluation_id", "")
+            or getattr(result, "candidate_id", "")
+            or "route-policy-evaluation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="route_policy_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class RoutePolicyEvaluation:
     """Offline held-out and counterfactual evaluator.  Promotion stays external."""
 
@@ -1017,19 +1040,19 @@ class RoutePolicyEvaluation:
             "version_bound": version_bound,
         }
         if not comparison_supported or not propensity_supported:
-            return RoutePolicyEvaluationResult(
+            return _mirror_route_policy_evaluation(RoutePolicyEvaluationResult(
                 disposition=EvaluationDisposition.INSUFFICIENT_COUNTERFACTUAL_EVIDENCE,
                 reason_codes=(INSUFFICIENT_COUNTERFACTUAL_EVIDENCE,),
                 blocker_codes=(INSUFFICIENT_COUNTERFACTUAL_EVIDENCE,),
                 **common,
-            )
+            ))
         if not holdout_separated:
-            return RoutePolicyEvaluationResult(
+            return _mirror_route_policy_evaluation(RoutePolicyEvaluationResult(
                 disposition=EvaluationDisposition.HOLDOUT_TRAINING_OVERLAP,
                 reason_codes=("holdout_training_overlap",),
                 blocker_codes=("holdout_training_overlap",),
                 **common,
-            )
+            ))
         baseline_rewards = tuple(_reward_bp(pair.baseline) for pair in pairs)
         candidate_rewards = tuple(_reward_bp(pair.candidate) for pair in pairs)
         baseline_value = _mean_bp(baseline_rewards)
@@ -1060,7 +1083,7 @@ class RoutePolicyEvaluation:
             and (paired_delta > 0 or cost_improved)
         )
         if not safety_floor:
-            return RoutePolicyEvaluationResult(
+            return _mirror_route_policy_evaluation(RoutePolicyEvaluationResult(
                 disposition=EvaluationDisposition.SAFETY_FLOOR_FAILED,
                 reason_codes=("safety_floor_failed",),
                 blocker_codes=("safety_floor_failed",),
@@ -1076,9 +1099,9 @@ class RoutePolicyEvaluation:
                 latency_delta_ms=latency_delta if cold_warm else 0,
                 safety_violation_count=safety_count,
                 **common,
-            )
+            ))
         if not quality_floor:
-            return RoutePolicyEvaluationResult(
+            return _mirror_route_policy_evaluation(RoutePolicyEvaluationResult(
                 disposition=EvaluationDisposition.QUALITY_FLOOR_FAILED,
                 reason_codes=("quality_floor_failed",),
                 blocker_codes=("quality_floor_failed",),
@@ -1094,7 +1117,7 @@ class RoutePolicyEvaluation:
                 latency_delta_ms=latency_delta if cold_warm else 0,
                 safety_violation_count=0,
                 **common,
-            )
+            ))
         reasons = [
             "held_out_separated",
             "propensity_supported",
@@ -1106,7 +1129,7 @@ class RoutePolicyEvaluation:
         if cold_warm:
             reasons.append("cold_warm_paired")
         reasons.append("improvement_supported" if improvement else "no_improvement_claim")
-        return RoutePolicyEvaluationResult(
+        return _mirror_route_policy_evaluation(RoutePolicyEvaluationResult(
             disposition=EvaluationDisposition.EVALUATED,
             reason_codes=tuple(reasons),
             blocker_codes=() if improvement else ("no_improvement_claim",),
@@ -1124,7 +1147,7 @@ class RoutePolicyEvaluation:
             latency_delta_ms=latency_delta if cold_warm else 0,
             safety_violation_count=0,
             **common,
-        )
+        ))
 
     def promote(self, authorization_id: str = "") -> None:
         del authorization_id

@@ -766,6 +766,28 @@ def changed_bindings(
     return tuple(causes)
 
 
+def _mirror_plan_invalidation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        binding = getattr(result, "binding", None)
+        tree_id = str(getattr(binding, "repository_tree_id", "") or "")
+        record_ref = str(getattr(result, "plan_id", "") or tree_id or "plan-invalidation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_plan_invalidation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=tree_id or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def invalidate_plan_conformance(
     prior: "PlanConformanceResult | Mapping[str, Any]",
     current_binding: ConformanceBinding | Mapping[str, Any],
@@ -782,8 +804,8 @@ def invalidate_plan_conformance(
         current_binding = ConformanceBinding.from_dict(current_binding)
     causes = changed_bindings(prior.binding, current_binding)
     if not causes:
-        return prior
-    return PlanConformanceResult(
+        return _mirror_plan_invalidation(prior)
+    return _mirror_plan_invalidation(PlanConformanceResult(
         plan_id=current_binding.plan_id,
         binding=current_binding,
         verdict=ConformanceVerdict.INVALIDATED,
@@ -791,7 +813,7 @@ def invalidate_plan_conformance(
         expected_event_ids=prior.expected_event_ids,
         observed_event_ids=prior.observed_event_ids,
         invalidation_causes=causes,
-    )
+    ))
 
 
 @dataclass(frozen=True)

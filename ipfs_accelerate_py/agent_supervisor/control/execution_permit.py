@@ -1303,6 +1303,32 @@ class PermitUseLedger:
             return len(self._uses.get(permit_id, ()))
 
 
+def _mirror_permit_verification(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        receipt = getattr(result, "receipt", None)
+        code = getattr(result, "code", None)
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or getattr(receipt, "content_id", "")
+            or getattr(code, "value", code)
+            or "execution-permit"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="execution_permit_verification",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ExecutionPermitVerifier:
     """Validate and atomically consume exact permit uses before an effect.
 
@@ -1525,13 +1551,15 @@ class ExecutionPermitVerifier:
         try:
             receipt = self.verify(permit, attempt)
         except PermitVerificationError as exc:
-            return PermitVerificationResult(False, exc.code, str(exc))
-        return PermitVerificationResult(
+            return _mirror_permit_verification(
+                PermitVerificationResult(False, exc.code, str(exc))
+            )
+        return _mirror_permit_verification(PermitVerificationResult(
             True,
             PermitVerificationCode.VALID,
             "exact permit verified and use consumed",
             receipt,
-        )
+        ))
 
 
 class ExecutionPermitIssuer:

@@ -6309,6 +6309,25 @@ def _map_binding_reason(
     return tuple(sorted(codes))
 
 
+def _mirror_cached_code_proof(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "key_id", "") or "cached-code-proof")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="cached_code_proof",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def prove_code_obligation_with_cache(
     cache: FormalVerificationCache | TrustAwareProofCache,
     key: ProofCacheKey,
@@ -6338,23 +6357,23 @@ def prove_code_obligation_with_cache(
                 AssuranceLevel.CANDIDATE,
             ):
                 stats.record_reject("candidate_only")
-                return CachedProveResult(
+                return _mirror_cached_code_proof(CachedProveResult(
                     status="rejected",
                     from_cache=True,
                     receipt=None,
                     reason_codes=("candidate_only",),
                     key_id=key.key_id,
                     metrics=stats.snapshot(),
-                )
+                ))
             stats.hits += 1
-            return CachedProveResult(
+            return _mirror_cached_code_proof(CachedProveResult(
                 status="hit",
                 from_cache=True,
                 receipt=lookup.receipt,
                 reason_codes=(),
                 key_id=key.key_id,
                 metrics=stats.snapshot(),
-            )
+            ))
         if lookup.status is CacheLookupStatus.REJECTED:
             stats.record_reject(*lookup.reason_codes)
             # Fall through to re-prove on recoverable rejections (stale/miss-like).
@@ -6394,14 +6413,14 @@ def prove_code_obligation_with_cache(
     ):
         reasons = _map_binding_reason(key, receipt, ("candidate_only",))
         stats.record_reject(*reasons)
-        return CachedProveResult(
+        return _mirror_cached_code_proof(CachedProveResult(
             status="rejected",
             from_cache=False,
             receipt=receipt,
             reason_codes=reasons,
             key_id=key.key_id,
             metrics=stats.snapshot(),
-        )
+        ))
 
     if not receipt.satisfies(required_assurance):
         reasons = _map_binding_reason(
@@ -6410,14 +6429,14 @@ def prove_code_obligation_with_cache(
             (CacheRejectionReason.INSUFFICIENT_ASSURANCE.value,),
         )
         stats.record_reject(*reasons)
-        return CachedProveResult(
+        return _mirror_cached_code_proof(CachedProveResult(
             status="rejected",
             from_cache=False,
             receipt=receipt,
             reason_codes=reasons,
             key_id=key.key_id,
             metrics=stats.snapshot(),
-        )
+        ))
 
     if store_on_success:
         stored = cache.put(key, receipt)
@@ -6431,23 +6450,23 @@ def prove_code_obligation_with_cache(
             ):
                 reasons = tuple(sorted(set(reasons) | {"private_material"}))
             stats.record_reject(*reasons)
-            return CachedProveResult(
+            return _mirror_cached_code_proof(CachedProveResult(
                 status="rejected",
                 from_cache=False,
                 receipt=receipt,
                 reason_codes=reasons,
                 key_id=key.key_id,
                 metrics=stats.snapshot(),
-            )
+            ))
 
-    return CachedProveResult(
+    return _mirror_cached_code_proof(CachedProveResult(
         status="proved",
         from_cache=False,
         receipt=receipt,
         reason_codes=(),
         key_id=key.key_id,
         metrics=stats.snapshot(),
-    )
+    ))
 
 
 # Compatibility spellings.
