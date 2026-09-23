@@ -149,6 +149,25 @@ class QuackCommandCapabilityDecision(StrEnum):
     NO_GO = "no-go"
 
 
+def _mirror_quack_command_capability() -> None:
+    """Record that the exact build was admitted. Paths and digests are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_command_capability",
+            record_ref="go",
+            subject_kind="record_cid",
+            subject_ref="go",
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class QuackCommandCapabilityResult:
     """Typed exact-build admission result; a mismatch never starts a server."""
@@ -170,6 +189,7 @@ class QuackCommandCapabilityResult:
             raise QuackCommandFabricCapabilityError(
                 self.reason or "exact DuckDB/Quack capability was not admitted"
             )
+        _mirror_quack_command_capability()
 
     def to_dict(self) -> dict[str, Any]:
         return {

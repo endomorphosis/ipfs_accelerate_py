@@ -180,6 +180,26 @@ def _owner_command_text(value: Any, *, field: str) -> str:
     return value
 
 
+def _mirror_quack_owner_command(command: str) -> None:
+    """Record the command name. The payload is not stored and no database is opened."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(command or "quack-owner-command")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_owner_command_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def validate_quack_owner_command(
     command: str,
     payload: Mapping[str, Any],
@@ -273,6 +293,7 @@ def validate_quack_owner_command(
         raise DuckDBConnectionPolicyError(
             "quack owner command payload exceeds byte bound"
         )
+    _mirror_quack_owner_command(command)
     return copied
 
 

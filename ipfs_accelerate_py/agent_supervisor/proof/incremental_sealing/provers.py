@@ -433,6 +433,27 @@ class RegisteredProgram:
         }
 
 
+def _mirror_registered_program(program: Any) -> Any:
+    """Record the program id. Argv and executable name are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(program, "program_id", "") or "registered-program")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="registered_program",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return program
+
+
 class ProgramRegistry:
     """Closed static registry of programs/circuits adapters may invoke."""
 
@@ -459,7 +480,7 @@ class ProgramRegistry:
         program = self.get(program_id)
         if program is None:
             raise ProverError(f"unknown program {program_id!r}")
-        return program
+        return _mirror_registered_program(program)
 
     def register(self, program: RegisteredProgram) -> None:
         if not isinstance(program, RegisteredProgram):

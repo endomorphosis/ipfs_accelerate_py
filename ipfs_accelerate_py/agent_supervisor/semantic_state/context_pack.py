@@ -1440,6 +1440,48 @@ def evaluate_exact_freshness(
     return verdict
 
 
+def _mirror_context_pack_exact_freshness(verdict: Any) -> Any:
+    """Record a fresh pack id. Stale fields are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(verdict, "pack_cid", "") or "context-pack-exact-freshness")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="context_pack_exact_freshness",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verdict
+
+
+def _mirror_context_pack_required_sources(cleaned: dict[str, str]) -> dict[str, str]:
+    """Record the closed source-kind vocabulary. Source cids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ",".join(REQUIRED_SOURCE_KINDS)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="context_pack_required_sources",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return cleaned
+
+
 def require_exact_freshness(
     envelope: Mapping[str, Any],
     current: CurrentPackIdentity,
@@ -1448,7 +1490,7 @@ def require_exact_freshness(
 
     verdict = evaluate_exact_freshness(envelope, current)
     if verdict.fresh:
-        return verdict
+        return _mirror_context_pack_exact_freshness(verdict)
     reasons = [f"stale:{field}" for field in verdict.stale_fields]
     reasons.extend(verdict.masquerade_reasons)
     raise StaleIdentityError(
@@ -1470,7 +1512,7 @@ def required_sources_of(envelope: Mapping[str, Any]) -> dict[str, str]:
     extra = sorted(set(sources) - set(REQUIRED_SOURCE_KINDS))
     if extra:
         raise ContextPackError(f"unknown required source kind {extra[0]}")
-    return cleaned
+    return _mirror_context_pack_required_sources(cleaned)
 
 
 def pack_is_adequate(
