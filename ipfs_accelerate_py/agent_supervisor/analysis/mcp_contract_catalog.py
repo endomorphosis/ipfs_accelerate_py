@@ -1506,6 +1506,26 @@ def build_contract_from_sources(
     return contract, contradictions
 
 
+def _mirror_mcp_catalog_record(record_kind: str, record_ref: str) -> None:
+    """Record a catalog id. The descriptor body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        ref = str(record_ref or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=ref,
+            subject_kind="record_cid",
+            subject_ref=ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class McpContractCatalog:
     """Immutable, content-addressed MCP++ contract catalog."""
@@ -1656,6 +1676,7 @@ class McpContractCatalog:
         contract = self.get_contract(contract_id)
         if contract is None:
             raise UnknownMcpContractError(f"unknown contract id: {contract_id!r}")
+        _mirror_mcp_catalog_record("mcp_contract_requirement", str(contract_id).strip())
         return contract
 
     def require_family(
@@ -1665,6 +1686,8 @@ class McpContractCatalog:
         if desc is None:
             key = family.value if isinstance(family, McpClaimFamily) else family
             raise UnknownMcpClaimFamilyError(f"unknown claim family: {key!r}")
+        record_key = family.value if isinstance(family, McpClaimFamily) else str(family).strip()
+        _mirror_mcp_catalog_record("mcp_claim_family", record_key)
         return desc
 
     def contract_ids(self) -> tuple[str, ...]:

@@ -921,6 +921,33 @@ class LogicRepairFixedPointReport:
         return content_identity(self.to_dict())
 
 
+def _mirror_logic_repair_fixed_point_receipt(
+    receipt: PropagationCompletionReceipt,
+) -> PropagationCompletionReceipt:
+    """Record an already-complete logic-repair receipt. Completion is not granted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "completion_id", "")
+            or getattr(receipt, "content_id", "")
+            or "logic-repair-fixed-point"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logic_repair_fixed_point_receipt",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass(frozen=True)
 class LogicRepairFixedPointOutcome:
     """Joint fixed-point outcome: completion + logic attachment or rollback."""
@@ -1007,7 +1034,7 @@ class LogicRepairFixedPointOutcome:
             raise LogicRepairFixedPointError(
                 "logic repair fixed-point validation rejected: " + reasons
             )
-        return self.completion
+        return _mirror_logic_repair_fixed_point_receipt(self.completion)
 
     def to_dict(self) -> dict[str, Any]:
         return {

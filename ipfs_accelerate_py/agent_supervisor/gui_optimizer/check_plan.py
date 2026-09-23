@@ -953,6 +953,27 @@ def registry_argv(check_id: str) -> tuple[str, ...]:
     return entry.argv
 
 
+def _mirror_registered_host_check(check_id: str, entry: RegisteredCheck) -> RegisteredCheck:
+    """Record a registered check id. The check is not run."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(check_id or "registered-check")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="registered_host_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return entry
+
+
 def require_registered(check_id: str) -> RegisteredCheck:
     entry = CHECK_REGISTRY.get(check_id)
     if entry is None:
@@ -961,7 +982,7 @@ def require_registered(check_id: str) -> RegisteredCheck:
             reason_code=CheckPlanReasonCode.UNKNOWN_CHECK_ID.value,
             details={"check_id": check_id},
         )
-    return entry
+    return _mirror_registered_host_check(check_id, entry)
 
 
 # ---------------------------------------------------------------------------

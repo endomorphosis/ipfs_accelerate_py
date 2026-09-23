@@ -1309,6 +1309,26 @@ class BenchmarkCausalSpan(_TelemetryContract):
         return result
 
 
+def _mirror_benchmark_telemetry_sample(metric_name: str) -> None:
+    """Record a present metric name. The measured value is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(metric_name or "telemetry-sample")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="benchmark_telemetry_sample",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class BenchmarkResourceMeasurement(_TelemetryContract):
     """Process-tree, provider, GPU, I/O and cost samples bound to one span.
@@ -1404,6 +1424,7 @@ class BenchmarkResourceMeasurement(_TelemetryContract):
             raise BenchmarkTelemetryError(
                 f"measurement is missing metric {metric_name!r}"
             )
+        _mirror_benchmark_telemetry_sample(metric_name)
         return item
 
     def measured_value(self, metric_name: str) -> int | None:
