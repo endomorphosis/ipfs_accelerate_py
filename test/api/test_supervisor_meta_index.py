@@ -717,6 +717,31 @@ def test_orchestrate_links_all_required_catalogs_without_env_locators(
         assert kind in work["formal_surfaces"]
     board = next(item for item in work["catalogs"] if item["kind"] == "taskboard")
     assert board["attach_permitted"] is False
+    assert work["ducklake"]["authoritative"] is False
+    assert work["ducklake"]["completion_authority"] is False
+    capsule = compose_for_subject(subject_kind="capsule_cid", subject_ref="capsule:cli")
+    capsule_kinds = {item["catalog_kind"] for item in capsule["linked"]}
+    for kind in (
+        "filesystem_mtime",
+        "ast",
+        "bm25",
+        "knowledge_graph",
+        "vector",
+        "proof_cache",
+        "proof_certificate",
+        "world_model",
+        "capsule",
+        "metadata",
+    ):
+        assert kind in capsule_kinds
+    assert "taskboard" not in capsule_kinds
+    assert capsule["completion_authority"] is False
+    assert all(item["attach_permitted"] is True for item in capsule["linked"])
+    lake = work["observed"]["ducklake"]
+    assert lake["authoritative"] is False
+    assert lake["completion_authority"] is False
+    if lake.get("status") == "projected":
+        assert lake.get("stored_bindings", 0) >= 1
 
 
 def test_mirror_shards_cache_keys_and_merge_release(tmp_path, monkeypatch) -> None:

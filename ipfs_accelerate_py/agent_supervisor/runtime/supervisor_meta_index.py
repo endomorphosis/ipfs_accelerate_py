@@ -563,10 +563,34 @@ class SupervisorMetaIndex:
                 """,
                 [subject_kind, subject_ref, int(limit)],
             ).fetchall()
+            bound_rows = []
+            if subject_kind == "capsule_cid":
+                bound_rows = connection.execute(
+                    """
+                    SELECT l.subject_kind, l.subject_ref, l.record_kind, l.record_ref,
+                           l.freshness_mtime_ns, c.kind, c.catalog_id, c.locator_ref,
+                           c.attach_permitted, c.exclusive_owner, l.recorded_at
+                    FROM capsule_bindings b
+                    JOIN identity_links l
+                      ON l.catalog_id = b.catalog_id
+                     AND l.subject_kind = b.subject_kind
+                     AND l.subject_ref = b.subject_ref
+                    JOIN catalogs c ON c.catalog_id = l.catalog_id
+                    WHERE b.capsule_cid = ?
+                    ORDER BY l.recorded_at DESC
+                    LIMIT ?
+                    """,
+                    [subject_ref, int(limit)],
+                ).fetchall()
         finally:
             connection.close()
         linked = []
-        for row in rows:
+        seen: set[tuple[Any, ...]] = set()
+        for row in list(rows) + list(bound_rows):
+            key = (row[0], row[1], row[2], row[3], row[6])
+            if key in seen:
+                continue
+            seen.add(key)
             linked.append(
                 {
                     "subject_kind": row[0],
@@ -582,6 +606,8 @@ class SupervisorMetaIndex:
                     "recorded_at": row[10],
                 }
             )
+            if len(linked) >= int(limit):
+                break
         return {
             "schema": SCHEMA,
             "interface": INTERFACE,
@@ -722,6 +748,18 @@ class SupervisorMetaIndex:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS meta_lake.capsule_bindings (
+                    capsule_cid VARCHAR,
+                    catalog_id VARCHAR,
+                    subject_kind VARCHAR,
+                    subject_ref VARCHAR,
+                    recorded_at VARCHAR,
+                    completion_authority BOOLEAN
+                )
+                """
+            )
             source = _connect(self.duckdb_path)
             try:
                 catalogs = source.execute(
@@ -736,6 +774,12 @@ class SupervisorMetaIndex:
                     SELECT link_cid, subject_kind, subject_ref, catalog_id,
                            record_kind, record_ref, freshness_mtime_ns, recorded_at
                     FROM identity_links
+                    """
+                ).fetchall()
+                bindings = source.execute(
+                    """
+                    SELECT capsule_cid, catalog_id, subject_kind, subject_ref, recorded_at
+                    FROM capsule_bindings
                     """
                 ).fetchall()
             finally:
@@ -764,6 +808,19 @@ class SupervisorMetaIndex:
                         """,
                         [*row, row[0]],
                     )
+                for row in bindings:
+                    connection.execute(
+                        """
+                        INSERT INTO meta_lake.capsule_bindings
+                        SELECT ?, ?, ?, ?, ?, FALSE
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM meta_lake.capsule_bindings
+                            WHERE capsule_cid = ? AND catalog_id = ?
+                              AND subject_kind = ? AND subject_ref = ?
+                        )
+                        """,
+                        [*row, row[0], row[1], row[2], row[3]],
+                    )
                 connection.execute("COMMIT")
             except BaseException:
                 connection.execute("ROLLBACK")
@@ -771,6 +828,9 @@ class SupervisorMetaIndex:
             count = connection.execute("SELECT count(*) FROM meta_lake.catalogs").fetchone()[0]
             link_count = connection.execute(
                 "SELECT count(*) FROM meta_lake.identity_links"
+            ).fetchone()[0]
+            binding_count = connection.execute(
+                "SELECT count(*) FROM meta_lake.capsule_bindings"
             ).fetchone()[0]
         except Exception as exc:
             return {
@@ -786,6 +846,7 @@ class SupervisorMetaIndex:
             "status": "projected",
             "stored_catalogs": int(count),
             "stored_links": int(link_count),
+            "stored_bindings": int(binding_count),
             "completion_authority": False,
             "authoritative": False,
         }
@@ -1227,6 +1288,7 @@ def mirror_work_record(
                 catalog_id=str(catalog.get("catalog_id") or ""),
                 record_kind=record_kind,
                 record_ref=record_ref,
+                capsule_cid=subject if kind == "capsule_cid" else "",
                 project=False,
             )
         ]
