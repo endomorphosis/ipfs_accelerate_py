@@ -306,6 +306,26 @@ class SurfaceCapability:
         )
 
 
+def _mirror_governor_sealer_capability(adapter_id: str, operation: str) -> None:
+    """Record an available governor sealer. The check does not seal."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{adapter_id}:{operation}" if adapter_id else str(operation or "governor-sealer")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="governor_sealer_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class IncrementalSealerCapability:
     """Released incremental / full-checkpoint proof-sealer capability.
@@ -353,6 +373,7 @@ class IncrementalSealerCapability:
                 retryable=self.retryable,
                 status=self.status,
             )
+        _mirror_governor_sealer_capability(str(self.adapter_id), str(operation))
 
     def to_mapping(self) -> Mapping[str, Any]:
         return MappingProxyType(

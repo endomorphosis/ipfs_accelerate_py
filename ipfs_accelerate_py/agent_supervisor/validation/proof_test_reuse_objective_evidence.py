@@ -657,6 +657,26 @@ def _mirror_objective_evidence_self_verification_refusal(bundle: Any) -> None:
         pass
 
 
+def _mirror_objective_evidence_edit_refusal(bundle: Any) -> None:
+    """Record an edit-authorization refusal. Nothing is edited."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(bundle, "producing_task_id", "") or "objective-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="objective_evidence_edit_refusal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class ProofTestReuseObjectiveEvidenceBundle(CanonicalContract):
     """Atomic multi-goal assembly outcome with retained premises and gaps."""
@@ -984,6 +1004,7 @@ class ProofTestReuseObjectiveEvidenceBundle(CanonicalContract):
     def authorize_edit(self, *_args: Any, **_kwargs: Any) -> None:
         """Explicitly refuse edit authorization (no artifact self-authority)."""
 
+        _mirror_objective_evidence_edit_refusal(self)
         raise ProofTestReuseObjectiveEvidenceError(
             "objective evidence artifacts cannot authorize repository edits",
             reason_code=ObjectiveEvidenceGapKind.EDIT_AUTHORIZATION_FORBIDDEN,

@@ -915,6 +915,26 @@ def _datasets_reason_to_reuse(reason_value: str) -> ReuseReasonCode:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_test_certificate_prove_refusal(provider_id: str) -> None:
+    """Record a prove refusal. Reuse is not authorized."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(provider_id or "test-certificate-provider")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="test_certificate_prove_refusal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class IpfsDatasetsTestCertificateProvider:
     """Bounded local verification adapter with an optional deferred issuer handle.
 
@@ -2036,6 +2056,7 @@ class IpfsDatasetsTestCertificateProvider:
         """
 
         self._prove_calls += 1
+        _mirror_test_certificate_prove_refusal(str(self.provider_id))
         raise TestCertificateProviderError(
             "prove is not invoked by TestCertificateProvider lookup/verify; "
             "use the deferred issuer handle for explicit maintenance proving"

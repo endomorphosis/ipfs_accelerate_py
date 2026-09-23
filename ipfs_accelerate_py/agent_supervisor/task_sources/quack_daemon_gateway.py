@@ -2001,6 +2001,29 @@ class QuackDaemonPlanRepositoryProxy(_OwnerProxy):
         return self._call("plan_r2.observe", kwargs)
 
 
+def _mirror_quack_daemon_production_admission(verified: Any) -> None:
+    """Record a passing production recheck. It does not launch or change admission."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ""
+        if isinstance(verified, Mapping):
+            record_ref = str(verified.get("capability_cid") or "")
+        record_ref = record_ref or "quack-production-admission"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_daemon_production_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class QuackDaemonCommandGateway:
     """Composition root for five closed proxies sharing one command owner.
 
@@ -2175,6 +2198,7 @@ class QuackDaemonCommandGateway:
             now_ms=int(self._clock_ms()),
         )
         self._assert_operational_capability_matches(verified)
+        _mirror_quack_daemon_production_admission(verified)
         return verified
 
     def _validate_components(self) -> None:
