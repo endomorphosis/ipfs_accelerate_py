@@ -327,6 +327,26 @@ class LegalParserCycleProposal:
     parse_error: str = ""
 
 
+def _mirror_legal_parser_proposal(valid: bool) -> bool:
+    """Record a proposal check. It does not apply the patch."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="legal_parser_proposal_validation",
+            record_ref="legal_parser_proposal",
+            subject_kind="record_cid",
+            subject_ref="legal_parser_proposal",
+        )
+    except Exception:
+        pass
+    return valid
+
+
 class LegalParserParityOptimizer(BaseOptimizer):
     """Optimizer that critiques and improves deterministic legal parser parity."""
 
@@ -371,10 +391,10 @@ class LegalParserParityOptimizer(BaseOptimizer):
 
     def validate(self, artifact: Any, context: OptimizationContext) -> bool:
         if not isinstance(artifact, LegalParserCycleProposal):
-            return False
+            return _mirror_legal_parser_proposal(False)
         if not artifact.unified_diff.strip():
-            return False
-        return self.check_patch(artifact.unified_diff)["valid"]
+            return _mirror_legal_parser_proposal(False)
+        return _mirror_legal_parser_proposal(bool(self.check_patch(artifact.unified_diff)["valid"]))
 
     def evaluate_current_parser(self) -> Dict[str, Any]:
         """Evaluate deterministic parser coverage on the probe corpus."""

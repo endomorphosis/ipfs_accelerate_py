@@ -2492,6 +2492,28 @@ def compile_refactor_procedure(
     )
 
 
+def _mirror_refactor_procedure_dry_run(result: Any) -> Any:
+    """Record a deterministic dry run. mutated stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "nomination_cid", "") or getattr(result, "plan_cid", "") or "refactor_procedure_dry_run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="refactor_procedure_dry_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def dry_run_refactor_procedure(
     *,
     waves: Sequence[Mapping[str, Any] | Any],
@@ -2520,7 +2542,7 @@ def dry_run_refactor_procedure(
     )
     if result.mutated is not False or result.deterministic is not True:
         raise ProcedureAdapterError("dry-run must remain deterministic and non-mutating")
-    return result
+    return _mirror_refactor_procedure_dry_run(result)
 
 
 class ProofCarryingProcedureRefactorAdapter:

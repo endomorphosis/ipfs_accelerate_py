@@ -3059,6 +3059,28 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
         return result
 
 
+def _mirror_pagination_limit(pagination: Any, selected: int) -> int:
+    """Record a page limit that fits. It does not fetch a page."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        kind = getattr(pagination, "kind", None)
+        record_ref = f"{getattr(kind, 'value', kind) or 'pagination'}:{selected}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="control_pagination_limit",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return selected
+
+
 @dataclass(frozen=True)
 class ControlPagination(_ControlCanonicalContract):
     """Bounded page/cursor behavior for one operation."""
@@ -3119,7 +3141,7 @@ class ControlPagination(_ControlCanonicalContract):
             raise ControlBoundsError(
                 f"page limit {selected} exceeds operation maximum {self.max_limit}"
             )
-        return selected
+        return _mirror_pagination_limit(self, selected)
 
     def _payload(self) -> dict[str, Any]:
         return {

@@ -353,6 +353,26 @@ def _require_codec(codec: str) -> str:
     return codec
 
 
+def _mirror_coordination_cid(value: str) -> str:
+    """Record a coordination CID admission. It does not admit a task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="coordination_cid_admission",
+            record_ref=value,
+            subject_kind="content_cid",
+            subject_ref=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
 def admit_cid(
     value: Any,
     *,
@@ -371,7 +391,7 @@ def admit_cid(
             f"codecs must be a nonempty subset of {sorted(COORDINATION_CODECS)}"
         )
     try:
-        return validate_cid(value, codecs=allowed)
+        return _mirror_coordination_cid(validate_cid(value, codecs=allowed))
     except MultiformatsIdentityError as exc:
         raise VerifiedIPLDError(
             f"CID rejected for coordination admission: {exc}"

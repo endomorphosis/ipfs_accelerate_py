@@ -67,6 +67,27 @@ class ProcedureCompilerCapabilities:
         }
 
 
+def _mirror_procedure_compiler_validation(procedure: Any) -> Any:
+    """Record a compiled procedure check. It does not invoke the procedure."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(procedure, "procedure_id", "") or getattr(procedure, "content_id", "") or "procedure_compiler")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_compiler_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return procedure
+
+
 class ProofCarryingProcedureCompiler:
     """Parse ProcedureIR and invoke the deterministic fail-closed runtime."""
 
@@ -100,7 +121,7 @@ class ProofCarryingProcedureCompiler:
     def validate(self, value: ProcedureSpec | Mapping[str, Any]) -> ProcedureSpec:
         procedure = self.parse(value)
         validate_procedure_spec(procedure)
-        return procedure
+        return _mirror_procedure_compiler_validation(procedure)
 
     validate_procedure = validate
 
