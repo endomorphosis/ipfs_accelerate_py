@@ -601,6 +601,30 @@ class PublicationReceipt(CanonicalContract):
         return result
 
 
+def _mirror_repair_evidence_advance(envelope: Any) -> None:
+    """Record an exact evidence-link advance. The advance does not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(envelope, "content_id", "")
+            or getattr(envelope, "repair_id", "")
+            or "repair-evidence"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_evidence_advance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class RepairEvidenceEnvelope(CanonicalContract):
     """Canonical, append-only evidence for one DCR-002 lifecycle state.
@@ -1084,6 +1108,7 @@ class RepairEvidenceEnvelope(CanonicalContract):
             )
         assert_deterministic_repair_transition(previous.authority_stage, self.authority_stage)
         self._require_preserved_evidence(previous)
+        _mirror_repair_evidence_advance(self)
 
 
 def verify_repair_evidence_envelope(

@@ -440,6 +440,26 @@ def _backend_test_result(value: Any) -> BackendTestResult:
     raise AttestationValidationError("backend test result must be a BackendTestResult or mapping")
 
 
+def _mirror_cryptographic_backend_eligibility(policy_id: str) -> None:
+    """Record a passing eligibility check. The check does not admit work."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(policy_id or "cryptographic-backend")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="cryptographic_backend_eligibility",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class BackendHealthReport(CanonicalContract):
     """Derived health and production eligibility for a pinned backend."""
@@ -550,6 +570,7 @@ class BackendHealthReport(CanonicalContract):
             raise CryptographicBackendFailure(
                 "cryptographic backend is not production eligible: %s" % self.reason
             )
+        _mirror_cryptographic_backend_eligibility(str(self.policy.policy_id))
 
     def _payload(self) -> Dict[str, Any]:
         return {

@@ -1112,6 +1112,26 @@ class ReasoningTruncation(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_repository_reasoning_scope(repository_id: str) -> None:
+    """Record a same-repository scope check. The check does not replay."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(repository_id or "repository-scope")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repository_reasoning_scope",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class RepositoryReasoningSnapshot(CanonicalContract):
     """Canonical content-addressed repository reasoning snapshot.
@@ -1309,6 +1329,7 @@ class RepositoryReasoningSnapshot(CanonicalContract):
             raise RepositoryReasoningAuthorityError(
                 "cross-repository replay is rejected"
             )
+        _mirror_repository_reasoning_scope(expected)
 
     def inventory(self) -> dict[str, Any]:
         """Compact inventory suitable for coverage and health classification."""

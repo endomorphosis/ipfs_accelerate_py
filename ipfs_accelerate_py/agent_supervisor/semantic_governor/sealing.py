@@ -726,6 +726,26 @@ def _normalize_bindings(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_release_qualification_promotion(qualification_id: str) -> None:
+    """Record that promotion is already allowed. This check does not promote."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(qualification_id or "release-qualification")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="release_qualification_promotion",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class ReleaseQualification:
     """Pre-promotion release qualification decision (emit-only; no mutation).
@@ -961,6 +981,7 @@ class ReleaseQualification:
             raise SealingError(
                 f"{REASON_PROMOTION_BLOCKED}: {reasons}"
             )
+        _mirror_release_qualification_promotion(str(self.qualification_id))
 
 
 # ---------------------------------------------------------------------------

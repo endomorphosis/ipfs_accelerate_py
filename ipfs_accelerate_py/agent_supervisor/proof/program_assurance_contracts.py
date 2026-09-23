@@ -83,6 +83,26 @@ class SemanticAuthorityError(ProgramAssuranceContractError):
     """Evidence was presented outside the semantics it can establish."""
 
 
+def _mirror_claim_level_requirement(source: str, required: str) -> None:
+    """Record an exact claim-level match. A match does not promote the claim."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{source}->{required}" if source and required else "claim-level"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="claim_level_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ClaimLevel(str, Enum):
     """Exact, intentionally non-ordered program-assurance claim classes."""
 
@@ -104,6 +124,10 @@ class ClaimLevel(str, Enum):
                 f"{self.value} cannot be promoted to "
                 f"{_enum(required, ClaimLevel, field_name='required').value}"
             )
+        _mirror_claim_level_requirement(
+            self.value,
+            _enum(required, ClaimLevel, field_name="required").value,
+        )
 
 
 class InconclusiveState(str, Enum):
