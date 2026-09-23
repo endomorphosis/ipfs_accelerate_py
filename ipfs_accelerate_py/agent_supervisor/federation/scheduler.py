@@ -81,6 +81,26 @@ def qualified_event_wait_capability() -> dict[str, object]:
     }
 
 
+def _mirror_event_driven_capability(interface: str) -> None:
+    """Record a qualified wait interface. The check does not wake or scan."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(interface or "event-wait")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="event_driven_wait_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_event_driven_capability(capability: Mapping[str, object] | None) -> None:
     """Fail closed unless the wait path is server-owned and event-driven qualified."""
 
@@ -99,6 +119,7 @@ def require_event_driven_capability(capability: Mapping[str, object] | None) -> 
         raise SchedulerAuthorityError("event wait interface is not admitted")
     if capability.get("idle_repeated_database_scans") is True:
         raise SchedulerAuthorityError("idle wait must not repeatedly scan the database")
+    _mirror_event_driven_capability(str(capability.get("interface") or ""))
 
 
 def refuse_ducklake_wake_authority(receipt: Mapping[str, Any] | None) -> None:

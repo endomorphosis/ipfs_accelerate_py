@@ -3947,6 +3947,29 @@ class CapabilityResolution(_ControlCanonicalContract):
         return result
 
 
+def _mirror_backend_capability(resolution: CapabilityResolution) -> CapabilityResolution:
+    """Record a present backend capability. The check does not run the operation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        operation = getattr(getattr(resolution, "operation", None), "value", "")
+        capability = str(getattr(resolution, "backend_capability", "") or "")
+        record_ref = str(capability or operation or "backend-capability")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="control_backend_capability",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return resolution
+
+
 @dataclass(frozen=True)
 class OperationCatalog(_ControlCanonicalContract):
     """The complete, closed generation-2 supervisor control catalog."""
@@ -4115,13 +4138,13 @@ class OperationCatalog(_ControlCanonicalContract):
                 f"operation {descriptor.operation.value} requires backend "
                 f"capability {descriptor.backend_capability!r}"
             )
-        return CapabilityResolution(
+        return _mirror_backend_capability(CapabilityResolution(
             operation=descriptor.operation,
             backend_capability=descriptor.backend_capability,
             supported=True,
             degraded=False,
             degradation=descriptor.degradation,
-        )
+        ))
 
     require_capability = require_backend_capability
 

@@ -9037,6 +9037,36 @@ def test_mirror_reviewer_bindings_freshness_parameter_and_storage(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_wait_benchmark_capability_provider_and_train(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("event_driven_wait_capability", "TypedStateOwnerEventWait@1", "metadata", "record_cid"),
+        ("planner_doctor_benchmark_binding", "bafyreibench", "metadata", "content_cid"),
+        ("control_backend_capability", "duckdb", "metadata", "record_cid"),
+        ("provider_symbol_requirement", "multiformats", "metadata", "record_cid"),
+        ("owner_recovery_train_validation", "consumer:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

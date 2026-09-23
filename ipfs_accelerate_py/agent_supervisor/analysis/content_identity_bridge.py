@@ -1517,6 +1517,27 @@ def inspect_provider_binding(provider: str) -> ProviderBindingReceipt:
     )
 
 
+def _mirror_provider_requirement(provider: str, module: Any) -> Any:
+    """Record a compatible provider import. The import does not admit work."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(provider or "provider")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_symbol_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return module
+
+
 def require_provider(provider: str) -> ModuleType:
     """Import *provider* and require its declared public symbols."""
 
@@ -1532,8 +1553,10 @@ def require_provider(provider: str) -> ModuleType:
             details=dict(binding.blocker.details) if binding.blocker else None,
         )
     if provider in {PROVIDER_MULTIFORMATS_CID, PROVIDER_MULTIFORMATS_MULTIHASH}:
-        return require_multiformats()
-    return _require_module(provider)
+        module = require_multiformats()
+    else:
+        module = _require_module(provider)
+    return _mirror_provider_requirement(provider, module)
 
 
 def invoke_multiformats_cid_and_multihash(

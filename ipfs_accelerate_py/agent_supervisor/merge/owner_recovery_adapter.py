@@ -38,6 +38,26 @@ class OwnerRecoveryCursorConflict(OwnerRecoveryRuntimeError):
     """A reconstructed consumer observed a newer durable cursor revision."""
 
 
+def _mirror_owner_recovery_train(runtime: OwnerMergeRecoveryRuntime) -> None:
+    """Record a matching train. Paths are not stored and recovery is not replayed."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(runtime, "consumer_id", "") or "owner-recovery-train")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="owner_recovery_train_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class OwnerMergeRecoveryRuntime:
     """Native factory binding; this class neither issues grants nor installs schema."""
 
@@ -158,6 +178,7 @@ class OwnerMergeRecoveryRuntime:
             )
         if dict(self.client.describe_scope()) != self._binding:
             raise OwnerRecoveryRuntimeError("owner recovery namespace changed")
+        _mirror_owner_recovery_train(self)
 
     @staticmethod
     def _cursor_map(value):

@@ -2616,6 +2616,26 @@ def _mirror_quality_oracle(result: Any) -> Any:
     return result
 
 
+def _mirror_planner_doctor_benchmark_binding(manifest_cid: str) -> None:
+    """Record a sealed benchmark binding. The binding does not promote."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(manifest_cid or "planner-doctor-benchmark")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_benchmark_binding",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class PlannerDoctorQualityOracle:
     """Operator-owned quality oracle (PlannerDoctorQualityOracle@1)."""
 
@@ -2688,6 +2708,7 @@ class PlannerDoctorQualityOracle:
                 "oracle is not bound to the sealed benchmark policy",
                 reason_code="policy_binding",
             )
+        _mirror_planner_doctor_benchmark_binding(benchmark_manifest_cid)
 
     def ablations(self) -> tuple[PlannerDoctorAblation, ...]:
         return self._manifest.ablations
