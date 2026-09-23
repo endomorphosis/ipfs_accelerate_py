@@ -1564,6 +1564,26 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
         return result
 
 
+def _mirror_program_zkp_replay(public_input_digest: str) -> None:
+    """Record a matching replay digest. Keys and ceremony material are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(public_input_digest or "program-zkp-replay")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_zkp_lineage_replay",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ProgramZkpVerificationReceipt(CanonicalContract):
     """Independent (or shadow) verification receipt bound to exact public inputs.
@@ -1790,6 +1810,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
                 raise ProgramZkpReplayError(
                     "replay capability_epoch does not match verification receipt"
                 )
+        _mirror_program_zkp_replay(digest)
 
     def require_capability_epoch(self, capability_epoch: str) -> None:
         """Fail closed when the bound capability epoch has been lost or replaced."""

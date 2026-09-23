@@ -5660,6 +5660,30 @@ class ParallelismDecisionReceipt:
         }
 
 
+def _mirror_execution_slice_owner(
+    owned: ConfiguredBoardExecutionSlice,
+    slice_id: str,
+) -> ConfiguredBoardExecutionSlice:
+    """Record the canonical slice id. The check does not launch the lane."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(slice_id or getattr(owned, "slice_id", "") or "slice-owner")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="execution_slice_owner",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return owned
+
+
 class ProductionParallelPlanAdapter:
     """Thin adapter over the canonical compiler and ``PlanRevisionStore``.
 
@@ -6754,13 +6778,14 @@ class ProductionParallelPlanAdapter:
 
         with self.plan_revision_store._thread_lock:  # noqa: SLF001
             with self.plan_revision_store._guard():  # noqa: SLF001
-                return self._validate_slice_owner_locked(
+                owned = self._validate_slice_owner_locked(
                     revision_cid=revision_cid,
                     slice_manifest_cid=slice_manifest_cid,
                     slice_id=slice_id,
                     lane_id=lane_id,
                     reassignment_cid=reassignment_cid,
                 )
+        return _mirror_execution_slice_owner(owned, slice_id)
 
     def _validate_slice_owner_locked(
         self,

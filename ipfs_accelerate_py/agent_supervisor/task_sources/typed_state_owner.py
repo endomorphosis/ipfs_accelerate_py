@@ -5328,6 +5328,26 @@ class TypedOwnerResult:
         return row
 
 
+def _mirror_legacy_merge_binding(record_kind: str, repository_id: str, target_branch: str) -> None:
+    """Record a queue or recovery binding. Identity payloads are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(repository_id or target_branch or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_database_status_scope(binding: Mapping[str, Any]) -> None:
     """Record a sealed status scope. Task identities and profiles are not stored."""
 
@@ -5494,6 +5514,9 @@ class TypedStateOwnerGateway:
                 max_attempts=max_attempts, max_worktree_bytes=max_worktree_bytes,
                 worktree_usage=worktree_usage,
             )
+        _mirror_legacy_merge_binding(
+            "legacy_merge_queue_binding", repository_id, target_branch
+        )
 
     def provision_legacy_merge_recovery_schema(
         self, *, expected_identity, repository_id, target_branch, migration_id,
@@ -5525,6 +5548,9 @@ class TypedStateOwnerGateway:
                 self, expected_identity=expected_identity, repository_id=repository_id,
                 target_branch=target_branch,
             )
+        _mirror_legacy_merge_binding(
+            "legacy_merge_recovery_binding", repository_id, target_branch
+        )
 
     def _bind_eaaef_typed_owner_command_service_from_server(
         self,

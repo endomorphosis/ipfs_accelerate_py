@@ -571,6 +571,26 @@ def sealed_git_environment() -> dict[str, str]:
     return env
 
 
+def _mirror_host_git_argv(verb: str) -> None:
+    """Record an accepted git verb. The check does not run git."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(verb or "git")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="host_git_argv_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class HostGitRunner:
     """Execute a closed git verb set with a host-fixed executable.
@@ -731,6 +751,7 @@ class HostGitRunner:
                 reason_code=WorktreeExecutorReasonCode.REPOSITORY_INVALID.value,
                 details={"cwd": str(cwd_path)},
             )
+        _mirror_host_git_argv(verb)
 
     def _validate_worktree_argv(self, argv: Sequence[str]) -> None:
         if len(argv) < 2:
