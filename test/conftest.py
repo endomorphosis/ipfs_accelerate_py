@@ -63,6 +63,17 @@ def pytest_configure(config):
     Args:
         config: pytest config object
     """
+    try:
+        from ipfs_accelerate_py.testing import pytest_ast_seal as _pytest_ast_seal
+
+        if not config.pluginmanager.hasplugin("ipfs-pytest-ast-seal"):
+            config.pluginmanager.register(
+                _pytest_ast_seal,
+                name="ipfs-pytest-ast-seal",
+            )
+        _pytest_ast_seal.pytest_configure(config)
+    except Exception:
+        pass
     # Register markers
     config.addinivalue_line("markers", "model: mark test as model test")
     config.addinivalue_line("markers", "text: mark test as text model test")

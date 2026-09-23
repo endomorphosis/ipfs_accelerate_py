@@ -48,6 +48,7 @@ proof-context = "ipfs_accelerate_py.proof_context.cli.__main__:main"
 
 [project.entry-points.pytest11]
 ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
+ipfs-pytest-ast-seal = "ipfs_accelerate_py.testing.pytest_ast_seal"
 
 [tool.setuptools]
 package-dir = {"" = "."}
