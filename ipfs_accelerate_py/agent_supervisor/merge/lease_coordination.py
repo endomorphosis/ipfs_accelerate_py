@@ -1583,6 +1583,27 @@ class TaskLeaseState:
         return payload
 
 
+def _mirror_lease_grant_validation(grant: LeaseGrant) -> LeaseGrant:
+    """Record a current lease task. The fencing token is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(grant, "task_cid", "") or "lease-grant")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lease_grant_validation",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return grant
+
+
 class LeaseCoordinator:
     """Durable accepted-lease registry for independent daemon processes."""
 
@@ -3043,10 +3064,10 @@ class LeaseCoordinator:
                 row = self._current(self._connection, grant, now)
                 result = self._grant(row)
                 self._connection.commit()
-                return result
             except Exception:
                 self._connection.rollback()
                 raise
+        return _mirror_lease_grant_validation(result)
 
     @staticmethod
     def _distributed_input(

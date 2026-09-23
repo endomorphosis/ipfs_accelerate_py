@@ -2794,6 +2794,27 @@ class _SnapshotCallResolution:
         )
 
 
+def _mirror_program_call_resolver_binding(resolver: _SnapshotProgramCallResolver, graph_id: str) -> _SnapshotProgramCallResolver:
+    """Record a bound graph id. The call site is not resolved."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(graph_id or "program-call-resolver")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_call_resolver_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return resolver
+
+
 class _SnapshotProgramCallResolver:
     """Conservative call resolver over a snapshot-bound program graph.
 
@@ -2833,7 +2854,8 @@ class _SnapshotProgramCallResolver:
             self._graph = ProgramGraph.from_dict(graph)
         else:
             raise CallResolverError("graph must be a ProgramGraph or snapshot")
-        return self
+        graph_id = str(getattr(self._graph, "graph_id", "") or "")
+        return _mirror_program_call_resolver_binding(self, graph_id)
 
     def resolve(self, call_site: CallSite | Mapping[str, Any]) -> CallResolution:
         """Resolve one call site against the bound graph."""

@@ -560,6 +560,27 @@ ObligationTemplate = ProofObligationTemplate
 CodeProofObligationTemplate = ProofObligationTemplate
 
 
+def _mirror_proof_template_selection(template: ProofObligationTemplate) -> ProofObligationTemplate:
+    """Record a supported template id. The template body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(template, "template_id", "") or "proof-template")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_template_selection",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return template
+
+
 @dataclass(frozen=True)
 class TemplateSelection:
     status: TemplateSelectionStatus
@@ -574,7 +595,7 @@ class TemplateSelection:
     def require_supported(self) -> ProofObligationTemplate:
         if self.supported:
             assert self.template is not None
-            return self.template
+            return _mirror_proof_template_selection(self.template)
         error = (
             AmbiguousProofTemplateError
             if self.status is TemplateSelectionStatus.AMBIGUOUS

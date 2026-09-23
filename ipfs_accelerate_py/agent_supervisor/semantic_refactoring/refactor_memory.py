@@ -1142,6 +1142,27 @@ def _similar_context_cids(similar_hits: Any) -> tuple[str, ...]:
     return tuple(cids)
 
 
+def _mirror_exact_reuse_decision(decision: RefactorReuseDecision) -> RefactorReuseDecision:
+    """Record an exact-reuse decision. The store is not mutated."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(decision, "query_key_cid", "") or "exact-reuse")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="exact_reuse_decision",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 def decide_exact_reuse(
     query_key: RefactorReuseKey | Mapping[str, Any],
     episodes: Sequence[RefactorTransition | Mapping[str, Any]] = (),
@@ -1173,7 +1194,7 @@ def decide_exact_reuse(
             mismatch_context.append(item.transition_cid)
 
     if exact and negatives:
-        return RefactorReuseDecision(
+        return _mirror_exact_reuse_decision(RefactorReuseDecision(
             query_key_cid=query.key_cid,
             decision=ReuseDecisionKind.REVOKE.value,
             reasons=(RevokeReason.NEGATIVE_EPISODE_BLOCKS_REUSE.value,),
@@ -1181,9 +1202,9 @@ def decide_exact_reuse(
             context_transition_cids=context_cids,
             retained_negative_cids=negatives,
             exact_match=True,
-        )
+        ))
     if accepted:
-        return RefactorReuseDecision(
+        return _mirror_exact_reuse_decision(RefactorReuseDecision(
             query_key_cid=query.key_cid,
             decision=ReuseDecisionKind.REUSE.value,
             reasons=(),
@@ -1191,9 +1212,9 @@ def decide_exact_reuse(
             context_transition_cids=context_cids,
             retained_negative_cids=(),
             exact_match=True,
-        )
+        ))
     if context_cids:
-        return RefactorReuseDecision(
+        return _mirror_exact_reuse_decision(RefactorReuseDecision(
             query_key_cid=query.key_cid,
             decision=ReuseDecisionKind.CONTEXT_ONLY.value,
             reasons=(RevokeReason.SIMILARITY_NOT_EXACT.value,),
@@ -1203,9 +1224,9 @@ def decide_exact_reuse(
                 item.transition_cid for item in stored if item.negative_episode
             ),
             exact_match=False,
-        )
+        ))
     if mismatch:
-        return RefactorReuseDecision(
+        return _mirror_exact_reuse_decision(RefactorReuseDecision(
             query_key_cid=query.key_cid,
             decision=ReuseDecisionKind.REVOKE.value,
             reasons=tuple(mismatch),
@@ -1215,8 +1236,8 @@ def decide_exact_reuse(
                 item.transition_cid for item in stored if item.negative_episode
             ),
             exact_match=False,
-        )
-    return RefactorReuseDecision(
+        ))
+    return _mirror_exact_reuse_decision(RefactorReuseDecision(
         query_key_cid=query.key_cid,
         decision=ReuseDecisionKind.REVOKE.value,
         reasons=(RevokeReason.NO_EXACT_MATCH.value,),
@@ -1224,7 +1245,7 @@ def decide_exact_reuse(
         context_transition_cids=(),
         retained_negative_cids=(),
         exact_match=False,
-    )
+    ))
 
 
 @dataclass(frozen=True, slots=True)

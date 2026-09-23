@@ -1588,6 +1588,27 @@ def probe_backend_capability(
     return _unknown_capability(backend_id)
 
 
+def _mirror_proof_backend_capability(capability: ProofBackendCapability) -> ProofBackendCapability:
+    """Record an available backend id. Recursion is not admitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(capability, "backend_id", "") or "proof-backend")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="proof_backend_capability_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return capability
+
+
 class BackendCapabilityRegistry:
     """Registry that probes and caches closed backend capability reports."""
 
@@ -1656,7 +1677,7 @@ class BackendCapabilityRegistry:
             raise BackendCapabilityError(
                 f"unavailable backend {backend_id!r}: {capability.message}"
             )
-        return capability
+        return _mirror_proof_backend_capability(capability)
 
     def recursive_verification_admitted(self, backend_id: str) -> bool:
         return self.probe(backend_id).recursive_verification is True
