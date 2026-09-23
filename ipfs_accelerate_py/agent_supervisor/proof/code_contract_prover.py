@@ -3654,7 +3654,7 @@ def prove_minimal_proof_context(
 
     satisfied = bool(checks) and all(checks.values()) and not failure_codes
 
-    return {
+    claim = {
         "schema": MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA,
         "evidence": MINIMAL_PROOF_CONTEXT_EVIDENCE,
         "evidence_terms": list(MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS),
@@ -3677,6 +3677,26 @@ def prove_minimal_proof_context(
         "promotion_authoritative": False,
         "semantic_authority": False,
     }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            claim.get("goal_id")
+            or claim.get("requirement_id")
+            or "minimal-proof-context"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="minimal_proof_context",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
 
 
 def prove_minimal_proof_context_evidence(

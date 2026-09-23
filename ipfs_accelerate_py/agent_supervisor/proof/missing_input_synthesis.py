@@ -772,6 +772,32 @@ def _mirror_behavior_proof(result: Any) -> Any:
     return result
 
 
+def _mirror_value_mapping(results: Any, candidate_id: str, compilation: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(compilation, "roots", None)
+        tree_id = str(
+            getattr(roots, "candidate_tree_id", "")
+            or getattr(roots, "tree_id", "")
+            or ""
+        )
+        record_ref = str(candidate_id or "value-mapping")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="value_mapping_candidate_proof",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return results
+
+
 class MissingInputSynthesizer:
     """Route finite change-propagation obligations through admitted logic backends."""
 
@@ -1668,8 +1694,10 @@ class MissingInputSynthesizer:
                     )
                 else:
                     adjusted.append(item)
-            return tuple(adjusted)
-        return results
+            return _mirror_value_mapping(
+                tuple(adjusted), candidate.candidate_id, compilation
+            )
+        return _mirror_value_mapping(results, candidate.candidate_id, compilation)
 
     def prove_behavior(
         self,

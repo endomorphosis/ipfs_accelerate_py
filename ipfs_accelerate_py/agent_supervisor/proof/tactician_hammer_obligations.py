@@ -1427,6 +1427,31 @@ class TacticianHammerObligationCompilation:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_native_goal(source: Any, snapshot: Any, binding: Any, roots: Any) -> tuple[Any, Any, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(binding, "binding_id", "")
+            or getattr(binding, "logic_ir_obligation_id", "")
+            or "native-goal"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="program_logic_native_goal",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return source, snapshot, binding
+
+
 class ProgramLogicNativeGoalCompiler:
     """Compile a single LogicIR claim into an exact native ITP binding."""
 
@@ -1629,7 +1654,7 @@ class ProgramLogicNativeGoalCompiler:
                 roots.environment_id,
             ),
         )
-        return source, snapshot, binding
+        return _mirror_native_goal(source, snapshot, binding, roots)
 
     def round_trip_claim_id(
         self, source_text: str, *, itp: NativeITPKind | str = NativeITPKind.LEAN

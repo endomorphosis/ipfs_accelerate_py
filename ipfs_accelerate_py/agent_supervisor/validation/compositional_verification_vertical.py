@@ -436,6 +436,29 @@ def _find_unary_model(formulas: Sequence[SmtTerm], symbols: Sequence[str]) -> di
     return None
 
 
+def _mirror_incremental_smt(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "receipt_id", "")
+            or getattr(result, "session_id", "")
+            or "incremental-smt"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="incremental_smt_check",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class _FragmentSmtSession:
     """Sound unary QF_LIA session used when the Z3 Python API is not installed."""
 
@@ -572,7 +595,7 @@ class _FragmentSmtSession:
                     "unary_qf_lia_fragment_checker",
                 ),
             )
-        self._last_result = result
+        self._last_result = _mirror_incremental_smt(result)
         self._transcript.append(
             {
                 "operation": "check",

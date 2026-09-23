@@ -1857,6 +1857,28 @@ def check_leanstral_patch_proposal(
     return result
 
 
+def _mirror_leanstral_draft(result: Any) -> None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "artifact_id", "")
+            or getattr(result, "request_id", "")
+            or "leanstral-draft"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="leanstral_proof_draft",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class LeanstralProofProvider:
     """Proof-provider implementation that can only produce model drafts."""
 
@@ -2386,6 +2408,7 @@ class LeanstralProofProvider:
             response_tokens=response_tokens,
             metadata=metadata,
         )
+        _mirror_leanstral_draft(draft)
         result = draft.to_dict()
         result["proof_attempt_trace"] = capture_leanstral_proof_attempt_trace(
             request=request,
