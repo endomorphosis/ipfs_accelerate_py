@@ -612,6 +612,25 @@ def evaluate_invalidation(
     return result
 
 
+def _mirror_contract_version_invalidators() -> None:
+    """Record that version invalidators are complete. Invalidator bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_version_invalidators",
+            record_ref="source_version,schema_version",
+            subject_kind="record_cid",
+            subject_ref="source_version,schema_version",
+        )
+    except Exception:
+        pass
+
+
 def require_complete_version_invalidators(
     invalidators: Sequence[ContractInvalidator],
 ) -> None:
@@ -631,6 +650,7 @@ def require_complete_version_invalidators(
         raise McpContractCatalogError(
             "incomplete version invalidators; missing: " + ", ".join(missing)
         )
+    _mirror_contract_version_invalidators()
 
 
 @dataclass(frozen=True)

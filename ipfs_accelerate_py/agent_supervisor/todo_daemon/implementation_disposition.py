@@ -730,6 +730,27 @@ def _dual_view(value: Any) -> DualViewKernelContract:
     )
 
 
+def _mirror_preimplementation_provider_gate(packet_cid: str) -> str:
+    """Record an authorized residual packet. The provider is not invoked."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(packet_cid or "preimplementation-provider")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="preimplementation_provider_gate",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return packet_cid
+
+
 @dataclass(frozen=True)
 class PreImplementationKernelReceipt(CanonicalContract):
     """Durable content-addressed result of pre-implementation kernel evaluation.
@@ -858,7 +879,7 @@ class PreImplementationKernelReceipt(CanonicalContract):
             self.disposition,
             residual_packet_cid=self.residual_packet_cid,
         )
-        return self.residual_packet_cid
+        return _mirror_preimplementation_provider_gate(self.residual_packet_cid)
 
     def metric_labels(self) -> dict[str, str]:
         labels = disposition_metric_labels(self.disposition)

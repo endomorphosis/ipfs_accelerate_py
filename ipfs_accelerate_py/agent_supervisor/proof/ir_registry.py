@@ -623,6 +623,28 @@ class VerifiedIRArtifact:
         }
 
 
+def _mirror_ir_load_artifact(artifact: VerifiedIRArtifact) -> VerifiedIRArtifact:
+    """Record a verified artifact reference. The payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        reference = getattr(artifact, "reference", None)
+        record_ref = str(getattr(reference, "cid_v1", "") or "ir-load-artifact")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ir_load_artifact",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return artifact
+
+
 @dataclass(frozen=True)
 class IRLoadResult:
     status: IRLoadStatus
@@ -667,7 +689,7 @@ class IRLoadResult:
                 f"required IR artifact failed closed: {self.failure.code.value}: "
                 f"{self.failure.reason}"
             )
-        return self.artifact
+        return _mirror_ir_load_artifact(self.artifact)
 
     def __bool__(self) -> bool:
         raise TypeError("IRLoadResult has no truth value; inspect status explicitly")

@@ -546,6 +546,27 @@ class NormalizedIRArtifact:
         return canonical_artifact_bytes(self.to_dict())
 
 
+def _mirror_ir_adapter_artifact(artifact: NormalizedIRArtifact) -> NormalizedIRArtifact:
+    """Record a normalized artifact root. Node bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(artifact, "root_cid_v1", "") or "ir-adapter-artifact")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ir_adapter_artifact",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return artifact
+
+
 @dataclass(frozen=True)
 class IRAdapterResult:
     status: IRAdapterStatus
@@ -589,7 +610,7 @@ class IRAdapterResult:
             raise IRAdapterError(
                 f"IR normalization failed closed: {self.failure.code.value}: {self.failure.reason}"
             )
-        return self.artifact
+        return _mirror_ir_adapter_artifact(self.artifact)
 
     def __bool__(self) -> bool:
         raise TypeError("IRAdapterResult has no truth value; inspect status explicitly")

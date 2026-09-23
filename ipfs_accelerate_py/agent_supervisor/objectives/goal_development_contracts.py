@@ -664,6 +664,26 @@ def _proposals(values: Any) -> tuple[GoalDecompositionProposal, ...]:
     return tuple(by_id[key] for key in sorted(by_id))
 
 
+def _mirror_goal_decomposition_request(request_id: str) -> None:
+    """Record a draft that matches its frozen request. The draft is not admitted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(request_id or "goal-decomposition-request")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="goal_decomposition_request_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class GoalDecompositionDraft(GoalDevelopmentContract):
     """Content-addressed, explicitly unverified decomposition proposal."""
@@ -863,6 +883,7 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
             raise ContractValidationError(
                 "draft does not match the frozen goal-development request"
             )
+        _mirror_goal_decomposition_request(self.request_id)
 
     def _payload(self) -> dict[str, Any]:
         return self._versioned(
