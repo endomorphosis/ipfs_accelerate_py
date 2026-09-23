@@ -1086,6 +1086,30 @@ class ProgramContractProfile:
         )
 
 
+def _mirror_contract_profile(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or getattr(result, "profile_id", "")
+            or getattr(result, "goal_id", "")
+            or "contract-profile"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_contract_profile",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProgramContractProfileCompiler:
     """Compile vocabulary + evidence-bound records into a validated profile."""
 
@@ -1150,7 +1174,7 @@ class ProgramContractProfileCompiler:
                     f"got {actual!r}",
                     reason_codes=("forged_content_id",),
                 )
-        return profile
+        return _mirror_contract_profile(profile)
 
 
 def assert_contract_profile_complete(profile: ProgramContractProfile) -> None:

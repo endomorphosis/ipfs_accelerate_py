@@ -419,6 +419,31 @@ def _coerce_candidate(
     )
 
 
+def _mirror_family_boundary(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "example_cid", "")
+            or getattr(result, "content_id", "")
+            or getattr(result, "family_id", "")
+            or getattr(getattr(result, "membership", None), "value", "")
+            or "task-family"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_boundary",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TaskFamilyBoundaryValidator:
     """Fail-closed family-boundary and negative-example checker.
 
@@ -503,18 +528,22 @@ class TaskFamilyBoundaryValidator:
 
         known = self._known_counterexample_decision(family, counterexamples)
         if known is not None:
-            return known
+            return _mirror_family_boundary(known)
 
         normalized = _coerce_candidate(family, candidate)
         declared = _declared_membership(family, normalized.example_cid)
         if declared is not None:
-            return self._evaluate_declared(family, normalized, declared)
+            return _mirror_family_boundary(
+                self._evaluate_declared(family, normalized, declared)
+            )
         if normalized.proposed_membership is FamilyMembershipClass.POSITIVE:
-            return self._evaluate_undeclared_positive(family, normalized)
-        return self._admit(
+            return _mirror_family_boundary(
+                self._evaluate_undeclared_positive(family, normalized)
+            )
+        return _mirror_family_boundary(self._admit(
             normalized.proposed_membership,
             evidence_cids=normalized.evidence_cids,
-        )
+        ))
 
     def require(
         self,

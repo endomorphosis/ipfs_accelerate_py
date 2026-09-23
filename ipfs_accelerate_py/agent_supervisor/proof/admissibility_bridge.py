@@ -398,6 +398,29 @@ def load_pinned_intent(
 
 
 @dataclass
+def _mirror_admissibility(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "profile_id", "")
+            or getattr(getattr(result, "disposition", None), "value", "")
+            or "admissibility"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="admissibility_observation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SupervisorAdmissibilityBridge:
     """SupervisorAdmissibilityBridge@1 — lazy, fail-closed gate adapter.
 
@@ -594,36 +617,36 @@ class SupervisorAdmissibilityBridge:
             profile.strip() if isinstance(profile, str) and profile.strip() else self.profile_id
         )
         if not self.enabled:
-            return _closed_observation(
+            return _mirror_admissibility(_closed_observation(
                 disposition=AdmissibilityDisposition.UNAVAILABLE,
                 bridge_status=AdmissibilityBridgeStatus.DISABLED,
                 error="admissibility bridge is disabled; fail closed",
                 profile_id=active_profile,
-            )
+            ))
         try:
             decision = self.evaluate(intent, active_profile)
-            return _observation_from_decision(
+            return _mirror_admissibility(_observation_from_decision(
                 decision, bridge_status=AdmissibilityBridgeStatus.READY
-            )
+            ))
         except AdmissibilityBridgeError as exc:
             status = self._bridge_status
             if status is AdmissibilityBridgeStatus.READY:
                 status = AdmissibilityBridgeStatus.UNAVAILABLE
-            return _closed_observation(
+            return _mirror_admissibility(_closed_observation(
                 disposition=AdmissibilityDisposition.UNAVAILABLE
                 if status is AdmissibilityBridgeStatus.UNAVAILABLE
                 else AdmissibilityDisposition.ERROR,
                 bridge_status=status,
                 error=str(exc),
                 profile_id=active_profile,
-            )
+            ))
         except Exception as exc:  # noqa: BLE001 — fail closed
-            return _closed_observation(
+            return _mirror_admissibility(_closed_observation(
                 disposition=AdmissibilityDisposition.ERROR,
                 bridge_status=AdmissibilityBridgeStatus.MISCONFIGURED,
                 error=f"admissibility evaluation failed closed: {type(exc).__name__}: {exc}",
                 profile_id=active_profile,
-            )
+            ))
 
     def check_intent_admissibility(
         self,

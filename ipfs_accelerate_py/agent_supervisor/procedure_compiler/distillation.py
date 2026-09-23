@@ -1207,6 +1207,30 @@ def _assemble_references(
     return tuple(unique)
 
 
+def _mirror_distillation_example(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "example_id", "")
+            or getattr(result, "content_id", "")
+            or getattr(result, "proof_cid", "")
+            or "distillation-example"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="distillation_example",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DistillationCorpusBuilder:
     """Admit independently validated hole examples into disjoint compact rows."""
 
@@ -1284,7 +1308,7 @@ class DistillationCorpusBuilder:
             raise
         self._examples.append(example)
         self._evaluation = None
-        return example
+        return _mirror_distillation_example(example)
 
     def build(self) -> DistillationCorpus:
         if not self._examples:

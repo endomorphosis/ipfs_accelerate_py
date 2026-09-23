@@ -732,6 +732,26 @@ class RepairTargetAdmission:
         return AdmissionResult(decision, audit, expiry, reads, writes)
 
 
+def _mirror_repair_revalidation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        codes = tuple(getattr(item, "value", str(item)) for item in result)
+        record_ref = ",".join(codes) or "repair-target-valid"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_target_revalidation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class RepairTargetDecisionValidator:
     """Validate a decision immediately before it grants a repair packet scope."""
 
@@ -760,7 +780,7 @@ class RepairTargetDecisionValidator:
             candidate_set_id = candidate_set_identity(rows)
         except (RepairTargetAdmissionError, ValueError):
             invalid.add(AdmissionInvalidator.CANDIDATE_SET_MUTATION)
-            return tuple(sorted(invalid, key=lambda item: item.value))
+            return _mirror_repair_revalidation(tuple(sorted(invalid, key=lambda item: item.value)))
         if (
             candidate_set_id != decision.candidate_set_id
             or tuple(item.content_id for item in rows) != decision.candidate_ids
@@ -854,7 +874,7 @@ class RepairTargetDecisionValidator:
             else:
                 if replayed != result:
                     invalid.add(AdmissionInvalidator.REPOSITORY_AUTHORITY_CHANGED)
-        return tuple(sorted(invalid, key=lambda item: item.value))
+        return _mirror_repair_revalidation(tuple(sorted(invalid, key=lambda item: item.value)))
 
     def is_valid(self, *args: object, **kwargs: object) -> bool:
         return not self.validate(*args, **kwargs)  # type: ignore[arg-type]
