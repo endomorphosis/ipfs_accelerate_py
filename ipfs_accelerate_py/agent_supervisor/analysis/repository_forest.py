@@ -2392,6 +2392,33 @@ def forest_satisfies_repository_forest_manifest(
     return not _forest_manifest_failure_reasons(forest)
 
 
+def _mirror_repository_identity_claim(claim: dict[str, Any], *, record_kind: str) -> dict[str, Any]:
+    """Record a repository-identity claim. It does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            claim.get("forest_id")
+            or claim.get("descriptor_cid")
+            or claim.get("evidence")
+            or record_kind
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str((claim.get("identity_components") or {}).get("tree") or ""),
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_repository_descriptor(
     descriptor: RepositoryDescriptor | Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2405,7 +2432,7 @@ def prove_repository_descriptor(
         descriptor = RepositoryDescriptor.from_dict(descriptor)
     if not isinstance(descriptor, RepositoryDescriptor):
         raise TypeError("descriptor must be a RepositoryDescriptor")
-    return {
+    claim = {
         "schema": REPOSITORY_DESCRIPTOR_CLAIM_SCHEMA,
         "evidence": REPOSITORY_DESCRIPTOR_EVIDENCE,
         "evidence_terms": list(repository_descriptor_evidence_terms()),
@@ -2448,6 +2475,7 @@ def prove_repository_descriptor(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_repository_identity_claim(claim, record_kind="repository_descriptor_claim")
 
 
 def prove_repository_forest_manifest(
@@ -2470,7 +2498,7 @@ def prove_repository_forest_manifest(
     portable = forest.to_portable_dict()
     bindings = forest_observation_bindings(forest)
     aliases = tuple(item.alias for item in forest.descriptors)
-    return {
+    claim = {
         "schema": REPOSITORY_FOREST_MANIFEST_CLAIM_SCHEMA,
         "evidence": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
         "evidence_terms": list(repository_forest_manifest_evidence_terms()),
@@ -2524,6 +2552,7 @@ def prove_repository_forest_manifest(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_repository_identity_claim(claim, record_kind="repository_forest_manifest_claim")
 
 
 def prove_repository_identity_packet(
@@ -2539,7 +2568,7 @@ def prove_repository_identity_packet(
         prove_repository_descriptor(item) for item in forest.descriptors
     ]
     manifest_claim = prove_repository_forest_manifest(forest)
-    return {
+    claim = {
         "schema": REPOSITORY_IDENTITY_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(repository_identity_packet_evidence_terms()),
         "goal_packet": REPOSITORY_IDENTITY_GOAL_PACKET_ID,
@@ -2567,6 +2596,7 @@ def prove_repository_identity_packet(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_repository_identity_claim(claim, record_kind="repository_identity_packet_claim")
 
 
 def forests_share_portable_identity(

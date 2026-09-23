@@ -2105,6 +2105,27 @@ def all_program_zkp_evidence_terms() -> tuple[str, ...]:
     )
 
 
+def _mirror_zk_capability_conformance(claim: dict[str, Any]) -> dict[str, Any]:
+    """Record capability conformance. It does not grant production authority."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("capability_epoch") or claim.get("evidence") or "zk_capability")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="zk_capability_conformance_claim",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_zk_capability_conformance(
     capability: "ProgramZkpCapabilityConformanceReport | Mapping[str, Any]",
 ) -> Dict[str, Any]:
@@ -2172,7 +2193,7 @@ def prove_zk_capability_conformance(
         production_eligible
         or capability.rollout_mode is ProgramZkpRolloutMode.SHADOW
     )
-    return {
+    claim = {
         "schema": PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA,
         "evidence": PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
         "evidence_terms": list(capability_conformance_evidence_terms()),
@@ -2200,6 +2221,7 @@ def prove_zk_capability_conformance(
             "Do not silently substitute one proof system for another."
         ),
     }
+    return _mirror_zk_capability_conformance(claim)
 
 
 def zk_attestation_independent_of_semantic_authority() -> bool:

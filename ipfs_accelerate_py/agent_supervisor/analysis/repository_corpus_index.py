@@ -2013,6 +2013,27 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     return packet_evidence_terms()
 
 
+def _mirror_corpus_claim(claim: dict[str, Any], *, record_kind: str, catalog_kind: str) -> dict[str, Any]:
+    """Record an inventory claim. It does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(claim.get("inventory_cid") or claim.get("evidence") or record_kind)
+        mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 def prove_objective_validation_repair(
     index: RepositoryCorpusIndex | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -2036,7 +2057,7 @@ def prove_objective_validation_repair(
         inventory_cid = index.inventory_cid
         exhaustive = index.exhaustive
         reason_codes = list(index.reason_codes)
-    return {
+    claim = {
         "schema": ("ipfs_accelerate_py/agent-supervisor/objective-validation-repair-claim@1"),
         "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
         "evidence_terms": list(objective_validation_repair_evidence_terms()),
@@ -2066,6 +2087,11 @@ def prove_objective_validation_repair(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_corpus_claim(
+        claim,
+        record_kind="corpus_objective_validation_repair_claim",
+        catalog_kind="metadata",
+    )
 
 
 def inventory_satisfies_exhaustive_file_inventory(
@@ -2122,7 +2148,7 @@ def prove_exhaustive_file_inventory(
     satisfied = inventory_satisfies_exhaustive_file_inventory(index)
     included = index.included_entries
     excluded = index.excluded_entries
-    return {
+    claim = {
         "schema": "ipfs_accelerate_py/agent-supervisor/exhaustive-file-inventory-claim@1",
         "evidence": EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
         "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -2164,6 +2190,11 @@ def prove_exhaustive_file_inventory(
         "authoritative": False,
         "completion_authoritative": False,
     }
+    return _mirror_corpus_claim(
+        claim,
+        record_kind="exhaustive_file_inventory_claim",
+        catalog_kind="filesystem_mtime",
+    )
 
 
 __all__ = [
