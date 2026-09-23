@@ -444,6 +444,58 @@ def _mirror_family_boundary(result: Any) -> Any:
     return result
 
 
+def _mirror_task_family_boundary_requirement(decision: BoundaryDecision) -> BoundaryDecision:
+    """Record a non-critical boundary requirement. Evidence cids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        membership = getattr(decision, "membership", None)
+        record_ref = str(
+            getattr(decision, "reason_code", "")
+            or getattr(membership, "value", "")
+            or "task-family-boundary-requirement"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_boundary_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
+def _mirror_task_family_merge_requirement(decision: BoundaryDecision) -> BoundaryDecision:
+    """Record a non-critical merge requirement. Conflicting classes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        membership = getattr(decision, "membership", None)
+        record_ref = str(
+            getattr(decision, "reason_code", "")
+            or getattr(membership, "value", "")
+            or "task-family-merge-requirement"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_family_merge_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 class TaskFamilyBoundaryValidator:
     """Fail-closed family-boundary and negative-example checker.
 
@@ -560,7 +612,7 @@ class TaskFamilyBoundaryValidator:
                 self._rejection_message(decision),
                 decision=decision,
             )
-        return decision
+        return _mirror_task_family_boundary_requirement(decision)
 
     def evaluate_merge(self, family: TaskFamily, other: TaskFamily) -> BoundaryDecision:
         """Refuse any merge that would widen or split a family's boundary."""
@@ -710,7 +762,7 @@ class TaskFamilyBoundaryValidator:
                 self._rejection_message(decision),
                 decision=decision,
             )
-        return decision
+        return _mirror_task_family_merge_requirement(decision)
 
     def _evaluate_declared(
         self,

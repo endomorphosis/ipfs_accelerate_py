@@ -359,6 +359,26 @@ def normalize_claim_token(value: Any) -> str:
     return _TOKEN_ALIASES.get(spaced, "")
 
 
+def _mirror_docs_claim_requirement(token: str) -> None:
+    """Record the canonical claim token. Requirement text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(token or "docs-claim")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="docs_claim_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def requirements_for_token(token: Any) -> ClaimIRRequirement:
     """Return ClaimIR requirements for one strong claim token."""
 
@@ -368,6 +388,7 @@ def requirements_for_token(token: Any) -> ClaimIRRequirement:
             f"unknown strong claim token: {token!r}",
             code="unknown_claim_token",
         )
+    _mirror_docs_claim_requirement(canonical)
     return CLAIM_IR_REQUIREMENTS[canonical]
 
 

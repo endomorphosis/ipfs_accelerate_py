@@ -163,6 +163,27 @@ class CodeProperty:
         )
 
 
+def _mirror_code_property_requirement(prop: Any) -> Any:
+    """Record the property id. The property body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(prop, "property_id", "") or "code-property")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="code_property_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return prop
+
+
 @dataclass(frozen=True)
 class CodePropertyCatalog:
     """Immutable, content-addressed property catalog."""
@@ -214,7 +235,7 @@ class CodePropertyCatalog:
         prop = self.get(property_id)
         if prop is None:
             raise UnknownCodePropertyError(f"unknown code property id: {property_id!r}")
-        return prop
+        return _mirror_code_property_requirement(prop)
 
     def property_ids(self) -> tuple[str, ...]:
         return tuple(prop.property_id for prop in self.properties)

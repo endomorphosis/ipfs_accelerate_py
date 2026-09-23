@@ -887,6 +887,27 @@ class SrtHoldoutArtifact:
         )
 
 
+def _mirror_srt_holdout_requirement(artifact: Any) -> Any:
+    """Record the holdout artifact id. The gold body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(artifact, "artifact_id", "") or "srt-holdout")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="srt_holdout_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return artifact
+
+
 @dataclass
 class SrtHoldoutRegistry:
     """In-memory preregistered SRT holdout registry (separate from residual catalog).
@@ -926,7 +947,7 @@ class SrtHoldoutRegistry:
         found = self.get(artifact_id)
         if found is None:
             raise CodeProofSrtBridgeError(f"unknown SRT holdout artifact: {artifact_id!r}")
-        return found
+        return _mirror_srt_holdout_requirement(found)
 
     def query(
         self,
