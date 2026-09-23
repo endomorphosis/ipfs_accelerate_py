@@ -945,6 +945,26 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
 
 
 @dataclass(frozen=True)
+def _mirror_goal_validation(record_kind: str, record_ref: str, tree_id: str = "") -> None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        ref = str(record_ref or record_kind)
+        tree = str(tree_id or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=ref,
+            tree_id=tree,
+            subject_kind="tree_id" if tree else "record_cid",
+            subject_ref=tree or ref,
+        )
+    except Exception:
+        pass
+
+
 class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
     """Deterministic envelope-validation receipt with no proof authority."""
 
@@ -1099,6 +1119,11 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
             raise ContractValidationError(
                 "proposal receipt does not match the frozen draft bindings"
             )
+        _mirror_goal_validation(
+            "goal_development_proposal_validation",
+            str(self.receipt_id or self.draft_id or self.request_id),
+            str(self.repository_tree_id or ""),
+        )
 
     def _payload(self) -> dict[str, Any]:
         return self._versioned(
@@ -1424,6 +1449,11 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             )
         if self.admitted and receipt.decision is not GoalProposalDecision.ACCEPTED:
             raise ContractValidationError("an admission receipt cannot admit a rejected proposal")
+        _mirror_goal_validation(
+            "goal_development_admission_validation",
+            str(self.proposal_receipt_id or self.request_id or self.draft_id),
+            str(self.repository_tree_id or ""),
+        )
 
     def _payload(self) -> dict[str, Any]:
         return self._versioned(

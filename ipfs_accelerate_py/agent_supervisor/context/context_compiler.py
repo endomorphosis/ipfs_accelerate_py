@@ -5652,6 +5652,30 @@ def reconstruct_decision_context(
     return rebuilt
 
 
+def _mirror_decision_context(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or getattr(result, "compilation_id", "")
+            or getattr(result, "source_identity", "")
+            or "decision-context"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="decision_context_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DecisionContextCompiler:
     """Compile the complete authoritative closure for one decision.
 
@@ -6227,7 +6251,7 @@ class DecisionContextCompiler:
             raise DecisionContextBindingError(
                 "complete provider input token accounting is forged"
             )
-        return result
+        return _mirror_decision_context(result)
 
     verify_compilation = verify
 

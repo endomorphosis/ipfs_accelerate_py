@@ -965,6 +965,32 @@ def apply_file_replacements(
 
 
 @dataclass
+def _mirror_isolated_mutation(result: Any, worktree_path: str = "") -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "identity_cid", "")
+            or getattr(result, "candidate_id", "")
+            or getattr(result, "candidate_cid", "")
+            or "isolated-mutation"
+        )
+        path = str(worktree_path or "")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="isolated_mutation_worktree",
+            record_ref=record_ref,
+            subject_kind="path" if path else "record_cid",
+            subject_ref=path or record_ref,
+            paths=(path,) if path else (),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class IsolatedMutationWorktree:
     """Fenced disposable mutation worktree bound to one attempt identity.
 
@@ -1230,7 +1256,7 @@ class IsolatedMutationWorktree:
             )
             self._write_journal(admission=result.to_dict())
             self.assert_root_unmutated()
-            return result
+            return _mirror_isolated_mutation(result, str(self.worktree_path))
 
     def authorize_cleanup(
         self,

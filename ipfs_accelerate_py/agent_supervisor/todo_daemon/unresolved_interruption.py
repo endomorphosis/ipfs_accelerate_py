@@ -227,6 +227,30 @@ def admit_continuation(daemon: Any, attempt: Any, callback: NativeDoctorCallback
             return _mirror_continuation_admission(admitted)
 
 
+def _mirror_native_continuation(admitted: Any) -> None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = "native-continuation"
+        if isinstance(admitted, dict):
+            record_ref = str(
+                admitted.get("reservation_receipt_id")
+                or admitted.get("receipt_id")
+                or record_ref
+            )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="native_continuation_current",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class NativeContinuationAdmission:
     """Non-serializable custody and native-store reader, never a JSON receipt.
 
@@ -304,6 +328,7 @@ class NativeContinuationAdmission:
             or task.body.get("completion_receipt") != admitted
         ):
             raise DoctorCallbackDenied("native continuation control admission is not current")
+        _mirror_native_continuation(admitted)
         return admitted, task.to_dict()
 
 
