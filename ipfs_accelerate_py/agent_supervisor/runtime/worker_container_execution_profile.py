@@ -448,6 +448,27 @@ def worker_container_execution_grok_provider_home_source_identity(
     )
 
 
+def _mirror_grok_mount_sources(path: str) -> None:
+    """Record a mount-source check. It does not mount or start a container."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = path or "grok_mount"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="grok_mount_source_validation",
+            record_ref=record_ref,
+            subject_kind="path",
+            subject_ref=record_ref,
+            paths=(record_ref,),
+        )
+    except Exception:
+        pass
+
+
 def validate_worker_container_execution_grok_mount_sources(
     profile: WorkerContainerExecutionProfile,
     *,
@@ -509,6 +530,7 @@ def validate_worker_container_execution_grok_mount_sources(
         mount = profile.mount_for_kind(kind)
         if mount is None or mount.source_identity != identity:
             raise ValueError(f"qualified Grok {kind} source identity drifted")
+    _mirror_grok_mount_sources(str(workspace))
 
 
 def _project(

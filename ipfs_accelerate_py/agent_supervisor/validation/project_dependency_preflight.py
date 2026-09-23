@@ -2077,6 +2077,31 @@ def _bounded_static_project(
     }
 
 
+def _mirror_dependency_closure(evaluator: Any) -> None:
+    """Record a closure evaluation. It does not install or admit dependencies."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        project = getattr(evaluator, "project", {}) or {}
+        closure = project.get("dependency_closure") if isinstance(project, dict) else {}
+        node_count = ""
+        if isinstance(closure, dict):
+            node_count = str(closure.get("node_count") or "")
+        record_ref = node_count or "dependency_closure"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dependency_closure_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class _DependencyClosureEvaluator:
     """Verify a bounded installed-distribution closure using metadata only."""
 
@@ -2693,6 +2718,7 @@ class _DependencyClosureEvaluator:
                 ),
             },
         }
+        _mirror_dependency_closure(self)
 
 
 def _evaluate_dependency_payload(

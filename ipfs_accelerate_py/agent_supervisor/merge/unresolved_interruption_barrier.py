@@ -152,6 +152,27 @@ def get(coordinator: Any, claim: Any, reservation_receipt_id: str) -> dict[str, 
         return matches[0] if matches else None
 
 
+def _mirror_interruption_barrier(body: dict[str, Any]) -> dict[str, Any]:
+    """Record barrier admission. completion_authority on the receipt stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(body.get("admission_receipt_id") or body.get("record_id") or "interruption_barrier")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="interruption_barrier_admission",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return body
+
+
 def admit(coordinator: Any, claim: Any, *, reservation_receipt_id: str, admission: Any, now_ms: int | None = None) -> dict[str, Any]:
     from . import database_coordination as dc
     from ..todo_daemon.unresolved_interruption import NativeContinuationAdmission
@@ -195,14 +216,14 @@ def admit(coordinator: Any, claim: Any, *, reservation_receipt_id: str, admissio
                 if state["admitted"] != body:
                     raise dc.DatabaseCoordinationError("native interruption admission conflicts")
                 coordinator._commit_if_idle(connection)
-                return body
+                return _mirror_interruption_barrier(body)
             lease = _guard(coordinator, connection, value, now)
             if admission.require_current(coordinator) != (admission_receipt, control_task):
                 raise dc.DatabaseCoordinationStaleFenceError("native continuation admission changed before commit")
             coordinator._record_event(connection, lease_id=value["lease_id"], scope_key=lease.scope_key,
                 event_type=ADMITTED, fencing_token=value["fencing_token"], fence_epoch=value["fence_epoch"], observed_at_ms=now, body=body)
             coordinator._commit_if_idle(connection)
-            return body
+            return _mirror_interruption_barrier(body)
         except BaseException:
             coordinator._rollback_if_open(connection)
             raise

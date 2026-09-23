@@ -2422,6 +2422,27 @@ class DryRunPreview(_ControlCanonicalContract):
         return result
 
 
+def _mirror_operation_result_binding(result: Any) -> None:
+    """Record an exact request binding. It does not apply the operation."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "result_id", "") or getattr(result, "request_id", "") or "operation_result")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="operation_result_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class OperationResult(_ControlCanonicalContract):
     """Bounded result with effect claims constrained by operation authority."""
@@ -2602,6 +2623,7 @@ class OperationResult(_ControlCanonicalContract):
                 raise AuthorityViolationError(
                     "mutation result idempotency key does not match request"
                 )
+        _mirror_operation_result_binding(self)
 
     def _payload(self) -> dict[str, Any]:
         return {

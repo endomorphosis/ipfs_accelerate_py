@@ -2719,6 +2719,27 @@ def packet_is_cheaper_than_baseline(
     return reduction >= minimum_reduction_ratio
 
 
+def _mirror_repair_packet_compile(result: Any) -> Any:
+    """Record a compiler result. Cache reuse does not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "packet_id", "") or getattr(result, "receipt_id", "") or "repair_packet")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="repair_packet_compiler",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairPacketCompiler:
     """Stateful compiler with exact-packet reuse for identical requests."""
 
@@ -2737,10 +2758,10 @@ class ContractRepairPacketCompiler:
         key = request.request_id
         cached = self._cache.get(key)
         if cached is not None:
-            return cached
+            return _mirror_repair_packet_compile(cached)
         result = compile_repair_packet(request)
         self._cache[key] = result
-        return result
+        return _mirror_repair_packet_compile(result)
 
     def compile_delta(
         self,

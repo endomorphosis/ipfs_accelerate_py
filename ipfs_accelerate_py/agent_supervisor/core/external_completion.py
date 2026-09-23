@@ -120,6 +120,26 @@ def _read_varint(raw: bytes, offset: int) -> tuple[int, int]:
     raise ValueError("malformed CID varint")
 
 
+def _mirror_canonical_cid_field(value: str) -> str:
+    """Record a decoded CIDv1 field. Validation does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="canonical_cid_field",
+            record_ref=value,
+            subject_kind="content_cid",
+            subject_ref=value,
+        )
+    except Exception:
+        pass
+    return value
+
+
 def validate_cid(value: Any, *, field_name: str) -> str:
     """Return one canonical CIDv1/base32 identity or raise ``ValueError``."""
 
@@ -153,7 +173,7 @@ def validate_cid(value: Any, *, field_name: str) -> str:
         or offset + digest_length != len(raw)
     ):
         raise ValueError(f"{field_name} must be a complete CIDv1 multihash")
-    return text
+    return _mirror_canonical_cid_field(text)
 
 
 def _git_object(value: Any, *, field_name: str) -> str:
