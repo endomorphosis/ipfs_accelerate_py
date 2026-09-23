@@ -2366,6 +2366,33 @@ class DoctorRepairProofReceipt(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_doctor_obligation_compilation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        roots = getattr(result, "roots", None)
+        tree_id = str(getattr(roots, "tree_id", "") or "")
+        record_ref = str(
+            getattr(result, "compilation_id", "")
+            or getattr(result, "plan_id", "")
+            or getattr(result, "finding_id", "")
+            or "doctor-obligation"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="doctor_repair_obligation_compilation",
+            record_ref=record_ref,
+            tree_id=tree_id,
+            subject_kind="obligation_ref",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DoctorRepairObligationCompiler:
     """Lower an admitted doctor Tactician plan into exact proof obligations.
 
@@ -2576,7 +2603,7 @@ class DoctorRepairObligationCompiler:
                 "disposition": disposition.value,
             },
         )
-        return DoctorRepairObligationCompilation(
+        return _mirror_doctor_obligation_compilation(DoctorRepairObligationCompilation(
             roots=roots,
             compilation_id=compilation_id,
             plan_id=plan_id,
@@ -2602,7 +2629,7 @@ class DoctorRepairObligationCompiler:
                     | {roots.tree_id, roots.corpus_id}
                 )
             ),
-        )
+        ))
 
     def _reject(
         self,
@@ -2612,7 +2639,7 @@ class DoctorRepairObligationCompiler:
         goals_comp: DoctorGoalCompilation,
         reasons: Sequence[str],
     ) -> DoctorRepairObligationCompilation:
-        return DoctorRepairObligationCompilation(
+        return _mirror_doctor_obligation_compilation(DoctorRepairObligationCompilation(
             roots=roots,
             compilation_id=_stable_id(
                 "doctor-obligation-compilation",
@@ -2629,7 +2656,7 @@ class DoctorRepairObligationCompiler:
             invalidation_refs=tuple(
                 sorted(set(plan.invalidation_refs) | {roots.tree_id})
             ),
-        )
+        ))
 
 
 # ---------------------------------------------------------------------------

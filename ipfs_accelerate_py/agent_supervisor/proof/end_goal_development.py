@@ -1130,6 +1130,30 @@ def build_formalized_leanstral_invocation(
     return invocation
 
 
+def _mirror_formalized_goal(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        status = getattr(result, "status", None)
+        record_ref = str(
+            getattr(result, "request_id", "")
+            or getattr(status, "value", status)
+            or "formalized-goal"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formalized_goal_development",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class FormalizedGoalDevelopmentRoute:
     """``FormalizedGoalDevelopmentRoute@1`` supervisor adapter.
 
@@ -1212,50 +1236,50 @@ class FormalizedGoalDevelopmentRoute:
             try:
                 request = FormalizedGoalDevelopmentRequest.from_dict(request)
             except (EndGoalDevelopmentError, ContractValidationError) as exc:
-                return FormalizedGoalDevelopmentResult(
+                return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                     status=FormalizedRouteStatus.REJECTED,
                     gate_reason=FormalizationGateReason.INVALID_FORMAL_GOAL,
                     request_id="",
-                )
+                ))
 
         # Prose-only / missing formal goal paths → stable rejection, no model.
         if request.formal_goal is None and (request.prose or request.caller_text):
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.PROSE_BYPASS,
-            )
+            ))
         if request.formal_goal is None:
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.MISSING_FORMAL_GOAL,
-            )
+            ))
         if isinstance(request.formal_goal, str) or _looks_like_prose_primary(request.formal_goal):
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.PROSE_BYPASS,
-            )
+            ))
 
         try:
             formal_goal = _coerce_formal_goal(request.formal_goal)
         except EndGoalDevelopmentError:
             # Distinguish prose-shaped failures already handled above.
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.INVALID_FORMAL_GOAL,
-            )
+            ))
 
         gate_reason = _require_confirmed_formal_goal(formal_goal)
         if gate_reason is not None:
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=gate_reason,
-            )
+            ))
 
         if not request.templates:
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.MISSING_TEMPLATES,
-            )
+            ))
 
         try:
             return extract_formalized_identifiers(request)
@@ -1271,10 +1295,10 @@ class FormalizedGoalDevelopmentRoute:
                 reason = FormalizationGateReason.MISSING_TEMPLATES
             else:
                 reason = FormalizationGateReason.INVALID_FORMAL_GOAL
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=reason,
-            )
+            ))
 
     def build_invocation(
         self, request: FormalizedGoalDevelopmentRequest | Mapping[str, Any]
@@ -1305,10 +1329,10 @@ class FormalizedGoalDevelopmentRoute:
             try:
                 request = FormalizedGoalDevelopmentRequest.from_dict(request)
             except (EndGoalDevelopmentError, ContractValidationError, TypeError, ValueError):
-                return FormalizedGoalDevelopmentResult(
+                return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                     status=FormalizedRouteStatus.REJECTED,
                     gate_reason=FormalizationGateReason.INVALID_FORMAL_GOAL,
-                )
+                ))
 
         admitted = self.admit(request)
         if isinstance(admitted, FormalizedGoalDevelopmentResult):
@@ -1317,32 +1341,32 @@ class FormalizedGoalDevelopmentRoute:
         try:
             invocation = build_formalized_leanstral_invocation(request, identifiers=admitted)
         except (EndGoalDevelopmentError, ContractValidationError) as exc:
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.INVALID_FORMAL_GOAL,
                 identifiers=admitted,
                 request_id="",
-            )
+            ))
 
         # Provider.develop already maps timeout / unavailable / malformed /
         # cancelled / overloaded into GoalDevelopmentProviderResult fallbacks.
         provider_result = self._provider.develop(invocation, cancellation=cancellation)
 
         if provider_result.used_fallback:
-            return FormalizedGoalDevelopmentResult(
+            return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.DETERMINISTIC_FALLBACK,
                 request_id=provider_result.request_id,
                 identifiers=admitted,
                 provider_result=provider_result,
                 fallback_reason=provider_result.fallback_reason,
-            )
+            ))
 
-        return FormalizedGoalDevelopmentResult(
+        return _mirror_formalized_goal(FormalizedGoalDevelopmentResult(
             status=FormalizedRouteStatus.DRAFT,
             request_id=provider_result.request_id,
             identifiers=admitted,
             provider_result=provider_result,
-        )
+        ))
 
 
 def create_formalized_goal_development_route(

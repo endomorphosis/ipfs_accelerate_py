@@ -1379,6 +1379,30 @@ class CoordinatedAdmission:
         return not self.owner
 
 
+def _mirror_coordinated_admission(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        admission = getattr(result, "admission", None)
+        record_ref = str(
+            getattr(admission, "binding_id", "")
+            or getattr(admission, "evidence_id", "")
+            or "coordinated-admission"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="coordinated_adversarial_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AdversarialValidationCoordinator:
     """Cross-thread/process fenced single-flight for boundary validation.
 
@@ -1482,19 +1506,19 @@ class AdversarialValidationCoordinator:
                 raise AdversarialValidationError(
                     "single-flight admission bindings do not match the request"
                 )
-            return CoordinatedAdmission(
+            return _mirror_coordinated_admission(CoordinatedAdmission(
                 admission=admission,
                 owner=result.owner,
                 fencing_token=result.fencing_token,
-            )
+            ))
         except Exception:
             # The intentionally broad projection is safe here: provider
             # exception text is never reflected into the public finding.
-            return CoordinatedAdmission(
+            return _mirror_coordinated_admission(CoordinatedAdmission(
                 admission=self.gate.execution_failed(binding, evidence, policy),
                 owner=False,
                 fencing_token=0,
-            )
+            ))
 
     validate = evaluate
     coordinate = evaluate

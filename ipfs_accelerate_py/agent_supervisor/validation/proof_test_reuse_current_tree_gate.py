@@ -1543,6 +1543,31 @@ def verify_persisted_current_tree_gate_bundle(
 
 
 @dataclass(frozen=True, slots=True)
+def _mirror_ptr_gate_decision(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        evidence = getattr(result, "final_gate_completion_evidence", None)
+        reasons = getattr(result, "reason_codes", ()) or ()
+        record_ref = str(
+            getattr(evidence, "evidence_id", "")
+            or (reasons[0] if reasons else "")
+            or "ptr-gate"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_test_reuse_gate_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ProofTestReuseCurrentTreeGate:
     """Evaluate the sealed PTR population against one current-tree identity."""
 
@@ -2656,11 +2681,11 @@ class ProofTestReuseCurrentTreeGate:
 
         reasons = list(dict.fromkeys(reasons))[:_MAX_REASONS]
         if reasons:
-            return ProofTestReuseCurrentTreeGateDecision(
+            return _mirror_ptr_gate_decision(ProofTestReuseCurrentTreeGateDecision(
                 passed=False,
                 reason_codes=tuple(reasons),
                 evaluated_at_ms=now_ms,
-            )
+            ))
 
         # PTR-169 may only emit a pre-merge candidate for itself.  Authoritative
         # G140/G000 completion requires a post-merge outer re-run that proves
@@ -2705,13 +2730,13 @@ class ProofTestReuseCurrentTreeGate:
                     "outer_controller_post_merge_rerun_of_exact_78_task_gate"
                 ),
             }
-            return ProofTestReuseCurrentTreeGateDecision(
+            return _mirror_ptr_gate_decision(ProofTestReuseCurrentTreeGateDecision(
                 passed=True,
                 reason_codes=(),
                 evaluated_at_ms=now_ms,
                 pre_merge_candidate=True,
                 candidate_receipt=candidate_receipt,
-            )
+            ))
 
         freshness_ends: list[int] = []
         for collection in (
@@ -2744,11 +2769,11 @@ class ProofTestReuseCurrentTreeGate:
         )
         # Validate every retained premise CID is present.
         if any(not item for item in premise_cids):
-            return ProofTestReuseCurrentTreeGateDecision(
+            return _mirror_ptr_gate_decision(ProofTestReuseCurrentTreeGateDecision(
                 passed=False,
                 reason_codes=("incomplete_premise_cids",),
                 evaluated_at_ms=now_ms,
-            )
+            ))
 
         shared_kwargs = {
             "repository_id": self.repository_id,
@@ -2789,13 +2814,13 @@ class ProofTestReuseCurrentTreeGate:
             acceptance_criterion=ROOT_ACCEPTANCE_CRITERION,
             satisfied_requirements=ROOT_SATISFIED_REQUIREMENTS,
         )
-        return ProofTestReuseCurrentTreeGateDecision(
+        return _mirror_ptr_gate_decision(ProofTestReuseCurrentTreeGateDecision(
             passed=True,
             reason_codes=(),
             evaluated_at_ms=now_ms,
             final_gate_completion_evidence=final_gate_evidence,
             root_completion_evidence=root_evidence,
-        )
+        ))
 
     def persist_bundle(
         self,

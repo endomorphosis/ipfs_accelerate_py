@@ -1122,6 +1122,32 @@ IntegrityAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots, str], Int
 
 
 @dataclass
+def _mirror_contract_repair_validation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        report = getattr(result, "report", None)
+        receipt = getattr(result, "receipt", None)
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or getattr(report, "content_id", "")
+            or getattr(report, "report_id", "")
+            or "contract-repair-validation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_repair_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairValidator:
     """Orchestrate patch-bound re-index, re-resolve, re-extract, re-prove, and gates.
 
@@ -1370,7 +1396,7 @@ class ContractRepairValidator:
                 reason_codes=(ContractRepairValidationReason.MALFORMED_INPUT.value,),
                 complete=False,
             )
-            return ValidationOutcome(report=report, receipt=None)
+            return _mirror_contract_repair_validation(ValidationOutcome(report=report, receipt=None))
 
         try:
             finding = _identifier(finding_id, "finding_id")
@@ -1387,7 +1413,7 @@ class ContractRepairValidator:
         except ContractRepairValidationError:
             reasons.add(ContractRepairValidationReason.MALFORMED_INPUT.value)
             report = self._failed_report(packet, decision, current_roots, stages, reasons)
-            return ValidationOutcome(report=report, receipt=None)
+            return _mirror_contract_repair_validation(ValidationOutcome(report=report, receipt=None))
 
         # --- Binding: packet / decision / admission / candidate tree ---
         if decision.roots != packet.roots or admission.audit.roots != packet.roots:
@@ -1651,7 +1677,7 @@ class ContractRepairValidator:
             complete=complete,
         )
         if not complete:
-            return ValidationOutcome(report=report, receipt=None)
+            return _mirror_contract_repair_validation(ValidationOutcome(report=report, receipt=None))
 
         receipt = ContractRepairCompletionReceipt(
             packet_id=packet.packet_id,
@@ -1674,7 +1700,7 @@ class ContractRepairValidator:
             write_paths=packet.write_paths,
             checked_at=checked_at,
         )
-        return ValidationOutcome(report=report, receipt=receipt)
+        return _mirror_contract_repair_validation(ValidationOutcome(report=report, receipt=receipt))
 
     def require_complete(
         self,
