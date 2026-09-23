@@ -311,13 +311,35 @@ def expand_campaign_source(payload: Mapping[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def _mirror_ir_learning_campaign(campaign: Any) -> None:
+    """Record a compiled campaign id. The compilation does not admit the campaign."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(campaign, "campaign_id", "") or "ir-learning-campaign")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ir_learning_campaign_compilation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def compile_ir_learning_campaign(
     campaign: IRLearningCampaign | Mapping[str, Any],
 ) -> PlanCompilationResult:
     """Compile one campaign through the reviewed formal-plan compiler."""
 
     record = parse_ir_learning_campaign(campaign)
-    return compile_formal_plan(campaign_to_formal_input(record))
+    result = compile_formal_plan(campaign_to_formal_input(record))
+    _mirror_ir_learning_campaign(record)
+    return result
 
 
 def project_campaign_for_admission(

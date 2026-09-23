@@ -151,6 +151,31 @@ def compile_topology(
             "unavailable_sources": sorted(unavailable_sources), "runtime_qualified": False}
 
 
+def _mirror_fleet_inventory_binding(sources: Any) -> None:
+    """Record bound source ids. Paths and program payloads are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        ids: list[str] = []
+        if isinstance(sources, list):
+            for item in sources:
+                if isinstance(item, dict) and item.get("id"):
+                    ids.append(str(item["id"]))
+        record_ref = ",".join(ids) or "fleet-inventory"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="fleet_inventory_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def bind_inventory(topology: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
     """Bind sources to existing sealed board selections; never rewrite boards."""
     _require(inventory.get("schema") == "ipfs_accelerate_py/taskboard-fleet-inventory@1", "unsupported inventory schema")
@@ -166,6 +191,7 @@ def bind_inventory(topology: Mapping[str, Any], inventory: Mapping[str, Any]) ->
         _require(isinstance(program, Mapping), f"{board['id']}: explicit native database_program required")
         _require(program.get("quack_endpoint") == board.get("quack_endpoint"), f"{board['id']}: inventory endpoint differs from sealed board")
         sources.append({"id": board["id"], "database_path": board["database_path"], "database_program": dict(program)})
+    _mirror_fleet_inventory_binding(sources)
     return {**topology, "sources": sources}
 
 

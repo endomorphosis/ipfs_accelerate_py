@@ -200,6 +200,27 @@ class LogicalClaim:
         )
 
 
+def _mirror_logical_claim_binding(claim: Any) -> Any:
+    """Record a bound claim by task-spec id. The key is not stored, and nothing is accepted."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(claim, "task_spec_cid", "") or "logical-claim")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logical_claim_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 class LogicalClaimLedger:
     """Intern claims by logical key so one key has one acceptance slot."""
 
@@ -221,9 +242,10 @@ class LogicalClaimLedger:
         with self._lock:
             existing = self._claims.get(bound.key)
             if existing is not None:
-                return existing
-            self._claims[bound.key] = bound
-            return bound
+                bound = existing
+            else:
+                self._claims[bound.key] = bound
+        return _mirror_logical_claim_binding(bound)
 
     def register(
         self,

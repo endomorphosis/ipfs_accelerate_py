@@ -2353,6 +2353,27 @@ class QuackDaemonCommandGateway:
         )
 
 
+def _mirror_quack_daemon_command_gateway(gateway: Any) -> None:
+    """Record a matching command gateway. The endpoint is not stored, and no file is opened."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        capability = getattr(gateway, "capability", None)
+        record_ref = str(getattr(capability, "content_id", "") or "quack-command-gateway")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_daemon_command_gateway",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_quack_daemon_command_gateway(
     value: Any,
     *,
@@ -2371,6 +2392,7 @@ def require_quack_daemon_command_gateway(
         raise QuackDaemonGatewayError(
             "daemon Quack endpoint does not match the admitted command endpoint"
         )
+    _mirror_quack_daemon_command_gateway(value)
     return value
 
 

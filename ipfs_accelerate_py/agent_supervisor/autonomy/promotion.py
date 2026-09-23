@@ -259,6 +259,26 @@ def _mirror_autonomy_promotion(result: Any) -> Any:
     return result
 
 
+def _mirror_autonomy_promotion_evaluation(policy_id: str, eligible: bool) -> None:
+    """Record an evaluation. Eligibility does not promote the policy."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{policy_id}:{'eligible' if eligible else 'blocked'}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="autonomy_promotion_evaluation",
+            record_ref=record_ref or "autonomy-promotion-evaluation",
+            subject_kind="record_cid",
+            subject_ref=record_ref or "autonomy-promotion-evaluation",
+        )
+    except Exception:
+        pass
+
+
 class AutonomyPromotionController:
     """Evaluate gates and CAS the policy pointer, or name exact blockers."""
 
@@ -291,7 +311,9 @@ class AutonomyPromotionController:
             if int(request.threshold_bps[gate]) < required:
                 blockers.append(gate)
         unique = tuple(dict.fromkeys(blockers))
-        return unique, not unique
+        eligible = not unique
+        _mirror_autonomy_promotion_evaluation(str(request.candidate_policy_id), eligible)
+        return unique, eligible
 
     def apply(self, request: PromotionRequest) -> AutonomyPromotionReceipt:
         blockers, eligible = self.evaluate(request)
