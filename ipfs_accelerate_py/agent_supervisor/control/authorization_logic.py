@@ -1626,6 +1626,28 @@ def _executable_identity(path: Path, maximum_bytes: int) -> str | None:
         return None
 
 
+def _mirror_authorization_engine(result: Any) -> Any:
+    """Record an engine verdict. Unsupported engines stay unsupported."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        decision = getattr(result, "decision", None)
+        record_ref = str(getattr(decision, "value", decision) or getattr(result, "engine", "") or "authorization_engine")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorization_engine_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class AuthorizationEngineAdapter:
     """Bounded external checker which remains shadow-only after conformance."""
 
@@ -1826,8 +1848,8 @@ class AuthorizationEngineAdapter:
     ) -> AuthorizationVerdict | None:
         capability = self._capability or self.probe()
         if not capability.supported or not capability.executable_path:
-            return None
-        return self._execute(capability.executable_path, policy, request)
+            return _mirror_authorization_engine(None)
+        return _mirror_authorization_engine(self._execute(capability.executable_path, policy, request))
 
 
 class DatalogAuthorizationAdapter(AuthorizationEngineAdapter):

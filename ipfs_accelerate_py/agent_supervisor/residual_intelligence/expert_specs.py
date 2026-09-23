@@ -337,6 +337,26 @@ def _mirror_expert_evaluation_admission(spec: Any) -> None:
         pass
 
 
+def _mirror_expert_task_input(spec: Any) -> None:
+    """Record an expert input check. It does not admit the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(spec, "expert_id", "") or "expert_task_input")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="expert_task_input_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ResidualExpertSpec:
     """One family-bounded expert contract at a single class A-E."""
@@ -558,6 +578,7 @@ class ResidualExpertSpec:
             raise ResidualIntelligenceError("task_input must be ResidualTaskInput")
         self.family_spec().validate_task_input(task_input)
         self.reject_unsupported_risk(task_input.risk_class)
+        _mirror_expert_task_input(self)
 
     def bind_evaluation_admission(self, admission: TrainingCorpusAdmission) -> None:
         if not self.evaluation_corpus_admission_id:

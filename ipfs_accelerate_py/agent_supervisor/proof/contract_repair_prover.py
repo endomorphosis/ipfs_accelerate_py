@@ -254,6 +254,28 @@ def _mirror_contract_repair_proof(result: Any) -> Any:
     return result
 
 
+def _mirror_contract_repair_bundle(result: Any) -> Any:
+    """Record a candidate proof bundle. It does not admit the repair."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "candidate_id", "") or "contract_repair_bundle")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="contract_repair_proof_bundle",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ContractRepairProver:
     """Run compiled repair claims through the admitted datasets logic backend."""
 
@@ -594,8 +616,8 @@ class ContractRepairProver:
         backend_id, backend_version = self._backend_identity()
         results = tuple(self.prove_obligation(item, premises=premises, reconstruction_inputs=reconstruction_inputs) for item in compilation.obligations)
         reasons = tuple(sorted({reason for item in results for reason in item.reason_codes}))
-        return CandidateProofBundle(compilation.candidate_id, compilation.roots.repository_id, compilation.roots.tree_id,
-                                    results, backend_id, backend_version, reasons)
+        return _mirror_contract_repair_bundle(CandidateProofBundle(compilation.candidate_id, compilation.roots.repository_id, compilation.roots.tree_id,
+                                    results, backend_id, backend_version, reasons))
 
     prove_candidate = prove
 

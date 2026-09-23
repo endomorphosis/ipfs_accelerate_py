@@ -5328,6 +5328,26 @@ class TypedOwnerResult:
         return row
 
 
+def _mirror_status_bootstrap_scope(scope: Mapping[str, Any]) -> None:
+    """Record a bootstrap binding. Scope values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ",".join(sorted(str(key) for key in scope)) or "status_bootstrap"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="status_bootstrap_scope",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class TypedStateOwnerGateway:
     """Server-owned, authenticated, closed operation executor."""
 
@@ -5846,6 +5866,7 @@ class TypedStateOwnerGateway:
                     "status bootstrap scope is already bound"
                 )
             self._status_bootstrap_scope = scope
+        _mirror_status_bootstrap_scope(scope)
 
     def _issue_status_session_grant(
         self,

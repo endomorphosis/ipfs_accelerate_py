@@ -69087,6 +69087,25 @@ class DatabaseTaskAttempt:
         return _phase_rank(self.committed_phase) >= _phase_rank(phase)
 
 
+def _mirror_execution_callback_binding() -> None:
+    """Record that execution callbacks were bound. It does not dispatch."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="database_execution_callback_binding",
+            record_ref="execution_callbacks",
+            subject_kind="record_cid",
+            subject_ref="execution_callbacks",
+        )
+    except Exception:
+        pass
+
+
 class DatabaseImplementationDaemon:
     """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
 
@@ -69689,6 +69708,7 @@ class DatabaseImplementationDaemon:
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
+        _mirror_execution_callback_binding()
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
