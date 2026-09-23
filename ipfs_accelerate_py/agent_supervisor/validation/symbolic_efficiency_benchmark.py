@@ -998,6 +998,29 @@ def _validate_observation_against_policy(
 
 
 @dataclass(frozen=True)
+def _mirror_symbolic_benchmark(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "observation_id", "")
+            or getattr(result, "profile_id", "")
+            or "symbolic-benchmark"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="symbolic_benchmark_observation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SymbolicBenchmarkObservation:
     """One measured scan, including its paired provider-input packet.
 
@@ -1111,8 +1134,8 @@ class SymbolicBenchmarkObservation:
             (stage, calls[stage]) for stage in policy.deterministic_stage_names
         )
         if ordered_caches == self.caches and ordered_calls == self.deterministic_stage_llm_calls:
-            return self
-        return SymbolicBenchmarkObservation(
+            return _mirror_symbolic_benchmark(self)
+        return _mirror_symbolic_benchmark(SymbolicBenchmarkObservation(
             mode=self.mode,
             sample_index=self.sample_index,
             fixture=self.fixture,
@@ -1128,7 +1151,7 @@ class SymbolicBenchmarkObservation:
             packet=self.packet,
             resources=self.resources,
             source_receipt_ids=self.source_receipt_ids,
-        )
+        ))
 
     def observation_id_for(self, policy: SymbolicBenchmarkPolicy) -> str:
         return _identity(self.to_dict(policy=policy, include_observation_id=False))

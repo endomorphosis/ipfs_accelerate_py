@@ -2592,6 +2592,30 @@ def _compute_metrics(
     return tuple(samples)
 
 
+def _mirror_quality_oracle(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "observation_cid", "")
+            or getattr(result, "case_id", "")
+            or getattr(result, "oracle_manifest_cid", "")
+            or "quality-oracle"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quality_oracle_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class PlannerDoctorQualityOracle:
     """Operator-owned quality oracle (PlannerDoctorQualityOracle@1)."""
 
@@ -2711,7 +2735,7 @@ class PlannerDoctorQualityOracle:
 
         if not observation.judge_mount_ready():
             if not allow_unready_mount:
-                return QualityOracleReceipt(
+                return _mirror_quality_oracle(QualityOracleReceipt(
                     oracle_handle=self._manifest.oracle_handle,
                     oracle_manifest_cid=self._manifest.content_id,
                     case_id=observation.case_id,
@@ -2728,13 +2752,13 @@ class PlannerDoctorQualityOracle:
                         ]
                     ),
                     ablation_id=ablation_id,
-                )
+                ))
             reasons.append("judge_mount_not_ready_overridden")
 
         try:
             slot = self._manifest.slot_for_case(observation.case_id)
         except QualityOracleError:
-            return QualityOracleReceipt(
+            return _mirror_quality_oracle(QualityOracleReceipt(
                 oracle_handle=self._manifest.oracle_handle,
                 oracle_manifest_cid=self._manifest.content_id,
                 case_id=observation.case_id,
@@ -2745,7 +2769,7 @@ class PlannerDoctorQualityOracle:
                 metrics=(),
                 reason_codes=tuple(reasons + ["missing_oracle_slot"]),
                 ablation_id=ablation_id,
-            )
+            ))
 
         if ablation_id:
             known = {item.ablation_id for item in self._manifest.ablations}
@@ -2807,7 +2831,7 @@ class PlannerDoctorQualityOracle:
             reasons.append("disposition_mismatch")
 
         # Ablations never promote; public oracle never promotes.
-        return QualityOracleReceipt(
+        return _mirror_quality_oracle(QualityOracleReceipt(
             oracle_handle=self._manifest.oracle_handle,
             oracle_manifest_cid=self._manifest.content_id,
             case_id=observation.case_id,
@@ -2818,7 +2842,7 @@ class PlannerDoctorQualityOracle:
             metrics=metrics,
             reason_codes=tuple(reasons),
             ablation_id=ablation_id,
-        )
+        ))
 
     def evaluate_adversarial(
         self,

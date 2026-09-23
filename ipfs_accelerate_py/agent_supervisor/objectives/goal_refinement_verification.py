@@ -1273,6 +1273,31 @@ class RefinementVerificationResult(CanonicalContract):
 RepairRunner = Callable[[RefinementRepairRequest], RefinementRepairCandidate]
 
 
+def _mirror_refinement_verification(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        frozen = getattr(result, "frozen_context", None)
+        record_ref = str(
+            getattr(result, "content_id", "")
+            or getattr(frozen, "root_goal_id", "")
+            or getattr(frozen, "content_id", "")
+            or "refinement-verification"
+        )
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="refinement_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class GoalRefinementVerifier:
     """Run independent portfolios and fail closed on any missing authority."""
 
@@ -1430,14 +1455,14 @@ class GoalRefinementVerifier:
             round_result = self._run_round(current, runner, frozen, round_index)
             rounds.append(round_result)
             if round_result.proved:
-                return RefinementVerificationResult(
+                return _mirror_refinement_verification(RefinementVerificationResult(
                     frozen_context=frozen,
                     policy=self.policy,
                     status=RefinementVerificationStatus.VERIFIED,
                     rounds=tuple(rounds),
                     repair_receipts=tuple(receipts),
                     reason="all refinement obligations independently verified",
-                )
+                ))
             if round_index >= self.policy.max_repair_rounds or repairer is None:
                 break
             request = RefinementRepairRequest(
@@ -1459,27 +1484,27 @@ class GoalRefinementVerifier:
                 if not isinstance(candidate, RefinementRepairCandidate):
                     raise ContractValidationError("repairer must return RefinementRepairCandidate")
             except BaseException as exc:
-                return RefinementVerificationResult(
+                return _mirror_refinement_verification(RefinementVerificationResult(
                     frozen_context=frozen,
                     policy=self.policy,
                     status=RefinementVerificationStatus.ERROR,
                     rounds=tuple(rounds),
                     repair_receipts=tuple(receipts),
                     reason=(f"Leanstral repair failed closed: {type(exc).__name__}: {exc}"),
-                )
+                ))
             receipt = self._repair_receipt(request, candidate)
             self._persist(receipt)
             if not receipt.accepted:
                 # A rejected repair is intentionally journaled but cannot be
                 # represented as a completed repair round in the result.
-                return RefinementVerificationResult(
+                return _mirror_refinement_verification(RefinementVerificationResult(
                     frozen_context=frozen,
                     policy=self.policy,
                     status=RefinementVerificationStatus.ERROR,
                     rounds=tuple(rounds),
                     repair_receipts=tuple((*receipts, receipt)),
                     reason=receipt.reason,
-                )
+                ))
             receipts.append(receipt)
             current = candidate.plan
 
@@ -1489,7 +1514,7 @@ class GoalRefinementVerifier:
             if final.disproved
             else RefinementVerificationStatus.INCONCLUSIVE
         )
-        return RefinementVerificationResult(
+        return _mirror_refinement_verification(RefinementVerificationResult(
             frozen_context=frozen,
             policy=self.policy,
             status=status,
@@ -1500,7 +1525,7 @@ class GoalRefinementVerifier:
                 if status is RefinementVerificationStatus.DISPROVED
                 else "independent authorities did not prove every refinement obligation"
             ),
-        )
+        ))
 
 
 def verify_refinement_obligations(

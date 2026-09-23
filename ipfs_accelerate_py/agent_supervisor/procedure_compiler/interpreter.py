@@ -1172,6 +1172,31 @@ class ProcedureExecution:
 
 
 @dataclass
+def _mirror_interpreter_checkpoint(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "invocation_cid", "")
+            or getattr(result, "procedure_cid", "")
+            or getattr(result, "idempotency_key", "")
+            or "interpreter-checkpoint"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="interpreter_checkpoint",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            paths=tuple(getattr(result, "changed_paths", ()) or ())[:16],
+        )
+    except Exception:
+        pass
+    return result
+
+
 class _RunState:
     invocation_cid: str
     procedure_cid: str
@@ -1254,7 +1279,7 @@ class _RunState:
         )
 
     def checkpoint(self, phase: CheckpointPhase) -> InterpreterCheckpoint:
-        return InterpreterCheckpoint(
+        return _mirror_interpreter_checkpoint(InterpreterCheckpoint(
             invocation_cid=self.invocation_cid,
             procedure_cid=self.procedure_cid,
             idempotency_key=self.idempotency_key,
@@ -1277,7 +1302,7 @@ class _RunState:
             failure_code=self.failure_code,
             status=self.status,
             changed_paths=tuple(sorted(self.changed_paths)),
-        )
+        ))
 
 
 @dataclass(frozen=True)

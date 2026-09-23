@@ -21,7 +21,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Final
+from typing import Any, Final
 
 from .contracts import (
     AuthorityClass,
@@ -815,6 +815,32 @@ def _metrics(
     )
 
 
+def _mirror_human_escalation(result: Any) -> Any:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        packet = getattr(result, "packet", None)
+        question_ids = getattr(result, "question_ids", ()) or ()
+        record_ref = str(
+            getattr(packet, "packet_id", "")
+            or (question_ids[0] if question_ids else "")
+            or getattr(getattr(result, "disposition", None), "value", "")
+            or "human-escalation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="human_escalation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class HumanEscalationCompiler:
     """Pure compiler for :class:`HumanEscalationPacket` values."""
 
@@ -833,7 +859,7 @@ class HumanEscalationCompiler:
             raise HumanEscalationError("context must be a HumanEscalationContext")
         collected = _questions_from(question, questions)
         if not collected:
-            return HumanEscalationResult(
+            return _mirror_human_escalation(HumanEscalationResult(
                 disposition=HumanEscalationDisposition.NOT_ESCALATED,
                 reason_codes=("no_named_unresolved_question",),
                 metrics=_metrics(
@@ -844,7 +870,7 @@ class HumanEscalationCompiler:
                     mandatory_preserved=0,
                     full_history_rejected=0,
                 ),
-            )
+            ))
         objectives = {item.objective_id for item in collected}
         if len(objectives) != 1:
             raise HumanEscalationError("questions must share one objective_id")
@@ -874,7 +900,7 @@ class HumanEscalationCompiler:
             reason_codes = (primary[2][0],) + tuple(
                 code for code in reasons if code != primary[2][0]
             )
-            return HumanEscalationResult(
+            return _mirror_human_escalation(HumanEscalationResult(
                 disposition=HumanEscalationDisposition.NOT_ESCALATED,
                 reason_codes=reason_codes,
                 metrics=_metrics(
@@ -887,7 +913,7 @@ class HumanEscalationCompiler:
                 ),
                 question_ids=tuple(item.question_id for item in collected),
                 suppressed_question_ids=suppressed_ids,
-            )
+            ))
 
         groups: dict[tuple[str, str, str, tuple[str, ...]], list[DecisionQuestion]] = {}
         for item in irreducible:
@@ -914,7 +940,7 @@ class HumanEscalationCompiler:
             reason_codes.append("batched_equivalent_questions")
         mandatory_preserved = 1 if any(item.mandatory for item in selected) else 0
         batched_ids = tuple(item.question_id for item in selected)
-        return HumanEscalationResult(
+        return _mirror_human_escalation(HumanEscalationResult(
             disposition=HumanEscalationDisposition.PACKET_COMPILED,
             reason_codes=tuple(reason_codes),
             metrics=_metrics(
@@ -929,7 +955,7 @@ class HumanEscalationCompiler:
             question_ids=tuple(item.question_id for item in collected),
             batched_question_ids=batched_ids if len(batched_ids) > 1 else (),
             suppressed_question_ids=suppressed_ids,
-        )
+        ))
 
 
 __all__ = [
