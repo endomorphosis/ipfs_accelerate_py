@@ -416,6 +416,27 @@ def verify_retained_bytes(cid: str, data: bytes) -> bool:
     return _mirror_retained_bytes(parsed.verifies(data), cid)
 
 
+def _mirror_verified_artifact_cid(cid: str) -> str:
+    """Record a matching artifact CID. The bytes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(cid or "verified-artifact-cid")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="verified_artifact_cid",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return cid
+
+
 def require_verified_cid(cid: str, data: bytes) -> str:
     """Fail closed unless *cid* is the dag-json sha2-256 of *data*."""
 
@@ -431,7 +452,7 @@ def require_verified_cid(cid: str, data: bytes) -> str:
             "CID does not match retained canonical bytes",
             reason_code=ObjectiveArtifactReason.CID_MISMATCH,
         )
-    return parsed.text
+    return _mirror_verified_artifact_cid(parsed.text)
 
 
 def _reject_unknown_fields(

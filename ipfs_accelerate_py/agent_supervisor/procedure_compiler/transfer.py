@@ -1314,6 +1314,31 @@ def _check_held_out(
     return None
 
 
+def _mirror_procedure_transfer_requirement(decision: TransferDecision) -> TransferDecision:
+    """Record an eligible transfer check. The decision is unchanged and no transfer runs."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(decision, "content_id", "")
+            or getattr(decision, "source_procedure_cid", "")
+            or "procedure-transfer-requirement"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="procedure_transfer_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 class ProcedureTransferGate:
     """Admit only explicitly compatible transfers as bounded candidate eligibility."""
 
@@ -1476,7 +1501,7 @@ class ProcedureTransferGate:
                 f"transfer refused: {decision.reason_code.value}",
                 decision=decision,
             )
-        return decision
+        return _mirror_procedure_transfer_requirement(decision)
 
     def transfer(
         self,

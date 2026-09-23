@@ -766,13 +766,33 @@ def build_file_replacement_apply_proposal(
     )
 
 
+def _mirror_file_replacement_apply_hook(hooks: TodoDaemonHooks) -> TodoDaemonHooks:
+    """Record that the apply hook was bound. The hook is not invoked."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="file_replacement_apply_hook",
+            record_ref="file_replacement_apply",
+            subject_kind="record_cid",
+            subject_ref="file_replacement_apply",
+        )
+    except Exception:
+        pass
+    return hooks
+
+
 def bind_file_replacement_apply_hook(
     runner_hooks: TodoDaemonHooks,
     file_replacement_hooks: FileReplacementHooks,
 ) -> TodoDaemonHooks:
     """Return runner hooks whose apply step uses the reusable file-replacement flow."""
 
-    return TodoDaemonHooks(
+    return _mirror_file_replacement_apply_hook(TodoDaemonHooks(
         parse_tasks=runner_hooks.parse_tasks,
         select_task=runner_hooks.select_task,
         replace_task_mark=runner_hooks.replace_task_mark,
@@ -790,7 +810,7 @@ def bind_file_replacement_apply_hook(
         no_eligible_summary=runner_hooks.no_eligible_summary,
         exception_summary=runner_hooks.exception_summary,
         exception_impact=runner_hooks.exception_impact,
-    )
+    ))
 
 
 class FileReplacementTodoDaemonRunner(TodoDaemonRunner):

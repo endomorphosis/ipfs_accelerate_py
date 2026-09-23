@@ -3633,6 +3633,30 @@ def grants_production_authority(
     return True
 
 
+def _mirror_zkp_production_authority_check(receipt: ProgramZkpVerificationReceipt) -> None:
+    """Record a passing authority check. The receipt flags are not changed."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "public_input_digest", "")
+            or getattr(receipt, "circuit_id", "")
+            or "zkp-production-authority"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="zkp_production_authority_check",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_production_authority(
     receipt: ProgramZkpVerificationReceipt,
     capability: ProgramZkpCapabilityConformanceReport,
@@ -3648,6 +3672,7 @@ def require_production_authority(
         raise ProgramZkpAuthorityError(
             "production ZK authority denied: %s" % (", ".join(reasons) or "not_authoritative")
         )
+    _mirror_zkp_production_authority_check(receipt)
 
 
 def invalidate_authority_on_capability_loss(

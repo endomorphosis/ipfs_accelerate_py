@@ -492,6 +492,27 @@ def freeze(
         return value
 
 
+def _mirror_workspace_quarantine(record: dict[str, Any]) -> dict[str, Any]:
+    """Record a matching quarantine CID. Paths are not stored and the freeze stays."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(record.get("cid") or "workspace-quarantine")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="workspace_quarantine_verification",
+            record_ref=record_ref,
+            subject_kind="content_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 def verify(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
     with guard(repo_root) as directory:
         matches = [
@@ -504,7 +525,8 @@ def verify(repo_root: Path, worktree_root: Path) -> dict[str, Any]:
             matches[0]["snapshot"] == census(repo_root, worktree_root),
             "workspace_quarantine_custody_changed",
         )
-        return matches[0]
+        matched = matches[0]
+    return _mirror_workspace_quarantine(matched)
 
 
 def mutation_boundary(*workspace_names: str, pool: bool = False):
