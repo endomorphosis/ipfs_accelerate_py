@@ -2755,6 +2755,28 @@ def run_bounded_synthesis(
     ))
 
 
+def _mirror_bounded_synthesis_dry_run(result: Any) -> Any:
+    """Record a deterministic dry run. mutated stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "receipt_id", "") or getattr(result, "tree_id", "") or "bounded_synthesis_dry_run")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="bounded_synthesis_dry_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(result, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return result
+
+
 def dry_run_bounded_synthesis(
     *,
     wave: Mapping[str, Any] | Any,
@@ -2787,7 +2809,7 @@ def dry_run_bounded_synthesis(
     )
     if result.mutated is not False or result.deterministic is not True:
         raise BoundedSynthesisError("dry-run must remain deterministic and non-mutating")
-    return result
+    return _mirror_bounded_synthesis_dry_run(result)
 
 
 class BoundaryAdapterSynthesizer:

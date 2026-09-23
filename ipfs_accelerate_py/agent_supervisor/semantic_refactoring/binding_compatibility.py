@@ -1580,6 +1580,28 @@ def execute_binding_compatibility_plan(
     return compile_binding_compatibility_plan(packet, **kwargs)
 
 
+def _mirror_binding_compatibility_dry_run(receipt: Any) -> Any:
+    """Record a no-mutation dry run. mutated stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "receipt_id", "") or getattr(receipt, "tree_id", "") or "binding_compatibility_dry_run")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="binding_compatibility_dry_run",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+            tree_id=str(getattr(receipt, "tree_id", "") or ""),
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def dry_run_binding_compatibility_adapters(
     packet: RefactorTransformationPacket | Mapping[str, Any],
     **kwargs: Any,
@@ -1589,7 +1611,7 @@ def dry_run_binding_compatibility_adapters(
     receipt = execute_binding_compatibility_adapters(packet, **kwargs)
     if receipt.mutated:
         raise BindingCompatibilityError("dry-run cannot mutate")
-    return receipt
+    return _mirror_binding_compatibility_dry_run(receipt)
 
 
 def encode_canonical_adapter(adapter: BindingCompatibilityAdapter) -> dict[str, Any]:

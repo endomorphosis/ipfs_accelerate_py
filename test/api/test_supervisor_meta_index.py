@@ -8853,6 +8853,37 @@ def test_mirror_reuse_bounds_retry_freshness_and_legacy_import(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_refactor_dry_runs_stay_non_mutating(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("explicit_state_object_dry_run", "receipt:1", "metadata", "record_cid"),
+        ("import_rewrite_dry_run", "receipt:1", "metadata", "record_cid"),
+        ("initialization_rewrite_dry_run", "receipt:1", "metadata", "record_cid"),
+        ("binding_compatibility_dry_run", "receipt:1", "metadata", "record_cid"),
+        ("proof_normalization_dry_run", "receipt:1", "proof_cache", "record_cid"),
+        ("bounded_synthesis_dry_run", "receipt:1", "proof_cache", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",
