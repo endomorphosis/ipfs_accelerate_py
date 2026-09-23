@@ -1454,6 +1454,25 @@ def probe_incremental_sealer_capability(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_governor_execution_surfaces() -> None:
+    """Record that governor execution surfaces are available. None are launched."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="governor_execution_surfaces",
+            record_ref="governor_execution_surfaces",
+            subject_kind="record_cid",
+            subject_ref="governor_execution_surfaces",
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True, slots=True)
 class GovernorRuntimeAdapters:
     """Bundle of probed runtime adapters and sealer capability."""
@@ -1474,6 +1493,7 @@ class GovernorRuntimeAdapters:
         self.harness.require_available()
         self.verification.require_available()
         self.store.require_available()
+        _mirror_governor_execution_surfaces()
 
     def require_sealer(self) -> IncrementalSealerCapability:
         self.sealer.require_available()

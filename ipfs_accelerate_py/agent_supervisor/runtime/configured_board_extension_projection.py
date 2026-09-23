@@ -708,6 +708,26 @@ def _project_extension_home(
     return _verify_extension_home(pins, destination, identity=identity)
 
 
+def _mirror_configured_board_extension_home(record_kind: str, record_ref: str) -> None:
+    """Record a verified extension projection id. The home path is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        ref = str(record_ref or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=ref,
+            subject_kind="record_cid",
+            subject_ref=ref,
+        )
+    except Exception:
+        pass
+
+
 def verify_configured_board_extension_home(
     pin: ConfiguredBoardExtensionPin,
     home: Path | str,
@@ -715,11 +735,15 @@ def verify_configured_board_extension_home(
     """Verify exact projected bytes and the closed read-only directory shape."""
 
     parsed = parse_configured_board_extension_pin(pin.as_dict())
-    return _verify_extension_home(
+    verified = _verify_extension_home(
         (parsed,),
         Path(home),
         identity=parsed.projection_id,
     )
+    _mirror_configured_board_extension_home(
+        "configured_board_extension_home", parsed.projection_id
+    )
+    return verified
 
 
 def verify_configured_board_extension_set_home(
@@ -732,7 +756,11 @@ def verify_configured_board_extension_set_home(
     identity = configured_board_extension_set_id(
         {pin.name: pin for pin in parsed}
     )
-    return _verify_extension_home(parsed, Path(home), identity=identity)
+    verified = _verify_extension_home(parsed, Path(home), identity=identity)
+    _mirror_configured_board_extension_home(
+        "configured_board_extension_set_home", identity
+    )
+    return verified
 
 
 def project_configured_board_extension_home(

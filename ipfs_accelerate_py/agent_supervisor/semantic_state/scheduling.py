@@ -117,6 +117,26 @@ def _unavailable(
     )
 
 
+def _mirror_subprocess_cancel_boundary(identity: str) -> None:
+    """Record a bound cancel boundary. The process handle is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(identity or "subprocess-cancel-boundary")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="subprocess_cancel_boundary_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class SubprocessCancelBoundary:
     """In-process cancel boundary that mirrors a subprocess/provider edge.
@@ -140,6 +160,7 @@ class SubprocessCancelBoundary:
             self._process = process
             if self.cancelled:
                 self._signal_process(self.reason or "cancelled")
+        _mirror_subprocess_cancel_boundary(self.identity)
 
     def cancel(self, reason: str = "cancelled") -> bool:
         with self._lock:

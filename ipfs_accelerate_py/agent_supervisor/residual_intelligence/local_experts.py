@@ -465,6 +465,26 @@ def form_permitted(form: LocalExpertForm, admitted: ExpertClass) -> bool:
     return expert_class_rank(FORM_EXPERT_CLASS[form]) <= expert_class_rank(admitted)
 
 
+def _mirror_training_admission(admission: TrainingCorpusAdmission) -> None:
+    """Record an admitted training id. The corpus is not stored and training does not start."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(admission, "admission_id", "") or "training-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="training_admission_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_training_admission(admission: TrainingCorpusAdmission) -> None:
     if not isinstance(admission, TrainingCorpusAdmission):
         raise ResidualIntelligenceError("fit requires TrainingCorpusAdmission")
@@ -473,6 +493,7 @@ def require_training_admission(admission: TrainingCorpusAdmission) -> None:
     admission.require_training_admitted()
     if not admission.can_train:
         raise ResidualIntelligenceError(REASON_TRAINING_UNAVAILABLE)
+    _mirror_training_admission(admission)
 
 
 def classification_payload(
