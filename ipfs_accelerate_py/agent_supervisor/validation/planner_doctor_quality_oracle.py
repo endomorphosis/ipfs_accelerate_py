@@ -2616,6 +2616,26 @@ def _mirror_quality_oracle(result: Any) -> Any:
     return result
 
 
+def _mirror_planner_doctor_case_population(case_count: int) -> None:
+    """Record that the case population matches. Case ids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"cases:{case_count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="planner_doctor_case_population",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_planner_doctor_benchmark_binding(manifest_cid: str) -> None:
     """Record a sealed benchmark binding. The binding does not promote."""
 
@@ -2688,6 +2708,7 @@ class PlannerDoctorQualityOracle:
                 "oracle case population does not match benchmark exactly",
                 reason_code="population_mismatch",
             )
+        _mirror_planner_doctor_case_population(len(expected))
 
     def require_benchmark_binding(
         self,

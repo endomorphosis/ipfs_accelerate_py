@@ -797,6 +797,27 @@ class JsonSchemaExpectation:
         }
 
 
+def _mirror_swissknife_canonical_packages(extraction: SwissKnifeContractExtraction) -> SwissKnifeContractExtraction:
+    """Record a complete package set. The extraction is not rerun."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(extraction, "extraction_id", "") or "swissknife-packages")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="swissknife_canonical_packages",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return extraction
+
+
 @dataclass(frozen=True)
 class SwissKnifeContractExtraction:
     descriptors: tuple[DescriptorExpectation, ...]
@@ -910,7 +931,7 @@ class SwissKnifeContractExtraction:
                 "missing canonical package descriptors: "
                 + ", ".join(self.missing_canonical_packages)
             )
-        return self
+        return _mirror_swissknife_canonical_packages(self)
 
     def edges_of_kind(
         self, kind: InvocationEdgeKind | str

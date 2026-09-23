@@ -255,6 +255,25 @@ def within(path: Path, root: Path) -> bool:
         return False
 
 
+def _mirror_workspace_unfenced() -> None:
+    """Record that a workspace is outside retained fences. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="workspace_unfenced_check",
+            record_ref="unfenced",
+            subject_kind="record_cid",
+            subject_ref="unfenced",
+        )
+    except Exception:
+        pass
+
+
 def require_unfenced(directory: Path, workspace: Path) -> None:
     target = workspace.resolve()
     for record in records(directory):
@@ -264,6 +283,7 @@ def require_unfenced(directory: Path, workspace: Path) -> None:
             not within(target, retained) and not within(retained, target),
             "workspace_root_quarantined",
         )
+    _mirror_workspace_unfenced()
 
 
 @contextmanager

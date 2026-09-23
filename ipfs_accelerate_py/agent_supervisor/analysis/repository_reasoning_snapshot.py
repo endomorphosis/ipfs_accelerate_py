@@ -459,6 +459,27 @@ def _git_object_id(value: Any, field_name: str, *, allow_empty: bool = True) -> 
 # ---------------------------------------------------------------------------
 
 
+def _mirror_reasoning_root_repository(repository_id: str, tree_id: str) -> None:
+    """Record agreeing repository roots. The check does not replay."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(repository_id or tree_id or "reasoning-roots")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reasoning_root_repository",
+            record_ref=record_ref,
+            tree_id=str(tree_id or ""),
+            subject_kind="tree_id" if tree_id else "record_cid",
+            subject_ref=str(tree_id or record_ref),
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class ReasoningToolRoots(CanonicalContract):
     """Parser, index, toolchain, capability, policy, and IR roots for one snapshot.
@@ -596,6 +617,7 @@ class ReasoningToolRoots(CanonicalContract):
             raise RepositoryReasoningAuthorityError(
                 "forest/tree roots disagree for the same repository"
             )
+        _mirror_reasoning_root_repository(self.repository_id, self.tree_id)
 
 
 @dataclass(frozen=True)

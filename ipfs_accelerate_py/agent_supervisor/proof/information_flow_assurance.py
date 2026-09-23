@@ -590,6 +590,26 @@ class DeclassificationPermit(CanonicalContract):
         )
 
 
+def _mirror_declassification_bindings(permit_id: str) -> None:
+    """Record a complete permit id. Binding fields are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(permit_id or "declassification-permit")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="declassification_binding_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_declassification_bindings(permit: DeclassificationPermit) -> None:
     """Fail closed unless every required binding field is present and non-empty."""
 
@@ -600,6 +620,7 @@ def require_declassification_bindings(permit: DeclassificationPermit) -> None:
             raise InformationFlowError(f"declassification missing binding: {name}")
     if permit.from_label.rank <= permit.to_label.rank:
         raise InformationFlowError("declassification must lower the label")
+    _mirror_declassification_bindings(str(getattr(permit, "permit_id", "") or ""))
 
 
 def declassify(
