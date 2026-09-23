@@ -88,6 +88,26 @@ def _file_identity(info: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _mirror_diagnostic_handoff_identity(directory_count: int, file_count: int) -> None:
+    """Record how many identities were rechecked. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"directories:{directory_count},files:{file_count}"
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="diagnostic_handoff_identity",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class _Files:
     """Pin nofollow directory chains and reobserve every read before return."""
 
@@ -173,6 +193,7 @@ class _Files:
                 == expected,
                 "file_changed",
             )
+        _mirror_diagnostic_handoff_identity(len(self.directories), len(self.files))
 
 
 def _object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

@@ -2036,6 +2036,27 @@ def _build_doctor_execution_groups(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_doctor_transaction_committed(report: Any) -> Any:
+    """Record a committed doctor transaction by id. It does not complete the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(report, "transaction_id", "") or "doctor-transaction")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_transaction_committed",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
+
+
 @dataclass
 class DeterministicDoctorTransaction:
     """Orchestrate sandboxed, SCC-atomic execution of one admitted doctor plan.
@@ -3220,7 +3241,7 @@ class DeterministicDoctorTransaction:
             raise DeterministicDoctorTransactionError(
                 "deterministic doctor transaction rejected: " + reasons
             )
-        return report
+        return _mirror_doctor_transaction_committed(report)
 
     # --- internals ---------------------------------------------------------
 

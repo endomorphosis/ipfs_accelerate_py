@@ -924,6 +924,31 @@ def create_propagation_checkpoint(
     )
 
 
+def _mirror_change_propagation_committed(report: Any) -> Any:
+    """Record a committed propagation by transaction id. It does not merge."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        transaction = getattr(report, "transaction", None)
+        record_ref = str(
+            getattr(transaction, "transaction_id", "")
+            or "change-propagation"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="change_propagation_committed",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return report
+
+
 @dataclass
 class ChangePropagationTransaction:
     """Orchestrate checkpointed, SCC-atomic execution of one admitted plan.
@@ -1321,7 +1346,7 @@ class ChangePropagationTransaction:
             raise ChangePropagationTransactionError(
                 "change propagation transaction rejected: " + reasons
             )
-        return report
+        return _mirror_change_propagation_committed(report)
 
     def finalize_provisional(
         self,

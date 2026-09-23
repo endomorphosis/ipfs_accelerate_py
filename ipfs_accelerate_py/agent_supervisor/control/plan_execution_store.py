@@ -189,6 +189,25 @@ def _reject_duplicate_json_keys(
     return result
 
 
+def _mirror_plan_store_authority_ownership() -> None:
+    """Record that a plan-store file passed its ownership check. The path is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="plan_store_authority_ownership",
+            record_ref="plan-store-authority",
+            subject_kind="record_cid",
+            subject_ref="plan-store-authority",
+        )
+    except Exception:
+        pass
+
+
 def _stable_authority_json(path: Path) -> dict[str, Any]:
     """Read one bounded, single-link store object without following links."""
 
@@ -203,6 +222,7 @@ def _stable_authority_json(path: Path) -> dict[str, Any]:
             raise ExecutionPlanError(
                 "plan store authority permissions must be exactly 0600"
             )
+        _mirror_plan_store_authority_ownership()
 
     try:
         before = os.lstat(artifact)

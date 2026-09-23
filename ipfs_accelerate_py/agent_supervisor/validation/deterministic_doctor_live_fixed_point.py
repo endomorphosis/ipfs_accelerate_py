@@ -985,6 +985,31 @@ def evaluate_live_semantic_discharge(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_doctor_live_fixed_point(receipt: Any) -> Any:
+    """Record a complete live fixed point by id. It does not complete the task."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or getattr(receipt, "content_id", "")
+            or "doctor-live-fixed-point"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_live_fixed_point_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass
 class DeterministicDoctorLiveFixedPoint:
     """Live producer for doctor fixed-point stages.
@@ -1375,7 +1400,7 @@ class DeterministicDoctorLiveFixedPoint:
                 "live doctor fixed-point rejected: "
                 + ",".join(outcome.report.reason_codes)
             )
-        return outcome.fixed_point
+        return _mirror_doctor_live_fixed_point(outcome.fixed_point)
 
     # --- stage dispatch -----------------------------------------------------
 

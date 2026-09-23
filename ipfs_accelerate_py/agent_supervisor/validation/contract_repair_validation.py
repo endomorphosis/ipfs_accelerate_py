@@ -1148,7 +1148,6 @@ ImpactedTestAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots], Impac
 IntegrityAdapter = Callable[[ContractRepairEditPacket, AuthorityRoots, str], IntegrityEvidence]
 
 
-@dataclass
 def _mirror_contract_repair_validation(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1175,6 +1174,7 @@ def _mirror_contract_repair_validation(result: Any) -> Any:
     return result
 
 
+@dataclass
 class ContractRepairValidator:
     """Orchestrate patch-bound re-index, re-resolve, re-extract, re-prove, and gates.
 
