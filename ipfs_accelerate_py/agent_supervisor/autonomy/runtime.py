@@ -1159,6 +1159,7 @@ class AutonomyRuntime:
         owner_id: str = "",
         recovery_leases: Any | None = None,
         lease_ttl_seconds: float = 30.0,
+        claim_coordinator: Any | None = None,
     ) -> None:
         if not isinstance(controller, AutonomousMetaController):
             raise AutonomousMetaControllerError(
@@ -1203,6 +1204,7 @@ class AutonomyRuntime:
             self._recovery_leases = recovery_leases_from_env()
         else:
             self._recovery_leases = recovery_leases
+        self._claim_coordinator = claim_coordinator
 
     @property
     def controller(self) -> AutonomousMetaController:
@@ -1468,6 +1470,7 @@ class AutonomyRuntime:
                 )
 
             wake_session = self._bind_wake_session(bound, typesafe_state)
+            recovery_reasons: tuple[str, ...] = ()
             if wake_session.blocked:
                 self._metrics.record_status(
                     "blocked",
@@ -1520,11 +1523,22 @@ class AutonomyRuntime:
                     call_typesafe=typesafe_prepare,
                     stale=bound.stale,
                 )
+                payload = typesafe_state or {}
+                coordinator = self._claim_coordinator
+                if coordinator is None:
+                    coordinator = payload.get("claim_coordinator")
                 disposition, recovered, extra_reasons = apply_recovery_plan(
-                    recovery, wake_candidates, stale=bound.stale
+                    recovery,
+                    wake_candidates,
+                    stale=bound.stale,
+                    target_cid=bound.subject_id or bound.cursor_id,
+                    coordinator=coordinator,
+                    claim=payload.get("task_claim"),
+                    now_ms=now_ms,
                 )
                 if disposition == "admit":
                     wake_candidates = recovered
+                    recovery_reasons = extra_reasons
                     if wake_session is not None:
                         wake_session.renew()
                 elif disposition == "idle":
@@ -1575,7 +1589,16 @@ class AutonomyRuntime:
                     else step.candidate.resolution_action.action
                 )
                 self._metrics.record_model_action(action)
-            self._metrics.record_status(status.value, reason_codes=step.reason_codes)
+            step_reasons = tuple(step.reason_codes)
+            if recovery_reasons:
+                merged: list[str] = []
+                seen: set[str] = set()
+                for item in (*recovery_reasons, *step_reasons):
+                    if item not in seen:
+                        seen.add(item)
+                        merged.append(item)
+                step_reasons = tuple(merged)
+            self._metrics.record_status(status.value, reason_codes=step_reasons)
             self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
             self._healthy_idle = status is AutonomyRuntimeStatus.IDLE
             wrote = self._persist_if_changed()
@@ -1588,7 +1611,7 @@ class AutonomyRuntime:
             return self._result(
                 status=status,
                 event=bound,
-                reason_codes=step.reason_codes,
+                reason_codes=step_reasons,
                 scanned=True,
                 wrote_state=wrote,
                 acknowledged=acknowledged,

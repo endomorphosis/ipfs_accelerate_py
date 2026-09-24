@@ -283,13 +283,70 @@ def plan_closed_recovery(
     return payload
 
 
+def _attach_board_fence(
+    recovery: Mapping[str, Any],
+    reasons: tuple[str, ...],
+    *,
+    target_cid: str,
+    coordinator: Any | None,
+    claim: Any | None,
+    now_ms: int | None,
+    lifecycle: str,
+) -> tuple[str, ...]:
+    """Persist DOEP PlanDelta / ASEH claim fence on the existing board owner."""
+
+    from .recovery_board_fence import apply_recovery_board_fence
+
+    fence = apply_recovery_board_fence(
+        recovery,
+        target_cid=target_cid,
+        coordinator=coordinator,
+        claim=claim,
+        now_ms=now_ms,
+        lifecycle=lifecycle,
+    )
+    prior = getattr(_LAST, "value", None)
+    merged = dict(prior) if isinstance(prior, Mapping) else dict(recovery)
+    merged.update(
+        {
+            "accepted_as_authority": False,
+            "completes_task": False,
+            "delta_item_cids": list(fence.get("delta_item_cids") or ()),
+            "delta_operations": list(fence.get("delta_operations") or ()),
+            "claim_fenced": bool(fence.get("claim_fenced")),
+            "claim_fence_reason": str(fence.get("claim_fence_reason") or ""),
+        }
+    )
+    _LAST.value = {
+        key: value
+        for key, value in merged.items()
+        if key not in {"declared_meta_actions"}
+    }
+    extra = tuple(fence.get("reason_codes") or ())
+    if not extra:
+        return reasons
+    seen = set(reasons)
+    appended = tuple(item for item in extra if item not in seen)
+    return reasons + appended
+
+
 def apply_recovery_plan(
     recovery: Mapping[str, Any],
     candidates: Sequence[ResolutionCandidate],
     *,
     stale: bool,
+    target_cid: str = "",
+    coordinator: Any | None = None,
+    claim: Any | None = None,
+    now_ms: int | None = None,
+    lifecycle: str = "",
 ) -> tuple[str, tuple[ResolutionCandidate, ...], tuple[str, ...]]:
-    """Map a plan onto ``admit`` / ``idle`` / ``continue``. Never invents candidates."""
+    """Map a plan onto ``admit`` / ``idle`` / ``continue``. Never invents candidates.
+
+    When the catalog invalidates stale evidence or admits a suffix replan, a
+    bounded PlanDelta is recorded on the existing board owner. TypeSafe is
+    not that owner.
+    """
 
     action = str(recovery.get("action") or "preserve")
     if recovery.get("admit"):
@@ -297,12 +354,35 @@ def apply_recovery_plan(
             candidates, str(recovery.get("meta_action") or "")
         )
         if matching:
-            return "admit", matching, ("closed_recovery_admit", action)
+            reasons = _attach_board_fence(
+                recovery,
+                ("closed_recovery_admit", action),
+                target_cid=target_cid,
+                coordinator=coordinator,
+                claim=claim,
+                now_ms=now_ms,
+                lifecycle=lifecycle,
+            )
+            return "admit", matching, reasons
         action = "invalidate_stale_evidence" if stale else "preserve"
+        recovery = dict(recovery)
+        recovery["action"] = action
+        recovery["admit"] = False
     if action == "retry_provider":
         return "idle", tuple(candidates), ("retry_provider",)
     if action == "invalidate_stale_evidence" or stale:
-        return "idle", tuple(candidates), ("stale_invalidated", action)
+        reasons = _attach_board_fence(
+            recovery
+            if action == "invalidate_stale_evidence"
+            else {**dict(recovery), "action": "invalidate_stale_evidence"},
+            ("stale_invalidated", action),
+            target_cid=target_cid,
+            coordinator=coordinator,
+            claim=claim,
+            now_ms=now_ms,
+            lifecycle=lifecycle,
+        )
+        return "idle", tuple(candidates), reasons
     return "continue", tuple(candidates), ("closed_recovery_preserve",)
 
 

@@ -688,6 +688,7 @@ def test_cancellation_and_stale_evidence_stop_honestly_without_model_calls() -> 
     )
     assert stale.status is AutonomyRuntimeStatus.IDLE
     assert stale.reason_codes[0] == "stale_invalidated"
+    assert "recovery_plan_delta" in stale.reason_codes
     assert stale.scanned is True
     assert stale.step is None
     assert runtime.metrics.model_calls == 0
@@ -709,6 +710,7 @@ def test_stale_wake_admits_declared_replan_only() -> None:
     assert result.step.candidate is not None
     assert result.step.candidate.resolution_action.action is MetaAction.REPLAN_AFFECTED_SUFFIX
     assert result.model_called is False
+    assert "recovery_plan_delta" in result.reason_codes
 
 
 def test_stale_wake_blocks_when_another_owner_holds_lease() -> None:
