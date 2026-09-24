@@ -130,6 +130,25 @@ def _open_directory(path, *, private=False):
         raise
 
 
+def _mirror_candidate_journal_identity() -> None:
+    """Record that a held journal inode still matches. The path and inode are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="candidate_journal_identity",
+            record_ref="journal-inode",
+            subject_kind="record_cid",
+            subject_ref="journal-inode",
+        )
+    except Exception:
+        pass
+
+
 class _File:
     def __init__(self, directory, name, *, payload=None, limit=MAX_BYTES):
         self.fd = os.open(
@@ -181,6 +200,7 @@ class _File:
             != self.identity
         ):
             raise CandidateDeletionUnverified("held journal inode changed")
+        _mirror_candidate_journal_identity()
 
     def close(self):
         os.close(self.fd)

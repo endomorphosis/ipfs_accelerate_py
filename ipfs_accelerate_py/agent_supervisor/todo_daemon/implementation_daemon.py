@@ -69126,6 +69126,26 @@ def _mirror_portal_attempt_identity(attempt_id: str) -> None:
         pass
 
 
+def _mirror_portal_attempt_join(attempt_id: str) -> None:
+    """Record an attempt id whose portal binding matched. Lease and fence values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(attempt_id or "portal-attempt-join")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="portal_attempt_join",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class DatabaseImplementationDaemon:
     """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
 
@@ -70382,6 +70402,7 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     f"{noun} Portal binding does not match its execution attempt"
                 )
+            _mirror_portal_attempt_join(str(attempt.attempt_id))
 
         def require_portal_control_join(
             portal: Mapping[str, Any],

@@ -23,6 +23,26 @@ from .checkout_lock import (
 from .worktree_lifecycle import read_process_birth
 
 
+def _mirror_dispatch_drain_gate(board_namespace: str) -> None:
+    """Record a drain that is still held. The path and process identity are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(board_namespace or "dispatch-drain")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dispatch_drain_gate",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @contextmanager
 def dispatch_drain_lease(
     repo_root: Path,
@@ -87,6 +107,7 @@ Existing providers and callback workspaces are left to their native owners.
         with serialized_lock_update(lock_path, timeout_seconds=timeout_seconds):
             if read_checkout_mutation_lease(lock_path) != lease:
                 raise RuntimeError("dispatch drain lease changed")
+            _mirror_dispatch_drain_gate(board_namespace)
 
     try:
         gate()

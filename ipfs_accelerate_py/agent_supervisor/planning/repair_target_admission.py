@@ -752,6 +752,28 @@ def _mirror_repair_revalidation(result: Any) -> Any:
     return result
 
 
+def _mirror_repair_target_requirement(result: Any) -> Any:
+    """Record a valid repair-target decision id. The check does not grant a packet scope."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        decision = getattr(result, "decision", None)
+        record_ref = str(getattr(decision, "content_id", "") or "repair-target")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="repair_target_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class RepairTargetDecisionValidator:
     """Validate a decision immediately before it grants a repair packet scope."""
 
@@ -889,7 +911,7 @@ class RepairTargetDecisionValidator:
             )
         if not isinstance(result, AdmissionResult):
             raise RepairTargetAdmissionError("result must be AdmissionResult")
-        return result
+        return _mirror_repair_target_requirement(result)
 
 
 __all__ = [

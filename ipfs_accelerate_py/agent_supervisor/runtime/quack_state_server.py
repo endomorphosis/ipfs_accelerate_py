@@ -4242,6 +4242,25 @@ def _mirror_quack_owner_status_scope_ready() -> None:
         pass
 
 
+def _mirror_quack_owner_legacy_queue_scope() -> None:
+    """Record that a ready owner bound a legacy queue. Paths and branches are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_owner_legacy_queue_scope",
+            record_ref="ready",
+            subject_kind="record_cid",
+            subject_ref="ready",
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class QuackStateServer:
     """Long-lived exclusive owner of one control-plane DuckDB database.
@@ -4417,6 +4436,7 @@ class QuackStateServer:
         if not callable(bind):
             return
         bind(**binding)
+        _mirror_quack_owner_legacy_queue_scope()
 
     def issue_typed_client_grant_record(
         self,
