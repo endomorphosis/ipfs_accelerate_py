@@ -465,6 +465,27 @@ def _fixed_point_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_fixed_point_record(commit: Any) -> Any:
+    """Record a fixed-point receipt by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "fixed-point-record")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="fixed_point_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class FixedPointStore(RecoveryStore):
     """Persist admitted fixed-point receipts through the sealed state owner."""
 
@@ -517,7 +538,7 @@ class FixedPointStore(RecoveryStore):
         if not isinstance(receipt, FixedPointReceipt):
             raise FederationContractError("fixed-point receipt is required")
         receipt_id = "federation-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_fixed_point_record(self._commit_fact(
             operation="federation.fixed_point.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -538,7 +559,7 @@ class FixedPointStore(RecoveryStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_fixed_point(
         self,

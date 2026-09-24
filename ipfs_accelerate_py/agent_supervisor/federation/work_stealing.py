@@ -278,6 +278,27 @@ def _steal_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_steal_record(commit: Any) -> Any:
+    """Record a committed steal by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "steal-record")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="steal_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class WorkStealingStore(ShardingStore):
     """Persist steal receipts through the sealed state owner."""
 
@@ -330,7 +351,7 @@ class WorkStealingStore(ShardingStore):
         if not isinstance(receipt, StealReceipt):
             raise FederationContractError("steal receipt is required")
         receipt_id = "federation-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_steal_record(self._commit_fact(
             operation="federation.steal.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -349,7 +370,7 @@ class WorkStealingStore(ShardingStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_steal(
         self,

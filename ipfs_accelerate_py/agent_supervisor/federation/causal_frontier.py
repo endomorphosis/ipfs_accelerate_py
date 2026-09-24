@@ -386,6 +386,27 @@ def _frontier_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_causal_frontier_record(commit: Any) -> Any:
+    """Record a causal frontier by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "causal-frontier")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_frontier_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class CausalFrontierStore(CausalAbstractionStore):
     """Persist compiled wakeup frontiers through the sealed state owner."""
 
@@ -441,7 +462,7 @@ class CausalFrontierStore(CausalAbstractionStore):
         if not isinstance(compiled, CompiledFrontier):
             raise FederationContractError("compiled frontier is required")
         frontier_id = "frontier:" + compiled.cid
-        return self._commit_fact(
+        return _mirror_causal_frontier_record(self._commit_fact(
             operation="federation.causal.frontier.record",
             fact_id=frontier_id,
             federation_id=federation_id,
@@ -464,7 +485,7 @@ class CausalFrontierStore(CausalAbstractionStore):
                 recorded_at=recorded_at,
                 abstraction_revision_ref=abstraction_revision_ref,
             ),
-        )
+        ))
 
     def load_frontier(
         self,

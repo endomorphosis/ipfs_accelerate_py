@@ -786,6 +786,27 @@ def _rebalance_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_rebalance_record(commit: Any) -> Any:
+    """Record a rebalance receipt by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "rebalance-record")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="rebalance_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class RebalancingStore(WorkStealingStore):
     """Persist rebalance plans, fencing revisions, and receipts through Quack."""
 
@@ -841,7 +862,7 @@ class RebalancingStore(WorkStealingStore):
         if receipt.rebalance_plan_id != plan.plan_id:
             raise RebalancingAuthorityError("receipt plan identity differs from the compiled plan")
         receipt_id = "rebalance-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_rebalance_record(self._commit_fact(
             operation="federation.rebalance.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -862,7 +883,7 @@ class RebalancingStore(WorkStealingStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_plan(
         self,
