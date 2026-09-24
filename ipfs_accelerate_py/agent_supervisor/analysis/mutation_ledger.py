@@ -1692,6 +1692,32 @@ class MutationRecordResult:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_mutation_rollback(receipt: Any) -> Any:
+    """Record a rollback by mutation id and closed status. Paths and digests are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mutation_id = str(getattr(receipt, "mutation_id", "") or "mutation-rollback")
+        raw = getattr(receipt, "status", "")
+        status = str(getattr(raw, "value", raw) or "")
+        if status not in {"verified", "failed"}:
+            status = "recorded"
+        record_ref = f"{mutation_id}:{status}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="mutation_rollback_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class MutationLedger:
     """Persist before/after mutations with AST edit lineage in DuckDB.
 
@@ -3425,7 +3451,7 @@ class MutationLedger:
                 ],
             )
             self._commit_if_idle(connection)
-        return receipt
+        return _mirror_mutation_rollback(receipt)
 
     def get_rollback(self, mutation_id: str) -> RollbackReceipt | None:
         connection = self._require()

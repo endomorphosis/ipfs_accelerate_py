@@ -880,6 +880,37 @@ class LlmAvoidanceReport:
         return content_identity(self.to_dict())
 
 
+def _mirror_llm_avoidance_attempt(record: Any) -> Any:
+    """Record one new attempt by id and closed disposition. Telemetry is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        attempt_id = str(getattr(record, "attempt_id", "") or "llm-avoidance-attempt")
+        raw = getattr(record, "disposition", "")
+        disposition = str(getattr(raw, "value", raw) or "")
+        if disposition not in {
+            "closed_deterministic",
+            "residual_llm_authorized",
+            "abstain_review",
+            "defer_capability",
+        }:
+            disposition = "recorded"
+        record_ref = f"{attempt_id}:{disposition}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="llm_avoidance_attempt_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 class LlmAvoidanceMetrics:
     """Collector that attributes attempts and aggregates LLM-avoidance metrics.
 
@@ -931,7 +962,7 @@ class LlmAvoidanceMetrics:
                 )
             return existing
         self._attempts[record.attempt_id] = record
-        return record
+        return _mirror_llm_avoidance_attempt(record)
 
     def record_attempt(
         self,

@@ -738,6 +738,32 @@ def build_formal_planning_benchmark_report(
     return report
 
 
+def _mirror_formal_planning_sample(sample: Any) -> Any:
+    """Record one accepted sample by id and closed mode. Counts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        sample_id = str(getattr(sample, "sample_id", "") or "formal-planning-sample")
+        raw = getattr(sample, "benchmark_mode", "")
+        mode = str(getattr(raw, "value", raw) or "")
+        if mode not in {"cold", "warm"}:
+            mode = "recorded"
+        record_ref = f"{sample_id}:{mode}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="formal_planning_sample_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return sample
+
+
 @dataclass
 class FormalPlanningMetricsCollector:
     """Thread-safe bounded collector used by cold and warm benchmark runners."""
@@ -763,7 +789,7 @@ class FormalPlanningMetricsCollector:
             if any(item.sample_id == normalized.sample_id for item in self._samples):
                 raise FormalPlanningMetricsError("sample_id values must be unique")
             self._samples.append(normalized)
-        return normalized
+        return _mirror_formal_planning_sample(normalized)
 
     def report(
         self, *, generated_at: datetime | str | None = None

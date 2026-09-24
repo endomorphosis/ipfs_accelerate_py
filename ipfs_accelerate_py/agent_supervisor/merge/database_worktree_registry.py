@@ -1649,6 +1649,48 @@ def _mirror_reuse_decision(*args: Any, **kwargs: Any) -> ReuseDecision:
     return result
 
 
+def _mirror_worktree_snapshot(snapshot: Any) -> Any:
+    """Record a snapshot by id. Paths, commits, and fences are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(snapshot, "snapshot_id", "") or "worktree-snapshot")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="worktree_snapshot_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return snapshot
+
+
+def _mirror_dirty_overlay(overlay: Any) -> Any:
+    """Record a dirty overlay by id. Paths and entries are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(overlay, "overlay_id", "") or "dirty-overlay")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dirty_overlay_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return overlay
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -2762,10 +2804,10 @@ class DatabaseWorktreeRegistry:
                 )
                 self._upsert_worktree_locked(connection, updated)
                 self._commit_if_idle(connection)
-                return snapshot
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_worktree_snapshot(snapshot)
 
     def record_dirty_overlay(
         self,
@@ -2896,10 +2938,10 @@ class DatabaseWorktreeRegistry:
                 )
                 self._upsert_worktree_locked(connection, updated)
                 self._commit_if_idle(connection)
-                return overlay
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_dirty_overlay(overlay)
 
     def get_snapshot(self, snapshot_id: str) -> WorktreeSnapshot | None:
         with self._lock:
