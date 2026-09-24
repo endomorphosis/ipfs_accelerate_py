@@ -668,6 +668,27 @@ def _proof_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_proof_projection_record(commit: Any) -> Any:
+    """Record a proof projection by fact id. Obligation text and content are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "proof-projection")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="proof_projection_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class ProofProjectionStore(SemanticProjectionStore):
     """Persist opaque proof/test/cache/seal projections."""
 
@@ -732,7 +753,7 @@ class ProofProjectionStore(SemanticProjectionStore):
             tree_id=projection.tree_id,
             repository_id=projection.repository_id,
         )
-        return self._commit_fact(
+        return _mirror_proof_projection_record(self._commit_fact(
             operation="federation.proof.reference.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -754,7 +775,7 @@ class ProofProjectionStore(SemanticProjectionStore):
                 tenant_id=binding.tenant_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_test(
         self,

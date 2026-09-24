@@ -557,6 +557,27 @@ def _retrieval_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_retrieval_nomination_record(commit: Any) -> Any:
+    """Record a nomination by fact id. Scores, subjects, and content are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "retrieval-nomination")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="retrieval_nomination_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class RetrievalProjectionStore(ProofProjectionStore):
     """Persist nomination-only BM25, vector, and KG projections."""
 
@@ -695,7 +716,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
             raise RetrievalProjectionAuthorityError(
                 "retrieval hits cannot be recorded as authoritative"
             )
-        return self._commit_fact(
+        return _mirror_retrieval_nomination_record(self._commit_fact(
             operation="federation.retrieval.nomination.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -715,7 +736,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
                 receipt_id=receipt_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_kg_relation(
         self,

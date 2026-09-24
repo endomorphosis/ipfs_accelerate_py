@@ -409,6 +409,27 @@ def _abstraction_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_abstraction_map_record(commit: Any) -> Any:
+    """Record an abstraction map by fact id. Model refs and the idempotency key are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "abstraction-map")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="abstraction_map_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class CausalAbstractionStore(CausalGraphStore):
     """Sealed abstraction-map and intervention store over one state client."""
 
@@ -463,7 +484,7 @@ class CausalAbstractionStore(CausalGraphStore):
     ) -> CausalGraphCommit:
         if not isinstance(abstraction, CausalAbstractionMap):
             raise FederationContractError("abstraction must be a CausalAbstractionMap")
-        return self._commit_fact(
+        return _mirror_abstraction_map_record(self._commit_fact(
             operation="federation.causal.map.record",
             fact_id=abstraction.record_id,
             federation_id=federation_id,
@@ -485,7 +506,7 @@ class CausalAbstractionStore(CausalGraphStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_intervention(
         self,

@@ -458,6 +458,27 @@ def _projection_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_semantic_root_record(commit: Any) -> Any:
+    """Record a semantic root by fact id. The root body and content ref are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "semantic-root")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="semantic_root_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class SemanticProjectionStore(WorldSnapshotStore):
     """Persist opaque semantic projections through the exclusive state owner."""
 
@@ -520,7 +541,7 @@ class SemanticProjectionStore(WorldSnapshotStore):
             record_id=projection.record_id,
             revision=projection.revision,
         )
-        return self._commit_fact(
+        return _mirror_semantic_root_record(self._commit_fact(
             operation="federation.semantic.root.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -540,7 +561,7 @@ class SemanticProjectionStore(WorldSnapshotStore):
                 tenant_id=binding.tenant_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_capsule(
         self,
