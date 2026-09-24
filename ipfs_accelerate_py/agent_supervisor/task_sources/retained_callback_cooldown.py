@@ -353,6 +353,26 @@ def json_extension(queue: Mapping[str, Any]) -> dict[str, Any]:
     return json.loads(queue["extension_json"])
 
 
+def _mirror_retained_callback_claim_binding(task_cid: str) -> None:
+    """Record a task whose cooldown reservation still matches. Fence values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_cid or "retained-callback")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="retained_callback_claim_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def require_claim_binding(
     connection: Any, *, task: Mapping[str, Any], next_receipt: Mapping[str, Any]
 ) -> None:
@@ -410,3 +430,4 @@ def require_claim_binding(
         )
     ):
         raise Error("retained callback reservation changed source or regressed its floor")
+    _mirror_retained_callback_claim_binding(str(task.get("task_cid") or ""))

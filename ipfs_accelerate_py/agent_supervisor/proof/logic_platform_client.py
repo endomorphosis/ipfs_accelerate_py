@@ -570,6 +570,27 @@ class ClientResult:
         )
 
 
+def _mirror_logic_platform_client_operation(result: Any, operation: Any) -> Any:
+    """Record a client operation name. The payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(operation, "value", operation) or "logic-platform")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logic_platform_client_operation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class SupervisorLogicPlatformClient:
     """Lazy supervisor-side client for the datasets logic platform.
 
@@ -1125,11 +1146,14 @@ class SupervisorLogicPlatformClient:
         response = facade.invoke(
             provider_request, cancellation=context.cancellation
         )
-        return self._provider_response_to_client_result(
-            context=context,
-            operation=operation,
-            response=response,
-            residual=residual,
+        return _mirror_logic_platform_client_operation(
+            self._provider_response_to_client_result(
+                context=context,
+                operation=operation,
+                response=response,
+                residual=residual,
+            ),
+            operation,
         )
 
     def _provider_response_to_client_result(

@@ -1577,6 +1577,29 @@ def make_llm_router_provider(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_propagation_scope_admission(decision: Any) -> Any:
+    """Record a scope-admission verdict. The proposal and paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        accepted = getattr(decision, "accepted", getattr(decision, "admitted", None))
+        reason = str(getattr(decision, "reason_code", "") or "")
+        record_ref = f"{bool(accepted)}:{reason}" if reason else str(bool(accepted))
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="propagation_scope_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 @dataclass
 class ChangePropagationProviderRouter:
     """Route only admitted unresolved (model-required) steps through llm_router.
@@ -1696,23 +1719,23 @@ class ChangePropagationProviderRouter:
                             proposal, allowed_write_paths=allowed
                         )
                     except PropagationProviderRoutingError as exc:
-                        return AdmissionDecision(
+                        return _mirror_propagation_scope_admission(AdmissionDecision(
                             False,
                             exc.reason_code
                             or PropagationProviderReason.SCOPE_ESCAPE.value,
-                        )
+                        ))
             if outer_gate is None:
-                return AdmissionDecision(
+                return _mirror_propagation_scope_admission(AdmissionDecision(
                     False, PropagationProviderReason.ADMISSION_REQUIRED.value
-                )
+                ))
             try:
-                return (
+                return _mirror_propagation_scope_admission(
                     outer_gate(proposal, role)
                     if role is not None
                     else outer_gate(proposal)
                 )
             except TypeError:
-                return outer_gate(proposal)
+                return _mirror_propagation_scope_admission(outer_gate(proposal))
 
         return gate
 

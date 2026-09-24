@@ -1167,6 +1167,26 @@ def resolve_database_implementation_paths(
     }
 
 
+def _mirror_database_portal_execution_binding(admission_cid: str) -> None:
+    """Record that portal execution callbacks were bound. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(admission_cid or "database-portal-execution")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="database_portal_execution_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def bind_database_portal_execution_from_args(
     daemon: object,
     parsed: argparse.Namespace,
@@ -1312,6 +1332,7 @@ def bind_database_portal_execution_from_args(
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
     )
+    _mirror_database_portal_execution_binding(configured_board_admission_cid)
     return bridge
 
 

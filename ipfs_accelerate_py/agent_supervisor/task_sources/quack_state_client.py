@@ -1333,6 +1333,26 @@ class _ConnectionAdapter:
             close()
 
 
+def _mirror_quack_event_wait_source(capability: Any) -> Any:
+    """Record that an event-wait source was bound. The capability payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_event_wait_source_binding",
+            record_ref="bound",
+            subject_kind="record_cid",
+            subject_ref="bound",
+        )
+    except Exception:
+        pass
+    return capability
+
+
 class QuackStateClient:
     """Typed, fail-closed Quack/DuckDB control-plane client.
 
@@ -1506,7 +1526,7 @@ class QuackStateClient:
             self._event_wait_minimum_interval_seconds = minimum
             self._event_wait_maximum_interval_seconds = maximum
             self._event_wait_backoff_multiplier = multiplier
-        return MappingProxyType(self.event_wait_capability())
+        return _mirror_quack_event_wait_source(MappingProxyType(self.event_wait_capability()))
 
     def clear_event_wait_binding(self) -> None:
         """Release client-side references without changing owner state."""
