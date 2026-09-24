@@ -611,6 +611,46 @@ def run_with_retry(
     )
 
 
+def _mirror_authorized_command_receipt(event_id: str) -> None:
+    """Record an authorized-command receipt id. The receipt body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(event_id or "authorized-command")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorized_command_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
+def _mirror_authorized_command_quarantine(event_id: str) -> None:
+    """Record an ingress-quarantine event id. The quarantine body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(event_id or "command-quarantine")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorized_command_quarantine",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class StateTransaction:
     """Short-lived CAS transaction against a control-plane connection.
 
@@ -1114,6 +1154,7 @@ class StateTransaction:
                 body_json,
             ],
         )
+        _mirror_authorized_command_receipt(event_id)
 
     def lookup_authorized_command_ingress_quarantine(
         self,
@@ -1207,6 +1248,7 @@ class StateTransaction:
                 body_json,
             ],
         )
+        _mirror_authorized_command_quarantine(event_id)
 
     def lookup_idempotency(
         self,

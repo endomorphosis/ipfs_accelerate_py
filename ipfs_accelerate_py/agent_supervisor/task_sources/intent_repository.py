@@ -750,6 +750,31 @@ def _mirror_intent_evidence(receipt: Any, evidence_kind: str) -> Any:
     return receipt
 
 
+def _mirror_validation_result(receipt: Any, outcome: str) -> Any:
+    """Record a validation result by task id and closed outcome. Argv and bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        closed = outcome if outcome in {"passed", "failed", "error", "skipped"} else "recorded"
+        record_ref = f"{task_cid}:{closed}" if task_cid else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="validation_result_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class IntentRepository:
     """Transactional authority for intent-domain control-plane state.
 
@@ -2747,7 +2772,7 @@ class IntentRepository:
                         ),
                     ],
                 )
-            return self._append_event(
+            receipt = self._append_event(
                 connection,
                 event_type=IntentEventType.VALIDATION_RECORDED,
                 subject_id=result_id,
@@ -2765,6 +2790,7 @@ class IntentRepository:
                     "revision": 0,
                 },
             )
+        return _mirror_validation_result(receipt, outcome_text)
 
     def current_evidence_for_task(
         self,

@@ -63,6 +63,26 @@ class TodoDaemonHooks:
     )
 
 
+def _mirror_cycle_exception(proposal: Any) -> Any:
+    """Record a daemon cycle exception. Exception text and task labels are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="cycle_exception_record",
+            record_ref="daemon_exception",
+            subject_kind="record_cid",
+            subject_ref="daemon_exception",
+        )
+    except Exception:
+        pass
+    return proposal
+
+
 class TodoDaemonRunner:
     """Reusable status, heartbeat, progress, and task-board loop for todo daemons."""
 
@@ -242,7 +262,7 @@ class TodoDaemonRunner:
             )
         except Exception:
             pass
-        return proposal
+        return _mirror_cycle_exception(proposal)
 
     def write_progress(self, proposals: list[Proposal]) -> None:
         board = read_text(self.config.resolve(self.config.task_board))

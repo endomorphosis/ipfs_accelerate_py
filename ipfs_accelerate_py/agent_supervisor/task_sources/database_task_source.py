@@ -2438,6 +2438,30 @@ def execute_quack_owner_command(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_remote_queue_retry(receipt: Any) -> Any:
+    """Record a remote queue-retry clear by task id. The command payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = task_cid or "remote-queue-retry"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remote_queue_retry_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class DatabaseTaskSource:
     """Public task-source adapter backed by :class:`IntentRepository`.
 
@@ -4425,7 +4449,7 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _intent_receipt_from_dict(result)
+            return _mirror_remote_queue_retry(_intent_receipt_from_dict(result))
         return self._intent.record_queue_retry(task_cid=task_cid)
 
     def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
