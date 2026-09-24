@@ -11014,6 +11014,60 @@ def test_mirror_verification_transfer_legal_and_failure_signature(
     assert work["catalogs_linked"] is True
 
 
+def test_orchestration_joins_catalogs_and_taskboards_without_attaching(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.delenv("IPFS_ACCELERATE_AST_INDEX_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_BM25_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_VECTOR_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_KNOWLEDGE_GRAPH_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_PROGRAM_WORLD_DUCKDB", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_PROOF_CERTIFICATE_DUCKDB", raising=False)
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKLAKE", str(tmp_path / "meta_index_ducklake"))
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+        capsule_cid="capsule:work",
+    )
+    assert work["catalogs_linked"] is True
+    assert work["missing_kinds"] == []
+    assert work["extra_gate_attached"] is False
+    assert work["completion_authority"] is False
+    assert work["ducklake_authoritative"] is False
+    assert work["ducklake"]["authoritative"] is False
+    joined = compose_for_subject(subject_kind="tree_id", subject_ref="tree:work")
+    assert joined["completion_authority"] is False
+    by_kind: dict[str, list[dict]] = {}
+    for item in joined["linked"]:
+        by_kind.setdefault(item["catalog_kind"], []).append(item)
+    for kind in (
+        "filesystem_mtime",
+        "ast",
+        "bm25",
+        "knowledge_graph",
+        "vector",
+        "proof_cache",
+        "proof_certificate",
+        "world_model",
+        "capsule",
+        "metadata",
+    ):
+        assert kind in by_kind
+        assert by_kind[kind][0]["record_ref"] == kind
+        assert by_kind[kind][0]["attach_permitted"] is True
+    boards = {item["record_ref"] for item in by_kind["taskboard"]}
+    assert boards == {"sawm", "doep", "spar", "pctdd", "aseh"}
+    assert all(item["attach_permitted"] is False for item in by_kind["taskboard"])
+    assert all(not str(item["record_ref"]).startswith("/") for item in joined["linked"])
+    capsule = compose_for_subject(subject_kind="capsule_cid", subject_ref="capsule:work")
+    capsule_kinds = {item["catalog_kind"] for item in capsule["linked"]}
+    assert "taskboard" not in capsule_kinds
+    assert "world_model" in capsule_kinds
+    assert capsule["completion_authority"] is False
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

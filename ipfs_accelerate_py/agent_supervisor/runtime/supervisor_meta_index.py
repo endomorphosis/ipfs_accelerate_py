@@ -203,6 +203,9 @@ class SupervisorMetaIndex:
             "catalog_id": catalog_id,
             "catalog_cid": catalog_cid,
             "kind": kind,
+            "locator_ref": locator_ref,
+            "repository_id": repository_id,
+            "exclusive_owner": exclusive_owner,
             "attach_permitted": attach,
             "completion_authority": False,
         }
@@ -387,6 +390,117 @@ class SupervisorMetaIndex:
             "event_driven_qualified": True,
         }
 
+    def link_orchestration_catalogs(
+        self,
+        catalogs: Sequence[Mapping[str, Any]],
+        *,
+        subject_kind: str,
+        subject_ref: str,
+        tree_id: str = "",
+        capsule_cid: str = "",
+    ) -> list[dict[str, Any]]:
+        """Join one subject to every bound catalog. Task boards stay unattached.
+
+        Record refs are catalog kinds or board ids. Locator paths are not stored.
+        """
+
+        subjects: list[tuple[str, str]] = []
+        if subject_kind in SUBJECT_KINDS and subject_ref:
+            subjects.append((subject_kind, subject_ref))
+        if tree_id and ("tree_id", tree_id) not in subjects:
+            subjects.append(("tree_id", tree_id))
+        if not subjects:
+            return []
+        recorded_at = _now()
+        links: list[dict[str, Any]] = []
+        connection = _connect(self.duckdb_path)
+        try:
+            for catalog in catalogs:
+                catalog_kind = str(catalog.get("kind") or "")
+                catalog_id = str(catalog.get("catalog_id") or "")
+                if catalog_kind not in CATALOG_KINDS or not catalog_id:
+                    continue
+                if catalog_kind == "taskboard":
+                    record_ref = str(catalog.get("repository_id") or "").strip()
+                    locator = str(catalog.get("locator_ref") or "")
+                    if not record_ref and locator.startswith("quack://"):
+                        record_ref = locator[len("quack://") :].strip()
+                    record_ref = record_ref or "taskboard"
+                    bound_capsule = ""
+                else:
+                    record_ref = catalog_kind
+                    bound_capsule = capsule_cid
+                for kind, ref in subjects:
+                    link_cid = _cid(
+                        {
+                            "subject_kind": kind,
+                            "subject_ref": ref,
+                            "catalog_id": catalog_id,
+                            "record_kind": catalog_kind,
+                            "record_ref": record_ref,
+                        }
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO identity_links (
+                            link_id, link_cid, subject_kind, subject_ref, catalog_id,
+                            record_kind, record_ref, freshness_mtime_ns, recorded_at,
+                            completion_authority
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, FALSE)
+                        ON CONFLICT (link_cid) DO UPDATE SET
+                            recorded_at=excluded.recorded_at
+                        """,
+                        [
+                            f"link:{link_cid}",
+                            link_cid,
+                            kind,
+                            ref,
+                            catalog_id,
+                            catalog_kind,
+                            record_ref,
+                            recorded_at,
+                        ],
+                    )
+                    if bound_capsule:
+                        binding_cid = _cid(
+                            {
+                                "capsule_cid": bound_capsule,
+                                "catalog_id": catalog_id,
+                                "subject_ref": ref,
+                            }
+                        )
+                        connection.execute(
+                            """
+                            INSERT INTO capsule_bindings (
+                                binding_id, capsule_cid, catalog_id, subject_kind,
+                                subject_ref, recorded_at, completion_authority
+                            ) VALUES (?, ?, ?, ?, ?, ?, FALSE)
+                            ON CONFLICT (binding_id) DO UPDATE SET
+                                recorded_at=excluded.recorded_at
+                            """,
+                            [
+                                f"binding:{binding_cid}",
+                                bound_capsule,
+                                catalog_id,
+                                kind,
+                                ref,
+                                recorded_at,
+                            ],
+                        )
+                    links.append(
+                        {
+                            "subject_kind": kind,
+                            "subject_ref": ref,
+                            "catalog_id": catalog_id,
+                            "record_kind": catalog_kind,
+                            "record_ref": record_ref,
+                            "completion_authority": False,
+                        }
+                    )
+        finally:
+            connection.close()
+        return links
+
     def observe_path(
         self,
         path: str,
@@ -505,6 +619,13 @@ class SupervisorMetaIndex:
     ) -> dict[str, Any]:
         bound = self.bind_supervisor_catalogs(tree_id=tree_id or subject_ref)
         observed = None
+        self.link_orchestration_catalogs(
+            bound.get("catalogs") or [],
+            subject_kind=subject_kind,
+            subject_ref=subject_ref or path or tree_id,
+            tree_id=tree_id or subject_ref,
+            capsule_cid=capsule_cid,
+        )
         if path:
             observed = self.observe_path(
                 path,
@@ -534,7 +655,7 @@ class SupervisorMetaIndex:
             "required_kinds": sorted(required),
             "missing_kinds": sorted(required - present),
             "catalogs_linked": required <= present,
-            "ducklake": bound.get("ducklake") or {},
+            "ducklake": self.project_ducklake(),
         }
 
     def compose_for_subject(
