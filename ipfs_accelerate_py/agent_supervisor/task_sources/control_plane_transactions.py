@@ -631,6 +631,48 @@ def _mirror_authorized_command_receipt(event_id: str) -> None:
         pass
 
 
+def _mirror_idempotency_digest(digest: str) -> str:
+    """Record an idempotency result digest. The key and result body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(digest or "idempotency-digest")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="idempotency_digest",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return digest
+
+
+def _mirror_store_revision(generation: Any) -> Any:
+    """Record a store generation id. The fence epoch is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(generation, "generation", "") or "store-revision")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="store_revision_advance",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return generation
+
+
 def _mirror_authorized_command_quarantine(event_id: str) -> None:
     """Record an ingress-quarantine event id. The quarantine body is not stored."""
 
@@ -1338,7 +1380,7 @@ class StateTransaction:
                 idempotency_key=command.idempotency_key,
                 command=command,
             ) from exc
-        return digest
+        return _mirror_idempotency_digest(digest)
 
     def advance_store_revision(
         self,
@@ -1378,7 +1420,7 @@ class StateTransaction:
                     "live_revision": refreshed.revision,
                 },
             )
-        return refreshed
+        return _mirror_store_revision(refreshed)
 
     def cas_row_revision(
         self,

@@ -2438,6 +2438,84 @@ def execute_quack_owner_command(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_remote_queue_backoff(receipt: Any) -> Any:
+    """Record a remote queue backoff by task id. Delay and reason text are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = task_cid or "remote-queue-backoff"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remote_queue_backoff_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
+def _mirror_remote_evidence(receipt: Any) -> Any:
+    """Record remote evidence by task id. The evidence body and digest are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = task_cid or "remote-evidence"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remote_evidence_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
+def _mirror_remote_validation(receipt: Any, outcome: str) -> Any:
+    """Record a remote validation by task id and closed outcome. Argv is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        normalized = str(outcome or "").strip().lower()
+        closed = (
+            normalized
+            if normalized in {"passed", "failed", "error", "skipped"}
+            else "recorded"
+        )
+        record_ref = f"{task_cid}:{closed}" if task_cid else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="remote_validation_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def _mirror_remote_queue_retry(receipt: Any) -> Any:
     """Record a remote queue-retry clear by task id. The command payload is not stored."""
 
@@ -3943,7 +4021,7 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _intent_receipt_from_dict(result)
+            return _mirror_remote_queue_backoff(_intent_receipt_from_dict(result))
         return self._intent.record_queue_backoff(
             task_cid=task_cid,
             delay_ms=delay_ms,
@@ -4478,7 +4556,7 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _intent_receipt_from_dict(result)
+            return _mirror_remote_evidence(_intent_receipt_from_dict(result))
         return self._intent.record_evidence(
             task_cid=task_cid,
             evidence_kind=evidence_kind,
@@ -4511,7 +4589,7 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _intent_receipt_from_dict(result)
+            return _mirror_remote_validation(_intent_receipt_from_dict(result), outcome)
         try:
             return self._intent.record_validation_result(
                 task_cid=task_cid,
