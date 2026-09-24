@@ -1656,6 +1656,26 @@ def self_improvement_epoch_wait_active(
     )
 
 
+def _mirror_self_improvement_exhaustion(epoch_id: str) -> None:
+    """Record an exhaustion epoch id. The strategy path and quorum body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(epoch_id or "self-improvement-exhaustion")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="self_improvement_exhaustion_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def record_self_improvement_exhaustion(
     strategy_path: Path,
     *,
@@ -1706,6 +1726,7 @@ def record_self_improvement_exhaustion(
         }
     )
     write_json(strategy_path, strategy)
+    _mirror_self_improvement_exhaustion(epoch)
     return strategy
 
 

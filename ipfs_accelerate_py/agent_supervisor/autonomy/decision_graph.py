@@ -651,6 +651,27 @@ def resolve_question(
     )
 
 
+def _mirror_question_evidence(transition: Any, question_id: str, tree_id: str) -> Any:
+    """Record attached question evidence by question and tree id. Evidence bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{question_id}:{tree_id}" if tree_id else str(question_id or "question-evidence")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="decision_question_evidence",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return transition
+
+
 def record_question_evidence(
     graph: DecisionGraph,
     question_id: str,
@@ -715,7 +736,7 @@ def record_question_evidence(
     evidence_dependencies[semantic_id] = tuple(
         sorted(set(evidence_dependencies.get(semantic_id, ())).union(evidence))
     )
-    return _transition(
+    return _mirror_question_evidence(_transition(
         graph,
         states=states,
         dependencies=dependencies,
@@ -725,7 +746,7 @@ def record_question_evidence(
         evidence_ids=evidence,
         direct=direct,
         affected=affected,
-    )
+    ), semantic_id, str(graph.tree_id))
 
 
 def invalidate_evidence(

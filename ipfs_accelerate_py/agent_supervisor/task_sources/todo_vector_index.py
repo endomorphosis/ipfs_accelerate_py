@@ -418,8 +418,28 @@ def parse_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _mirror_embedding_text_task(task_id: str) -> None:
+    """Record that embedding text was composed. The text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_id or "embedding-text")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="embedding_text_task",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def record_embedding_text(record: TodoIndexRecord) -> str:
-    return "\n".join(
+    text = "\n".join(
         [
             record.task_id,
             record.title,
@@ -467,6 +487,8 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             " ".join(record.provenance_cids),
         ]
     )
+    _mirror_embedding_text_task(str(getattr(record, "task_id", "") or ""))
+    return text
 
 
 def _surface_dict(surface: Any) -> dict[str, Any]:

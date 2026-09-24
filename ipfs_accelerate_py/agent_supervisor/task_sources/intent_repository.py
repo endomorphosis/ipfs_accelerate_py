@@ -702,6 +702,30 @@ def _mirror_queue_retry_cleared(receipt: Any) -> Any:
     return receipt
 
 
+def _mirror_intent_evidence(receipt: Any, evidence_kind: str) -> Any:
+    """Record intent evidence by task id and kind. The evidence body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = f"{task_cid}:{evidence_kind}" if task_cid else str(evidence_kind or "intent-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="intent_evidence_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class IntentRepository:
     """Transactional authority for intent-domain control-plane state.
 
@@ -2563,7 +2587,7 @@ class IntentRepository:
                     _canonical(body_map, noun="evidence body"),
                 ],
             )
-            return self._append_event(
+            receipt = self._append_event(
                 connection,
                 event_type=IntentEventType.EVIDENCE_RECORDED,
                 subject_id=eid,
@@ -2579,6 +2603,7 @@ class IntentRepository:
                     "revision": 0,
                 },
             )
+        return _mirror_intent_evidence(receipt, kind)
 
     def record_validation_result(
         self,

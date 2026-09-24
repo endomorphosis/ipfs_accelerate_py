@@ -1684,6 +1684,27 @@ def reject_self_certified_counters(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_work_telemetry(record: Any) -> Any:
+    """Record work telemetry by record id. Samples are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(record, "record_id", "") or getattr(record, "content_id", "") or "work-telemetry")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="work_and_compute_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 class BenchmarkTelemetrySession:
     """Mutable collector that attributes children and measurements once."""
 
@@ -1963,7 +1984,7 @@ class BenchmarkTelemetrySession:
                 raise BenchmarkTelemetryError(
                     "work telemetry record_id collides with a different body"
                 )
-            return prior
+            return _mirror_work_telemetry(prior)
         if (
             record.disposition is WorkTelemetryDisposition.ADMITTED
             and record.terminalized
@@ -1976,7 +1997,7 @@ class BenchmarkTelemetrySession:
         self._work_telemetry[record.record_id] = record
         if record.disposition is WorkTelemetryDisposition.ADMITTED:
             self.record_measurement(record.to_resource_measurement())
-        return record
+        return _mirror_work_telemetry(record)
 
     def seal_receipt(self) -> "BenchmarkTelemetryReceipt":
         return BenchmarkTelemetryReceipt(
