@@ -941,7 +941,14 @@ class RuntimeTestDependencyTracer:
                     "value": raw if raw is not None else "",
                 }
             ).cid
-            return self._accept_fact("environment", {"name": name, "value_cid": value_identity})
+            accepted = self._accept_fact(
+                "environment", {"name": name, "value_cid": value_identity}
+            )
+            if accepted:
+                _mirror_runtime_trace_digest(
+                    "trace_environment_record", str(value_identity)
+                )
+            return accepted
         except BaseException:
             self._mark_internal_failure("record_environment")
             return False
@@ -1009,7 +1016,7 @@ class RuntimeTestDependencyTracer:
             )
             if expected_identity is None or identity != expected_identity:
                 self._mark_unsupported("subprocess_tool")
-            return self._accept_fact(
+            accepted = self._accept_fact(
                 "subprocesses",
                 {
                     "executable": name,
@@ -1018,6 +1025,16 @@ class RuntimeTestDependencyTracer:
                     "tool_identity": identity or "unadmitted",
                 },
             )
+            if accepted:
+                disposition = (
+                    "admitted"
+                    if expected_identity is not None and identity == expected_identity
+                    else "unadmitted"
+                )
+                _mirror_runtime_trace_digest(
+                    "trace_subprocess_record", f"{digest}:{disposition}"
+                )
+            return accepted
         except RuntimeTraceError:
             self._mark_private("subprocess")
             return False
@@ -1121,11 +1138,13 @@ class RuntimeTestDependencyTracer:
     def record_unsupported_event(self, kind: str = "explicit") -> bool:
         del kind  # Attacker-controlled event labels are never retained.
         self._mark_unsupported("explicit")
+        _mirror_runtime_trace_digest("trace_unsupported_event", "unsupported")
         return False
 
     def record_private_event(self, kind: str = "explicit") -> bool:
         del kind
         self._mark_private("explicit")
+        _mirror_runtime_trace_digest("trace_private_event", "private")
         return False
 
     def observe_audit_event(self, event: str, arguments: tuple[Any, ...] = ()) -> None:

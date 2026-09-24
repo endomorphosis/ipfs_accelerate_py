@@ -22,6 +22,26 @@ from typing import Any
 from .task_identity import TaskIdentity
 
 
+def _mirror_queue_selection_success(task_id: str) -> None:
+    """Record a queue selection success by task id. Timestamps are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(task_id or "queue-selection")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="queue_selection_success",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class TaskQueueEntry:
     """Priority queue entry for a single task."""
@@ -59,6 +79,7 @@ class TaskQueueEntry:
         self.consecutive_no_change = 0
         self.selection_penalty = 0
         self.cooldown_until = 0.0
+        _mirror_queue_selection_success(self.task_id)
 
     def record_failure(self, reason: str = "") -> None:
         self.consecutive_failures += 1
