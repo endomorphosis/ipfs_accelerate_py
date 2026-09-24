@@ -222,6 +222,31 @@ def _mirror_contract_repair_gate(result: Any) -> Any:
     return result
 
 
+def _mirror_contract_repair_pre_provider_reasons(reasons: Any) -> Any:
+    """Record closed pre-provider reason codes. Paths are not stored, and no provider runs."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        values = [
+            str(getattr(item, "value", item))
+            for item in reasons
+        ] if isinstance(reasons, tuple) else []
+        record_ref = ",".join(values) or "valid"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_repair_pre_provider_reasons",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return reasons
+
+
 class ContractRepairPreProviderGate:
     """Replay current packet, proof, capability, and snapshot bindings.
 
@@ -315,7 +340,9 @@ class ContractRepairPreProviderGate:
                 or not capability.reconstruction_compatible
             ):
                 invalid.add(PreProviderGateReason.INCOMPLETE_CAPABILITY)
-        return tuple(sorted(invalid, key=lambda item: item.value))
+        return _mirror_contract_repair_pre_provider_reasons(
+            tuple(sorted(invalid, key=lambda item: item.value))
+        )
 
     def require_valid(
         self,

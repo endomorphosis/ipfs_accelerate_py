@@ -5454,6 +5454,26 @@ def _run_protected_effect_recovery(
         return 125
 
 
+def _mirror_grok_effect_boundary(decision_id: str) -> None:
+    """Record a still-authorized effect boundary. Paths, nonces, and commands are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(decision_id or "effect-boundary")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="grok_effect_boundary",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
         DurableProviderAttemptCAS,
@@ -6221,6 +6241,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 raise _AgentRouteEffectDenied(str(exc)) from exc
             outcome_route = fresh_route
             effect_verifier_status = effect_decision.verifier_status
+            _mirror_grok_effect_boundary(str(getattr(effect_decision, "content_id", "") or ""))
 
         def claim_provider_effect(
             launch_context: Mapping[str, object],

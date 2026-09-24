@@ -467,6 +467,28 @@ def _mirror_datasets_citation(citation: Any, record_kind: str) -> Any:
     return citation
 
 
+def _mirror_datasets_domain_citation(adapted: Any, domain_kind: str) -> Any:
+    """Record a preserved domain identity. The adapted payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        identity = str(getattr(adapted, "domain_identity", "") or "")
+        record_ref = f"{domain_kind}:{identity}" if identity else str(domain_kind or "datasets-domain")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="datasets_domain_citation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return adapted
+
+
 @dataclass(frozen=True, slots=True)
 class DatasetsIdentityCitation:
     """Operational citation of one datasets identity. Never replaces the CID."""
@@ -671,7 +693,7 @@ class DatasetsProgramWorldAdapter:
                 before_identity=before_identity,
             ):
                 raise ProgramWorldAdapterError("domain identity was not preserved")
-        return adapted
+        return _mirror_datasets_domain_citation(adapted, str(domain_kind or ""))
 
 
 # ---------------------------------------------------------------------------
@@ -1179,6 +1201,31 @@ def _mirror_program_world_context_record(receipt: Any) -> Any:
     return receipt
 
 
+def _mirror_program_world_capability_probe(receipts: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Record which capability surfaces are available. Diagnostics are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        parts = [
+            f"{name}:{bool(getattr(receipts.get(name), 'available', False))}"
+            for name in ("datasets", "kit", "ann")
+        ]
+        record_ref = ",".join(parts) or "program-world-capabilities"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_world_capability_probe",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipts
+
+
 class SemanticWorldOperationalAdapters:
     """Unified capability gate, datasets/kit consumers, compiler, and publisher."""
 
@@ -1206,11 +1253,11 @@ class SemanticWorldOperationalAdapters:
         )
 
     def probe_capabilities(self) -> dict[str, ProgramWorldCapabilityReceipt]:
-        return {
+        return _mirror_program_world_capability_probe({
             "datasets": self.datasets.capability,
             "kit": self.kit.capability,
             "ann": inspect_ann_capability(),
-        }
+        })
 
     def evaluate_reuse(
         self,

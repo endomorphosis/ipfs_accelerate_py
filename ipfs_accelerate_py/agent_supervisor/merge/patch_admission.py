@@ -132,6 +132,28 @@ class PatchAdmissionResult:
         return self.reason_codes[0] if self.reason_codes else ""
 
 
+def _mirror_patch_admission_decision(result: Any) -> Any:
+    """Record a patch-admission decision by plan digest. Paths are not stored, and no patch is applied."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        digest = str(getattr(result, "plan_digest", "") or getattr(result, "patch_digest", "") or "")
+        record_ref = f"{bool(getattr(result, 'accepted', False))}:{digest or 'patch'}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="patch_admission_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class PatchAdmission:
     """Validate a closed PatchPlan, patch payload, and independent receipt."""
 
@@ -212,7 +234,9 @@ class PatchAdmission:
             ):
                 reasons.append("stale_receipt")
         unique_reasons = tuple(dict.fromkeys(reasons))
-        return PatchAdmissionResult(not unique_reasons, unique_reasons, paths, typed_plan.digest, digest)
+        return _mirror_patch_admission_decision(
+            PatchAdmissionResult(not unique_reasons, unique_reasons, paths, typed_plan.digest, digest)
+        )
 
 
 def admit_patch(
