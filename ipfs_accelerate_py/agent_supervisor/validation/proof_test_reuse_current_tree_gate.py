@@ -1542,7 +1542,6 @@ def verify_persisted_current_tree_gate_bundle(
     return replayed
 
 
-@dataclass(frozen=True, slots=True)
 def _mirror_ptr_gate_decision(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1568,6 +1567,7 @@ def _mirror_ptr_gate_decision(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True, slots=True)
 class ProofTestReuseCurrentTreeGate:
     """Evaluate the sealed PTR population against one current-tree identity."""
 

@@ -659,7 +659,6 @@ def _records(
     return tuple(sorted(result, key=lambda item: canonical_json_bytes(item.to_dict())))
 
 
-@dataclass(frozen=True)
 def _mirror_goal_context_validation(request: Any) -> None:
     """Record a context binding check. Success does not admit the goal."""
 
@@ -685,6 +684,7 @@ def _mirror_goal_context_validation(request: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class GoalDevelopmentContext:
     """Bounded, reference-only context offered to the model."""
 

@@ -247,7 +247,6 @@ class CalibrationGroup:
         return result
 
 
-@dataclass(frozen=True)
 def _mirror_calibration_admission(evidence: Any) -> None:
     """Record an admission match. It does not grant training completion."""
 
@@ -268,6 +267,7 @@ def _mirror_calibration_admission(evidence: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class CalibrationEvidence:
     """Held-out metrics and CIDs for exactly one calibration group."""
 

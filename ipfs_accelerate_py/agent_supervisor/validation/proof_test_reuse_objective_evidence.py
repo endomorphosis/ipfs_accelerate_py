@@ -490,7 +490,6 @@ class GoalCompletionArtifactGap(CanonicalContract):
         )
 
 
-@dataclass(frozen=True, slots=True)
 def _mirror_proof_test_reuse_binding(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -516,6 +515,7 @@ def _mirror_proof_test_reuse_binding(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True, slots=True)
 class GoalAssemblyIdentity:
     """Shared repository / policy identity applied to every goal binding."""
 

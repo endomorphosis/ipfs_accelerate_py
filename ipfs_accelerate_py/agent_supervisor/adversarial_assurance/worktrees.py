@@ -964,7 +964,6 @@ def apply_file_replacements(
 # ---------------------------------------------------------------------------
 
 
-@dataclass
 def _mirror_isolated_mutation(result: Any, worktree_path: str = "") -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -991,6 +990,7 @@ def _mirror_isolated_mutation(result: Any, worktree_path: str = "") -> Any:
     return result
 
 
+@dataclass
 class IsolatedMutationWorktree:
     """Fenced disposable mutation worktree bound to one attempt identity.
 

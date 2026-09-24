@@ -1096,7 +1096,6 @@ def _make_candidate(context: ResidualCascadeContext, stage: CascadeStage) -> Cas
     )
 
 
-@dataclass(frozen=True)
 def _mirror_cascade_walk(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1123,6 +1122,7 @@ def _mirror_cascade_walk(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class ResidualCascade:
     """Versioned exact-order cascade.  Provider routers remain canonical owners."""
 

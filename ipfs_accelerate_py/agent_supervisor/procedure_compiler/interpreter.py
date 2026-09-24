@@ -1171,7 +1171,6 @@ class ProcedureExecution:
     checkpoint_cid: str
 
 
-@dataclass
 def _mirror_interpreter_checkpoint(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1197,6 +1196,7 @@ def _mirror_interpreter_checkpoint(result: Any) -> Any:
     return result
 
 
+@dataclass
 class _RunState:
     invocation_cid: str
     procedure_cid: str

@@ -692,7 +692,6 @@ class TrajectoryAdmissionDecision:
             raise TrajectoryAdmissionError("an admitted decision requires independent evidence")
 
 
-@dataclass(frozen=True)
 def _mirror_trajectory_admission(result: Any) -> Any:
     """Record an admitted episode. admitted is unchanged."""
 
@@ -714,6 +713,7 @@ def _mirror_trajectory_admission(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class TrajectoryAdmissionPolicy:
     """Fail-closed current-tree admission rules for independently validated episodes."""
 

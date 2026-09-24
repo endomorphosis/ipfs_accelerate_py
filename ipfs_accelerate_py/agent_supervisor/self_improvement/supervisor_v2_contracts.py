@@ -671,7 +671,6 @@ class ResultBinding(_V2Contract):
         return result
 
 
-@dataclass(frozen=True)
 def _mirror_artifact_bounds(*, projection: bool) -> None:
     """Record a bounds check that did not raise. It does not admit the artifact."""
 
@@ -692,6 +691,7 @@ def _mirror_artifact_bounds(*, projection: bool) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class ArtifactBounds(_V2Contract):
     """Policy bounds for receipts, projections, references, and nesting."""
 

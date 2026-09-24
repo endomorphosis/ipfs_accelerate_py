@@ -156,7 +156,6 @@ def _expert_class_letters(values: Any, name: str) -> tuple[str, ...]:
     return letters
 
 
-@dataclass(frozen=True)
 def _mirror_compact_features(spec: Any) -> None:
     """Record a feature check that did not raise. candidate_only stays true."""
 
@@ -222,6 +221,7 @@ def _mirror_family_evaluation_admission(spec: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class ResidualTaskFamilySpec:
     """Exact shared semantic boundary, schemas, limits, and gates for one family."""
 

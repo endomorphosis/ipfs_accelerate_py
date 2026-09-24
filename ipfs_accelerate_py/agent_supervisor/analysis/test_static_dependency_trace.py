@@ -242,7 +242,6 @@ class UnknownDependencyFrontier:
         return {"frontier_id": self.frontier_id, **self._content_dict()}
 
 
-@dataclass(frozen=True)
 def _mirror_static_dependency_trace(result: Any) -> Any:
     """Record a static trace check. It does not admit the tests."""
 
@@ -264,6 +263,7 @@ def _mirror_static_dependency_trace(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class StaticTestDependencyTrace:
     """Immutable canonical result of one static closure computation."""
 

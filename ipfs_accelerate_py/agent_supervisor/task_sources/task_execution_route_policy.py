@@ -566,7 +566,6 @@ class TaskExecutionRouteBinding:
         )
 
 
-@dataclass(frozen=True)
 def _mirror_task_route_binding(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -593,6 +592,7 @@ def _mirror_task_route_binding(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class TaskExecutionRoutePolicy:
     """One immutable plan-root policy over an exact task population."""
 

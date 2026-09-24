@@ -997,7 +997,6 @@ def _validate_observation_against_policy(
         raise SymbolicBenchmarkError("observation exceeds byte bound")
 
 
-@dataclass(frozen=True)
 def _mirror_symbolic_benchmark(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1021,6 +1020,7 @@ def _mirror_symbolic_benchmark(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class SymbolicBenchmarkObservation:
     """One measured scan, including its paired provider-input packet.
 

@@ -31,7 +31,6 @@ class GuardedQualificationReceipt:
     completion_authority: bool = False
 
 
-@dataclass
 def _mirror_guarded_influence(result: Any) -> Any:
     """Record an influence decision. completion_authority stays false."""
 
@@ -53,6 +52,7 @@ def _mirror_guarded_influence(result: Any) -> Any:
     return result
 
 
+@dataclass
 class ProgramWorldGuardedGate:
     def evaluate_guarded_program_world_influence(
         self, request: Mapping[str, Any]

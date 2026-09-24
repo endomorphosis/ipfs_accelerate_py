@@ -225,7 +225,6 @@ class MemoryInvalidationReceipt:
         )
 
 
-@dataclass
 def _mirror_semantic_memory_admission(entry: Any) -> Any:
     """Record a sealed memory entry. Frequency and admission do not grant authority."""
 
@@ -247,6 +246,7 @@ def _mirror_semantic_memory_admission(entry: Any) -> Any:
     return entry
 
 
+@dataclass
 class SemanticMemory:
     """Bounded in-process index over sealed artifact identities."""
 

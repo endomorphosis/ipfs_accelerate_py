@@ -1371,7 +1371,6 @@ class NewCounterexampleRefinementEvidence:
         return result
 
 
-@dataclass(frozen=True)
 def _mirror_backoff_source(evidence: Any) -> None:
     """Record a matching backoff source. It stays non-authoritative."""
 
@@ -1393,6 +1392,7 @@ def _mirror_backoff_source(evidence: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class UnchangedFailureBackoffEvidence:
     """Concrete causal witness for the ASI-G115 no-second-call criterion.
 

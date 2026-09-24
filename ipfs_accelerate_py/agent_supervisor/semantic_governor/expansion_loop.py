@@ -490,7 +490,6 @@ class ExpansionModelPolicy:
         return cls(**payload)
 
 
-@dataclass(frozen=True, slots=True)
 def _mirror_expansion_verification(policy: Any, accepted: bool) -> bool:
     """Record a policy check. Acceptance does not admit completion."""
 
@@ -512,6 +511,7 @@ def _mirror_expansion_verification(policy: Any, accepted: bool) -> bool:
     return accepted
 
 
+@dataclass(frozen=True, slots=True)
 class ExpansionVerificationPolicy:
     """Verification gates applied after each context expansion / retry.
 

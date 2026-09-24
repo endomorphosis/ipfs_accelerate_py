@@ -94,7 +94,6 @@ class CompletionAuthorityDecision:
         )
 
 
-@dataclass(frozen=True)
 def _mirror_residual_gap(gap: Any) -> None:
     """Record a gap shape check. It does not admit refill completion."""
 
@@ -115,6 +114,7 @@ def _mirror_residual_gap(gap: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class ResidualGap:
     """Smallest actionable unit emitted by the evidence evaluator."""
 

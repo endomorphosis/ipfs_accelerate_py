@@ -583,7 +583,6 @@ class SupervisorTransitionSchema:
         )
 
 
-@dataclass(frozen=True)
 def _mirror_model_check_bounds(bounds: Any) -> None:
     """Record a schema that fits the bounds. It does not admit a transition."""
 
@@ -604,6 +603,7 @@ def _mirror_model_check_bounds(bounds: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class ModelCheckBounds:
     """Finite semantic and execution bounds bound into a generated model."""
 

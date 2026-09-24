@@ -797,7 +797,6 @@ def _receipt_strings(value: Any) -> tuple[str, ...]:
     return ()
 
 
-@dataclass(frozen=True)
 def _mirror_evidence_source_decision(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -823,6 +822,7 @@ def _mirror_evidence_source_decision(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class EvidenceSourcePolicy:
     """Policy for objective discovery and completion-evidence admission.
 

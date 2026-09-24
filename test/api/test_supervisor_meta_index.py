@@ -10903,6 +10903,56 @@ def test_mirror_tactician_claim_forest_and_typed_owner_channel(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_helpers_do_not_steal_dataclass_decorators() -> None:
+    import ast
+    from pathlib import Path
+
+    import ipfs_accelerate_py.agent_supervisor as supervisor
+
+    restored = {
+        "IsolatedMutationWorktree",
+        "StaticTestDependencyTrace",
+        "DeterministicRepairAuthorityPolicy",
+        "SemanticMemory",
+        "ResidualGap",
+        "UnchangedFailureBackoffEvidence",
+        "GoalDevelopmentProposalReceipt",
+        "EvidenceSourcePolicy",
+        "DoctorRepairOperatorRegistry",
+        "FormalPlanContextCapsule",
+        "_RunState",
+        "TrajectoryAdmissionPolicy",
+        "SupervisorAdmissibilityBridge",
+        "HermeticTestOnlyRecursiveBackend",
+        "GoalDevelopmentContext",
+        "CalibrationEvidence",
+        "ResidualCascade",
+        "ResidualTaskFamilySpec",
+        "ModelCheckBounds",
+        "ArtifactBounds",
+        "ExpansionVerificationPolicy",
+        "ProgramWorldGuardedGate",
+        "ReceiptCompiler",
+        "TaskExecutionRoutePolicy",
+        "DeterministicDoctorPolicy",
+        "ProofTestReuseCurrentTreeGate",
+        "GoalAssemblyIdentity",
+        "SymbolicBenchmarkObservation",
+    }
+    seen: set[str] = set()
+    root = Path(supervisor.__file__).resolve().parent
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("_mirror_"):
+                assert not node.decorator_list, f"{path}:{node.lineno} {node.name}"
+            if isinstance(node, ast.ClassDef) and node.name in restored:
+                decos = [ast.unparse(item) for item in node.decorator_list]
+                assert any(item.startswith("dataclass") for item in decos), f"{path}:{node.lineno} {node.name}"
+                seen.add(node.name)
+    assert seen == restored
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

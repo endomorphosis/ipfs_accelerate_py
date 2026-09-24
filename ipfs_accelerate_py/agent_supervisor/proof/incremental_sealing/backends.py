@@ -956,7 +956,6 @@ def run_bounded_recursion_probe(
         )
 
 
-@dataclass
 def _mirror_recursive_probe(result: Any) -> Any:
     """Record a test-only recursive probe. test_only stays true."""
 
@@ -1003,6 +1002,7 @@ def _mirror_recursion_child_proof(artifact: Any) -> Any:
     return artifact
 
 
+@dataclass
 class HermeticTestOnlyRecursiveBackend:
     """In-process recursive probe backend using only preconfigured test material.
 

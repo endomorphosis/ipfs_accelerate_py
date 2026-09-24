@@ -621,7 +621,6 @@ class FormalPlanResponseBinding:
         )
 
 
-@dataclass(frozen=True)
 def _mirror_plan_context_limits(capsule: Any) -> None:
     """Record a limit check that did not raise. It does not admit the plan."""
 
@@ -642,6 +641,7 @@ def _mirror_plan_context_limits(capsule: Any) -> None:
         pass
 
 
+@dataclass(frozen=True)
 class FormalPlanContextCapsule:
     """Immutable, already-budgeted model input for one checked transition."""
 

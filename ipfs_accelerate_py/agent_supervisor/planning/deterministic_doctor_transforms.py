@@ -1300,7 +1300,6 @@ class DoctorOperatorReceipt(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
 def _mirror_doctor_operator(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1326,6 +1325,7 @@ def _mirror_doctor_operator(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class DoctorRepairOperatorRegistry(CanonicalContract):
     """Immutable closed registry of allowlisted doctor repair operators."""
 

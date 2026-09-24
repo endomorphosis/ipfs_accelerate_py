@@ -986,7 +986,6 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
         return result
 
 
-@dataclass(frozen=True)
 def _mirror_goal_validation(record_kind: str, record_ref: str, tree_id: str = "") -> None:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -1007,6 +1006,7 @@ def _mirror_goal_validation(record_kind: str, record_ref: str, tree_id: str = ""
         pass
 
 
+@dataclass(frozen=True)
 class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
     """Deterministic envelope-validation receipt with no proof authority."""
 

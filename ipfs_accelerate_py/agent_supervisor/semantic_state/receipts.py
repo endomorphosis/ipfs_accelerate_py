@@ -857,7 +857,6 @@ class ReceiptAdmission:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
 def _mirror_compiled_receipt(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -881,6 +880,7 @@ def _mirror_compiled_receipt(result: Any) -> Any:
     return result
 
 
+@dataclass
 class ReceiptCompiler:
     """Compile, content-address, optionally store, and rehash verification receipts."""
 

@@ -486,7 +486,6 @@ class _ForbiddenProviderImportFinder:
         return None
 
 
-@dataclass(frozen=True)
 def _mirror_repair_authority(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -510,6 +509,7 @@ def _mirror_repair_authority(result: Any) -> Any:
     return result
 
 
+@dataclass(frozen=True)
 class DeterministicRepairAuthorityPolicy:
     """Allowlist execution authority for the TARGET deterministic runtime.
 

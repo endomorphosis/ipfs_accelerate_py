@@ -303,7 +303,6 @@ def classify_change_approval_classes(
     return frozenset(classes)
 
 
-@dataclass(frozen=True)
 def _mirror_doctor_policy_decision(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -354,6 +353,7 @@ def _mirror_doctor_repair_prerequisites(plan: DeterministicDoctorPlan) -> Determ
     return plan
 
 
+@dataclass(frozen=True)
 class DeterministicDoctorPolicy(CanonicalContract):
     """Closed deterministic-doctor policy (scheduler schema @1).
 

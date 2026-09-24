@@ -397,7 +397,6 @@ def load_pinned_intent(
 # ---------------------------------------------------------------------------
 
 
-@dataclass
 def _mirror_admissibility(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -443,6 +442,7 @@ def _mirror_admissibility_decision(result: Any) -> Any:
     return result
 
 
+@dataclass
 class SupervisorAdmissibilityBridge:
     """SupervisorAdmissibilityBridge@1 — lazy, fail-closed gate adapter.
 
