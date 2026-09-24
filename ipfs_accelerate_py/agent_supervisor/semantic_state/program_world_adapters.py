@@ -658,6 +658,27 @@ class DatasetsProgramWorldAdapter:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_kit_verified_citation(citation: Any, record_kind: str) -> Any:
+    """Record a verified citation id. Authority flags are unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(citation, "identity_cid", "") or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return citation
+
+
 @dataclass(frozen=True, slots=True)
 class KitVerifiedCitation:
     """Operational citation of a kit-reverified result. Projections stay advisory."""
@@ -772,12 +793,12 @@ class KitProgramWorldAdapter:
             raise ProgramWorldAdapterError(
                 "kit verified semantic object CID does not match the requested CID"
             )
-        return KitVerifiedCitation(
+        return _mirror_kit_verified_citation(KitVerifiedCitation(
             kind="semantic_object",
             identity_cid=live,
             advisory=False,
             authoritative=False,
-        )
+        ), "verified_semantic_object_consumption")
 
     def consume_verified_projection(
         self, cid: str, *, store: Any | None = None
@@ -802,12 +823,12 @@ class KitProgramWorldAdapter:
             )
         if getattr(getattr(record, "identity", record), "authoritative", False):
             raise ProgramWorldAdapterError("authoritative projections are rejected")
-        return KitVerifiedCitation(
+        return _mirror_kit_verified_citation(KitVerifiedCitation(
             kind="projection",
             identity_cid=live,
             advisory=True,
             authoritative=False,
-        )
+        ), "verified_projection_consumption")
 
     def consume_verified_block(
         self, cid: str, *, store: Any | None = None
@@ -835,17 +856,42 @@ class KitProgramWorldAdapter:
                 block.get("storage_cid"),
             }:
                 raise ProgramWorldAdapterError("verified block CID was not preserved")
-        return KitVerifiedCitation(
+        return _mirror_kit_verified_citation(KitVerifiedCitation(
             kind="block",
             identity_cid=cid,
             advisory=False,
             authoritative=False,
-        )
+        ), "verified_block_consumption")
 
 
 # ---------------------------------------------------------------------------
 # Execution-transition compiler and root publication requests
 # ---------------------------------------------------------------------------
+
+
+def _mirror_execution_transition_compiler(result: Any) -> Any:
+    """Record a compiled transition by query id. The compiler does not execute."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "query_cid", "")
+            or getattr(result, "subject_cid", "")
+            or "execution-transition-compiler"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="execution_transition_compiler",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class ExecutionTransitionCompiler:
@@ -868,7 +914,7 @@ class ExecutionTransitionCompiler:
     ) -> ExecutionTransitionCompilation:
         cap = self._datasets.capability
         if not cap.available:
-            return ExecutionTransitionCompilation(
+            return _mirror_execution_transition_compiler(ExecutionTransitionCompilation(
                 status=CompilationStatus.UNAVAILABLE,
                 query_cid=_require_cid_or_raise(query, "query_cid"),
                 subject_cid=_fallback_subject_cid(query),
@@ -877,7 +923,7 @@ class ExecutionTransitionCompiler:
                 reason_code=cap.reason_code,
                 fallback=True,
                 limitations=("datasets_transition_surface_unavailable",),
-            )
+            ))
         cited_query = self._datasets.cite_transition(query)
         query_cid = cited_query.identity_cid
         subject_cid = validate_opaque_cid(
@@ -910,7 +956,7 @@ class ExecutionTransitionCompiler:
             # operational evidence.  Adapters never mint that evidence.
             proposal_only = False
             admitted = True
-        return ExecutionTransitionCompilation(
+        return _mirror_execution_transition_compiler(ExecutionTransitionCompilation(
             status=CompilationStatus.COMPILED,
             query_cid=query_cid,
             subject_cid=subject_cid,
@@ -930,7 +976,7 @@ class ExecutionTransitionCompiler:
                 "compiler_does_not_admit",
                 "operational_acceptance_uses_supervisor_validation_merge_event",
             ),
-        )
+        ))
 
 
 def _require_cid_or_raise(source: Any, name: str) -> str:
@@ -956,6 +1002,29 @@ def _fallback_env_cid(query: Any) -> str:
 
 def _fallback_policy_cid(query: Any) -> str:
     return _require_cid_or_raise(query, "policy_cid")
+
+
+def _mirror_world_root_publication(result: Any) -> Any:
+    """Record a publication request by root id. The publisher does not CAS the root."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(result, "semantic_world_root_cid", "") or "world-root-publication"
+        )
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="world_root_publication_request",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
 
 
 class OperationalWorldRootPublisher:
@@ -997,7 +1066,7 @@ class OperationalWorldRootPublisher:
                 ("semantic_world_root_cid",),
                 context="semantic_world_root",
             )
-            return OperationalWorldRootPublicationRequest(
+            return _mirror_world_root_publication(OperationalWorldRootPublicationRequest(
                 status=PublicationStatus.UNAVAILABLE,
                 semantic_world_root_cid=root_cid,
                 expected_generation=expected_generation,
@@ -1010,7 +1079,7 @@ class OperationalWorldRootPublisher:
                     "cannot_change_current_root",
                     "datasets_identity_surface_unavailable",
                 ),
-            )
+            ))
         cited = self._datasets.cite_semantic_world_root(semantic_world_root)
         kit_verified = kit_cap.available
         limitations = [
@@ -1026,7 +1095,7 @@ class OperationalWorldRootPublisher:
             fallback = True
             reason = kit_cap.reason_code
             status = PublicationStatus.REQUESTED
-        return OperationalWorldRootPublicationRequest(
+        return _mirror_world_root_publication(OperationalWorldRootPublicationRequest(
             status=status,
             semantic_world_root_cid=cited.identity_cid,
             expected_generation=expected_generation,
@@ -1036,7 +1105,7 @@ class OperationalWorldRootPublisher:
             reason_code=reason,
             fallback=fallback,
             limitations=limitations,
-        )
+        ))
 
 
 def _mirror_program_world_reuse(*args: Any, **kwargs: Any) -> ProgramWorldReuseDecision:
