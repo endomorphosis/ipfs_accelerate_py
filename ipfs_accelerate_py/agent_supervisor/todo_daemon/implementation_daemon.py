@@ -69106,6 +69106,26 @@ def _mirror_execution_callback_binding() -> None:
         pass
 
 
+def _mirror_portal_attempt_identity(attempt_id: str) -> None:
+    """Record an attempt id whose identity checked. Lease and fence values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(attempt_id or "portal-attempt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="portal_attempt_identity",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class DatabaseImplementationDaemon:
     """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
 
@@ -70337,6 +70357,7 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     f"{noun} execution attempt identity is invalid"
                 )
+            _mirror_portal_attempt_identity(str(attempt.attempt_id))
 
         def require_portal_attempt_join(
             binding: Mapping[str, Any],

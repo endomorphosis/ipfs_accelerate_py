@@ -201,6 +201,26 @@ class OwnerLease:
         return content_identity(dict(self.to_dict()))
 
 
+def _mirror_external_quack_operation_refusal(reason: str) -> None:
+    """Record why an external owner refused an operation. The operation text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(reason or "external-quack-refusal")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="external_quack_operation_refusal",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class ExternalQuackOwner:
     """Resource-free facade bound to one exact READY ``QuackStateServer``."""
 
@@ -356,16 +376,19 @@ class ExternalQuackOwner:
             name not in REQUIRED_QUACK_DAEMON_OPERATIONS
             and any(marker in lowered for marker in _SQL_OPERATION_MARKERS)
         ):
+            _mirror_external_quack_operation_refusal("remote_sql_refused")
             raise RemoteSqlRefusedError(
                 "remote UPDATE and arbitrary SQL are outside the owner gateway",
                 reason_code="remote_sql_refused",
             )
         if name not in REQUIRED_QUACK_DAEMON_OPERATIONS:
+            _mirror_external_quack_operation_refusal("outside_vocabulary")
             raise QuackDaemonGatewayError(
                 "operation is outside the closed 39-operation daemon vocabulary"
             )
         disposition = quack_daemon_owner_operation_dispositions()[name]
         reason = str(disposition.get("reason_code") or "")
+        _mirror_external_quack_operation_refusal(reason or "owner_dispatcher_unavailable")
         raise QuackDaemonGatewayError(
             f"{EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER}: operation={name};"
             f"reason_code={reason or 'owner_dispatcher_unavailable'}"

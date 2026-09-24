@@ -1687,6 +1687,27 @@ def _invoke_with_timeout(
     return value
 
 
+def _mirror_contract_packet_freshness(packet_id: str) -> bool:
+    """Record that a packet is unchanged. The payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(packet_id or "contract-packet")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="contract_packet_freshness",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return True
+
+
 @dataclass(slots=True)
 class ImplementationProviderRouter:
     """Route one current contract packet through bounded proposal providers."""
@@ -2568,7 +2589,7 @@ class ImplementationProviderRouter:
                     "contract packet bytes changed after admission",
                     reason_code=ProviderReason.PACKET_STALE,
                 )
-            return True
+            return _mirror_contract_packet_freshness(packet_id)
 
         if local_only:
             return self._local_fallback(

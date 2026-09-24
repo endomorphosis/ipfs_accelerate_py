@@ -770,6 +770,26 @@ def _accepted_source_events(
     return tuple(records), _sha256_bytes(bytes(payload))
 
 
+def _mirror_portal_write_target_safety(state: str) -> None:
+    """Record a safe write target. The path is not stored, and nothing is written here."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(state or "portal-write-target")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="portal_write_target_safety",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _atomic_write(
     path: Path,
     payload: bytes,
@@ -823,6 +843,7 @@ def _atomic_write(
                 follow_symlinks=False,
             )
         except FileNotFoundError:
+            _mirror_portal_write_target_safety("absent")
             return
         except OSError as exc:
             raise DatabasePortalBridgeError(
@@ -832,6 +853,7 @@ def _atomic_write(
             raise DatabasePortalBridgeError(
                 "database Portal atomic write target is a symlink or nonregular file"
             )
+        _mirror_portal_write_target_safety("regular")
 
     try:
         try:

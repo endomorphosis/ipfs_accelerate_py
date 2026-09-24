@@ -9814,6 +9814,36 @@ def test_mirror_committed_fixed_point_handoff_and_plan_store(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_refusal_ready_scope_target_packet_and_attempt(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("external_quack_operation_refusal", "remote_sql_refused", "metadata", "record_cid"),
+        ("quack_owner_status_scope_ready", "ready", "metadata", "record_cid"),
+        ("portal_write_target_safety", "absent", "metadata", "record_cid"),
+        ("contract_packet_freshness", "packet:1", "metadata", "record_cid"),
+        ("portal_attempt_identity", "attempt:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=record_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

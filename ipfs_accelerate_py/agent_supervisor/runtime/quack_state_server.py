@@ -4223,6 +4223,25 @@ class ServerLifecycle(str, Enum):
     FAILED = "failed"
 
 
+def _mirror_quack_owner_status_scope_ready() -> None:
+    """Record that a ready owner accepted a status scope. Binding values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_owner_status_scope_ready",
+            record_ref="ready",
+            subject_kind="record_cid",
+            subject_ref="ready",
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class QuackStateServer:
     """Long-lived exclusive owner of one control-plane DuckDB database.
@@ -4383,6 +4402,7 @@ class QuackStateServer:
         if gateway is None:
             raise QuackStateServerControlError("typed command gateway is unavailable")
         gateway.bind_database_status_scope(**binding)
+        _mirror_quack_owner_status_scope_ready()
 
     def bind_legacy_merge_queue_status_scope(self, **binding: Any) -> None:
         with self._lock:
