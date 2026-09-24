@@ -1192,6 +1192,42 @@ class ProviderCallRequest:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_failure_signature(signature: Any) -> Any:
+    """Record a failure signature by id and closed class. Call keys and bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        signature_id = str(getattr(signature, "signature_id", "") or "failure-signature")
+        raw = getattr(signature, "failure_class", "")
+        failure_class = str(getattr(raw, "value", raw) or "")
+        if failure_class not in {
+            "hard_quota",
+            "transient",
+            "validation",
+            "response_loss",
+            "policy_exhausted",
+            "authentication",
+            "rate_limited",
+            "unknown",
+        }:
+            failure_class = "recorded"
+        state = "exhausted" if bool(getattr(signature, "exhausted", False)) else "open"
+        record_ref = f"{signature_id}:{failure_class}:{state}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="failure_signature_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return signature
+
+
 class ProviderCallLedger:
     """DuckDB authority for provider calls, failure signatures, and churn."""
 
@@ -2050,7 +2086,7 @@ class ProviderCallLedger:
                 },
             )
             self._commit_if_idle(connection)
-            return signature
+        return _mirror_failure_signature(signature)
 
     def _write_suppression(
         self,

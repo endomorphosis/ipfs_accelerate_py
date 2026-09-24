@@ -1339,6 +1339,66 @@ def _mirror_procedure_transfer_requirement(decision: TransferDecision) -> Transf
     return decision
 
 
+def _mirror_procedure_transfer_decision(decision: Any) -> Any:
+    """Record a transfer decision by procedure id and closed action. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        procedure_cid = str(
+            getattr(decision, "source_procedure_cid", "") or "procedure-transfer"
+        )
+        raw_action = getattr(decision, "action", "")
+        action = str(getattr(raw_action, "value", raw_action) or "")
+        if action not in {"eligible", "refuse"}:
+            action = "recorded"
+        raw_reason = getattr(decision, "reason_code", "")
+        reason = str(getattr(raw_reason, "value", raw_reason) or "")
+        if reason not in {
+            "compatible",
+            "operation-incompatible",
+            "effect-incompatible",
+            "authority-incompatible",
+            "language-incompatible",
+            "framework-incompatible",
+            "validation-incompatible",
+            "family-incompatible",
+            "path-incompatible",
+            "held-out-missing",
+            "held-out-failed",
+            "held-out-repository-mismatch",
+            "held-out-unsafe",
+            "similarity-insufficient",
+            "cross-repository-mutation",
+            "production-mutation",
+            "policy-mutation",
+            "unsafe-fixture",
+            "binding-mismatch",
+            "missing-certificate",
+            "missing-family",
+            "incomplete-boundary",
+            "incomplete-assumptions",
+            "risk-ceiling",
+            "target-not-authorized",
+            "experiment-cannot-authorize",
+            "eligibility-not-candidate",
+        }:
+            reason = "recorded"
+        record_ref = f"{procedure_cid}:{action}:{reason}"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="procedure_transfer_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return decision
+
+
 class ProcedureTransferGate:
     """Admit only explicitly compatible transfers as bounded candidate eligibility."""
 
@@ -1487,7 +1547,7 @@ class ProcedureTransferGate:
             similarity_signals=similarity_signals,
             boundary_reason_code=boundary.reason_code.value,
         )
-        return decision
+        return _mirror_procedure_transfer_decision(decision)
 
     def require(
         self,
@@ -1519,24 +1579,4 @@ def evaluate_transfer(
 ) -> TransferDecision:
     """Module-level transfer check.  Unsafe transfers are never admitted."""
 
-    decision = ProcedureTransferGate().evaluate(request, emitted_at_ms=emitted_at_ms)
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        record_ref = str(
-            getattr(decision, "content_id", "")
-            or getattr(request, "procedure_id", "")
-            or "procedure-transfer"
-        )
-        mirror_work_record(
-            catalog_kind="proof_cache",
-            record_kind="procedure_transfer_decision",
-            record_ref=record_ref,
-            subject_kind="record_cid",
-            subject_ref=record_ref,
-        )
-    except Exception:
-        pass
-    return decision
+    return ProcedureTransferGate().evaluate(request, emitted_at_ms=emitted_at_ms)

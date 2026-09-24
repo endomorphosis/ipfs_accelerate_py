@@ -10984,6 +10984,36 @@ def test_mirror_helpers_do_not_steal_dataclass_decorators() -> None:
     assert seen == restored
 
 
+def test_mirror_verification_transfer_legal_and_failure_signature(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("procedure_verification", "procedure:1:accepted", "proof_cache", "record_cid"),
+        ("procedure_transfer_decision", "procedure:1:refuse:binding-mismatch", "proof_cache", "record_cid"),
+        ("legal_constraints", "query:1:complete", "proof_cache", "record_cid"),
+        ("failure_signature_record", "signature:1:transient:open", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        subject_ref = "task:1" if subject_kind == "task_id" else record_ref
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=subject_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

@@ -1224,6 +1224,38 @@ def _failed_result(
     )
 
 
+def _mirror_legal_constraints(result: Any) -> Any:
+    """Record a compiled legal result by query id and closed status. Constraint text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        query_id = str(getattr(result, "query_id", "") or "legal-constraints")
+        raw = getattr(result, "status", "")
+        status = str(getattr(raw, "value", raw) or "")
+        if status not in {
+            "complete",
+            "prohibited",
+            "unknown",
+            "conflicting",
+            "review_required",
+        }:
+            status = "recorded"
+        record_ref = f"{query_id}:{status}"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="legal_constraints",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class LegalConstraintAdapter:
     """Compile normalized, pinned LegalIR without importing a legal provider."""
 
@@ -1373,7 +1405,7 @@ class LegalConstraintAdapter:
                 outcome = LegalApplicabilityOutcome.EXPIRED
             else:
                 outcome = LegalApplicabilityOutcome.INAPPLICABLE
-        return LegalCompilationResult(
+        return _mirror_legal_constraints(LegalCompilationResult(
             status=status,
             outcome=outcome,
             query_id=query.content_id,
@@ -1387,7 +1419,7 @@ class LegalConstraintAdapter:
             reason_codes=tuple(sorted(reasons)),
             semantic_candidate_ids=query.semantic_candidate_ids,
             authoritative_scan_complete=True,
-        )
+        ))
 
 
 def compile_legal_constraints(
@@ -1396,22 +1428,7 @@ def compile_legal_constraints(
 ) -> LegalCompilationResult:
     """Compile with the default provider-free LegalIR constraint adapter."""
 
-    compilation = LegalConstraintAdapter().compile(artifact, query)
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        mirror_work_record(
-            catalog_kind="proof_cache",
-            record_kind="legal_constraints",
-            record_ref=str(compilation.query_id or compilation.legal_root_cid_v1 or "legal-constraints"),
-            subject_kind="record_cid",
-            subject_ref=str(compilation.legal_root_artifact_id or compilation.query_id or "legal-constraints"),
-        )
-    except Exception:
-        pass
-    return compilation
+    return LegalConstraintAdapter().compile(artifact, query)
 
 
 LegalConstraintRequest = LegalApplicabilityQuery

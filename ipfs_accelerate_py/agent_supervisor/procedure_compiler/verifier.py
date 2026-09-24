@@ -579,6 +579,32 @@ def _family_matches(procedure: ProcedureSpec, family: TaskFamily) -> bool:
     return procedure.task_family_id in {family.name, family.content_id}
 
 
+def _mirror_procedure_verification(verification: Any) -> Any:
+    """Record a verification by procedure id and closed status. Messages are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        procedure_cid = str(getattr(verification, "procedure_cid", "") or "procedure-verification")
+        raw = getattr(verification, "status", "")
+        status = str(getattr(raw, "value", raw) or "")
+        if status not in {"accepted", "rejected"}:
+            status = "recorded"
+        record_ref = f"{procedure_cid}:{status}"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="procedure_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verification
+
+
 class ProcedureVerifier:
     """Fail-closed independent verifier for synthesized procedure candidates."""
 
@@ -630,7 +656,7 @@ class ProcedureVerifier:
             },
             created_at_ms=now,
         )
-        return ProcedureVerification(
+        return _mirror_procedure_verification(ProcedureVerification(
             status=status,
             reason_code=reason,
             candidate_cid=candidate.content_id,
@@ -641,7 +667,7 @@ class ProcedureVerifier:
             artifact=artifact,
             evidence_cids=evidence.evidence_cids,
             message=message,
-        )
+        ))
 
     def _check_layers(
         self,
@@ -1133,28 +1159,7 @@ def verify_procedure(
     *,
     now_ms: int = 0,
 ) -> ProcedureVerification:
-    verification = ProcedureVerifier().verify(candidate, evidence, policy, now_ms=now_ms)
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        record_ref = str(
-            getattr(verification, "receipt_id", "")
-            or getattr(verification, "content_id", "")
-            or getattr(candidate, "procedure_id", "")
-            or "procedure-verification"
-        )
-        mirror_work_record(
-            catalog_kind="proof_cache",
-            record_kind="procedure_verification",
-            record_ref=record_ref,
-            subject_kind="record_cid",
-            subject_ref=record_ref,
-        )
-    except Exception:
-        pass
-    return verification
+    return ProcedureVerifier().verify(candidate, evidence, policy, now_ms=now_ms)
 
 
 __all__ = [
