@@ -421,6 +421,28 @@ def _mirror_strict_resume_floor(task_cid: str) -> None:
         pass
 
 
+def _mirror_task_validation_result(receipt: Any, outcome: str) -> Any:
+    """Record a validation by task id and outcome. Arguments and the body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(getattr(receipt, "subject_id", "") or "")
+        record_ref = f"{task_cid}:{outcome}" if task_cid else str(outcome or "task-validation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_validation_result",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class TypedDatabaseTaskSource:
     """Closed named-operation adapter consumed by DatabaseImplementationDaemon."""
 
@@ -2444,7 +2466,7 @@ class TypedDatabaseTaskSource:
                 str(result.result.get("error") or "validation write was not accepted")
             )
         details = MappingProxyType(dict(result.result))
-        return IntentReceipt(
+        return _mirror_task_validation_result(IntentReceipt(
             event_id=str(result.result_digest or content_identity(dict(details))),
             event_type="TASK_VALIDATION_RECORDED",
             global_sequence=0,
@@ -2453,7 +2475,7 @@ class TypedDatabaseTaskSource:
             revision=int(result.revision),
             changed=bool(result.changed),
             details=details,
-        )
+        ), str(outcome))
 
     def recover_post_merge_retry(
         self,

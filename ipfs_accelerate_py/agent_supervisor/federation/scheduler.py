@@ -720,6 +720,27 @@ def _scheduler_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_federation_wake_receipt(commit: Any) -> Any:
+    """Record a committed wake receipt by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "federation-wake")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="federation_wake_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class FederationSchedulerStore(RetrievalProjectionStore):
     """Persist wake slices and receipts through the sealed state owner."""
 
@@ -812,7 +833,7 @@ class FederationSchedulerStore(RetrievalProjectionStore):
         if receipt.event_driven_qualified is not True:
             raise SchedulerAuthorityError("unqualified wait cannot persist a wake receipt")
         receipt_id = "supervisor-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_federation_wake_receipt(self._commit_fact(
             operation="federation.scheduler.wake.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -836,7 +857,7 @@ class FederationSchedulerStore(RetrievalProjectionStore):
                 assignment_revision=assignment_revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_slice(
         self,

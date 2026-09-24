@@ -218,6 +218,27 @@ def _snapshot_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_federation_world_snapshot_commit(commit: Any) -> Any:
+    """Record a committed world snapshot by fact id. The source path is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "world-snapshot-commit")
+        mirror_work_record(
+            catalog_kind="world_model",
+            record_kind="federation_world_snapshot_commit",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class WorldSnapshotStore(CausalFrontierStore):
     """Persist admitted federation world snapshots through the state owner."""
 
@@ -277,7 +298,7 @@ class WorldSnapshotStore(CausalFrontierStore):
             raise WorldSnapshotError("freshness_state is not closed")
         if snapshot.binding.causal_graph_revision != expected_graph_revision:
             raise WorldSnapshotAuthorityError("world snapshot graph revision is stale")
-        return self._commit_fact(
+        return _mirror_federation_world_snapshot_commit(self._commit_fact(
             operation="federation.world.snapshot.record",
             fact_id=snapshot.record_id,
             federation_id=federation_id,
@@ -300,7 +321,7 @@ class WorldSnapshotStore(CausalFrontierStore):
                 source_root=source_root,
                 freshness_state=freshness_state,
             ),
-        )
+        ))
 
     def load_snapshot(
         self,

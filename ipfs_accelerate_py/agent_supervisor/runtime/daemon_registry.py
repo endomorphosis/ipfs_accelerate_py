@@ -992,6 +992,47 @@ class StatusFileMirror:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_daemon_progress_cursor(progress: Any) -> Any:
+    """Record a progress update by session id. The cursor and payload are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(progress, "session_id", "") or "daemon-progress")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="daemon_progress_cursor",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return progress
+
+
+def _mirror_daemon_server_restart(generation: int) -> None:
+    """Record a server generation advance. Session identities are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(generation)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="daemon_server_restart",
+            record_ref=record_ref or "daemon-restart",
+            subject_kind="record_cid",
+            subject_ref=record_ref or "daemon-restart",
+        )
+    except Exception:
+        pass
+
+
 class DaemonRegistry:
     """DuckDB-backed supervisor/daemon/session/heartbeat authority."""
 
@@ -1866,13 +1907,14 @@ class DaemonRegistry:
                 [cursor, now, session.session_id],
             )
             self._commit_if_idle(connection)
-            return ProgressCursor(
+            progress = ProgressCursor(
                 session_id=session.session_id,
                 cursor_value=cursor,
                 recorded_at_ms=now,
                 sequence=sequence,
                 payload=body,
             )
+        return _mirror_daemon_progress_cursor(progress)
 
     def stop_session(
         self,
@@ -1991,7 +2033,9 @@ class DaemonRegistry:
                     reason=reason,
                 )
             self._commit_if_idle(connection)
-            return int(self._server_generation)
+            generation = int(self._server_generation)
+        _mirror_daemon_server_restart(generation)
+        return generation
 
     def compact_heartbeats(
         self,
