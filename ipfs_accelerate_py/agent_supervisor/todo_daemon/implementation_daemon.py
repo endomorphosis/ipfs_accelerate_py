@@ -4832,6 +4832,27 @@ def transitive_task_dependents(
     return affected_task_ids - roots
 
 
+def _mirror_implementation_failure_context(receipt: Any) -> Any:
+    """Record a failure diagnosis by receipt id. Failure text and paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "receipt_id", "") or "implementation-failure")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="implementation_failure_context",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class PortalImplementationDaemon:
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -63576,7 +63597,7 @@ class PortalImplementationDaemon:
             self._implementation_retry_not_before.pop(key, None)
         self._implementation_diagnostics[key] = receipt
         self._persist_implementation_diagnostic_sidecars(task, receipt)
-        return receipt
+        return _mirror_implementation_failure_context(receipt)
 
     def _record_failed_attempt_retry_context(
         self,

@@ -6996,6 +6996,28 @@ class AdoptedManagedDaemonProcess:
             time.sleep(0.2)
 
 
+def _mirror_dependency_guardrail(findings: Any) -> Any:
+    """Record how many dependency guardrail findings were produced. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        count = len(findings) if findings is not None else 0
+        record_ref = f"dependency:{count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="dependency_guardrail_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return findings
+
+
 class PortalImplementationSupervisor:
     shared_supervisor_loop_class = SupervisorLoop
     shared_supervisor_loop_config_class = SupervisorLoopConfig
@@ -18134,7 +18156,7 @@ class PortalImplementationSupervisor:
                     "findings": findings,
                 },
             )
-        return findings
+        return _mirror_dependency_guardrail(findings)
 
     def record_reconciliation_guardrails(
         self,

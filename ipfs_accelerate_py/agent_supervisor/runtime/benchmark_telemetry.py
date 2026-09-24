@@ -1684,6 +1684,53 @@ def reject_self_certified_counters(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_resource_measurement(record: Any) -> Any:
+    """Record a resource measurement by id. Samples and process ids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(record, "measurement_id", "") or "resource-measurement")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="resource_measurement_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
+def _mirror_provider_usage(record: Any) -> Any:
+    """Record provider usage by id and closed disposition. The response body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_id = str(getattr(record, "record_id", "") or "")
+        raw = getattr(record, "disposition", "")
+        disposition = str(getattr(raw, "value", raw) or "")
+        if disposition not in {"admitted", "quarantined"}:
+            disposition = "recorded"
+        record_ref = f"{record_id}:{disposition}" if record_id else disposition
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="provider_usage_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 def _mirror_work_telemetry(record: Any) -> Any:
     """Record work telemetry by record id. Samples are not stored."""
 
@@ -1846,9 +1893,9 @@ class BenchmarkTelemetrySession:
                 raise BenchmarkTelemetryError(
                     "measurement_id collides with a different body"
                 )
-            return prior
+            return _mirror_resource_measurement(prior)
         self._measurements[measurement.measurement_id] = measurement
-        return measurement
+        return _mirror_resource_measurement(measurement)
 
     def admit_task_span(self, span: BenchmarkCausalSpan) -> BenchmarkCausalSpan:
         """Admit a causal task span as the only legal usage/work binding."""
@@ -1937,11 +1984,11 @@ class BenchmarkTelemetrySession:
                 raise BenchmarkTelemetryError(
                     "provider usage record_id collides with a different body"
                 )
-            return prior
+            return _mirror_provider_usage(prior)
         self._provider_usage[record.record_id] = record
         if record.disposition is ProviderUsageDisposition.ADMITTED:
             self.record_measurement(record.to_resource_measurement())
-        return record
+        return _mirror_provider_usage(record)
 
     def record_work_and_compute(
         self,
@@ -6124,6 +6171,37 @@ def project_work_telemetry_samples(
     return record.sample_map()
 
 
+def _mirror_end_to_end_token_compute(result: Any) -> Any:
+    """Record which token/compute sensors were measured. Sample values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        parts: list[str] = []
+        samples = getattr(result, "get", lambda _key, _default=(): ())("samples", ())
+        for sample in samples or ():
+            if not isinstance(sample, dict):
+                continue
+            name = str(sample.get("name") or "")
+            if name not in {"input_tokens", "output_tokens", "cpu_seconds", "gpu_seconds"}:
+                continue
+            status = "measured" if sample.get("status") == "measured" else "unavailable"
+            parts.append(f"{name}:{status}")
+        record_ref = ",".join(parts) or "token-compute"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="end_to_end_token_compute",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def record_end_to_end_token_compute(
     *,
     input_tokens: int | None,
@@ -6150,7 +6228,7 @@ def record_end_to_end_token_compute(
             "reason_code": None,
         }
 
-    return {
+    result = {
         "schema": "ipfs_accelerate_py/agent-supervisor/end-to-end-token-compute@1",
         "samples": [
             _sample("input_tokens", input_tokens, "tokens"),
@@ -6160,6 +6238,7 @@ def record_end_to_end_token_compute(
         ],
         "completion_authority": False,
     }
+    return _mirror_end_to_end_token_compute(result)
 
 
 def measure_hermetic_end_to_end_token_compute() -> dict[str, Any]:
