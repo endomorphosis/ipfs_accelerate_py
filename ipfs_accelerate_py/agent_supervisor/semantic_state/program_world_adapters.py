@@ -446,6 +446,27 @@ def inspect_ann_capability() -> ProgramWorldCapabilityReceipt:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_datasets_citation(citation: Any, record_kind: str) -> Any:
+    """Record a datasets citation id. The cited payload is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(citation, "identity_cid", "") or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return citation
+
+
 @dataclass(frozen=True, slots=True)
 class DatasetsIdentityCitation:
     """Operational citation of one datasets identity. Never replaces the CID."""
@@ -535,12 +556,12 @@ class DatasetsProgramWorldAdapter:
         if not _identity_preserved(source, cid, ("semantic_object_cid",)):
             raise ProgramWorldAdapterError("semantic-object identity was not preserved")
         schema = _attr(source, "SCHEMA") or _attr(source, "schema")
-        return DatasetsIdentityCitation(
+        return _mirror_datasets_citation(DatasetsIdentityCitation(
             kind="semantic_object",
             identity_cid=cid,
             source_authority=DATASETS_IDENTITY_AUTHORITY,
             schema=schema if type(schema) is str else None,
-        )
+        ), "datasets_semantic_object_citation")
 
     def cite_semantic_world_root(self, source: Any) -> DatasetsIdentityCitation:
         self._require("cite_semantic_world_root")
@@ -551,12 +572,12 @@ class DatasetsProgramWorldAdapter:
         )
         if not _identity_preserved(source, cid, ("semantic_world_root_cid",)):
             raise ProgramWorldAdapterError("semantic-world-root identity was not preserved")
-        return DatasetsIdentityCitation(
+        return _mirror_datasets_citation(DatasetsIdentityCitation(
             kind="semantic_world_root",
             identity_cid=cid,
             source_authority=DATASETS_IDENTITY_AUTHORITY,
             schema=_attr(source, "SCHEMA") if type(_attr(source, "SCHEMA")) is str else None,
-        )
+        ), "datasets_world_root_citation")
 
     def cite_relation(self, source: Any) -> DatasetsIdentityCitation:
         self._require("cite_relation")
@@ -568,11 +589,11 @@ class DatasetsProgramWorldAdapter:
         cid = _extract_cid(source, ("relation_claim_cid",), context="relation")
         if not _identity_preserved(source, cid, ("relation_claim_cid",)):
             raise ProgramWorldAdapterError("relation identity was not preserved")
-        return DatasetsIdentityCitation(
+        return _mirror_datasets_citation(DatasetsIdentityCitation(
             kind="relation_claim",
             identity_cid=cid,
             source_authority=DATASETS_RELATION_AUTHORITY,
-        )
+        ), "datasets_relation_citation")
 
     def cite_transition(self, source: Any) -> DatasetsIdentityCitation:
         self._require("cite_transition")
@@ -594,11 +615,11 @@ class DatasetsProgramWorldAdapter:
         if kind == "ProgramTransitionPrediction" or _attr(source, "proposal_only") is True:
             if _attr(source, "admitted") is True:
                 raise ProgramWorldAdmissionError("datasets predictions cannot self-admit")
-        return DatasetsIdentityCitation(
+        return _mirror_datasets_citation(DatasetsIdentityCitation(
             kind="transition",
             identity_cid=cid,
             source_authority=DATASETS_TRANSITION_AUTHORITY,
-        )
+        ), "datasets_transition_citation")
 
     def cite_domain(
         self, domain_kind: str, source: Any | None = None, **kwargs: Any
@@ -1133,6 +1154,31 @@ def _mirror_program_world_reuse(*args: Any, **kwargs: Any) -> ProgramWorldReuseD
 # ---------------------------------------------------------------------------
 
 
+def _mirror_program_world_context_record(receipt: Any) -> Any:
+    """Record a context receipt. Included bodies are not stored, and admission is unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "admission_evidence_cid", "")
+            or getattr(receipt, "reason_code", "")
+            or "program-world-context"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="program_world_context_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class SemanticWorldOperationalAdapters:
     """Unified capability gate, datasets/kit consumers, compiler, and publisher."""
 
@@ -1262,7 +1308,7 @@ class SemanticWorldOperationalAdapters:
         admission_evidence_cid: str | None = None,
     ) -> ProgramWorldContextReceipt:
         admitted = admission_authority is not None
-        return ProgramWorldContextReceipt(
+        return _mirror_program_world_context_record(ProgramWorldContextReceipt(
             included=included,
             omitted=omitted,
             raw_fallbacks=raw_fallbacks,
@@ -1273,7 +1319,7 @@ class SemanticWorldOperationalAdapters:
             admission_authority=admission_authority,
             admission_evidence_cid=admission_evidence_cid,
             reason_code="context_recorded",
-        )
+        ))
 
     def compile_execution_transition(
         self, query: Any, **kwargs: Any
