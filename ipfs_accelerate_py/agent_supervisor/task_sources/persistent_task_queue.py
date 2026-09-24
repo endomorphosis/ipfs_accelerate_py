@@ -22,6 +22,33 @@ from typing import Any
 from .task_identity import TaskIdentity
 
 
+def _mirror_queue_selection(task_id: str, disposition: str) -> None:
+    """Record a queue selection outcome by task id. Reasons and timers are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = disposition if disposition in {
+            "failure",
+            "no_change",
+            "merge_failure",
+            "selected",
+            "deferred",
+        } else "recorded"
+        record_ref = f"{task_id}:{closed}" if task_id else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=f"queue_selection_{closed}",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_id or record_ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_queue_selection_success(task_id: str) -> None:
     """Record a queue selection success by task id. Timestamps are not stored."""
 
@@ -72,6 +99,7 @@ class TaskQueueEntry:
     def record_selection(self) -> None:
         self.last_selected_at = time.time()
         self.attempt_count += 1
+        _mirror_queue_selection(self.task_id, "selected")
 
     def record_success(self) -> None:
         self.last_completed_at = time.time()
@@ -88,16 +116,19 @@ class TaskQueueEntry:
         self.cooldown_until = time.time() + cooldown
         self.selection_penalty = min(self.consecutive_failures * 100, 5000)
         self.notes = reason
+        _mirror_queue_selection(self.task_id, "failure")
 
     def record_no_change(self) -> None:
         self.consecutive_no_change += 1
         # Back off from tasks that produce no changes
         cooldown = min(600 * self.consecutive_no_change, 7200)
         self.cooldown_until = time.time() + cooldown
+        _mirror_queue_selection(self.task_id, "no_change")
 
     def record_merge_failure(self) -> None:
         self.merge_failure_count += 1
         self.selection_penalty += 500
+        _mirror_queue_selection(self.task_id, "merge_failure")
 
     def defer(self, seconds: float, *, reason: str = "") -> None:
         """Apply an explicit non-consuming scheduler backoff."""
@@ -105,6 +136,7 @@ class TaskQueueEntry:
         duration = max(0.0, float(seconds))
         self.cooldown_until = max(self.cooldown_until, time.time() + duration)
         self.notes = reason
+        _mirror_queue_selection(self.task_id, "deferred")
 
     def reset_retry_state(self) -> None:
         """Clear scheduling backpressure after an accepted repair."""
