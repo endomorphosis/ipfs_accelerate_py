@@ -312,6 +312,26 @@ def _install_audit_dispatch() -> bool:
         return True
 
 
+def _mirror_runtime_trace_digest(record_kind: str, record_ref: str) -> None:
+    """Record a runtime-trace digest. Paths, names, and values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        ref = str(record_ref or record_kind or "runtime-trace")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=str(record_kind or "runtime_trace_record"),
+            record_ref=ref,
+            subject_kind="record_cid",
+            subject_ref=ref,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_runtime_policy(kind: str) -> None:
     """Record a closed runtime policy kind. Policy identity is not stored."""
 
@@ -796,7 +816,13 @@ class RuntimeTestDependencyTracer:
 
         try:
             fact = self._file_fact(path)
-            return fact is not None and self._accept_fact("files", fact)
+            accepted = fact is not None and self._accept_fact("files", fact)
+            if accepted and isinstance(fact, dict):
+                _mirror_runtime_trace_digest(
+                    "trace_file_record",
+                    str(fact.get("content_sha256") or ""),
+                )
+            return accepted
         except BaseException:
             self._mark_internal_failure("record_file")
             return False
@@ -829,7 +855,7 @@ class RuntimeTestDependencyTracer:
                 digest = hashlib.sha256(marshal.dumps(normalized_code)).hexdigest()
             finally:
                 self._inside_callback.active = previous_guard
-            return self._accept_fact(
+            accepted = self._accept_fact(
                 "code_objects",
                 {
                     "root_id": root_id,
@@ -840,6 +866,9 @@ class RuntimeTestDependencyTracer:
                     "code_sha256": digest,
                 },
             )
+            if accepted:
+                _mirror_runtime_trace_digest("trace_code_record", digest)
+            return accepted
         except BaseException:
             self._mark_internal_failure("code_identity")
             return False
@@ -878,7 +907,14 @@ class RuntimeTestDependencyTracer:
                         "source_sha256": source["content_sha256"],
                     }
                 )
-            return self._accept_fact("modules", fact)
+            accepted = self._accept_fact("modules", fact)
+            if accepted:
+                name_digest = hashlib.sha256(safe_name.encode("utf-8")).hexdigest()
+                _mirror_runtime_trace_digest(
+                    "trace_module_record",
+                    f"{fact['kind']}:{name_digest}",
+                )
+            return accepted
         except RuntimeTraceError:
             self._mark_private("module_name")
             return False
@@ -993,10 +1029,11 @@ class RuntimeTestDependencyTracer:
         self, service: str, *, adapter_identity: str, snapshot_identity: str
     ) -> bool:
         try:
-            return self._accept_fact(
+            service_name = self._checked_name(service, field="service name")
+            accepted = self._accept_fact(
                 "services",
                 {
-                    "service": self._checked_name(service, field="service name"),
+                    "service": service_name,
                     "adapter_identity": self._checked_identity(
                         adapter_identity, field="adapter identity"
                     ),
@@ -1005,6 +1042,12 @@ class RuntimeTestDependencyTracer:
                     ),
                 },
             )
+            if accepted:
+                _mirror_runtime_trace_digest(
+                    "trace_service_record",
+                    hashlib.sha256(service_name.encode("utf-8")).hexdigest(),
+                )
+            return accepted
         except RuntimeTraceError:
             self._mark_unsupported("service_adapter")
             return False
@@ -1047,10 +1090,11 @@ class RuntimeTestDependencyTracer:
         self, capability: str, *, adapter_identity: str, state_identity: str
     ) -> bool:
         try:
-            return self._accept_fact(
+            capability_name = self._checked_name(capability, field="capability name")
+            accepted = self._accept_fact(
                 "capabilities",
                 {
-                    "capability": self._checked_name(capability, field="capability name"),
+                    "capability": capability_name,
                     "adapter_identity": self._checked_identity(
                         adapter_identity, field="adapter identity"
                     ),
@@ -1059,6 +1103,12 @@ class RuntimeTestDependencyTracer:
                     ),
                 },
             )
+            if accepted:
+                _mirror_runtime_trace_digest(
+                    "trace_capability_record",
+                    hashlib.sha256(capability_name.encode("utf-8")).hexdigest(),
+                )
+            return accepted
         except RuntimeTraceError:
             self._mark_unsupported("capability_adapter")
             return False
