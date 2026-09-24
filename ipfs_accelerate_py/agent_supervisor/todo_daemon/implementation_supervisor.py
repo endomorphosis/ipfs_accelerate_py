@@ -18200,7 +18200,7 @@ class PortalImplementationSupervisor:
                     "findings": findings,
                 },
             )
-        return _mirror_dependency_guardrail(findings)
+        return findings
 
     def record_reconciliation_guardrails(
         self,
@@ -18260,7 +18260,7 @@ class PortalImplementationSupervisor:
                     "findings": findings,
                 },
             )
-        return _mirror_reconciliation_guardrail(findings)
+        return findings
 
     def record_retry_budget_guardrails(self) -> list[dict[str, Any]]:
         """Convert repeated daemon blockers into follow-up work before another retry loop."""

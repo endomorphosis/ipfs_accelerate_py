@@ -1378,6 +1378,27 @@ def filter_self_improvement_successor_candidates(
     )
 
 
+def _mirror_successor_admission(strategy: Any, epoch_id: str) -> Any:
+    """Record a successor admission by epoch id. The strategy body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(epoch_id or "successor-admission")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="self_improvement_successor_admission",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return strategy
+
+
 def record_self_improvement_successor_admission(
     strategy_path: Path,
     *,
@@ -1509,7 +1530,7 @@ def record_self_improvement_successor_admission(
             stream,
             json.dumps(strategy, indent=2, sort_keys=True) + "\n",
         )
-    return strategy
+    return _mirror_successor_admission(strategy, epoch)
 
 
 def should_refill_backlog(
@@ -6709,7 +6730,7 @@ def record_dependency_guardrail_findings(
         if commit_results:
             strategy["last_dependency_guardrail_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    return findings
+    return _mirror_finding_batch(findings, "dependency_guardrail_record")
 
 
 def record_reconciliation_guardrail_findings(
@@ -6861,7 +6882,7 @@ def record_reconciliation_guardrail_findings(
         if commit_results:
             strategy["last_reconciliation_guardrail_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    return [*refreshes, *findings]
+    return _mirror_finding_batch([*refreshes, *findings], "reconciliation_guardrail_record")
 
 
 def completed_retry_budget_repairs_by_source(tasks: Sequence[Any]) -> dict[str, dict[str, str]]:
@@ -8634,6 +8655,8 @@ def _mirror_finding_batch(result: Any, record_kind: str) -> Any:
             "codebase_audit_record",
             "direct_refill_scan_record",
             "direct_retry_budget_record",
+            "dependency_guardrail_record",
+            "reconciliation_guardrail_record",
         }:
             return result
         closed_reasons = {
