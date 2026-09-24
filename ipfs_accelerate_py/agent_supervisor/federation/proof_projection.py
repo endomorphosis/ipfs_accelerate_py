@@ -668,6 +668,69 @@ def _proof_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_proof_cache_projection_record(commit: Any) -> Any:
+    """Record a proof-cache projection by fact id. Obligation and content are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "proof-cache-projection")
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="proof_cache_projection_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
+def _mirror_seal_projection_record(commit: Any) -> Any:
+    """Record a seal projection by fact id. Policy and content are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "seal-projection")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="seal_projection_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
+def _mirror_proof_invalidation_record(commit: Any) -> Any:
+    """Record a proof invalidation by fact id. Affected refs and the reason body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "proof-invalidation")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="proof_invalidation_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_test_projection_record(commit: Any) -> Any:
     """Record a test projection by fact id. The test ref and content are not stored."""
 
@@ -865,7 +928,7 @@ class ProofProjectionStore(SemanticProjectionStore):
             revision=projection.revision,
             tree_id=projection.tree_id,
         )
-        return self._commit_fact(
+        return _mirror_proof_cache_projection_record(self._commit_fact(
             operation="federation.proof.cache.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -882,7 +945,7 @@ class ProofProjectionStore(SemanticProjectionStore):
                 tenant_id=binding.tenant_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_seal(
         self,
@@ -904,7 +967,7 @@ class ProofProjectionStore(SemanticProjectionStore):
             revision=projection.revision,
             tree_id=projection.tree_id,
         )
-        return self._commit_fact(
+        return _mirror_seal_projection_record(self._commit_fact(
             operation="federation.proof.seal.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -922,7 +985,7 @@ class ProofProjectionStore(SemanticProjectionStore):
                 tenant_id=binding.tenant_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def invalidate_proofs(
         self,
@@ -960,7 +1023,7 @@ class ProofProjectionStore(SemanticProjectionStore):
             }
         )
         changed = tuple(dict.fromkeys((event_id, *affected_proofs, *affected_caches)))
-        return self._commit_fact(
+        return _mirror_proof_invalidation_record(self._commit_fact(
             operation="federation.proof.invalidate",
             fact_id="invalidation:" + evidence,
             federation_id=federation_id,
@@ -977,7 +1040,7 @@ class ProofProjectionStore(SemanticProjectionStore):
                 tenant_id=binding.tenant_id,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_proof(self, *, record_id: str, tenant_id: str, federation_id: str) -> dict[str, Any]:
         rows = self._client.execute(

@@ -458,6 +458,27 @@ def _projection_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_capsule_invalidation_record(commit: Any) -> Any:
+    """Record a capsule invalidation by fact id. Affected refs and the reason body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "capsule-invalidation")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="capsule_invalidation_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_capsule_projection_record(commit: Any) -> Any:
     """Record a capsule projection by fact id. Subject text and content are not stored."""
 
@@ -653,7 +674,7 @@ class SemanticProjectionStore(WorldSnapshotStore):
                 "reason_kind": reason_kind,
             }
         )
-        return self._commit_fact(
+        return _mirror_capsule_invalidation_record(self._commit_fact(
             operation="federation.semantic.capsule.invalidate",
             fact_id="invalidation:" + evidence,
             federation_id=federation_id,
@@ -673,7 +694,7 @@ class SemanticProjectionStore(WorldSnapshotStore):
                 reason_kind=reason_kind,
                 evidence_ref=evidence,
             ),
-        )
+        ))
 
     def load_semantic_root(
         self, *, record_id: str, tenant_id: str, federation_id: str

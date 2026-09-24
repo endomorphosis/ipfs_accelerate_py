@@ -557,6 +557,27 @@ def _retrieval_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_kg_relation_record(commit: Any) -> Any:
+    """Record a knowledge-graph relation by fact id. Node ids and content are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "kg-relation")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="kg_relation_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_retrieval_nomination_record(commit: Any) -> Any:
     """Record a nomination by fact id. Scores, subjects, and content are not stored."""
 
@@ -759,7 +780,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
             record_id=projection.record_id,
             tree_id=projection.tree_id,
         )
-        return self._commit_fact(
+        return _mirror_kg_relation_record(self._commit_fact(
             operation="federation.retrieval.kg.record",
             fact_id=bound.record_id,
             federation_id=federation_id,
@@ -777,7 +798,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
                 bound,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def invalidate_indexes(
         self,
