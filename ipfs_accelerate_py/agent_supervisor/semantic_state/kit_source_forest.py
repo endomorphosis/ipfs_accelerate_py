@@ -152,6 +152,27 @@ def _load_kit(repository_root: str, forest: Mapping[str, Any]) -> Any:
     return package.duckdb_coordination_storage
 
 
+def _mirror_kit_source_forest(bound: Any, profile_cid: str) -> Any:
+    """Record a source-forest bind by profile id. Roots and source paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(profile_cid or "kit-source-forest")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="kit_source_forest_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return bound
+
+
 class KitSourceForestPersistence:
     """Launcher-owned producer; snapshot observation is strictly read-only."""
 
@@ -191,7 +212,10 @@ class KitSourceForestPersistence:
             owner_identity=owner_identity,
             namespace=namespace,
         )
-        return cls(profile, profile_cid, store, owner_identity)
+        return _mirror_kit_source_forest(
+            cls(profile, profile_cid, store, owner_identity),
+            profile_cid,
+        )
 
     def publish(self, source: Mapping[str, Any]) -> dict[str, Any]:
         manifest = source_manifest(self.profile, self.profile_cid, source)

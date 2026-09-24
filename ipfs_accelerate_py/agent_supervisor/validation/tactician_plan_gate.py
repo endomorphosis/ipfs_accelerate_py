@@ -1254,6 +1254,32 @@ class TacticianPlanGateReceipt(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_tactician_plan_evaluation(receipt: Any) -> Any:
+    """Record a tactician evaluation by plan id and closed disposition. Authority flags stay unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        plan_id = str(getattr(receipt, "plan_id", "") or "tactician-plan")
+        raw = getattr(receipt, "disposition", "")
+        disposition = str(getattr(raw, "value", raw) or "")
+        if disposition not in {"admitted", "abstained", "rejected", "consistency_only"}:
+            disposition = "recorded"
+        record_ref = f"{plan_id}:{disposition}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="tactician_plan_evaluation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def _mirror_tactician_plan_requirement(receipt: Any) -> Any:
     """Record a non-rejected tactician plan. The receipt disposition is unchanged."""
 
@@ -2111,7 +2137,7 @@ class TacticianPlanGate:
         ):
             ordered_reasons = []
 
-        return TacticianPlanGateReceipt(
+        return _mirror_tactician_plan_evaluation(TacticianPlanGateReceipt(
             roots=expected_roots,
             plan_id=typed_plan.plan_id,
             plan_content_id=plan_content_id,
@@ -2129,7 +2155,7 @@ class TacticianPlanGate:
             scores_cannot_override_hard_failure=True,
             producer_id=PRODUCER_ID,
             bounds=self._bounds,
-        )
+        ))
 
 
 def gate_tactician_plan(
@@ -2147,7 +2173,7 @@ def gate_tactician_plan(
     extra_payload: Mapping[str, Any] | None = None,
 ) -> TacticianPlanGateReceipt:
     """Module-level convenience entry point for the plan security gate."""
-    receipt = TacticianPlanGate(bounds=bounds).evaluate(
+    return TacticianPlanGate(bounds=bounds).evaluate(
         plan=plan,
         goals=goals,
         candidates=candidates,
@@ -2159,26 +2185,6 @@ def gate_tactician_plan(
         score_override_attempt=score_override_attempt,
         extra_payload=extra_payload,
     )
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        record_ref = str(
-            getattr(receipt, "content_id", "")
-            or getattr(receipt, "plan_id", "")
-            or "tactician-plan-gate"
-        )
-        mirror_work_record(
-            catalog_kind="proof_cache",
-            record_kind="tactician_plan_gate",
-            record_ref=record_ref,
-            subject_kind="record_cid",
-            subject_ref=record_ref,
-        )
-    except Exception:
-        pass
-    return receipt
 
 
 __all__ = (

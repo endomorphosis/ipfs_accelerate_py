@@ -68,6 +68,27 @@ class _AcceptanceState:
         self.accepted_attempt_id: str | None = None
 
 
+def _mirror_logical_claim(claim: Any) -> Any:
+    """Record a logical claim by task id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(claim, "task_id", "") or "logical-claim")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="logical_claim_binding",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return claim
+
+
 @dataclass(frozen=True)
 class LogicalClaim:
     """One logical result identity. Many attempts may run; one accept."""
@@ -175,14 +196,14 @@ class LogicalClaim:
         task_spec_cid: str,
         idempotency_key: str,
     ) -> "LogicalClaim":
-        return cls(
+        return _mirror_logical_claim(cls(
             task_id=task_id,
             plan_revision=plan_revision,
             base_tree=base_tree,
             semantic_root=semantic_root,
             task_spec_cid=task_spec_cid,
             idempotency_key=idempotency_key,
-        )
+        ))
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "LogicalClaim":
@@ -245,7 +266,7 @@ class LogicalClaimLedger:
                 bound = existing
             else:
                 self._claims[bound.key] = bound
-        return _mirror_logical_claim_binding(bound)
+        return bound
 
     def register(
         self,

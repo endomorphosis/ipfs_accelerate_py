@@ -678,10 +678,14 @@ def bind_typed_state_owner_plan_r2_canonical_wire_channel(
         owner_connection=owner_connection,
         admission=admission,
     )
-    return TypedStateOwnerPlanR2CanonicalWireChannel(
-        _TYPED_OWNER_CHANNEL_FACTORY_TOKEN,
-        client=client,
-        admission=admission,
+    return _mirror_plan_r2_bind(
+        TypedStateOwnerPlanR2CanonicalWireChannel(
+            _TYPED_OWNER_CHANNEL_FACTORY_TOKEN,
+            client=client,
+            admission=admission,
+        ),
+        "plan_r2_typed_owner_channel_binding",
+        admission.capability_cid,
     )
 
 
@@ -901,6 +905,7 @@ def _mirror_plan_r2_bind(result: Any, record_kind: str, capability_cid: str) -> 
         if record_kind not in {
             "plan_r2_envelope_journal_binding",
             "plan_r2_owner_gateway_binding",
+            "plan_r2_typed_owner_channel_binding",
         }:
             return result
         record_ref = str(capability_cid or record_kind)
