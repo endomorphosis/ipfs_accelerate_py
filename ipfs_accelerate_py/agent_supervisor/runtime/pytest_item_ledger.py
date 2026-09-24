@@ -337,6 +337,27 @@ def _append_jsonl(path: Path, line: str) -> bool:
         return False
 
 
+def _mirror_pytest_item(task_id: str, outcome: str) -> None:
+    """Record a pytest item by task id and closed outcome. Paths and commands are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = outcome if outcome in {"passed", "failed", "skipped", "error"} else "recorded"
+        record_ref = f"{task_id}:{closed}" if task_id else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="pytest_item_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_id or record_ref,
+        )
+    except Exception:
+        pass
+
+
 def record_item(
     dest: Path,
     *,
@@ -364,6 +385,7 @@ def record_item(
     if workspace is not None:
         for path in workspace_record_write_paths(workspace):
             _append_jsonl(path, line)
+    _mirror_pytest_item(str(task_id or ""), str(outcome or ""))
 
 
 def reusable_nodeids(

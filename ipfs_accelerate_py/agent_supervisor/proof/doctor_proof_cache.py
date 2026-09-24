@@ -1313,6 +1313,32 @@ class DoctorSealedReceiptStore:
         return typed
 
 
+def _mirror_doctor_diagnostic(receipt: Any, key_id: str, kind: str) -> Any:
+    """Record a diagnostic cache key and closed kind. Details are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = (
+            "timeout"
+            if kind in {"timeout", "timed_out", "resource_exhaustion"}
+            else "negative"
+        )
+        record_ref = f"{key_id}:{closed}" if key_id else closed
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="doctor_diagnostic_record",
+            record_ref=record_ref,
+            subject_kind="key_id",
+            subject_ref=key_id or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class DoctorProofCacheGate:
     """Thin federation gate over the authoritative formal-verification cache.
 
@@ -1873,7 +1899,7 @@ class DoctorProofCacheGate:
         }
         with self._lock:
             self._diagnostics[cache_key.key_id] = payload
-        return self._audit(
+        receipt = self._audit(
             disposition=DoctorCacheDisposition.DIAGNOSTIC,
             stage=DoctorCacheStage.LOOKUP,
             key=cache_key,
@@ -1881,6 +1907,7 @@ class DoctorProofCacheGate:
             details=payload,
             source="diagnostic_channel",
         )
+        return _mirror_doctor_diagnostic(receipt, str(cache_key.key_id), kind_norm)
 
     def consult_legacy_ipfs(
         self,

@@ -557,6 +557,27 @@ def _retrieval_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_retrieval_index_invalidation(commit: Any) -> Any:
+    """Record an index invalidation by fact id. Affected indexes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "index-invalidation")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="retrieval_index_invalidation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_kg_relation_record(commit: Any) -> Any:
     """Record a knowledge-graph relation by fact id. Node ids and content are not stored."""
 
@@ -814,7 +835,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
             indexes, tree_id=binding.repository_tree_ids[0]
         )
         evidence = content_identity({"event_id": event_id, "indexes": list(affected)})
-        return self._commit_fact(
+        return _mirror_retrieval_index_invalidation(self._commit_fact(
             operation="federation.retrieval.index.invalidate",
             fact_id="invalidation:" + evidence,
             federation_id=federation_id,
@@ -829,7 +850,7 @@ class RetrievalProjectionStore(ProofProjectionStore):
                 federation_id=federation_id,
                 tenant_id=binding.tenant_id,
             ),
-        )
+        ))
 
     def load_index(self, *, record_id: str, tenant_id: str, federation_id: str) -> dict[str, Any]:
         rows = self._client.execute(

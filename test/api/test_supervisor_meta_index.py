@@ -10360,6 +10360,39 @@ def test_mirror_cache_seal_invalidation_relation_and_capsule_change(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_index_diagnostic_stage_exhaustion_and_pytest_item(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("retrieval_index_invalidation", "invalidation:1", "metadata", "record_cid"),
+        ("doctor_diagnostic_record", "key:1:negative", "proof_cache", "key_id"),
+        ("stage_completion_record", "stage:accepted", "metadata", "record_cid"),
+        ("exhaustion_quorum_receipt", "digest:1", "metadata", "record_cid"),
+        ("pytest_item_record", "task:1:passed", "metadata", "task_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        subject_ref = "task:1" if subject_kind == "task_id" else (
+            "key:1" if subject_kind == "key_id" else record_ref
+        )
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=subject_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

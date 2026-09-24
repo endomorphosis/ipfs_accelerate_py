@@ -2125,6 +2125,35 @@ class ResourceAdmissionLease:
         }
 
 
+def _mirror_stage_completion(
+    metric: Any, stage: str, *, accepted: bool, cancelled: bool
+) -> Any:
+    """Record a stage completion by stage name. Duration is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if cancelled:
+            disposition = "cancelled"
+        elif accepted:
+            disposition = "accepted"
+        else:
+            disposition = "rejected"
+        record_ref = f"{stage}:{disposition}" if stage else disposition
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="stage_completion_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return metric
+
+
 def _mirror_resource_admission(result: Any) -> Any:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -2448,7 +2477,10 @@ class ResourceScheduler:
                 mutable.accepted += 1
             if cancelled:
                 mutable.cancelled += 1
-            return self._stage_metric(name, mutable)
+            metric = self._stage_metric(name, mutable)
+        return _mirror_stage_completion(
+            metric, name, accepted=accepted, cancelled=cancelled
+        )
 
     def _stage_metric(
         self,

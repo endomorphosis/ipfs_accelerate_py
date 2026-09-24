@@ -173,6 +173,27 @@ class DatasetProofScopeIndexArtifact:
         }
 
 
+def _mirror_exhaustion_quorum(result: Any, repository_digest: str) -> Any:
+    """Record an exhaustion quorum by repository digest. The quorum body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(repository_digest or "exhaustion-quorum")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="exhaustion_quorum_receipt",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class ObjectiveDatasetStore:
     """Persist large AST/evidence records with an optional ipfs_datasets backend.
 
@@ -739,7 +760,8 @@ class ObjectiveDatasetStore:
             required_members=required_members,
         )
         self.persist_exhaustion_quorum(result)
-        return result
+        repository_digest = sha256(str(resolved.repository_id).encode("utf-8")).hexdigest()
+        return _mirror_exhaustion_quorum(result, repository_digest)
 
     def _scan_details_jsonl_path(
         self,
