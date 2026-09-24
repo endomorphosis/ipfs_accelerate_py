@@ -409,6 +409,27 @@ def _abstraction_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_intervention_record(commit: Any) -> Any:
+    """Record an intervention by fact id. Intervention refs and the idempotency key are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "abstraction-intervention")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="abstraction_intervention_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_abstraction_map_record(commit: Any) -> Any:
     """Record an abstraction map by fact id. Model refs and the idempotency key are not stored."""
 
@@ -519,7 +540,7 @@ class CausalAbstractionStore(CausalGraphStore):
         idempotency_key: str,
     ) -> CausalGraphCommit:
         evaluated = evaluate_intervention(abstraction, test)
-        return self._commit_fact(
+        return _mirror_intervention_record(self._commit_fact(
             operation="federation.causal.intervention.record",
             fact_id=evaluated.record_id,
             federation_id=federation_id,
@@ -545,7 +566,7 @@ class CausalAbstractionStore(CausalGraphStore):
                 expected_map_revision=expected_map_revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_map(
         self,

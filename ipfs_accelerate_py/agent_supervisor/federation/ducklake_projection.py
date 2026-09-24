@@ -677,6 +677,48 @@ def _projection_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_ducklake_projection_record(commit: Any) -> Any:
+    """Record an observational DuckLake projection by fact id. Partitions are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "ducklake-projection")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ducklake_projection_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
+def _mirror_ducklake_projection_recovery(commit: Any) -> Any:
+    """Record an observational DuckLake recovery by fact id. Partitions are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "ducklake-recovery")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="ducklake_projection_recovery",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class DuckLakeProjectionStore(FixedPointStore):
     """Persist observational DuckLake projection receipts through Quack."""
 
@@ -735,7 +777,7 @@ class DuckLakeProjectionStore(FixedPointStore):
                 "DuckLake cannot admit scheduling, lease, or completion authority"
             )
         receipt_id = "federation-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_ducklake_projection_record(self._commit_fact(
             operation="federation.ducklake.projection.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -754,7 +796,7 @@ class DuckLakeProjectionStore(FixedPointStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_projection(
         self,
@@ -791,7 +833,7 @@ class DuckLakeProjectionStore(FixedPointStore):
                 "DuckLake cannot admit scheduling, lease, or completion authority"
             )
         receipt_id = "federation-receipt:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_ducklake_projection_recovery(self._commit_fact(
             operation="federation.ducklake.projection.recover",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -812,7 +854,7 @@ class DuckLakeProjectionStore(FixedPointStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_recovery(
         self,
