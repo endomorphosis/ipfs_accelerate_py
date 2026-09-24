@@ -2540,6 +2540,35 @@ def _mirror_remote_queue_retry(receipt: Any) -> Any:
     return receipt
 
 
+def _mirror_status_transition(result: Any, record_kind: str, subject_ref: str) -> Any:
+    """Record a status transition by subject id. Status text and receipts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record_kind not in {
+            "status_cas_record",
+            "goal_status_cas_record",
+            "typed_deferral_recovery_record",
+            "guarded_status_cas_record",
+            "leftover_wait_recovery_record",
+        }:
+            return result
+        ref = str(subject_ref or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=ref,
+            subject_kind="task_id",
+            subject_ref=ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DatabaseTaskSource:
     """Public task-source adapter backed by :class:`IntentRepository`.
 
@@ -3613,12 +3642,16 @@ class DatabaseTaskSource:
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
         if self._intent.uses_quack_transport and _mutation_transport_ready():
-            return self._cas_via_intent_repository(
+            return _mirror_status_transition(
+                self._cas_via_intent_repository(
+                    key,
+                    expected_revision,
+                    status,
+                    receipt,
+                    evidence_digests=evidence_digests,
+                ),
+                "status_cas_record",
                 key,
-                expected_revision,
-                status,
-                receipt,
-                evidence_digests=evidence_digests,
             )
         if self._intent.uses_quack_transport:
             try:
@@ -3641,7 +3674,9 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _cas_result_from_dict(result)
+            return _mirror_status_transition(
+                _cas_result_from_dict(result), "status_cas_record", key
+            )
         prior = self._intent.get_task(key)
         if prior is None:
             raise KeyError(key)
@@ -3718,13 +3753,17 @@ class DatabaseTaskSource:
             receipt_cid = str(details.get("completion_receipt_cid") or "")
             if not receipt_cid and intent_receipt.event_id:
                 receipt_cid = intent_receipt.event_id
-        return CASResult(
-            task=task,
-            previous_status=previous_status,
-            revision=int(intent_receipt.revision or task.revision),
-            event_cursor=int(intent_receipt.global_sequence),
-            changed=bool(intent_receipt.changed),
-            receipt_cid=receipt_cid,
+        return _mirror_status_transition(
+            CASResult(
+                task=task,
+                previous_status=previous_status,
+                revision=int(intent_receipt.revision or task.revision),
+                event_cursor=int(intent_receipt.global_sequence),
+                changed=bool(intent_receipt.changed),
+                receipt_cid=receipt_cid,
+            ),
+            "status_cas_record",
+            str(prior["task_cid"]),
         )
 
     cas_status = compare_and_set_status
@@ -3840,12 +3879,15 @@ class DatabaseTaskSource:
             raise TaskSourceIntegrityError("goal CAS requires a goal CID or alias")
         if self._intent.uses_quack_transport and _mutation_transport_ready():
             try:
-                return self._intent.cas_goal_status(
+                return _mirror_status_transition(self._intent.cas_goal_status(
                     goal_cid=key,
                     expected_revision=int(expected_revision),
                     new_status=status,
                     receipt=receipt,
-                )
+                ),
+                "goal_status_cas_record",
+                key,
+            )
             except IntentCompletionError as exc:
                 raise TaskSourceCompletionError(str(exc)) from exc
             except IntentRepositoryConflictError as exc:
@@ -3863,13 +3905,19 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _intent_receipt_from_dict(result)
+            return _mirror_status_transition(
+                _intent_receipt_from_dict(result), "goal_status_cas_record", key
+            )
         try:
-            return self._intent.cas_goal_status(
-                goal_cid=key,
-                expected_revision=int(expected_revision),
-                new_status=status,
-                receipt=receipt,
+            return _mirror_status_transition(
+                self._intent.cas_goal_status(
+                    goal_cid=key,
+                    expected_revision=int(expected_revision),
+                    new_status=status,
+                    receipt=receipt,
+                ),
+                "goal_status_cas_record",
+                key,
             )
         except IntentCompletionError as exc:
             raise TaskSourceCompletionError(str(exc)) from exc
@@ -3895,11 +3943,15 @@ class DatabaseTaskSource:
             record = self.get_task(key)
             if record is None:
                 raise KeyError(key)
-            return self._cas_via_intent_repository(
+            return _mirror_status_transition(
+                self._cas_via_intent_repository(
+                    record.task_cid,
+                    int(record.revision),
+                    "retrying",
+                    compact,
+                ),
+                "status_cas_record",
                 record.task_cid,
-                int(record.revision),
-                "retrying",
-                compact,
             )
         if self._intent.uses_quack_transport:
             try:
@@ -3912,7 +3964,9 @@ class DatabaseTaskSource:
                 )
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
-            return _cas_result_from_dict(result)
+            return _mirror_status_transition(
+                _cas_result_from_dict(result), "status_cas_record", key
+            )
         record = self.get_task(key)
         if record is None:
             raise KeyError(key)
@@ -3989,7 +4043,9 @@ class DatabaseTaskSource:
             )
         except QuackOwnerCommandRemoteError as exc:
             _raise_typed_owner_error(exc)
-        return _cas_result_from_dict(result)
+        return _mirror_status_transition(
+            _cas_result_from_dict(result), "typed_deferral_recovery_record", key
+        )
 
     def record_queue_backoff(
         self,
@@ -4249,9 +4305,13 @@ class DatabaseTaskSource:
                 raise TaskSourceIntegrityError(
                     "guarded queue/status owner CAS response is malformed"
                 )
-            return self._guarded_queue_status_result(
-                result_map,
-                cas_result=_cas_result_from_dict(cas_payload),
+            return _mirror_status_transition(
+                self._guarded_queue_status_result(
+                    result_map,
+                    cas_result=_cas_result_from_dict(cas_payload),
+                ),
+                "guarded_status_cas_record",
+                task_cid,
             )
 
         prior = self._intent.get_task(task_cid)
@@ -4421,7 +4481,8 @@ class DatabaseTaskSource:
             )
         task = _as_task_record(updated)
         receipt_cid = status_receipt.event_id if status_receipt.changed else ""
-        return self._guarded_queue_status_result(
+        return _mirror_status_transition(
+            self._guarded_queue_status_result(
             result_map,
             cas_result=CASResult(
                 task=task,
@@ -4431,6 +4492,9 @@ class DatabaseTaskSource:
                 changed=bool(status_receipt.changed),
                 receipt_cid=receipt_cid,
             ),
+            ),
+            "guarded_status_cas_record",
+            task_cid,
         )
 
     def recover_leftover_wait_deferral_budget(
@@ -4499,9 +4563,13 @@ class DatabaseTaskSource:
                 raise TaskSourceIntegrityError(
                     "leftover-wait recovery owner CAS response is malformed"
                 )
-            return self._guarded_queue_status_result(
-                result_map,
-                cas_result=_cas_result_from_dict(cas_payload),
+            return _mirror_status_transition(
+                self._guarded_queue_status_result(
+                    result_map,
+                    cas_result=_cas_result_from_dict(cas_payload),
+                ),
+                "leftover_wait_recovery_record",
+                task_cid,
             )
         return self.record_queue_backoff_and_cas_status(
             task_cid=task_cid,
