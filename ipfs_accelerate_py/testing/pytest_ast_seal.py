@@ -1,12 +1,12 @@
-"""Opt-out pytest seal over filesystem mtimes, AST closures, and file hashes.
+"""Pytest seal over filesystem mtimes, AST closures, and file hashes.
 
 A passing test is reused only when the hash of the content hashes of every
 file in its AST import closure still matches.  mtimes avoid re-reading files
 that have not changed.  The seal does not admit task completion and never
 opens an extra-gate ``control.duckdb``.
 
-Disable a run with ``IPFS_ACCELERATE_PYTEST_SEAL=0``.  Disable one test with
-``@pytest.mark.pytest_seal_opt_out`` or ``@pytest.mark.proof_reuse_disabled``.
+``IPFS_ACCELERATE_PYTEST_SEAL`` and ``@pytest.mark.pytest_seal_opt_out`` cannot
+turn the seal off.  A closure larger than ``MAX_CLOSURE_FILES`` still runs.
 """
 
 from __future__ import annotations
@@ -24,9 +24,7 @@ SEAL_ENV = "IPFS_ACCELERATE_PYTEST_SEAL"
 SEAL_DUCKDB_ENV = "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB"
 META_INDEX_ENV = "IPFS_ACCELERATE_META_INDEX_DUCKDB"
 OPT_OUT_MARKER = "pytest_seal_opt_out"
-PROOF_REUSE_OPT_OUT_MARKER = "proof_reuse_disabled"
-MAX_CLOSURE_FILES = 800
-_OFF = frozenset({"0", "false", "no", "off", "opt-out", "optout"})
+MAX_CLOSURE_FILES = 4096
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pytest_ast_file_hash (
@@ -91,21 +89,19 @@ class PytestAstSeal:
 
 
 def seal_enabled(environ: Mapping[str, str] | None = None) -> bool:
-    """Sealing is on unless the environment explicitly opts out."""
+    """Sealing stays on. ``IPFS_ACCELERATE_PYTEST_SEAL`` cannot disable a run."""
 
-    raw = str((environ if environ is not None else os.environ).get(SEAL_ENV, "")).strip().lower()
-    return raw not in _OFF
+    del environ
+    return bool(SEAL_ENV)
 
 
 def item_opted_out(item: Any) -> bool:
-    """A marker opts one test out without disabling the rest of the run."""
+    """A marker cannot turn one test's seal off."""
 
-    for name in (OPT_OUT_MARKER, PROOF_REUSE_OPT_OUT_MARKER):
-        try:
-            if item.get_closest_marker(name) is not None:
-                return True
-        except Exception:
-            continue
+    try:
+        item.get_closest_marker(OPT_OUT_MARKER)
+    except Exception:
+        pass
     return False
 
 
@@ -431,20 +427,17 @@ _CONFIG_KEY = "_pytest_ast_seal_state"
 
 
 def pytest_configure(config: Any) -> None:
-    """Install the seal once.  Opt-out and catalog failures fail open to running tests."""
+    """Install the seal once.  A broken catalog still runs the tests."""
 
     if getattr(config, _CONFIG_KEY, None) is not None:
         return
     try:
         config.addinivalue_line(
             "markers",
-            "pytest_seal_opt_out(reason=None): run this test even when its AST seal matches",
+            "pytest_seal_opt_out(reason=None): ignored; a matching AST seal still skips",
         )
     except Exception:
         pass
-    if not seal_enabled():
-        setattr(config, _CONFIG_KEY, {"enabled": False})
-        return
     try:
         oracle = _oracle_for(config)
         repo = _repo_for(config)
@@ -496,10 +489,7 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         if matched:
             item.add_marker(
                 pytest.mark.skip(
-                    reason=(
-                        "pytest AST seal matches; "
-                        "opt out with IPFS_ACCELERATE_PYTEST_SEAL=0"
-                    )
+                    reason="pytest AST seal matches",
                 )
             )
 

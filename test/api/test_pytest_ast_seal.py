@@ -12,6 +12,7 @@ from ipfs_accelerate_py.testing.pytest_ast_seal import (
     PytestSealCatalogError,
     ast_closure,
     hash_of_hashes,
+    item_opted_out,
     seal_enabled,
     seal_files,
 )
@@ -63,9 +64,17 @@ def test_injected_oracle_returns_true_only_for_the_same_seal(tmp_path: Path) -> 
     assert oracle.reuse("test_sample.py::test_other", "abc") is False
 
 
-def test_seal_is_opt_out_and_refuses_control_duckdb(tmp_path: Path) -> None:
+def test_seal_cannot_be_disabled_and_refuses_control_duckdb(tmp_path: Path) -> None:
     assert seal_enabled({}) is True
-    assert seal_enabled({"IPFS_ACCELERATE_PYTEST_SEAL": "0"}) is False
-    assert seal_enabled({"IPFS_ACCELERATE_PYTEST_SEAL": "off"}) is False
+    assert seal_enabled({"IPFS_ACCELERATE_PYTEST_SEAL": "0"}) is True
+    assert seal_enabled({"IPFS_ACCELERATE_PYTEST_SEAL": "off"}) is True
+    assert seal_enabled({"IPFS_ACCELERATE_PYTEST_SEAL": "false"}) is True
+
+    class _Marked:
+        def get_closest_marker(self, name: str) -> object:
+            del name
+            return object()
+
+    assert item_opted_out(_Marked()) is False
     with pytest.raises(PytestSealCatalogError):
         DuckDbQuackSealOracle(tmp_path / "control.duckdb")
