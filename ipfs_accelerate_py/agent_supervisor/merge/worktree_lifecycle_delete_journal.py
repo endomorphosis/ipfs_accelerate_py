@@ -149,6 +149,25 @@ def _mirror_candidate_journal_identity() -> None:
         pass
 
 
+def _mirror_candidate_journal_binding() -> None:
+    """Record that a deletion binding still matches. Paths and inodes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="filesystem_mtime",
+            record_kind="candidate_journal_binding",
+            record_ref="binding-held",
+            subject_kind="record_cid",
+            subject_ref="binding-held",
+        )
+    except Exception:
+        pass
+
+
 class _File:
     def __init__(self, directory, name, *, payload=None, limit=MAX_BYTES):
         self.fd = os.open(
@@ -489,6 +508,7 @@ def _operate(store, expected, handoff_receipt_id, *, mode):
                 _check_store(repo_descriptor, repo, repo_identity)
                 _check_store(private, journal_path, journal_identity, private=True)
                 scope_file.check(private, JOURNAL_SCOPE_NAME)
+                _mirror_candidate_journal_binding()
 
             check_binding()
             binding = {

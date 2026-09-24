@@ -1254,6 +1254,31 @@ class TacticianPlanGateReceipt(CanonicalContract):
 # ---------------------------------------------------------------------------
 
 
+def _mirror_tactician_plan_requirement(receipt: Any) -> Any:
+    """Record a non-rejected tactician plan. The receipt disposition is unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "plan_content_id", "")
+            or getattr(receipt, "plan_id", "")
+            or "tactician-plan"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="tactician_plan_requirement",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class TacticianPlanGate:
     """Validate a Tactician plan against axiom smuggling and stale evidence.
 
@@ -1341,7 +1366,7 @@ class TacticianPlanGate:
         if receipt.disposition is TacticianPlanGateDisposition.ABSTAINED:
             codes = ",".join(item.value for item in receipt.reasons) or "abstained"
             raise TacticianPlanGateError(f"tactician plan abstained: {codes}")
-        return receipt
+        return _mirror_tactician_plan_requirement(receipt)
 
     def evaluate(
         self,

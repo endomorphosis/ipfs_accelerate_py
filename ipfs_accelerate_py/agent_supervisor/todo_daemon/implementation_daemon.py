@@ -69146,6 +69146,25 @@ def _mirror_portal_attempt_join(attempt_id: str) -> None:
         pass
 
 
+def _mirror_portal_control_join(record_ref: str) -> None:
+    """Record a portal-control match. Binding fields are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="portal_control_join",
+            record_ref=str(record_ref or "portal-control-join"),
+            subject_kind="record_cid",
+            subject_ref=str(record_ref or "portal-control-join"),
+        )
+    except Exception:
+        pass
+
+
 class DatabaseImplementationDaemon:
     """Database-authoritative implementation daemon (DatabaseImplementationDaemon@1).
 
@@ -70457,6 +70476,7 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         f"{noun} Portal @2 binding disagrees with control authority"
                     )
+            _mirror_portal_control_join(str(portal.get("plan_cid") or portal.get("schema") or ""))
 
         current_portal = closed_portal_binding(
             current_binding,

@@ -239,6 +239,26 @@ class StatementKind(str, Enum):
     META = "meta"
 
 
+def _mirror_quack_template_parameter_binding(template_name: str) -> None:
+    """Record a template whose parameters bound. Parameter values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(template_name or "quack-template")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_template_parameter_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass(frozen=True)
 class StatementTemplate:
     """Closed, parameter-bound SQL template. Identifiers are fixed in ``sql``."""
@@ -318,6 +338,7 @@ class StatementTemplate:
             )
         for index, value in enumerate(ordered):
             _assert_bound_value(value, self.parameter_names[index])
+        _mirror_quack_template_parameter_binding(str(self.name))
         return ordered
 
     def to_dict(self) -> dict[str, Any]:

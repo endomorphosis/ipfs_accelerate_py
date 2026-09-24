@@ -1993,6 +1993,25 @@ def _recover_linked_rollback_temp(
 _TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY: Final = object()
 
 
+def _mirror_token_handoff_active_authority() -> None:
+    """Record that active handoff authority matched. Secrets and paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="token_handoff_active_authority",
+            record_ref="active",
+            subject_kind="record_cid",
+            subject_ref="active",
+        )
+    except Exception:
+        pass
+
+
 class TokenHandoffRetirement:
     """Rollback-capable retirement of one exact token handoff.
 
@@ -2157,6 +2176,7 @@ class TokenHandoffRetirement:
         self._require_path_absent()
         self._verify_lock()
         self._verify_directory()
+        _mirror_token_handoff_active_authority()
         return {
             "schema": TOKEN_HANDOFF_AUTHORITY_BINDING_SCHEMA,
             "state_dir": str(self._directory),
