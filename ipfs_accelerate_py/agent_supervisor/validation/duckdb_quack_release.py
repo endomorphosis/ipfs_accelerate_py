@@ -505,6 +505,31 @@ def hermetic_component_bundle(
     return tuple(items)
 
 
+def _mirror_duckdb_quack_release(receipt: Any) -> Any:
+    """Record a release verdict by tree id. Production authority flags are unchanged."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        verdict = getattr(getattr(receipt, "verdict", None), "value", "") or str(
+            getattr(receipt, "verdict", "") or ""
+        )
+        tree_id = str(getattr(receipt, "tree_id", "") or "")
+        record_ref = f"{tree_id}:{verdict}" if tree_id else (verdict or "quack-release")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="duckdb_quack_release_decision",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def evaluate_release(
     *,
     components: Sequence[ComponentEvidence],
@@ -619,7 +644,7 @@ def evaluate_release(
         )
         verdict = ReleaseVerdict.BLOCKED if soft_only else ReleaseVerdict.FAIL
 
-    return DuckDBControlPlaneReleaseReceipt(
+    return _mirror_duckdb_quack_release(DuckDBControlPlaneReleaseReceipt(
         verdict=verdict,
         tree_id=tree_id,
         schema_checksum=schema_checksum,
@@ -641,7 +666,7 @@ def evaluate_release(
         duckdb_2_0_compatibility_claimed=False,
         reason_codes=tuple(reasons),
         safety_floors=floors,
-    )
+    ))
 
 
 def run_hermetic_release(

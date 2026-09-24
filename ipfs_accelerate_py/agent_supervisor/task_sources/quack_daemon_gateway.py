@@ -946,6 +946,30 @@ def seal_quack_daemon_operational_capability(
     return MappingProxyType({**signed, "capability_cid": _sha256_cid(signed)})
 
 
+def _mirror_quack_operational_capability(verified: Any) -> Any:
+    """Record a verified capability id. The signature and reviewer are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = ""
+        if isinstance(verified, Mapping):
+            record_ref = str(verified.get("capability_cid") or "")
+        record_ref = record_ref or "quack-operational-capability"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="quack_operational_capability_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return verified
+
+
 def verify_quack_daemon_operational_capability(
     capability: Mapping[str, Any],
     *,
@@ -982,7 +1006,9 @@ def verify_quack_daemon_operational_capability(
         raise QuackDaemonGatewayError(
             "daemon operational capability signature is invalid"
         ) from exc
-    return MappingProxyType({**signed, "capability_cid": claimed_cid})
+    return _mirror_quack_operational_capability(
+        MappingProxyType({**signed, "capability_cid": claimed_cid})
+    )
 
 
 @dataclass(frozen=True)

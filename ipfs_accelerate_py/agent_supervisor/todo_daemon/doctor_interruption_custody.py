@@ -55,6 +55,27 @@ def observations(daemon: Any, attempt: Any) -> tuple[dict[str, Any], dict[str, A
     return started, closed
 
 
+def _mirror_doctor_custody_current(result: dict[str, Any]) -> dict[str, Any]:
+    """Record a current custody observation. Paths are not stored, and settlement stays false."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(result.get("started_observation_id") or "doctor-custody")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="doctor_custody_current",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DoctorInterruptionCustody:
     def __init__(self, daemon: Any, attempt: Any, callback: NativeDoctorCallback):
         from .implementation_daemon import DatabaseImplementationDaemon
@@ -169,7 +190,7 @@ class DoctorInterruptionCustody:
         captured = WorkspaceLifecycleRecord.from_dict(self.started["lifecycle"])
         if lifecycle.load_workspace(workspace) != captured:
             raise DoctorCallbackDenied("native Doctor workspace lifecycle changed")
-        return {
+        return _mirror_doctor_custody_current({
             "started_observation_id": self.started["observation_id"],
             "closed_observation_id": self.closed["observation_id"],
             "candidate_id": identity(observed),
@@ -178,7 +199,7 @@ class DoctorInterruptionCustody:
             "effect_scope": "native_exact_local_edits_without_ref_mutation",
             "callback_outcome": "unknown", "settlement_authority": False,
             "completion_authority": False,
-        }
+        })
 
     def quarantine(self, authority: dict[str, Any]) -> dict[str, Any]:
         self.require_current()

@@ -205,6 +205,27 @@ def execute_owner_snapshot(
     return observed
 
 
+def _mirror_owner_snapshot_validation(snapshot: Any) -> Any:
+    """Record a fresh owner snapshot id. The token and database id are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(snapshot, "snapshot_id", "") or "owner-snapshot")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="owner_snapshot_validation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return snapshot
+
+
 def validate_owner_snapshot(
     result: Mapping[str, Any],
     *,
@@ -280,7 +301,7 @@ def validate_owner_snapshot(
         ).hexdigest()
     ):
         raise QuackOwnerMutationError("snapshot_binding_invalid")
-    return snapshot
+    return _mirror_owner_snapshot_validation(snapshot)
 
 
 def observe_owner(

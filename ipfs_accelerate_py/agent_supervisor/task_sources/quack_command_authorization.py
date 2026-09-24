@@ -418,6 +418,26 @@ def seal_authorized_state_command(
     return AuthorizedStateCommand.from_dict({**signed, "envelope_cid": _sha256_cid(signed)})
 
 
+def _mirror_authorized_state_command(command_id: str) -> None:
+    """Record a verified command id. The signature and principals are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(command_id or "authorized-state-command")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authorized_state_command_verification",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def verify_authorized_state_command(
     envelope: AuthorizedStateCommand,
     *,
@@ -488,6 +508,7 @@ def verify_authorized_state_command(
         )
     except (LocalProfileTampered, ValueError) as exc:
         raise QuackCommandAuthorizationError("command approval signature is invalid") from exc
+    _mirror_authorized_state_command(str(envelope.command.content_id))
 
 
 __all__ = [
