@@ -144,6 +144,27 @@ def admit_handoff(
     return receipt
 
 
+def _mirror_completion_eligibility(receipt: Any) -> Any:
+    """Record a completion-eligibility check by request id. The check does not admit completion."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "request_id", "") or "completion-eligibility")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="completion_eligibility_check",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def require_completion_eligible(receipt: HandoffAdmissionReceipt) -> HandoffAdmissionReceipt:
     """Raise unless this exact receipt may satisfy a completion gate."""
 
@@ -155,4 +176,4 @@ def require_completion_eligible(receipt: HandoffAdmissionReceipt) -> HandoffAdmi
         )
     if receipt.verdict is not AdmissionVerdict.ADMITTED:
         raise HandoffAdmissionError("preview or quarantined receipts cannot complete")
-    return receipt
+    return _mirror_completion_eligibility(receipt)

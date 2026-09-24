@@ -345,6 +345,28 @@ def load_routing_decision_schema() -> dict[str, Any]:
     return schema
 
 
+def _mirror_schema_validation(schema_id: str) -> None:
+    """Record a schema validation by id digest. The instance is not stored."""
+
+    try:
+        import hashlib
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        digest = hashlib.sha256(str(schema_id or "schema").encode("utf-8")).hexdigest()
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="schema_validation_record",
+            record_ref=digest,
+            subject_kind="record_cid",
+            subject_ref=digest,
+        )
+    except Exception:
+        pass
+
+
 def validate_against_schema(
     instance: Any,
     schema: Mapping[str, Any],
@@ -356,6 +378,12 @@ def validate_against_schema(
         _er.validate_against_schema(instance, schema, defs=defs, path=path)
     except _er.EfficiencyReceiptError as exc:
         raise _wrap_efficiency(exc) from exc
+    schema_id = ""
+    if isinstance(schema, Mapping):
+        raw_id = schema.get("$id")
+        if isinstance(raw_id, str):
+            schema_id = raw_id
+    _mirror_schema_validation(schema_id)
 
 
 def unavailable(reason: str | _er.ReasonCode = _er.ReasonCode.NOT_YET_MEASURED) -> dict[str, str]:

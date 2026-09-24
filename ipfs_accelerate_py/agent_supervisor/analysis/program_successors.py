@@ -517,6 +517,43 @@ class SuccessorDecisionReceipt:
         return result
 
 
+def _closed_successor_code(value: Any, allowed: set[str]) -> str:
+    text = str(getattr(value, "value", value) or "")
+    return text if text in allowed else "recorded"
+
+
+def _mirror_successor_stage(receipt: Any) -> Any:
+    """Record a successor stage by closed codes. Candidate lists and diagnostics are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        stage = _closed_successor_code(
+            getattr(receipt, "stage", ""), {item.value for item in SuccessorStage}
+        )
+        disposition = _closed_successor_code(
+            getattr(receipt, "disposition", ""),
+            {item.value for item in SuccessorDisposition},
+        )
+        reason = _closed_successor_code(
+            getattr(receipt, "reason_code", ""),
+            {item.value for item in SuccessorReasonCode},
+        )
+        record_ref = f"{stage}:{disposition}:{reason}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="successor_stage_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def record_stage(
     stage: SuccessorStage | str,
     disposition: SuccessorDisposition | str,
@@ -533,7 +570,7 @@ def record_stage(
 ) -> SuccessorDecisionReceipt:
     """Construct one deterministic stage receipt."""
 
-    return SuccessorDecisionReceipt(
+    return _mirror_successor_stage(SuccessorDecisionReceipt(
         stage=stage,
         disposition=disposition,
         reason_code=reason_code,
@@ -545,7 +582,7 @@ def record_stage(
         unavailable_dimensions=unavailable_dimensions,
         widened=widened,
         diagnostic=diagnostic,
-    )
+    ))
 
 
 @dataclass(frozen=True, slots=True)

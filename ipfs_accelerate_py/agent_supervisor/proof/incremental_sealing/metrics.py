@@ -176,6 +176,25 @@ def _value(
     return CostValue(kind, unit, raw, CostProvenance.MEASURED)
 
 
+def _mirror_sealing_units() -> None:
+    """Record that sealing units were observed. Counts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="sealing_units_record",
+            record_ref="units",
+            subject_kind="record_cid",
+            subject_ref="units",
+        )
+    except Exception:
+        pass
+
+
 class ProofMetricsCollector:
     """Accumulate observed counters.  Unobserved fields stay unknown."""
 
@@ -223,6 +242,7 @@ class ProofMetricsCollector:
         self.invalidated_units = invalidated
         self.proved_units = proved
         self.cache_hits = cache_hits
+        _mirror_sealing_units()
 
     def observe_leaf_ms(self, value: int) -> None:
         self._leaf_ms = value
