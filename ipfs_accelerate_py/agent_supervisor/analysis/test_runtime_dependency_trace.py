@@ -312,6 +312,26 @@ def _install_audit_dispatch() -> bool:
         return True
 
 
+def _mirror_runtime_policy(kind: str) -> None:
+    """Record a closed runtime policy kind. Policy identity is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = kind if kind in {"clock", "randomness"} else "runtime-policy"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="runtime_policy_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class RuntimeTestDependencyTracer:
     """Observe bounded runtime facts without acquiring outcome authority.
 
@@ -998,7 +1018,7 @@ class RuntimeTestDependencyTracer:
             if safe_kind not in {"clock", "randomness"}:
                 self._mark_unsupported("policy_kind")
                 return False
-            return self._accept_fact(
+            accepted = self._accept_fact(
                 "policies",
                 {
                     "kind": safe_kind,
@@ -1007,6 +1027,9 @@ class RuntimeTestDependencyTracer:
                     ),
                 },
             )
+            if accepted:
+                _mirror_runtime_policy(safe_kind)
+            return accepted
         except RuntimeTraceError:
             self._mark_unsupported("policy_identity")
             return False

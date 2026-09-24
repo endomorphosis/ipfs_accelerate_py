@@ -212,6 +212,28 @@ def program_root_from_prompt(prompt_cid: str, *, namespace: str) -> str:
     )
 
 
+def _mirror_parallel_effects(*, overlapped: bool, conflict_serialized: bool) -> None:
+    """Record closed parallel-effect flags. Effect ids are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        overlap = "overlap" if overlapped else "isolated"
+        conflict = "serialized" if conflict_serialized else "concurrent"
+        record_ref = f"{overlap}:{conflict}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="parallel_effect_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class SelfImprovementCanary:
     """Hermetic canary driver for fresh-state prompt-generated self-host proof."""
 
@@ -328,6 +350,10 @@ class SelfImprovementCanary:
                 self.descendant_cids.append(bound)
         self.parallel_overlap_observed = bool(overlapped)
         self.conflict_serialized = bool(conflict_serialized)
+        _mirror_parallel_effects(
+            overlapped=self.parallel_overlap_observed,
+            conflict_serialized=self.conflict_serialized,
+        )
 
     def adopt_forced_residual(self, residual_cid: str) -> None:
         if not self.program_root_cid:

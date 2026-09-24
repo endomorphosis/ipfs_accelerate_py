@@ -848,6 +848,48 @@ class PlannedTask:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_token_metrics(record: Any) -> Any:
+    """Record token metrics by id. Token counts and the body are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(record, "metrics_id", "") or "token-metrics")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="token_metrics_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
+def _mirror_epoch_receipt(record: Any) -> Any:
+    """Record an epoch receipt by id. The receipt body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(record, "receipt_id", "") or "epoch-receipt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="epoch_receipt_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 def _mirror_rollout_record(record: Any) -> Any:
     """Record a rollout by id and closed decision. The rollout body is not stored."""
 
@@ -1513,7 +1555,7 @@ class ImprovementEpochRepository:
                     ],
                 )
                 self._commit_if_idle(connection)
-                return TokenMetrics(
+                record = TokenMetrics(
                     metrics_id=metrics_id,
                     epoch_id=eid,
                     input_tokens=int(input_tokens),
@@ -1526,6 +1568,7 @@ class ImprovementEpochRepository:
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_token_metrics(record)
 
     def record_receipt(
         self,
@@ -1570,7 +1613,7 @@ class ImprovementEpochRepository:
                     ],
                 )
                 self._commit_if_idle(connection)
-                return EpochReceipt(
+                record = EpochReceipt(
                     receipt_id=rid,
                     epoch_id=eid,
                     receipt_kind=kind,
@@ -1581,6 +1624,7 @@ class ImprovementEpochRepository:
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_epoch_receipt(record)
 
     def plan_as_goals_and_tasks(
         self,

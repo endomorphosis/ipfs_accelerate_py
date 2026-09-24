@@ -34,6 +34,30 @@ from pathlib import Path
 from typing import Any
 
 
+def _mirror_merge_submodule(submodule_path: str, *, merged: bool) -> None:
+    """Record a submodule merge by path digest. The path and result body are not stored."""
+
+    try:
+        import hashlib
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        digest = hashlib.sha256(str(submodule_path).encode("utf-8")).hexdigest()
+        disposition = "merged" if merged else "failed"
+        record_ref = f"{digest}:{disposition}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="merge_submodule_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class MergeCheckpoint:
     """Tracks progress of a multi-submodule merge for crash recovery."""
@@ -57,6 +81,7 @@ class MergeCheckpoint:
             self.failed_submodules[submodule_path] = result
             self.merged_submodules.pop(submodule_path, None)
         self._save()
+        _mirror_merge_submodule(submodule_path, merged=bool(result.get("merged")))
 
     def is_already_merged(self, submodule_path: str) -> bool:
         """Check if a submodule was already successfully merged in this checkpoint."""
