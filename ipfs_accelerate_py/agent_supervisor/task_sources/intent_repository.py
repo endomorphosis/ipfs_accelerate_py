@@ -678,6 +678,30 @@ class PlanHead:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_queue_retry_cleared(receipt: Any) -> Any:
+    """Record a cleared queue retry by task id. The attempt body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = task_cid or "queue-retry"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="queue_retry_cleared",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class IntentRepository:
     """Transactional authority for intent-domain control-plane state.
 
@@ -3207,7 +3231,7 @@ class IntentRepository:
                     tcid,
                 ],
             )
-            return self._append_event(
+            receipt = self._append_event(
                 connection,
                 event_type=IntentEventType.QUEUE_RETRY,
                 subject_id=tcid,
@@ -3219,6 +3243,7 @@ class IntentRepository:
                     "revision": int(lease[0]),
                 },
             )
+        return _mirror_queue_retry_cleared(receipt)
 
     def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
         tcid = _identifier(task_cid, noun="task_cid")

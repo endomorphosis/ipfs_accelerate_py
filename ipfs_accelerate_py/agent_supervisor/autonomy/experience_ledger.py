@@ -844,6 +844,28 @@ def _default_clock() -> int:
     return 0
 
 
+def _mirror_experience_episode(record: Any) -> Any:
+    """Record an episode id. Evidence and authority fields are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        episode = getattr(record, "episode", None)
+        record_ref = str(getattr(episode, "episode_id", "") or "experience-episode")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="experience_episode_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 class ExperienceLedger:
     """In-memory compact episode index with optional adapter persistence."""
 
@@ -1032,15 +1054,17 @@ class ExperienceLedger:
         with self._lock:
             replayed = self._conflict_or_replay(record)
             if replayed is not None:
-                return replayed
-            blocked = set(record.invalidation_dependency_ids).intersection(self._invalidated)
-            if blocked:
-                raise ExperienceLedgerError("episode depends on invalidated evidence")
-            self._admit_capacity(now_ms)
-            self._persist_record(record)
-            self._index_record(record)
-            self._persist_head()
-            return record
+                stored = replayed
+            else:
+                blocked = set(record.invalidation_dependency_ids).intersection(self._invalidated)
+                if blocked:
+                    raise ExperienceLedgerError("episode depends on invalidated evidence")
+                self._admit_capacity(now_ms)
+                self._persist_record(record)
+                self._index_record(record)
+                self._persist_head()
+                stored = record
+        return _mirror_experience_episode(stored)
 
     def get(
         self,

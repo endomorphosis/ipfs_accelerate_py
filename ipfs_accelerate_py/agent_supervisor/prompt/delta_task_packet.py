@@ -2078,6 +2078,29 @@ class DecisionCache:
             self._entries.clear()
 
 
+def _mirror_replay_circuit_failure(circuit: Any) -> Any:
+    """Record an unchanged-failure circuit by task id. The reason text is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(getattr(circuit, "task_cid", "") or "")
+        opened = "open" if getattr(circuit, "open", False) else "within-budget"
+        record_ref = f"{task_cid}:{opened}" if task_cid else opened
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="replay_circuit_failure",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return circuit
+
+
 class ReplayCircuitStore:
     """In-memory typed circuits for unchanged-failure suppression."""
 
@@ -2164,7 +2187,7 @@ class ReplayCircuitStore:
         )
         with self._lock:
             self._circuits[circuit.circuit_id] = circuit
-        return circuit
+        return _mirror_replay_circuit_failure(circuit)
 
     def clear(self) -> None:
         with self._lock:

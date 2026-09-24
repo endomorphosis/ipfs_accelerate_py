@@ -1075,6 +1075,51 @@ class GoalTacticianLifecycleConfig:
         return Path(self.state_dir) / self.journal_filename
 
 
+def _mirror_lifecycle_transition(state: Any, kind: Any) -> Any:
+    """Record a lifecycle transition kind and tree id. The fencing token is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        kind_name = str(getattr(kind, "value", kind) or "lifecycle-transition")
+        tree_id = str(getattr(state, "tree_id", "") or getattr(state, "content_id", "") or "")
+        record_ref = f"{kind_name}:{tree_id}" if tree_id else kind_name
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lifecycle_transition_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return state
+
+
+def _mirror_curriculum_projection(state: Any, projection_id: str) -> Any:
+    """Record a curriculum projection id. The projection body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        tree_id = str(getattr(state, "tree_id", "") or "")
+        record_ref = f"{projection_id}:{tree_id}" if projection_id else (tree_id or "curriculum-projection")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="curriculum_projection_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return state
+
+
 class GoalTacticianSupervisorLifecycle:
     """Fenced, restartable supervisor boundary for goal-tactician plans.
 
@@ -1519,7 +1564,8 @@ class GoalTacticianSupervisorLifecycle:
                 reason_code=reason_code or kind_enum.value,
             )
             self._commit(state)
-            return state
+            recorded = state
+        return _mirror_lifecycle_transition(recorded, kind_enum)
 
     def record_curriculum_projection(
         self,
@@ -1607,7 +1653,13 @@ class GoalTacticianSupervisorLifecycle:
                 reason_code=reason_code or projected.reason_code or "curriculum_recorded",
             )
             self._commit(state)
-            return state
+            recorded = state
+            projection_id = str(
+                getattr(projected, "projection_id", "")
+                or getattr(projected, "content_id", "")
+                or ""
+            )
+        return _mirror_curriculum_projection(recorded, projection_id)
 
     def signal_control(
         self,
