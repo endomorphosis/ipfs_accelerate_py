@@ -50,6 +50,27 @@ class ProgramWorldPrefixReuse:
     reused: bool
 
 
+def _mirror_program_world_context_compilation(result: Any) -> Any:
+    """Record the context receipt id. Materials, questions, and the budget are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "receipt_cid", "") or "program-world-context")
+        mirror_work_record(
+            catalog_kind="capsule",
+            record_kind="program_world_context_compilation",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 @dataclass
 class ProgramWorldContextPlanner:
     token_budget: int
@@ -131,14 +152,14 @@ class ProgramWorldContextPlanner:
                 )
         if unresolved and not any(item.kind == "questions" for item in included):
             raise ProgramWorldContextError("unresolved questions require expansion")
-        return ProgramWorldContextReceipt(
+        return _mirror_program_world_context_compilation(ProgramWorldContextReceipt(
             included=included,
             omitted=omitted,
             raw_fallbacks=raw_fallbacks,
             unresolved_questions=unresolved,
             token_budget=budget,
             fallback=bool(raw_fallbacks),
-        )
+        ))
 
     def explain_program_world_context(
         self, request: Mapping[str, Any]
@@ -204,26 +225,9 @@ def compile_program_world_context(
     *,
     token_budget: int = 256,
 ) -> ProgramWorldContextReceipt:
-    receipt = ProgramWorldContextPlanner(token_budget=token_budget).compile_program_world_context(
+    return ProgramWorldContextPlanner(token_budget=token_budget).compile_program_world_context(
         request
     )
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        included = tuple(getattr(item, "source_cid", "") or getattr(item, "kind", "") for item in receipt.included)
-        mirror_work_record(
-            catalog_kind="capsule",
-            record_kind="context",
-            record_ref=str(getattr(receipt, "token_budget", "") or "program-world-context"),
-            subject_kind="record_cid",
-            subject_ref="program-world-context",
-            paths=tuple(item for item in included if item),
-        )
-    except Exception:
-        pass
-    return receipt
 
 
 def explain_program_world_context(

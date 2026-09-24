@@ -906,6 +906,35 @@ class ProverOutcome:
         return _canonical_json(self.to_canonical())
 
 
+def _mirror_prover_outcome(result: Any) -> Any:
+    """Record a unit digest and closed status. Proof bytes, keys, logs, and messages are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        status = str(
+            getattr(getattr(result, "status", None), "value", getattr(result, "status", ""))
+            or ""
+        )
+        if status not in closed_prover_statuses():
+            status = "unknown"
+        unit = str(getattr(result, "proof_unit_id", "") or "")
+        digest = _sha256_hex(unit) if unit else "prover-outcome"
+        record_ref = f"{digest}:{status}"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="prover_outcome",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _outcome(
     *,
     status: ProverStatus,
@@ -932,7 +961,7 @@ def _outcome(
         if isinstance(reason_code, ProverReasonCode)
         else _require_nonempty_str(reason_code, "reason_code")
     )
-    return ProverOutcome(
+    return _mirror_prover_outcome(ProverOutcome(
         schema=PROVER_OUTCOME_SCHEMA,
         status=status,
         proved=proved,
@@ -952,7 +981,7 @@ def _outcome(
         ambiguous=ambiguous,
         details=dict(details or {}),
         log_lines=tuple(log_lines),
-    )
+    ))
 
 
 @dataclass(frozen=True, slots=True)

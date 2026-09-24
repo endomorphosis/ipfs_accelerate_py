@@ -1075,6 +1075,31 @@ class GoalTacticianLifecycleConfig:
         return Path(self.state_dir) / self.journal_filename
 
 
+def _mirror_lifecycle_receipt(result: Any) -> Any:
+    """Record a receipt-id digest and closed kind. Fence tokens and metadata are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        kind = str(getattr(getattr(result, "kind", None), "value", "") or "")
+        if kind not in {"graph_leaf", "counterexample", "verification", "closure"}:
+            kind = "receipt"
+        digest = _sha256_hex(str(getattr(result, "receipt_id", "") or "lifecycle-receipt"))
+        record_ref = f"{digest}:{kind}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="lifecycle_receipt_binding",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def _mirror_lifecycle_transition(state: Any, kind: Any) -> Any:
     """Record a lifecycle transition kind and tree id. The fencing token is not stored."""
 
@@ -1955,7 +1980,7 @@ class GoalTacticianSupervisorLifecycle:
             state = self._require_open_state()
             held = self._coerce_lease(lease)
             self._assert_lease_authoritative(state, held)
-            return LifecycleReceipt(
+            receipt = LifecycleReceipt(
                 receipt_id=receipt_id,
                 kind=kind,
                 subject_id=subject_id,
@@ -1966,6 +1991,7 @@ class GoalTacticianSupervisorLifecycle:
                 independently_validated=independently_validated,
                 metadata=dict(metadata or {}),
             )
+        return _mirror_lifecycle_receipt(receipt)
 
     # -- internals ----------------------------------------------------------
 

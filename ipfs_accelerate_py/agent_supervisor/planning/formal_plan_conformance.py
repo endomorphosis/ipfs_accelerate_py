@@ -1599,6 +1599,27 @@ class CompletionEvidenceResult:
         return result
 
 
+def _mirror_completion_evidence(result: Any) -> Any:
+    """Record the evidence result id. Checks, reasons, and the goal are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "result_id", "") or "completion-evidence")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="completion_evidence_result",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_completion_evidence(
     goal_id: str,
     evidence: Iterable[FormalCompletionEvidence | Mapping[str, Any]],
@@ -1721,11 +1742,11 @@ def evaluate_completion_evidence(
                     reason,
                 )
             )
-    return CompletionEvidenceResult(
+    return _mirror_completion_evidence(CompletionEvidenceResult(
         policy_id=policy.policy_id,
         binding_id=binding.binding_id,
         checks=tuple(checks),
-    )
+    ))
 
 
 @dataclass(frozen=True)
