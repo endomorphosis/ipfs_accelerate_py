@@ -774,6 +774,27 @@ def _merge_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_merge_train_record(commit: Any) -> Any:
+    """Record a merge train by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "merge-train")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="merge_train_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_merge_attempt_record(commit: Any) -> Any:
     """Record a merge attempt by fact id. The idempotency key is not stored."""
 
@@ -842,7 +863,7 @@ class MergeStore(RebalancingStore):
     ) -> CausalGraphCommit:
         if not isinstance(train, CompiledMergeTrain):
             raise FederationContractError("compiled merge train is required")
-        return self._commit_fact(
+        return _mirror_merge_train_record(self._commit_fact(
             operation="federation.merge.train.record",
             fact_id=train.train_id,
             federation_id=federation_id,
@@ -863,7 +884,7 @@ class MergeStore(RebalancingStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_attempt(
         self,

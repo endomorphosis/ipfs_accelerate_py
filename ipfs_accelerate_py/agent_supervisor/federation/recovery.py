@@ -633,6 +633,27 @@ def _recovery_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_federation_recovery_record(commit: Any) -> Any:
+    """Record a recovery action by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "federation-recovery")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="federation_recovery_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class RecoveryStore(MergeStore):
     """Persist recovery actions, fencing epochs, and effect observations."""
 
@@ -689,7 +710,7 @@ class RecoveryStore(MergeStore):
         if receipt.recovery_plan_id != plan.plan_id:
             raise RecoveryAuthorityError("receipt plan identity differs from the compiled plan")
         action_id = "recovery-action:" + receipt.cid
-        return self._commit_fact(
+        return _mirror_federation_recovery_record(self._commit_fact(
             operation="federation.recovery.record",
             fact_id=action_id,
             federation_id=federation_id,
@@ -710,7 +731,7 @@ class RecoveryStore(MergeStore):
                 recorded_at=recorded_at,
                 reconciliations=reconciliations,
             ),
-        )
+        ))
 
     def load_action(self, *, action_id: str) -> Mapping[str, Any]:
         rows = self._client.execute(

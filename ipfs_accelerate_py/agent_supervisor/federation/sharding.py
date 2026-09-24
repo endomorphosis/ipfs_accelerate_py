@@ -465,6 +465,27 @@ def _shard_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_shard_plan_record(commit: Any) -> Any:
+    """Record a shard plan by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "shard-plan")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="shard_plan_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class ShardingStore(ParallelFrontierStore):
     """Persist compiled shards through the sealed state owner."""
 
@@ -513,7 +534,7 @@ class ShardingStore(ParallelFrontierStore):
         if not isinstance(plan, CompiledShardPlan):
             raise FederationContractError("compiled shard plan is required")
         plan_id = "shard-plan:" + plan.cid
-        return self._commit_fact(
+        return _mirror_shard_plan_record(self._commit_fact(
             operation="federation.shard.plan.record",
             fact_id=plan_id,
             federation_id=federation_id,
@@ -533,7 +554,7 @@ class ShardingStore(ParallelFrontierStore):
                 graph_revision=revision,
                 recorded_at=recorded_at or utc_now(),
             ),
-        )
+        ))
 
     def load_shard(
         self,

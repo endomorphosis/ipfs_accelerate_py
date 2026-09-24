@@ -461,6 +461,48 @@ def _evidence_refs_identity(refs: Sequence[str]) -> str:
     return "evidence-population:" + content_identity(list(refs))
 
 
+def _mirror_causal_node_record(commit: Any) -> Any:
+    """Record a causal node by fact id. Owner, source root, and idempotency key are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "causal-node")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_node_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
+def _mirror_causal_evidence_record(commit: Any) -> Any:
+    """Record causal evidence by fact id. The evidence body and idempotency key are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "causal-evidence")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_evidence_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 def _mirror_causal_edge_record(commit: Any) -> Any:
     """Record a committed causal edge by fact id. The idempotency key is not stored."""
 
@@ -598,7 +640,7 @@ class CausalGraphStore(FederationStateRepository):
         if not isinstance(node, CausalNode):
             raise FederationContractError("node must be a CausalNode")
         self._assert_binding_scope(node.binding, federation_id=federation_id)
-        return self._commit_fact(
+        return _mirror_causal_node_record(self._commit_fact(
             operation="federation.causal.node.record",
             fact_id=node.record_id,
             federation_id=federation_id,
@@ -616,7 +658,7 @@ class CausalGraphStore(FederationStateRepository):
                 source_root=source_root,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_evidence(
         self,
@@ -638,7 +680,7 @@ class CausalGraphStore(FederationStateRepository):
             raise FederationAuthorityError(
                 "retrieval nomination cannot be authoritative causal evidence"
             )
-        return self._commit_fact(
+        return _mirror_causal_evidence_record(self._commit_fact(
             operation="federation.causal.evidence.record",
             fact_id=evidence.record_id,
             federation_id=federation_id,
@@ -657,7 +699,7 @@ class CausalGraphStore(FederationStateRepository):
                 source_root=source_root,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def record_edge(
         self,
