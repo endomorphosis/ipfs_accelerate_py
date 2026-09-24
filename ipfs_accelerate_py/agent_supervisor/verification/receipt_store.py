@@ -920,6 +920,27 @@ def probe_durable_coordination_store(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_receipt_access(meta: Any) -> Any:
+    """Record a receipt access by content id. Paths and access time are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(meta, "cid", "") or "receipt-access")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="receipt_access_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return meta
+
+
 class _LocalGenerationCAS:
     """File-backed generation-CAS head protocol with history and fsync."""
 
@@ -1114,7 +1135,7 @@ class _LocalGenerationCAS:
                     "updated_at_ms": when,
                 },
             )
-            return meta
+        return _mirror_receipt_access(meta)
 
     def collect_gc_metadata(self) -> tuple[GCMetadata, ...]:
         with _exclusive_lock(self.gc_lock_path, timeout_seconds=self.lock_timeout_seconds):

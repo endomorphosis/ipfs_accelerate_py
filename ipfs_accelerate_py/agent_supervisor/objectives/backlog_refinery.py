@@ -8619,6 +8619,55 @@ def record_codebase_scan_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
     return list(record_codebase_scan_findings(**kwargs).items)
 
 
+def _mirror_finding_batch(result: Any, record_kind: str) -> Any:
+    """Record a finding batch by closed reason and count. Paths and bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record_kind not in {
+            "configured_objective_scan_record",
+            "configured_codebase_scan_record",
+            "configured_retry_budget_record",
+            "codebase_audit_record",
+        }:
+            return result
+        closed_reasons = {
+            "generated",
+            "exhausted",
+            "duplicate_only",
+            "threshold_satisfied",
+            "cooldown",
+            "disabled",
+            "partial",
+            "failed",
+            "timed_out",
+        }
+        reason = "recorded"
+        count = 0
+        if isinstance(result, (list, tuple)):
+            count = len(result)
+        else:
+            raw_reason = getattr(result, "terminal_reason", "")
+            text = str(getattr(raw_reason, "value", raw_reason) or "")
+            if text in closed_reasons:
+                reason = text
+            count = int(getattr(result, "generated_count", 0) or 0)
+        record_ref = f"{reason}:{count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def record_codebase_audit_findings(
     *,
     repo_root: Path,
@@ -8634,7 +8683,10 @@ def record_codebase_audit_findings(
 
     from ..analysis.audit_scanner import run_audit_scan
 
-    return run_audit_scan(repo_root, dataset_dir=dataset_dir, **kwargs)
+    return _mirror_finding_batch(
+        run_audit_scan(repo_root, dataset_dir=dataset_dir, **kwargs),
+        "codebase_audit_record",
+    )
 
 
 def record_objective_backlog_findings(
@@ -8928,7 +8980,7 @@ def record_configured_objective_backlog_findings(
             repo_root,
             objective_path=objective_path,
         )
-    return record_objective_backlog_findings(
+    result = record_objective_backlog_findings(
         repo_root=repo_root,
         objective_path=objective_path,
         todo_path=todo_path,
@@ -8973,6 +9025,7 @@ def record_configured_objective_backlog_findings(
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
+    return _mirror_finding_batch(result, "configured_objective_scan_record")
 
 
 def record_configured_codebase_scan_findings(
@@ -9006,7 +9059,7 @@ def record_configured_codebase_scan_findings(
 ) -> RefillScanResult[dict[str, Any]]:
     """Run codebase backlog refill with common wrapper-level defaults."""
 
-    return record_codebase_scan_findings(
+    result = record_codebase_scan_findings(
         todo_path=todo_path,
         state_path=state_path,
         strategy_path=strategy_path,
@@ -9042,6 +9095,7 @@ def record_configured_codebase_scan_findings(
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
+    return _mirror_finding_batch(result, "configured_codebase_scan_record")
 
 
 def record_configured_retry_budget_findings(
@@ -9099,7 +9153,7 @@ def record_configured_retry_budget_findings(
         for finding in findings:
             if finding.get("failure_kind") == "validation":
                 finding.pop("failure_kind", None)
-    return findings
+    return _mirror_finding_batch(findings, "configured_retry_budget_record")
 
 
 def _configured_recorder_kwargs(
