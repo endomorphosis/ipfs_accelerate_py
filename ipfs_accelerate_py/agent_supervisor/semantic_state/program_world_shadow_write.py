@@ -31,6 +31,27 @@ class ShadowParityReport:
     completion_authority: bool = False
 
 
+def _mirror_shadow_artifact(receipt: ShadowWriteReceipt) -> ShadowWriteReceipt:
+    """Record a shadow artifact id. The artifact body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(receipt.artifact_id or "shadow-artifact")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shadow_artifact_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 @dataclass
 class ProgramWorldShadowWriter:
     _shadow: dict[str, Mapping[str, Any]] = field(default_factory=dict)
@@ -44,9 +65,11 @@ class ProgramWorldShadowWriter:
         if artifact.get("authoritative") is True:
             raise ShadowWriteError("shadow artifacts cannot be authoritative")
         self._shadow[artifact_id] = dict(artifact)
-        return ShadowWriteReceipt(
-            artifact_id=artifact_id,
-            kind=str(artifact.get("kind") or "projection"),
+        return _mirror_shadow_artifact(
+            ShadowWriteReceipt(
+                artifact_id=artifact_id,
+                kind=str(artifact.get("kind") or "projection"),
+            )
         )
 
     def parity(self, authoritative: Mapping[str, Mapping[str, Any]]) -> ShadowParityReport:

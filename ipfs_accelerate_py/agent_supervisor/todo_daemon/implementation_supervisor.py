@@ -6996,6 +6996,50 @@ class AdoptedManagedDaemonProcess:
             time.sleep(0.2)
 
 
+def _mirror_reconciliation_guardrail(findings: Any) -> Any:
+    """Record how many reconciliation guardrail findings were produced. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        count = len(findings) if findings is not None else 0
+        record_ref = f"reconciliation:{count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="reconciliation_guardrail_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return findings
+
+
+def _mirror_retry_budget_guardrail(findings: Any) -> Any:
+    """Record how many retry-budget findings were produced. Paths are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        count = len(findings) if findings is not None else 0
+        record_ref = f"retry-budget:{count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="retry_budget_guardrail_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return findings
+
+
 def _mirror_dependency_guardrail(findings: Any) -> Any:
     """Record how many dependency guardrail findings were produced. Paths are not stored."""
 
@@ -18216,7 +18260,7 @@ class PortalImplementationSupervisor:
                     "findings": findings,
                 },
             )
-        return findings
+        return _mirror_reconciliation_guardrail(findings)
 
     def record_retry_budget_guardrails(self) -> list[dict[str, Any]]:
         """Convert repeated daemon blockers into follow-up work before another retry loop."""
@@ -18272,7 +18316,7 @@ class PortalImplementationSupervisor:
                     "findings": findings,
                 },
             )
-        return findings
+        return _mirror_retry_budget_guardrail(findings)
 
     def _run_supervisor_call_with_timeout(
         self,

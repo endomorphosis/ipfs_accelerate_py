@@ -437,6 +437,26 @@ def production_fingerprint_from_refs(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_shadow_cost(role: str) -> None:
+    """Record a shadow cost role. Spend and token counts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = role if role in {"compressed", "expanded"} else "shadow-cost"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="shadow_cost_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class ShadowBudgetLedger:
     """Mutable remaining budgets for a paired shadow run.
@@ -582,6 +602,7 @@ class ShadowBudgetLedger:
                 self.spent_expansion_tokens += int(cost.input_tokens) + int(
                     cost.output_tokens
                 )
+        _mirror_shadow_cost(str(role_value))
 
 
 # ---------------------------------------------------------------------------

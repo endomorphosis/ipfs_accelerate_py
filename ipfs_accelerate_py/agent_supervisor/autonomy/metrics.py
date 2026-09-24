@@ -75,6 +75,35 @@ def _wake_counts(value: Any) -> dict[str, int]:
     return dict(sorted(result.items()))
 
 
+def _mirror_autonomy_status(status: str) -> None:
+    """Record a closed autonomy status. Reason codes are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = status if status in {
+            "action_admitted",
+            "progressing",
+            "idle",
+            "blocked",
+            "budget_exhausted",
+            "exhausted",
+            "cancelled",
+            "unavailable",
+        } else "recorded"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="autonomy_status_record",
+            record_ref=closed,
+            subject_kind="record_cid",
+            subject_ref=closed,
+        )
+    except Exception:
+        pass
+
+
 class AutonomyMetrics:
     """In-process counters whose durable projection is content-addressed.
 
@@ -271,10 +300,12 @@ class AutonomyMetrics:
             self._admitted_actions = _counter(
                 self._admitted_actions + 1, "admitted_actions"
             )
+            _mirror_autonomy_status(self._last_status)
             return
         if status == previous:
             if status == "idle":
                 self._idle_cycles = _counter(self._idle_cycles + 1, "idle_cycles")
+            _mirror_autonomy_status(self._last_status)
             return
         if status == "blocked":
             self._blocked_cycles = _counter(self._blocked_cycles + 1, "blocked_cycles")
@@ -292,6 +323,7 @@ class AutonomyMetrics:
             )
         elif status == "idle":
             self._idle_cycles = _counter(self._idle_cycles + 1, "idle_cycles")
+        _mirror_autonomy_status(self._last_status)
 
     def _body(self, *, durable: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
