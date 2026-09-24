@@ -10667,6 +10667,37 @@ def test_mirror_queue_selection_failure_change_merge_and_defer(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_queue_reset_registration_creation_and_compaction(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("queue_selection_reset", "task:1:reset", "metadata", "task_id"),
+        ("queue_renewal_reset", "task:1", "metadata", "task_id"),
+        ("queue_registration", "cid:task", "metadata", "record_cid"),
+        ("queue_entry_created", "task:1", "metadata", "task_id"),
+        ("queue_compaction", "removed:1", "metadata", "record_cid"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        subject_ref = "task:1" if subject_kind == "task_id" else record_ref
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=subject_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

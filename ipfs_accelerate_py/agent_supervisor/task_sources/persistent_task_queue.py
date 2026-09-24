@@ -36,6 +36,7 @@ def _mirror_queue_selection(task_id: str, disposition: str) -> None:
             "merge_failure",
             "selected",
             "deferred",
+            "reset",
         } else "recorded"
         record_ref = f"{task_id}:{closed}" if task_id else closed
         mirror_work_record(
@@ -44,6 +45,37 @@ def _mirror_queue_selection(task_id: str, disposition: str) -> None:
             record_ref=record_ref,
             subject_kind="task_id",
             subject_ref=task_id or record_ref,
+        )
+    except Exception:
+        pass
+
+
+def _mirror_queue_record(
+    record_kind: str, record_ref: str, *, subject_kind: str = "record_cid"
+) -> None:
+    """Record a queue id or closed count. Paths, keys, and reasons are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record_kind not in {
+            "queue_registration",
+            "queue_compaction",
+            "queue_entry_created",
+            "queue_renewal_reset",
+        }:
+            return
+        if subject_kind not in {"record_cid", "task_id"}:
+            subject_kind = "record_cid"
+        ref = str(record_ref or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=ref,
+            subject_kind=subject_kind,
+            subject_ref=ref,
         )
     except Exception:
         pass
@@ -147,6 +179,7 @@ class TaskQueueEntry:
         self.selection_penalty = 0
         self.cooldown_until = 0.0
         self.notes = ""
+        _mirror_queue_selection(self.task_id, "reset")
 
     def is_cooled_down(self) -> bool:
         """Return True if the task is still in cooldown."""
@@ -275,10 +308,15 @@ class TaskQueueEntry:
         self.authority_renewal_cooldown_until = 0.0
         self.authority_renewal_quarantined = False
         self.authority_renewal_reason = ""
-        return any(
+        changed = any(
             value not in {"", 0, 0.0, False}
             for value in before
         )
+        if changed:
+            _mirror_queue_record(
+                "queue_renewal_reset", self.task_id, subject_kind="task_id"
+            )
+        return changed
 
     def effective_penalty(self) -> int:
         """Return the effective selection penalty including cooldown state."""
@@ -548,7 +586,10 @@ class PersistentTaskQueue:
         }
         if provenance not in entry.provenance:
             entry.provenance.append(provenance)
-        self._dirty = self._dirty or changed or entry.to_dict() != before_entry
+        mutated = changed or entry.to_dict() != before_entry
+        self._dirty = self._dirty or mutated
+        if mutated:
+            _mirror_queue_record("queue_registration", str(canonical_key or ""))
         return entry
 
     def get_or_create(
@@ -572,6 +613,9 @@ class PersistentTaskQueue:
                 track=track or "",
             )
             self._dirty = True
+            _mirror_queue_record(
+                "queue_entry_created", str(task_id or key), subject_kind="task_id"
+            )
         entry = self.entries[key]
         if priority is not None and entry.priority != priority:
             entry.priority = priority
@@ -733,10 +777,12 @@ class PersistentTaskQueue:
                 for alias, target in self.aliases.items()
                 if target not in stale_set
             }
+        removed = len(stale_ids)
         if stale_ids:
             self._dirty = True
             self._maybe_save()
-        return len(stale_ids)
+            _mirror_queue_record("queue_compaction", f"removed:{removed}")
+        return removed
 
     def summary(self) -> dict[str, Any]:
         cooled = sum(1 for e in self.entries.values() if e.is_cooled_down())
