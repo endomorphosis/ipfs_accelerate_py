@@ -2295,6 +2295,27 @@ def execute_cryptographic_attestation(
 gate_cryptographic_backend = execute_cryptographic_attestation
 
 
+def _mirror_attestation_verification(result: AttestationVerification) -> AttestationVerification:
+    """Record a verification id. The envelope, verifier id, and diagnostic are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(result, "verification_id", "") or "attestation-verification")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="attestation_verification_record",
+            record_ref=record_ref,
+            subject_kind="receipt_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def record_attestation_verification(
     envelope: ReceiptAttestationEnvelope,
     *,
@@ -2306,7 +2327,7 @@ def record_attestation_verification(
     """Create a fail-closed independent verification result."""
 
     checked = _bool(verified, field_name="verified")
-    return AttestationVerification(
+    result = AttestationVerification(
         envelope=envelope,
         verdict=(
             AttestationVerificationVerdict.VERIFIED
@@ -2317,6 +2338,7 @@ def record_attestation_verification(
         independent=independent,
         diagnostic_code=diagnostic_code,
     )
+    return _mirror_attestation_verification(result)
 
 
 def attestation_satisfies_gate(

@@ -574,6 +574,26 @@ def check_event_idempotency(
     return _mirror_event_idempotency((False, ""))
 
 
+def _mirror_resolve_attempt(fingerprint: str) -> None:
+    """Record a resolve-attempt fingerprint. The event body and state path are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(fingerprint or "resolve-attempt")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="resolve_attempt_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 def record_resolve_attempt(
     event: dict[str, Any],
     *,
@@ -588,6 +608,7 @@ def record_resolve_attempt(
         sorted_items = sorted(resolved.items(), key=lambda x: x[1], reverse=True)
         resolved = dict(sorted_items[:200])
     _save_resolved_events(state_dir, resolved)
+    _mirror_resolve_attempt(fingerprint)
 
 
 @dataclass(frozen=True)

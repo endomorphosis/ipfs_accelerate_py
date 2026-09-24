@@ -1960,6 +1960,31 @@ def create_program_zkp_shadow_envelope(
     )
 
 
+def _mirror_program_zkp_verification_record(receipt: Any) -> Any:
+    """Record a verification receipt id. Capability flags and key material are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(
+            getattr(receipt, "receipt_id", "")
+            or getattr(receipt, "public_input_digest", "")
+            or "program-zkp-record"
+        )
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="program_zkp_verification_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def record_program_zkp_verification(
     envelope: ProgramZkpShadowEnvelope,
     *,
@@ -1980,7 +2005,7 @@ def record_program_zkp_verification(
     if not isinstance(envelope, ProgramZkpShadowEnvelope):
         raise ProgramAnalysisZkpError("envelope must be ProgramZkpShadowEnvelope")
     pins = envelope.statement.public_inputs
-    return ProgramZkpVerificationReceipt(
+    receipt = ProgramZkpVerificationReceipt(
         statement=envelope.statement,
         verdict=_enum(verdict, ProgramZkpVerdict, field_name="verdict"),
         verifier_id=verifier_id,
@@ -1994,6 +2019,7 @@ def record_program_zkp_verification(
         capability_production_eligible=capability_production_eligible,
         independent_verifier=independent_verifier,
     )
+    return _mirror_program_zkp_verification_record(receipt)
 
 
 def assert_trace_non_claims(receipt_or_statement: Any) -> None:

@@ -702,6 +702,30 @@ def _mirror_queue_retry_cleared(receipt: Any) -> Any:
     return receipt
 
 
+def _mirror_queue_backoff(receipt: Any) -> Any:
+    """Record a queue backoff by task id. Delay, reason text, and fence values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        record_ref = task_cid or "queue-backoff"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="queue_backoff_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 def _mirror_intent_evidence(receipt: Any, evidence_kind: str) -> Any:
     """Record intent evidence by task id and kind. The evidence body is not stored."""
 
@@ -3211,7 +3235,7 @@ class IntentRepository:
                         tcid,
                     ],
                 )
-            return self._append_event(
+            receipt = self._append_event(
                 connection,
                 event_type=IntentEventType.QUEUE_BACKOFF,
                 subject_id=tcid,
@@ -3226,6 +3250,7 @@ class IntentRepository:
                     "revision": attempt,
                 },
             )
+        return _mirror_queue_backoff(receipt)
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")

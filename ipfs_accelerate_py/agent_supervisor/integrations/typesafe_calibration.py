@@ -47,6 +47,29 @@ class CalibrationSample:
         }
 
 
+def _mirror_calibration_sample(sample: CalibrationSample) -> CalibrationSample:
+    """Record a calibration family and match bit. Labels and SMT text are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        family = str(getattr(sample, "family", "") or "calibration")
+        matched = "matched" if bool(getattr(sample, "matched", False)) else "mismatch"
+        record_ref = f"{family}:{matched}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="calibration_sample_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return sample
+
+
 def record_sample(
     *,
     family: str,
@@ -70,7 +93,7 @@ def record_sample(
     with _LOCK:
         _SAMPLES.append(sample)
         del _SAMPLES[:-MAX_SAMPLES]
-    return sample
+    return _mirror_calibration_sample(sample)
 
 
 def samples() -> tuple[CalibrationSample, ...]:
