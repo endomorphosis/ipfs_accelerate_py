@@ -461,6 +461,27 @@ def _evidence_refs_identity(refs: Sequence[str]) -> str:
     return "evidence-population:" + content_identity(list(refs))
 
 
+def _mirror_causal_edge_record(commit: Any) -> Any:
+    """Record a committed causal edge by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "causal-edge")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="causal_edge_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class CausalGraphStore(FederationStateRepository):
     """Sealed multilevel causal graph over one already-attached state client."""
 
@@ -657,7 +678,7 @@ class CausalGraphStore(FederationStateRepository):
             )
         group_id = _identifier(fixed_point_group_id, "fixed_point_group_id", required=False)
         policy_ref = _identifier(admitted_policy_ref, "admitted_policy_ref", required=False)
-        return self._commit_fact(
+        return _mirror_causal_edge_record(self._commit_fact(
             operation="federation.causal.edge.record",
             fact_id=edge.record_id,
             federation_id=federation_id,
@@ -684,7 +705,7 @@ class CausalGraphStore(FederationStateRepository):
                 fixed_point_group_id=group_id,
                 admitted_policy_ref=policy_ref,
             ),
-        )
+        ))
 
     def _commit_fact(
         self,

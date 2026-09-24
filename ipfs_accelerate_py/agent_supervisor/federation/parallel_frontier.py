@@ -574,6 +574,27 @@ def _frontier_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_parallel_frontier_record(commit: Any) -> Any:
+    """Record a committed frontier by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "parallel-frontier")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="parallel_frontier_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class ParallelFrontierStore(DeduplicationStore):
     """Persist compiled parallel waves through the sealed state owner."""
 
@@ -629,7 +650,7 @@ class ParallelFrontierStore(DeduplicationStore):
             raise FederationContractError("compiled parallel frontier is required")
         receipt_id = "federation-receipt:" + compiled.cid
         by_id = {task.task_id: task for task in tasks}
-        return self._commit_fact(
+        return _mirror_parallel_frontier_record(self._commit_fact(
             operation="federation.parallel.frontier.record",
             fact_id=receipt_id,
             federation_id=federation_id,
@@ -656,7 +677,7 @@ class ParallelFrontierStore(DeduplicationStore):
                 event_watermark=event_watermark,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_frontier(
         self,

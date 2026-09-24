@@ -616,6 +616,27 @@ def _dedup_templates() -> tuple[Any, ...]:
     )
 
 
+def _mirror_dedup_relation_record(commit: Any) -> Any:
+    """Record a committed relation by fact id. The idempotency key is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(commit, "fact_id", "") or "dedup-relation")
+        mirror_work_record(
+            catalog_kind="knowledge_graph",
+            record_kind="dedup_relation_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return commit
+
+
 class DeduplicationStore(FederationSchedulerStore):
     """Persist intent conflict and resolution records through the sealed state owner."""
 
@@ -673,7 +694,7 @@ class DeduplicationStore(FederationSchedulerStore):
                 "nomination-only relations cannot be recorded as authoritative"
             )
         conflict_id = "task-conflict:" + relation.cid
-        return self._commit_fact(
+        return _mirror_dedup_relation_record(self._commit_fact(
             operation="federation.dedup.relation.record",
             fact_id=conflict_id,
             federation_id=federation_id,
@@ -704,7 +725,7 @@ class DeduplicationStore(FederationSchedulerStore):
                 graph_revision=revision,
                 recorded_at=recorded_at,
             ),
-        )
+        ))
 
     def load_conflict(
         self,

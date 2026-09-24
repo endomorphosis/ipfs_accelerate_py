@@ -189,7 +189,7 @@ class TaskQueueEntry:
             self.authority_renewal_last_failure_at + cooldown + jitter
         )
         self.authority_renewal_reason = str(reason or "")
-        return self.authority_renewal_state(normalized_key)
+        return _mirror_authority_renewal_failure(self.authority_renewal_state(normalized_key))
 
     def record_authority_renewal_success(self, renewal_key: str) -> None:
         """Clear renewal-only backpressure after an exact successful proof."""
@@ -203,6 +203,7 @@ class TaskQueueEntry:
         self.authority_renewal_cooldown_until = 0.0
         self.authority_renewal_quarantined = False
         self.authority_renewal_reason = ""
+        _mirror_authority_renewal_success(normalized_key)
 
     def reset_authority_renewal_state(self) -> bool:
         """Explicit operator seam for clearing a same-claim quarantine."""
@@ -309,6 +310,58 @@ class TaskQueueEntry:
                 data.get("authority_renewal_reason", "")
             ),
         )
+
+
+def _mirror_authority_renewal_failure(state: Any) -> Any:
+    """Record a renewal backoff by key digest. The reason text is not stored."""
+
+    try:
+        import hashlib
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        getter = getattr(state, "get", None)
+        key = str(getter("renewal_key") or "") if callable(getter) else ""
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16] if key else "authority-renewal"
+        quarantined = bool(getter("quarantined")) if callable(getter) else False
+        record_ref = f"{digest}:{'quarantined' if quarantined else 'backing-off'}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authority_renewal_failure",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return state
+
+
+def _mirror_authority_renewal_success(renewal_key: str) -> None:
+    """Record that renewal backpressure was cleared. The key is stored only as a digest."""
+
+    try:
+        import hashlib
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        key = str(renewal_key or "")
+        record_ref = (
+            hashlib.sha256(key.encode("utf-8")).hexdigest()[:16] if key else "authority-renewal"
+        )
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="authority_renewal_success",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
 
 
 @dataclass
