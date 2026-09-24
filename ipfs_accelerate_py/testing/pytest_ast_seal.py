@@ -5,8 +5,9 @@ file in its AST import closure still matches.  mtimes avoid re-reading files
 that have not changed.  The seal does not admit task completion and never
 opens an extra-gate ``control.duckdb``.
 
-``IPFS_ACCELERATE_PYTEST_SEAL`` and ``@pytest.mark.pytest_seal_opt_out`` cannot
-turn the seal off.  A closure larger than ``MAX_CLOSURE_FILES`` still runs.
+``IPFS_ACCELERATE_PYTEST_SEAL``, ``@pytest.mark.pytest_seal_opt_out``, and a
+failed catalog open cannot turn the seal off.  A closure larger than
+``MAX_CLOSURE_FILES`` still runs.
 """
 
 from __future__ import annotations
@@ -297,7 +298,10 @@ class DuckDbQuackSealOracle:
             )
         self.path = path
         self.completion_authority = False
-        self._ensure()
+        self._connection: Any = None
+        self._files: dict[str, tuple[int, int, str]] = {}
+        self._seals: dict[str, str] = {}
+        self._open()
 
     def _connect(self):
         import duckdb
@@ -307,82 +311,77 @@ class DuckDbQuackSealOracle:
         connection.execute(_SCHEMA)
         return connection
 
-    def _ensure(self) -> None:
+    def _open(self) -> None:
         connection = self._connect()
-        connection.close()
+        self._connection = connection
+        file_rows = connection.execute(
+            """
+            SELECT path, mtime_ns, size_bytes, content_hash
+            FROM pytest_ast_file_hash
+            """
+        ).fetchall()
+        self._files = {
+            str(row[0]): (int(row[1]), int(row[2]), str(row[3])) for row in file_rows
+        }
+        seal_rows = connection.execute(
+            """
+            SELECT nodeid, seal
+            FROM pytest_ast_seal
+            WHERE completion_authority = FALSE
+            """
+        ).fetchall()
+        self._seals = {str(row[0]): str(row[1]) for row in seal_rows}
+
+    def close(self) -> None:
+        connection = self._connection
+        self._connection = None
+        if connection is not None:
+            connection.close()
 
     def reuse(self, nodeid: str, seal: str) -> bool:
-        connection = self._connect()
-        try:
-            row = connection.execute(
-                """
-                SELECT seal, completion_authority
-                FROM pytest_ast_seal
-                WHERE nodeid = ?
-                """,
-                [nodeid],
-            ).fetchone()
-        finally:
-            connection.close()
-        if row is None:
-            return False
-        return str(row[0]) == seal and row[1] is False
+        return self._seals.get(nodeid) == seal
 
     def remember(self, nodeid: str, seal: str, *, file_count: int) -> None:
-        connection = self._connect()
-        try:
-            connection.execute(
-                """
-                INSERT INTO pytest_ast_seal (
-                    nodeid, seal, file_count, recorded_at, completion_authority
-                ) VALUES (?, ?, ?, ?, FALSE)
-                ON CONFLICT (nodeid) DO UPDATE SET
-                    seal = excluded.seal,
-                    file_count = excluded.file_count,
-                    recorded_at = excluded.recorded_at,
-                    completion_authority = FALSE
-                """,
-                [nodeid, seal, int(file_count), datetime.now(UTC).isoformat()],
-            )
-        finally:
-            connection.close()
+        connection = self._connection
+        if connection is None:
+            raise PytestSealCatalogError("pytest seal catalog is closed")
+        connection.execute(
+            """
+            INSERT INTO pytest_ast_seal (
+                nodeid, seal, file_count, recorded_at, completion_authority
+            ) VALUES (?, ?, ?, ?, FALSE)
+            ON CONFLICT (nodeid) DO UPDATE SET
+                seal = excluded.seal,
+                file_count = excluded.file_count,
+                recorded_at = excluded.recorded_at,
+                completion_authority = FALSE
+            """,
+            [nodeid, seal, int(file_count), datetime.now(UTC).isoformat()],
+        )
+        self._seals[nodeid] = seal
 
     def cached_file_hash(self, path: str) -> tuple[int, int, str] | None:
-        connection = self._connect()
-        try:
-            row = connection.execute(
-                """
-                SELECT mtime_ns, size_bytes, content_hash
-                FROM pytest_ast_file_hash
-                WHERE path = ?
-                """,
-                [path],
-            ).fetchone()
-        finally:
-            connection.close()
-        if row is None:
-            return None
-        return (int(row[0]), int(row[1]), str(row[2]))
+        return self._files.get(path)
 
     def remember_file_hash(
         self, path: str, *, mtime_ns: int, size_bytes: int, content_hash: str
     ) -> None:
-        connection = self._connect()
-        try:
-            connection.execute(
-                """
-                INSERT INTO pytest_ast_file_hash (
-                    path, mtime_ns, size_bytes, content_hash
-                ) VALUES (?, ?, ?, ?)
-                ON CONFLICT (path) DO UPDATE SET
-                    mtime_ns = excluded.mtime_ns,
-                    size_bytes = excluded.size_bytes,
-                    content_hash = excluded.content_hash
-                """,
-                [path, int(mtime_ns), int(size_bytes), content_hash],
-            )
-        finally:
-            connection.close()
+        connection = self._connection
+        if connection is None:
+            raise PytestSealCatalogError("pytest seal catalog is closed")
+        connection.execute(
+            """
+            INSERT INTO pytest_ast_file_hash (
+                path, mtime_ns, size_bytes, content_hash
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT (path) DO UPDATE SET
+                mtime_ns = excluded.mtime_ns,
+                size_bytes = excluded.size_bytes,
+                content_hash = excluded.content_hash
+            """,
+            [path, int(mtime_ns), int(size_bytes), content_hash],
+        )
+        self._files[path] = (int(mtime_ns), int(size_bytes), str(content_hash))
 
 
 def _oracle_for(config: Any) -> PytestSealOracle:
@@ -427,7 +426,7 @@ _CONFIG_KEY = "_pytest_ast_seal_state"
 
 
 def pytest_configure(config: Any) -> None:
-    """Install the seal once.  A broken catalog still runs the tests."""
+    """Install the seal once.  A catalog error does not disable sealing."""
 
     if getattr(config, _CONFIG_KEY, None) is not None:
         return
@@ -438,12 +437,8 @@ def pytest_configure(config: Any) -> None:
         )
     except Exception:
         pass
-    try:
-        oracle = _oracle_for(config)
-        repo = _repo_for(config)
-    except Exception:
-        setattr(config, _CONFIG_KEY, {"enabled": False})
-        return
+    oracle = _oracle_for(config)
+    repo = _repo_for(config)
     setattr(
         config,
         _CONFIG_KEY,
@@ -456,14 +451,13 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
 
     state = getattr(config, _CONFIG_KEY, None)
     if not isinstance(state, dict) or not state.get("enabled"):
-        return
+        raise PytestSealCatalogError("pytest AST sealing cannot be disabled")
     oracle: PytestSealOracle = state["oracle"]
     repo: Path = state["repo"]
     closures: dict[Path, tuple[Path, ...] | None] = {}
-    try:
-        import pytest
-    except Exception:
-        return
+    sealed_by_path: dict[Path, PytestAstSeal | None] = {}
+    import pytest
+
     for item in items:
         if item_opted_out(item):
             continue
@@ -472,10 +466,10 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
             continue
         if path not in closures:
             closures[path] = ast_closure(repo, path)
-        files = closures[path]
-        if not files:
-            continue
-        sealed = seal_files(files, oracle)
+        if path not in sealed_by_path:
+            files = closures[path]
+            sealed_by_path[path] = seal_files(files, oracle) if files else None
+        sealed = sealed_by_path[path]
         if sealed is None or not sealed.complete:
             continue
         nodeid = str(getattr(item, "nodeid", "") or "")
@@ -522,7 +516,13 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     del exitstatus
     config = getattr(session, "config", None)
     state = getattr(config, _CONFIG_KEY, None)
-    if not isinstance(state, dict) or not state.get("wrote"):
+    if not isinstance(state, dict) or not state.get("enabled"):
+        raise PytestSealCatalogError("pytest AST sealing cannot be disabled")
+    oracle = state.get("oracle")
+    close = getattr(oracle, "close", None)
+    if callable(close):
+        close()
+    if not state.get("wrote"):
         return
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (

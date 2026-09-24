@@ -78,3 +78,26 @@ def test_seal_cannot_be_disabled_and_refuses_control_duckdb(tmp_path: Path) -> N
     assert item_opted_out(_Marked()) is False
     with pytest.raises(PytestSealCatalogError):
         DuckDbQuackSealOracle(tmp_path / "control.duckdb")
+
+
+def test_configure_keeps_sealing_enabled(tmp_path: Path, monkeypatch) -> None:
+    from ipfs_accelerate_py.testing import pytest_ast_seal as seal
+
+    class _Config:
+        def addinivalue_line(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+
+    monkeypatch.setenv(seal.SEAL_DUCKDB_ENV, str(tmp_path / "pytest_ast_seal.duckdb"))
+    config = _Config()
+    seal.pytest_configure(config)
+    state = getattr(config, seal._CONFIG_KEY)
+    assert state["enabled"] is True
+    seal.pytest_configure(config)
+    assert getattr(config, seal._CONFIG_KEY) is state
+    state["oracle"].close()
+
+    blocked = _Config()
+    monkeypatch.setenv(seal.SEAL_DUCKDB_ENV, str(tmp_path / "control.duckdb"))
+    with pytest.raises(PytestSealCatalogError):
+        seal.pytest_configure(blocked)
+    assert getattr(blocked, seal._CONFIG_KEY, None) is None

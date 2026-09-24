@@ -63,17 +63,21 @@ def pytest_configure(config):
     Args:
         config: pytest config object
     """
-    try:
-        from ipfs_accelerate_py.testing import pytest_ast_seal as _pytest_ast_seal
+    from ipfs_accelerate_py.testing import pytest_ast_seal as _pytest_ast_seal
 
-        if not config.pluginmanager.hasplugin("ipfs-pytest-ast-seal"):
-            config.pluginmanager.register(
-                _pytest_ast_seal,
-                name="ipfs-pytest-ast-seal",
-            )
-        _pytest_ast_seal.pytest_configure(config)
-    except Exception:
-        pass
+    if not config.pluginmanager.hasplugin(
+        "ipfs-pytest-ast-seal"
+    ) and not config.pluginmanager.hasplugin(
+        "ipfs_accelerate_py.testing.pytest_ast_seal"
+    ):
+        config.pluginmanager.register(
+            _pytest_ast_seal,
+            name="ipfs-pytest-ast-seal",
+        )
+    _pytest_ast_seal.pytest_configure(config)
+    seal_state = getattr(config, _pytest_ast_seal._CONFIG_KEY, None)
+    if not isinstance(seal_state, dict) or not seal_state.get("enabled"):
+        raise pytest.UsageError("pytest AST sealing cannot be disabled")
     # Register markers
     config.addinivalue_line("markers", "model: mark test as model test")
     config.addinivalue_line("markers", "text: mark test as text model test")
