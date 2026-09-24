@@ -1628,6 +1628,75 @@ class _ENode:
     children: tuple[int, ...]
 
 
+def _mirror_equality_rewrite(receipt: Any) -> Any:
+    """Record an equality rewrite by theory id and closed status. Terms are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        theory_id = str(getattr(receipt, "theory_id", "") or "equality-rewrite")
+        raw_status = getattr(receipt, "status", "")
+        status = str(getattr(raw_status, "value", raw_status) or "")
+        if status not in {item.value for item in EqualityRewriteStatus}:
+            status = "recorded"
+        reason = str(getattr(receipt, "reason_code", "") or "")
+        if reason not in {item.value for item in ProgramRepairReason}:
+            reason = "recorded"
+        record_ref = f"{theory_id}:{status}:{reason}"
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="equality_rewrite_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
+def _mirror_equality_replay(theory_id: str, step_count: int) -> None:
+    """Record an equality replay by theory id and step count. Terms are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = f"{theory_id or 'equality-replay'}:{int(step_count)}"
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="equality_replay_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
+def _mirror_equality_extract(theory_id: str) -> None:
+    """Record an equality extraction by theory id. The extracted term is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(theory_id or "equality-extract")
+        mirror_work_record(
+            catalog_kind="proof_certificate",
+            record_kind="equality_extract_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
 class EqualityEGraph:
     """Typed e-graph with congruence rebuild under a declared reviewed theory.
 
@@ -2283,7 +2352,7 @@ class EqualityEGraph:
         independent_equivalence: str = "",
         independent_effect: str = "",
     ) -> EqualityRewriteReceipt:
-        return EqualityRewriteReceipt(
+        return _mirror_equality_rewrite(EqualityRewriteReceipt(
             theory_id=self.theory.theory_id,
             source_term=source,
             target_term=target,
@@ -2307,7 +2376,7 @@ class EqualityEGraph:
             independent_effect=independent_effect,
             side_condition_results=tuple(dict.fromkeys(self._side_results))[:MAX_REASON_CODES],
             capabilities=equality_saturation_capabilities(),
-        )
+        ))
 
     def prove(self, source: str, target: str) -> EqualityRewriteReceipt:
         source_t = _text(source, "source_term", limit=MAX_SPAN_BYTES)
@@ -2734,7 +2803,9 @@ def replay_equality_rewrites(
         theory,
         max_depth=_positive_int(max_depth, "max_depth", maximum=MAX_REWRITE_STEPS),
     )
-    return replayed.render()
+    rendered = replayed.render()
+    _mirror_equality_replay(theory.theory_id, len(normalized))
+    return rendered
 
 
 def extract_under_equality_theory(
@@ -2753,7 +2824,9 @@ def extract_under_equality_theory(
     graph = EqualityEGraph(theory, max_depth=max_depth, max_nodes=max_nodes)
     graph.add_term(term)
     graph.saturate()
-    return graph.extract(term)
+    extracted = graph.extract(term)
+    _mirror_equality_extract(theory.theory_id)
+    return extracted
 
 
 def prove_equality_under_theory(

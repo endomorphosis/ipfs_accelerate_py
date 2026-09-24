@@ -890,6 +890,32 @@ class PlanR2RemoteExactEnvelopeJournal:
             return MappingProxyType(dict(response))
 
 
+def _mirror_plan_r2_bind(result: Any, record_kind: str, capability_cid: str) -> Any:
+    """Record a Plan-R2 bind by capability id. Channels and journals are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record_kind not in {
+            "plan_r2_envelope_journal_binding",
+            "plan_r2_owner_gateway_binding",
+        }:
+            return result
+        record_ref = str(capability_cid or record_kind)
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 def bind_plan_r2_remote_exact_envelope_journal(
     *,
     store: PlanRevisionStore,
@@ -899,10 +925,14 @@ def bind_plan_r2_remote_exact_envelope_journal(
 
     if type(admission) is not VerifiedPlanR2RemoteOwnerAdmission:
         raise PlanR2RemoteOwnerError("remote Plan-R2 journal requires exact verified admission")
-    return PlanR2RemoteExactEnvelopeJournal(
-        _JOURNAL_FACTORY_TOKEN,
-        store=store,
-        admission=admission,
+    return _mirror_plan_r2_bind(
+        PlanR2RemoteExactEnvelopeJournal(
+            _JOURNAL_FACTORY_TOKEN,
+            store=store,
+            admission=admission,
+        ),
+        "plan_r2_envelope_journal_binding",
+        admission.capability_cid,
     )
 
 
@@ -1126,10 +1156,14 @@ def bind_plan_r2_process_remote_owner_gateway(
 ) -> PlanR2ProcessRemoteOwnerGateway:
     """Construct the distinct gateway; no endpoint, token, or callback accepted."""
 
-    return PlanR2ProcessRemoteOwnerGateway(
-        admission=admission,
-        channel=channel,
-        journal=journal,
+    return _mirror_plan_r2_bind(
+        PlanR2ProcessRemoteOwnerGateway(
+            admission=admission,
+            channel=channel,
+            journal=journal,
+        ),
+        "plan_r2_owner_gateway_binding",
+        admission.capability_cid,
     )
 
 
