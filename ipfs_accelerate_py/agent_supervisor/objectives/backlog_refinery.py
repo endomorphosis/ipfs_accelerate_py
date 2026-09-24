@@ -6576,7 +6576,7 @@ def record_retry_budget_findings(
         if commit_results:
             strategy["last_retry_budget_commit_results"] = commit_results
             write_json(strategy_path, strategy)
-    return findings
+    return _mirror_finding_batch(findings, "direct_retry_budget_record")
 
 
 def record_dependency_guardrail_findings(
@@ -8016,7 +8016,7 @@ def record_codebase_scan_findings(
     health_policy = AnalyzerHealthThresholds.from_value(health_thresholds)
     policy_metadata = analyzer_health_metadata(thresholds=health_policy)
     if not todo_path.exists():
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.FAILED,
             "preflight",
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8028,7 +8028,7 @@ def record_codebase_scan_findings(
                 **empty_codebase_scan_accounting_metadata(),
                 "missing_input": "todo_path",
             },
-        )
+        ))
     retired_duplicates = retire_duplicate_codebase_scan_tasks(
         todo_path,
         task_prefix=task_prefix,
@@ -8068,7 +8068,7 @@ def record_codebase_scan_findings(
     if max_findings <= 0:
         if retired_duplicates or seen != strategy_seen:
             write_json(strategy_path, strategy)
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.DISABLED,
             "disabled",
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8079,7 +8079,7 @@ def record_codebase_scan_findings(
                 **empty_codebase_scan_accounting_metadata(),
                 "cause": "non_positive_max_findings",
             },
-        )
+        ))
     should_scan, mode, current_open, task_count = should_refill_backlog(
         todo_text=todo_text,
         state_path=state_path,
@@ -8099,7 +8099,7 @@ def record_codebase_scan_findings(
             if mode == "cooldown"
             else ScanTerminalReason.THRESHOLD_SATISFIED
         )
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             reason,
             mode,
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8111,7 +8111,7 @@ def record_codebase_scan_findings(
                 "open_task_count": current_open,
                 "task_count": task_count,
             },
-        )
+        ))
     capacity_open_count = 0 if mode.startswith("runnable_drained") else current_open
     refill_capacity = refill_open_task_capacity(
         current_open=capacity_open_count,
@@ -8119,7 +8119,7 @@ def record_codebase_scan_findings(
         max_findings=max_findings,
     )
     if refill_capacity <= 0:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.THRESHOLD_SATISFIED,
             "open_task_pressure_bound",
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8134,7 +8134,7 @@ def record_codebase_scan_findings(
                 "open_task_target": max(0, int(min_open_tasks))
                 + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
             },
-        )
+        ))
 
     canaries = run_codebase_analyzer_canaries()
     scan_metadata = analyzer_health_metadata(
@@ -8165,7 +8165,7 @@ def record_codebase_scan_findings(
         )
         findings = list(admission.findings)
     except TimeoutError as exc:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.TIMED_OUT,
             mode,
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8173,10 +8173,10 @@ def record_codebase_scan_findings(
             started_at,
             error=str(exc) or type(exc).__name__,
             metadata={**scan_metadata, **empty_codebase_scan_accounting_metadata()},
-        )
+        ))
     except Exception as exc:
         logger.exception("Codebase refill scan failed")
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.FAILED,
             mode,
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8184,7 +8184,7 @@ def record_codebase_scan_findings(
             started_at,
             error=f"{type(exc).__name__}: {exc}",
             metadata={**scan_metadata, **empty_codebase_scan_accounting_metadata()},
-        )
+        ))
     if not admission.policy_valid:
         details_artifact = persist_codebase_scan_inventory(
             inventory,
@@ -8204,7 +8204,7 @@ def record_codebase_scan_findings(
             str(item.get("message") or item.get("reason_code") or "")
             for item in admission.policy_errors
         )
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.FAILED,
             mode,
             CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8224,7 +8224,7 @@ def record_codebase_scan_findings(
                 "admission_policy_errors": [dict(item) for item in admission.policy_errors],
             },
             identity=source_identity,
-        )
+        ))
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
     strategy["last_codebase_scan_objective_revision"] = objective_id
@@ -8381,7 +8381,7 @@ def record_codebase_scan_findings(
         if health_completion_safe:
             strategy["last_drained_codebase_scan_task_count"] = task_count
         write_json(strategy_path, strategy)
-        return receipt
+        return _mirror_direct_scan(receipt)
 
     appended: list[dict[str, Any]] = []
     bundle_records: list[dict[str, Any]] = []
@@ -8580,7 +8580,7 @@ def record_codebase_scan_findings(
     )
     strategy["last_codebase_scan_health"] = health.to_dict()
     write_json(strategy_path, strategy)
-    return build_scan_result(
+    return _mirror_direct_scan(build_scan_result(
         reason,
         mode,
         CODEBASE_SCAN_ANALYZER_VERSION,
@@ -8610,7 +8610,7 @@ def record_codebase_scan_findings(
             "open_task_target": max(0, int(min_open_tasks))
             + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
         },
-    )
+    ))
 
 
 def record_codebase_scan_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
@@ -8632,6 +8632,8 @@ def _mirror_finding_batch(result: Any, record_kind: str) -> Any:
             "configured_codebase_scan_record",
             "configured_retry_budget_record",
             "codebase_audit_record",
+            "direct_refill_scan_record",
+            "direct_retry_budget_record",
         }:
             return result
         closed_reasons = {
@@ -8659,6 +8661,45 @@ def _mirror_finding_batch(result: Any, record_kind: str) -> Any:
         mirror_work_record(
             catalog_kind="metadata",
             record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _mirror_direct_scan(result: Any) -> Any:
+    """Record a direct refill scan. Paths and finding bodies are not stored."""
+
+    mode = str(getattr(result, "scan_mode", "") or "")
+    if mode not in {"codebase", "objective"}:
+        mode = "scan"
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        raw_reason = getattr(result, "terminal_reason", "")
+        reason = str(getattr(raw_reason, "value", raw_reason) or "recorded")
+        if reason not in {
+            "generated",
+            "exhausted",
+            "duplicate_only",
+            "threshold_satisfied",
+            "cooldown",
+            "disabled",
+            "partial",
+            "failed",
+            "timed_out",
+        }:
+            reason = "recorded"
+        count = int(getattr(result, "generated_count", 0) or 0)
+        record_ref = f"{mode}:{reason}:{count}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="direct_refill_scan_record",
             record_ref=record_ref,
             subject_kind="record_cid",
             subject_ref=record_ref,
@@ -8723,21 +8764,21 @@ def record_objective_backlog_findings(
     task_prefix = task_id_prefix(task_prefix)
     started_at = datetime.now(timezone.utc)
     if max_findings <= 0:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.DISABLED,
             "disabled",
             OBJECTIVE_SCAN_ANALYZER_VERSION,
             repo_root,
             started_at,
             metadata={"cause": "non_positive_max_findings"},
-        )
+        ))
     missing_inputs = [
         name
         for name, path in (("todo_path", todo_path), ("objective_path", objective_path))
         if not path.exists()
     ]
     if missing_inputs:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.FAILED,
             "preflight",
             OBJECTIVE_SCAN_ANALYZER_VERSION,
@@ -8745,7 +8786,7 @@ def record_objective_backlog_findings(
             started_at,
             error=f"missing required scan input: {', '.join(missing_inputs)}",
             metadata={"missing_inputs": missing_inputs},
-        )
+        ))
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
     should_scan, mode, current_open, task_count = should_refill_backlog(
@@ -8765,14 +8806,14 @@ def record_objective_backlog_findings(
             if mode == "cooldown"
             else ScanTerminalReason.THRESHOLD_SATISFIED
         )
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             reason,
             mode,
             OBJECTIVE_SCAN_ANALYZER_VERSION,
             repo_root,
             started_at,
             metadata={"open_task_count": current_open, "task_count": task_count},
-        )
+        ))
     capacity_open_count = 0 if mode.startswith("runnable_drained") else current_open
     refill_capacity = refill_open_task_capacity(
         current_open=capacity_open_count,
@@ -8780,7 +8821,7 @@ def record_objective_backlog_findings(
         max_findings=max_findings,
     )
     if refill_capacity <= 0:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             ScanTerminalReason.THRESHOLD_SATISFIED,
             "open_task_pressure_bound",
             OBJECTIVE_SCAN_ANALYZER_VERSION,
@@ -8793,7 +8834,7 @@ def record_objective_backlog_findings(
                 "open_task_target": max(0, int(min_open_tasks))
                 + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
             },
-        )
+        ))
 
     seen = {
         str(item)
@@ -8890,7 +8931,7 @@ def record_objective_backlog_findings(
         ScanTerminalReason.GENERATED,
         ScanTerminalReason.EXHAUSTED,
     }:
-        return build_scan_result(
+        return _mirror_direct_scan(build_scan_result(
             generation_result.terminal_reason,
             mode,
             generation_result.analyzer_version,
@@ -8898,8 +8939,8 @@ def record_objective_backlog_findings(
             started_at,
             error=generation_result.error,
             metadata=generation_result.metadata,
-        )
-    return build_scan_result(
+        ))
+    return _mirror_direct_scan(build_scan_result(
         ScanTerminalReason.GENERATED if appended else ScanTerminalReason.EXHAUSTED,
         mode,
         generation_result.analyzer_version,
@@ -8921,7 +8962,7 @@ def record_objective_backlog_findings(
             + max(0, DEFAULT_REFILL_OPEN_TASK_HEADROOM),
             "healthy_epoch_required_for_completion": True,
         },
-    )
+    ))
 
 
 def record_objective_backlog_findings_legacy(**kwargs: Any) -> list[dict[str, Any]]:
@@ -9025,7 +9066,7 @@ def record_configured_objective_backlog_findings(
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
-    return _mirror_finding_batch(result, "configured_objective_scan_record")
+    return result
 
 
 def record_configured_codebase_scan_findings(
@@ -9095,7 +9136,7 @@ def record_configured_codebase_scan_findings(
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
-    return _mirror_finding_batch(result, "configured_codebase_scan_record")
+    return result
 
 
 def record_configured_retry_budget_findings(
@@ -9153,7 +9194,7 @@ def record_configured_retry_budget_findings(
         for finding in findings:
             if finding.get("failure_kind") == "validation":
                 finding.pop("failure_kind", None)
-    return _mirror_finding_batch(findings, "configured_retry_budget_record")
+    return findings
 
 
 def _configured_recorder_kwargs(
