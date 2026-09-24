@@ -443,6 +443,77 @@ def _mirror_task_validation_result(receipt: Any, outcome: str) -> Any:
     return receipt
 
 
+def _mirror_typed_status_cas(result: Any, task_cid: str, status: str) -> Any:
+    """Record a typed status CAS by task id and closed status. Receipt bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = str(status or "")
+        if closed not in TYPED_TASK_STATUS_VOCABULARY:
+            return result
+        task = str(task_cid or "")
+        record_ref = f"{task}:{closed}" if task else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_status_cas_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _mirror_typed_claim_recovery(result: Any, record_kind: str) -> Any:
+    """Record a typed claim recovery by task id. Reservation bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        if record_kind not in {"typed_dead_claim_recovery", "typed_legacy_unstall_recovery"}:
+            return result
+        task = str(getattr(result, "subject_id", "") or "")
+        record_ref = task or record_kind
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _mirror_typed_retry_cooldown(result: Any) -> Any:
+    """Record a typed retry cooldown by task id. Fences, delays, and reasons are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task = str(getattr(result, "subject_id", "") or "")
+        record_ref = task or "typed-retry-cooldown"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_retry_cooldown_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TypedDatabaseTaskSource:
     """Closed named-operation adapter consumed by DatabaseImplementationDaemon."""
 
@@ -2254,14 +2325,14 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "completed task status CAS returned no normalized completion receipt"
             )
-        return DatabaseCASResult(
+        return _mirror_typed_status_cas(DatabaseCASResult(
             task=updated,
             previous_status=prior.status,
             revision=updated.revision,
             event_cursor=self.snapshot().event_cursor,
             changed=bool(result.changed),
             receipt_cid=completion_receipt_cid or str(result.result_digest or ""),
-        )
+        ), str(prior.task_cid), requested_status)
 
     cas_status = compare_and_set_status
 
@@ -2340,7 +2411,7 @@ class TypedDatabaseTaskSource:
                 "dead claim recovery receipt is inconsistent"
             )
         details = MappingProxyType(dict(result.result))
-        return IntentReceipt(
+        return _mirror_typed_claim_recovery(IntentReceipt(
             event_id=str(result.result_digest or content_identity(dict(details))),
             event_type="TASK_DEAD_CLAIM_RESERVATION_RECOVERED",
             global_sequence=0,
@@ -2349,7 +2420,7 @@ class TypedDatabaseTaskSource:
             revision=int(updated.revision),
             changed=bool(result.changed),
             details=details,
-        )
+        ), "typed_dead_claim_recovery")
 
     def recover_legacy_unstalled_claim(
         self,
@@ -2419,7 +2490,7 @@ class TypedDatabaseTaskSource:
                 "legacy unstall recovery receipt is inconsistent"
             )
         details = MappingProxyType(dict(result.result))
-        return IntentReceipt(
+        return _mirror_typed_claim_recovery(IntentReceipt(
             event_id=str(
                 result.result_digest or content_identity(dict(details))
             ),
@@ -2430,7 +2501,7 @@ class TypedDatabaseTaskSource:
             revision=int(updated.revision),
             changed=bool(result.changed),
             details=details,
-        )
+        ), "typed_legacy_unstall_recovery")
 
     def record_validation_result(
         self,
@@ -3024,7 +3095,7 @@ class TypedDatabaseTaskSource:
                 + ", ".join(mismatches)
             )
         frozen = MappingProxyType(details)
-        return IntentReceipt(
+        return _mirror_typed_retry_cooldown(IntentReceipt(
             event_id=str(result.result_digest or content_identity(details)),
             event_type="TASK_RETRY_COOLDOWN_RECORDED",
             global_sequence=0,
@@ -3033,7 +3104,7 @@ class TypedDatabaseTaskSource:
             revision=int(row["revision"]),
             changed=bool(result.changed),
             details=frozen,
-        )
+        ))
 
     def record_queue_backoff_and_cas_status(
         self,
