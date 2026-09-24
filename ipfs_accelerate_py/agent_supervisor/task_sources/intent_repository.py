@@ -775,6 +775,36 @@ def _mirror_validation_result(receipt: Any, outcome: str) -> Any:
     return receipt
 
 
+def _mirror_task_attempt(receipt: Any, status: str) -> Any:
+    """Record a task attempt by task id and closed status. Fence values are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task_cid = str(
+            getattr(receipt, "task_cid", "") or getattr(receipt, "subject_id", "") or ""
+        )
+        normalized = str(status or "").strip().lower()
+        closed = (
+            normalized
+            if normalized in {"started", "running", "succeeded", "failed", "blocked", "cancelled"}
+            else "recorded"
+        )
+        record_ref = f"{task_cid}:{closed}" if task_cid else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="task_attempt_record",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task_cid or record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class IntentRepository:
     """Transactional authority for intent-domain control-plane state.
 
@@ -3400,7 +3430,7 @@ class IntentRepository:
                     1,
                 ],
             )
-            return self._append_event(
+            receipt = self._append_event(
                 connection,
                 event_type=IntentEventType.ATTEMPT_RECORDED,
                 subject_id=attempt_id,
@@ -3417,6 +3447,7 @@ class IntentRepository:
                     "started_at": now,
                 },
             )
+        return _mirror_task_attempt(receipt, status_text)
 
     def block_task(
         self,

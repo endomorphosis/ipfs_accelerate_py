@@ -848,6 +848,38 @@ class PlannedTask:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_rollout_record(record: Any) -> Any:
+    """Record a rollout by id and closed decision. The rollout body is not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        rollout_id = str(getattr(record, "rollout_id", "") or "")
+        raw = getattr(record, "decision", "")
+        decision = str(getattr(raw, "value", raw) or "")
+        if decision not in {
+            "promote",
+            "reject",
+            "retain_baseline",
+            "rollback",
+            "abstain",
+        }:
+            decision = "recorded"
+        record_ref = f"{rollout_id}:{decision}" if rollout_id else decision
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="improvement_rollout_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return record
+
+
 class ImprovementEpochRepository:
     """DuckDB authority for improvement epochs, challengers, and planning."""
 
@@ -1424,7 +1456,7 @@ class ImprovementEpochRepository:
                     ],
                 )
                 self._commit_if_idle(connection)
-                return RolloutRecord(
+                record = RolloutRecord(
                     rollout_id=rollout_id,
                     epoch_id=eid,
                     decision=dec,
@@ -1436,6 +1468,7 @@ class ImprovementEpochRepository:
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_rollout_record(record)
 
     def record_token_metrics(
         self,

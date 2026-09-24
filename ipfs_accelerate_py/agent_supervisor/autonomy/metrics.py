@@ -75,6 +75,50 @@ def _wake_counts(value: Any) -> dict[str, int]:
     return dict(sorted(result.items()))
 
 
+def _mirror_autonomy_wake(kind: str) -> None:
+    """Record a bounded wake kind. Counts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(kind or "wake")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="autonomy_wake_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+
+
+def _mirror_model_action(action: str) -> None:
+    """Record a closed model action. Token counts are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = action if action in {
+            "CALL_LOCAL_SMALL_MODEL",
+            "CALL_REMOTE_STANDARD_MODEL",
+            "CALL_REMOTE_STRONG_MODEL",
+        } else "recorded"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="model_action_record",
+            record_ref=closed,
+            subject_kind="record_cid",
+            subject_ref=closed,
+        )
+    except Exception:
+        pass
+
+
 def _mirror_autonomy_status(status: str) -> None:
     """Record a closed autonomy status. Reason codes are not stored."""
 
@@ -261,6 +305,7 @@ class AutonomyMetrics:
             self._safety_timer_wakes = _counter(
                 self._safety_timer_wakes + 1, "safety_timer_wakes"
             )
+        _mirror_autonomy_wake(key)
 
     def record_idle(self, *, status: str = "idle", reason_codes: tuple[str, ...] = ()) -> None:
         self._idle_cycles = _counter(self._idle_cycles + 1, "idle_cycles")
@@ -289,6 +334,7 @@ class AutonomyMetrics:
             self._strong_model_calls = _counter(
                 self._strong_model_calls + 1, "strong_model_calls"
             )
+        _mirror_model_action(str(kind.value))
 
     def record_status(self, status: str, *, reason_codes: tuple[str, ...] = ()) -> None:
         previous = self._last_status

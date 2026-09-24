@@ -10515,6 +10515,37 @@ def test_mirror_remote_evidence_validation_backoff_and_digests(
     assert work["catalogs_linked"] is True
 
 
+def test_mirror_wake_action_unknown_rollout_and_attempt(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", str(tmp_path / "meta_index.duckdb"))
+    kinds = (
+        ("autonomy_wake_record", "window", "metadata", "record_cid"),
+        ("model_action_record", "CALL_LOCAL_SMALL_MODEL", "metadata", "record_cid"),
+        ("unknown_outcome_record", "run:1", "metadata", "record_cid"),
+        ("improvement_rollout_record", "rollout:1:abstain", "metadata", "record_cid"),
+        ("task_attempt_record", "task:1:started", "metadata", "task_id"),
+    )
+    for record_kind, record_ref, catalog_kind, subject_kind in kinds:
+        subject_ref = "task:1" if subject_kind == "task_id" else record_ref
+        item = mirror_work_record(
+            catalog_kind=catalog_kind,
+            record_kind=record_kind,
+            record_ref=record_ref,
+            subject_kind=subject_kind,
+            subject_ref=subject_ref,
+        )
+        assert item["completion_authority"] is False
+        assert item["n"] >= 1
+    work = orchestrate_semantic_work(
+        subject_kind="tree_id",
+        subject_ref="tree:work",
+        tree_id="tree:work",
+    )
+    assert work["extra_gate_attached"] is False
+    assert work["catalogs_linked"] is True
+
+
 def test_ducklake_projection_is_observational(tmp_path) -> None:
     index = SupervisorMetaIndex(
         tmp_path / "meta_index.duckdb",

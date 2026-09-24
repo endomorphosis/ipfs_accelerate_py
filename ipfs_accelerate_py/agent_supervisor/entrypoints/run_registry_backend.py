@@ -193,6 +193,27 @@ class EffectJournalEntry:
     receipt_cid: str = ""
 
 
+def _mirror_unknown_outcome(receipt: Any) -> Any:
+    """Record an unknown-outcome adoption by run id. Effect keys are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        record_ref = str(getattr(receipt, "run_id", "") or "unknown-outcome")
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="unknown_outcome_record",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return receipt
+
+
 class DuckDBRunRegistryBackend:
     """Single-writer DuckDB run truth with deterministic effect continuation."""
 
@@ -410,13 +431,15 @@ class DuckDBRunRegistryBackend:
         entry = self._effect_transition(
             run_id, effect_key, "unknown", effect_cid=reason_cid or "unknown"
         )
-        return UnknownOutcomeAdoptionReceipt(
-            run_id=run_id,
-            effect_key=effect_key,
-            phase=entry.phase,
-            intent_cid=entry.intent_cid,
-            reason_cid=reason_cid or entry.effect_cid,
-            replay_prohibited=True,
+        return _mirror_unknown_outcome(
+            UnknownOutcomeAdoptionReceipt(
+                run_id=run_id,
+                effect_key=effect_key,
+                phase=entry.phase,
+                intent_cid=entry.intent_cid,
+                reason_cid=reason_cid or entry.effect_cid,
+                replay_prohibited=True,
+            )
         )
 
     def append_history(
