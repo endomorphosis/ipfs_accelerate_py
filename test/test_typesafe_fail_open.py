@@ -324,6 +324,8 @@ def test_new_helpers_do_not_call_http_without_key(
     assert advise_board_task_kind({"metadata": {"kind": "legal"}, "title": "license"}) == "legal"
     snap = typesafe_ops_snapshot()
     assert snap["accepted_as_authority"] is False
+    assert snap["recovery_plan_delta_outstanding"] is False
+    assert snap["completion_authority"] is False
     policy = recommend_skip_policy()
     assert policy["auto_apply"] is False
     assert should_trust_skip(family="fol_identity", confidence=0.92) is True

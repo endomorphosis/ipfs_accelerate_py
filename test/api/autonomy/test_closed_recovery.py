@@ -148,6 +148,16 @@ def test_queue_empty_is_not_success_while_recovery_plan_delta_is_outstanding(
     apply_recovery_plan(view, (), stale=True, target_cid="task:empty")
     assert outstanding_recovery_work() is True
     assert last_closed_recovery()["delta_item_cids"]
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import (
+        typesafe_ops_snapshot,
+    )
+
+    snap = typesafe_ops_snapshot()
+    assert snap["recovery_plan_delta_outstanding"] is True
+    assert snap["completion_authority"] is False
+    assert snap["closed_recovery"]["outstanding"] is True
     consume_recovery_plan_delta()
     assert outstanding_recovery_work() is False
     assert last_closed_recovery()["consumed"] is True
+    cleared = typesafe_ops_snapshot()
+    assert cleared["recovery_plan_delta_outstanding"] is False

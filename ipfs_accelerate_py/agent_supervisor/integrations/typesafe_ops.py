@@ -61,6 +61,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         last_watchdog_classification,
     )
 
+    recovery = _last_closed_recovery()
     return {
         "accepted_as_authority": False,
         "trace_guardrail": _advisory(last_trace_guardrail()),
@@ -83,7 +84,9 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "watchdog": _advisory(last_watchdog_classification()),
         "calibration": recommend_skip_policy(),
         "autoresearch": _advisory(_last_autoresearch()),
-        "closed_recovery": _advisory(_last_closed_recovery()),
+        "closed_recovery": _advisory(recovery),
+        "recovery_plan_delta_outstanding": recovery.get("outstanding") is True,
+        "completion_authority": False,
     }
 
 
@@ -91,11 +94,14 @@ def _last_closed_recovery() -> dict[str, Any]:
     try:
         from ipfs_accelerate_py.agent_supervisor.autonomy.closed_recovery import (
             last_closed_recovery,
+            outstanding_recovery_work,
         )
 
-        return last_closed_recovery()
+        payload = last_closed_recovery()
+        payload["outstanding"] = outstanding_recovery_work(payload)
+        return payload
     except Exception:
-        return {}
+        return {"outstanding": False}
 
 
 def _last_autoresearch() -> dict[str, Any]:
