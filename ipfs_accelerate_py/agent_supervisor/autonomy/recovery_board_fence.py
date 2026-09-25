@@ -217,11 +217,23 @@ def apply_recovery_board_fence(
     record = getattr(coordinator, "record_recovery_plan_delta", None)
     if callable(record) and items:
         try:
-            record(
-                task_cid=_target_cid(target_cid),
-                items=tuple(item.to_dict() for item in items),
-            )
+            kwargs: dict[str, Any] = {
+                "task_cid": _target_cid(target_cid),
+                "items": tuple(item.to_dict() for item in items),
+            }
+            if now_ms is not None:
+                kwargs["now_ms"] = now_ms
+            record(**kwargs)
             reasons.append("recovery_delta_recorded")
+        except TypeError:
+            try:
+                record(
+                    task_cid=_target_cid(target_cid),
+                    items=tuple(item.to_dict() for item in items),
+                )
+                reasons.append("recovery_delta_recorded")
+            except Exception:
+                reasons.append("recovery_delta_record_error")
         except Exception:
             reasons.append("recovery_delta_record_error")
     payload["reason_codes"] = tuple(reasons)

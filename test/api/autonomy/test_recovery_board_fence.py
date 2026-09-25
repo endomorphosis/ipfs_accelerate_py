@@ -45,7 +45,7 @@ class _FakeCoordinator:
         return {"state": "expired"}
 
     def record_recovery_plan_delta(
-        self, *, task_cid: str, items: tuple[object, ...]
+        self, *, task_cid: str, items: tuple[object, ...], **_kwargs: object
     ) -> None:
         self.recorded.append((task_cid, tuple(items)))
 
@@ -341,5 +341,80 @@ def test_invalidate_persists_expired_claim_in_duckdb(tmp_path) -> None:
         )
         assert replacement.attempt_number == claim.attempt_number + 1
         assert coordinator.get_task_claim(replacement.claim_id).state is LeaseState.ACCEPTED
+        from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+            LeaseKind,
+            RECOVERY_PLAN_DELTA_EVENT,
+            exclusive_scope_key,
+        )
+
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope="task:board-fence",
+            task_cid="task:board-fence",
+        )
+        events = [
+            event
+            for event in coordinator.lease_events(scope_key=scope_key)
+            if event["event_type"] == RECOVERY_PLAN_DELTA_EVENT
+        ]
+        assert len(events) == 1
+        assert events[0]["body"]["accepted_as_authority"] is False
+        assert events[0]["body"]["completes_task"] is False
+        assert events[0]["body"]["task_cid"] == "task:board-fence"
+        assert "record_uncertainty" in events[0]["body"]["operations"]
+    finally:
+        coordinator.close()
+
+
+def test_record_recovery_plan_delta_is_idempotent_and_claimed_safe(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationError,
+        RECOVERY_PLAN_DELTA_EVENT,
+        duckdb_available,
+        open_database_coordinator,
+    )
+
+    if not duckdb_available():
+        pytest.skip("DuckDB is required for the board-owner claim fence")
+
+    items = build_recovery_delta_items(
+        {
+            "action": "invalidate_stale_evidence",
+            "admit": False,
+            "stall_reason": "stale_evidence",
+        },
+        target_cid="task:delta",
+        lifecycle=LifecycleState.CLAIMED,
+    )
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
+    try:
+        first = coordinator.record_recovery_plan_delta(
+            task_cid="task:delta",
+            items=tuple(item.to_dict() for item in items),
+            now_ms=5,
+        )
+        second = coordinator.record_recovery_plan_delta(
+            task_cid="task:delta",
+            items=tuple(item.to_dict() for item in items),
+            now_ms=9,
+        )
+        assert first["recorded"] is True
+        assert first["accepted_as_authority"] is False
+        assert first["completes_task"] is False
+        assert second["idempotent"] is True
+        assert second["event_id"] == first["event_id"]
+        events = [
+            event
+            for event in coordinator.lease_events()
+            if event["event_type"] == RECOVERY_PLAN_DELTA_EVENT
+        ]
+        assert len(events) == 1
+        with pytest.raises(DatabaseCoordinationError, match="claimed-safe"):
+            coordinator.record_recovery_plan_delta(
+                task_cid="task:delta",
+                items=({"operation": "amend_unstarted_task", "item_key": "bad"},),
+            )
+        empty = coordinator.record_recovery_plan_delta(task_cid="task:delta", items=())
+        assert empty["recorded"] is False
     finally:
         coordinator.close()

@@ -93,6 +93,10 @@ TASK_ATTEMPT_SCHEMA: Final[str] = (
 LEASE_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/lease-event@1"
 )
+RECOVERY_PLAN_DELTA_EVENT: Final[str] = "recovery_plan_delta"
+_CLAIMED_SAFE_RECOVERY_OPS: Final[frozenset[str]] = frozenset(
+    {"record_uncertainty", "request_lifecycle_action"}
+)
 
 DEFAULT_LEASE_MS: Final[int] = 60_000
 DEFAULT_MAINTENANCE_SCOPE: Final[str] = "control-plane"
@@ -339,6 +343,44 @@ def _canonical_json(value: Any) -> str:
             allow_nan=False,
             default=str,
         )
+
+
+def _normalize_recovery_delta_items(
+    items: Sequence[Any],
+) -> tuple[dict[str, Any], ...]:
+    """Accept claimed-safe recovery PlanDelta items only."""
+
+    if items is None:
+        return ()
+    if isinstance(items, (str, bytes, bytearray, Mapping)):
+        raise DatabaseCoordinationError(
+            "recovery PlanDelta items must be a sequence of mappings"
+        )
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        if hasattr(item, "to_dict") and callable(getattr(item, "to_dict", None)):
+            payload = dict(item.to_dict())
+        elif isinstance(item, Mapping):
+            payload = dict(item)
+        else:
+            raise DatabaseCoordinationError(
+                "recovery PlanDelta item must be a mapping"
+            )
+        operation = str(payload.get("operation") or "").strip()
+        if operation not in _CLAIMED_SAFE_RECOVERY_OPS:
+            raise DatabaseCoordinationError(
+                f"recovery PlanDelta op {operation!r} is not claimed-safe"
+            )
+        if payload.get("completes_task") is True:
+            raise DatabaseCoordinationError(
+                "recovery PlanDelta cannot complete a task"
+            )
+        if payload.get("accepted_as_authority") is True:
+            raise DatabaseCoordinationError(
+                "recovery PlanDelta cannot be accepted as authority"
+            )
+        normalized.append(payload)
+    return tuple(normalized)
 
 
 def _bounded_mapping(
@@ -4441,6 +4483,105 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def record_recovery_plan_delta(
+        self,
+        *,
+        task_cid: str,
+        items: Sequence[Any],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Append claimed-safe recovery PlanDelta items onto ``lease_events``.
+
+        This is evidence on the existing board owner, not a second write path.
+        It never completes a task and never mutates a live claim. The same
+        ``task_cid`` + item set is replay-safe. TypeSafe is not this owner.
+        """
+
+        target = _text(task_cid, "task_cid", required=False)
+        payloads = _normalize_recovery_delta_items(items)
+        if not target or not payloads:
+            return {
+                "schema": LEASE_EVENT_SCHEMA,
+                "event_type": RECOVERY_PLAN_DELTA_EVENT,
+                "event_id": "",
+                "recorded": False,
+                "idempotent": False,
+                "accepted_as_authority": False,
+                "completes_task": False,
+                "task_cid": target,
+                "item_cids": [],
+            }
+        body = _bounded_mapping(
+            {
+                "accepted_as_authority": False,
+                "completes_task": False,
+                "typesafe_required": False,
+                "source": "closed-recovery",
+                "task_cid": target,
+                "operations": [str(item.get("operation") or "") for item in payloads],
+                "item_cids": [
+                    str(item.get("content_id") or item.get("item_key") or "")
+                    for item in payloads
+                ],
+                "items": list(payloads),
+            },
+            name="recovery_plan_delta",
+        )
+        event_id = "recovery-delta:" + hashlib.sha256(
+            _canonical_json({"task_cid": target, "items": list(payloads)}).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=target,
+            task_cid=target,
+        )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        existing = None
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                existing = connection.execute(
+                    "SELECT event_id FROM lease_events WHERE event_id = ?",
+                    [event_id],
+                ).fetchone()
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO lease_events(
+                            event_id, lease_id, scope_key, event_type,
+                            fencing_token, fence_epoch, observed_at_ms, body_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            event_id,
+                            f"recovery:{target}",
+                            scope_key,
+                            RECOVERY_PLAN_DELTA_EVENT,
+                            0,
+                            0,
+                            now,
+                            _canonical_json(body),
+                        ],
+                    )
+                self._commit_if_idle(connection)
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+        return {
+            "schema": LEASE_EVENT_SCHEMA,
+            "event_type": RECOVERY_PLAN_DELTA_EVENT,
+            "event_id": event_id,
+            "recorded": existing is None,
+            "idempotent": existing is not None,
+            "accepted_as_authority": False,
+            "completes_task": False,
+            "task_cid": target,
+            "item_cids": list(body["item_cids"]),
+        }
+
     def prepare_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
         from .unresolved_interruption_barrier import prepare
         return prepare(self, claim, **kwargs)
@@ -7230,6 +7371,7 @@ _PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
         "protect_task_claim",
         "execute_with_task_and_resource_fences",
         "expire_task_claim",
+        "record_recovery_plan_delta",
         "prepare_unresolved_interruption",
         "admit_unresolved_interruption",
         "get_unresolved_interruption",
@@ -7598,6 +7740,7 @@ __all__ = [
     "CROSS_STORE_FENCE_GUARD_SCHEMA",
     "CROSS_STORE_FENCE_GUARD_EVENT",
     "CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD",
+    "RECOVERY_PLAN_DELTA_EVENT",
     "DEFAULT_LEASE_MS",
     "DEFAULT_MAINTENANCE_SCOPE",
     "MIN_LEASE_MS",
