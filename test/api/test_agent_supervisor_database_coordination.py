@@ -476,6 +476,8 @@ def test_outstanding_recovery_plan_delta_refuses_task_completion(
             now_ms=5,
         )
         with pytest.raises(DatabaseCoordinationError, match="recovery PlanDelta outstanding"):
+            coordinator.mark_task_complete("task:guarded", status="succeeded")
+        with pytest.raises(DatabaseCoordinationError, match="recovery PlanDelta outstanding"):
             coordinator.prepare_task_completion(
                 claim,
                 control_expected_revision=1,

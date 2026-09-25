@@ -2015,6 +2015,9 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                _refuse_completion_if_recovery_outstanding(
+                    connection, task_cid=cid
+                )
                 connection.execute(
                     """
                     INSERT OR REPLACE INTO task_completions(
