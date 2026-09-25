@@ -11,6 +11,23 @@ from .intent_repository import IntentRepository
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/spar-goal-settlement@1"
 RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/spar-goal-completion-receipt@1"
 MISSING = "spar_native_goal_cas_settlement_adapter_required"
+_COMPLETION_BLOCKS = (
+    "recovery_plan_delta_outstanding",
+    "similarity_not_resolution",
+    "cold_execution_required",
+    "qualification_incomplete",
+    "observations_not_preserved",
+    "negative_memory_blocks",
+    "world_root_cas_not_completion",
+    "boundary_contract_required",
+)
+
+
+def _runtime_block(runtime: Mapping[str, Any]) -> str:
+    for key in _COMPLETION_BLOCKS:
+        if runtime.get(key) is True:
+            return key
+    return ""
 
 
 def _deferred(reason: str = MISSING, **extra: Any) -> dict[str, Any]:
@@ -59,8 +76,9 @@ def observe_goal_settlement(
     kit: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Read-only: goals are accepted only from native completed SPAR receipts."""
-    if runtime.get("recovery_plan_delta_outstanding") is True:
-        return _deferred("recovery_plan_delta_outstanding")
+    blocked = _runtime_block(runtime)
+    if blocked:
+        return _deferred(blocked)
     if (
         accepted_root.get("admitted") is not True
         or runtime.get("admitted") is not True
@@ -150,7 +168,7 @@ def settle_spar_goals(
     )
     if observed.get("admitted") is True:
         return observed
-    if runtime.get("recovery_plan_delta_outstanding") is True:
+    if _runtime_block(runtime):
         return observed
     if (
         accepted_root.get("admitted") is not True

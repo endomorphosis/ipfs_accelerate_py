@@ -42,3 +42,17 @@ def test_complete_only_when_all_gates_hold() -> None:
     assert outstanding["terminal"] == "not_complete"
     assert outstanding["recovery_plan_delta_outstanding"] is True
     assert outstanding["completion_authority"] is False
+    similar = terminate(
+        goals_complete=True,
+        tests_current=True,
+        proofs_current=True,
+        invalidations_empty=True,
+        merge_queue_empty=True,
+        claims_empty=True,
+        source_root="sha256:" + "a" * 64,
+        semantic_root="sha256:" + "b" * 64,
+        similarity_not_resolution=True,
+    )
+    assert similar["terminal"] == "not_complete"
+    assert similar["similarity_not_resolution"] is True
+    assert similar["completion_authority"] is False

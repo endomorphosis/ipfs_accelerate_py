@@ -124,6 +124,18 @@ def test_proof_cache_fresh_admission_is_exact_and_not_self_admitted() -> None:
 
 
 def test_similarity_only_candidates_cannot_admit_reuse() -> None:
+    query = _key()
+    decision = evaluate_program_world_reuse(
+        query,
+        similarity_candidates=({"score": 0.99, "nearest": True},),
+    )
+    assert decision.verdict == "reject"
+    assert decision.reason_code in {REASON_SIMILARITY, "ann_not_authoritative"}
+    assert decision.exact_match is False
+    assert decision.admitted is False
+
+
+def test_exact_hit_with_similarity_nomination_is_still_exact() -> None:
     key = _key()
     gate = _gate_with(CachedReuseEvidence(key=key, generation=3))
     decision = evaluate_program_world_reuse(
@@ -131,10 +143,11 @@ def test_similarity_only_candidates_cannot_admit_reuse() -> None:
         gate=gate,
         similarity_candidates=({"score": 0.99, "nearest": True},),
     )
-    assert decision.verdict == "reject"
-    assert decision.reason_code in {REASON_SIMILARITY, "ann_not_authoritative"}
-    assert decision.exact_match is False
+    assert decision.verdict == "reuse"
+    assert decision.exact_match is True
     assert decision.admitted is False
+    assert "similarity_nominated_not_authority" in decision.limitations
+    assert decision.ann_authoritative is False
 
 
 def test_typed_unavailable_falls_back_closed() -> None:

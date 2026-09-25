@@ -262,6 +262,14 @@ def materialize_clause_records(
         source.get("runtime_settled") is True
         and source.get("merge_queue_empty") is True
         and source.get("recovery_plan_delta_outstanding") is not True
+        and source.get("similarity_not_resolution") is not True
+        and source.get("cold_execution_required") is not True
+        and source.get("qualification_incomplete") is not True
+        and source.get("observations_not_preserved") is not True
+        and source.get("negative_memory_blocks") is not True
+        and source.get("world_root_cas_not_completion") is not True
+        and source.get("boundary_contract_required") is not True
+        and not _program_catalog_blocks(source)
     ):
         records.setdefault(
             "fixed_point_accepted",
@@ -376,6 +384,20 @@ def _producer_rejected_clause_record(raw: Mapping[str, Any]) -> bool:
     return False
 
 
+def _program_catalog_blocks(source: Any) -> bool:
+    if not isinstance(source, Mapping):
+        return False
+    if source.get("program_catalog") is not True and not isinstance(
+        source.get("programs"), Mapping
+    ):
+        return False
+    try:
+        from ..autonomy.qualification import program_catalog_view
+    except Exception:
+        return True
+    return bool(program_catalog_view(source).get("blocks_completion"))
+
+
 def _runtime_settled(runtime: Any) -> bool:
     """True only for an independently admitted, settled runtime receipt.
 
@@ -384,6 +406,20 @@ def _runtime_settled(runtime: Any) -> bool:
     if not isinstance(runtime, Mapping):
         return False
     if runtime.get("recovery_plan_delta_outstanding") is True:
+        return False
+    if runtime.get("similarity_not_resolution") is True:
+        return False
+    if runtime.get("cold_execution_required") is True:
+        return False
+    if runtime.get("qualification_incomplete") is True:
+        return False
+    if runtime.get("observations_not_preserved") is True:
+        return False
+    if runtime.get("negative_memory_blocks") is True:
+        return False
+    if runtime.get("world_root_cas_not_completion") is True:
+        return False
+    if runtime.get("boundary_contract_required") is True:
         return False
     receipt_cid = runtime.get("receipt_cid")
     return (
@@ -403,6 +439,20 @@ def _merge_queue_empty(runtime: Any) -> bool:
     if not isinstance(runtime, Mapping):
         return False
     if runtime.get("recovery_plan_delta_outstanding") is True:
+        return False
+    if runtime.get("similarity_not_resolution") is True:
+        return False
+    if runtime.get("cold_execution_required") is True:
+        return False
+    if runtime.get("qualification_incomplete") is True:
+        return False
+    if runtime.get("observations_not_preserved") is True:
+        return False
+    if runtime.get("negative_memory_blocks") is True:
+        return False
+    if runtime.get("world_root_cas_not_completion") is True:
+        return False
+    if runtime.get("boundary_contract_required") is True:
         return False
     work = runtime.get("outstanding_required_work")
     if isinstance(work, int) and work > 0:
@@ -590,6 +640,34 @@ def admit_accepted_root(
             "recovery_plan_delta_outstanding": bool(
                 isinstance(runtime, Mapping)
                 and runtime.get("recovery_plan_delta_outstanding") is True
+            ),
+            "similarity_not_resolution": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("similarity_not_resolution") is True
+            ),
+            "cold_execution_required": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("cold_execution_required") is True
+            ),
+            "qualification_incomplete": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("qualification_incomplete") is True
+            ),
+            "observations_not_preserved": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("observations_not_preserved") is True
+            ),
+            "negative_memory_blocks": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("negative_memory_blocks") is True
+            ),
+            "world_root_cas_not_completion": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("world_root_cas_not_completion") is True
+            ),
+            "boundary_contract_required": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("boundary_contract_required") is True
             ),
         }
         current_source["clause_records"] = materialize_clause_records(subject, current_source)

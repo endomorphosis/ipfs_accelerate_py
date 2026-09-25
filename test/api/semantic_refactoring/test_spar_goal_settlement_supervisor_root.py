@@ -93,3 +93,17 @@ def test_outstanding_recovery_plan_delta_blocks_goal_settlement():
     assert settled["admitted"] is False
     assert settled["reason"] == "recovery_plan_delta_outstanding"
     assert settled["changed_goal_ids"] == []
+    similar = observe_goal_settlement(
+        native_goals=_native(goal_cid, accepted_root_cid="old-root"),
+        profile={"goals": [{"goal_cid": goal_cid, "goal_alias": "SPAR-G000"}]},
+        accepted_root={
+            "admitted": True,
+            "admission_mode": "bootstrap",
+            "authority": "spar_supervisor_current_bound_clause_records",
+            "accepted_root_cid": "new-root",
+        },
+        runtime={"admitted": True, "boundary_contract_required": True},
+        kit={"admitted": True},
+    )
+    assert similar["admitted"] is False
+    assert similar["reason"] == "boundary_contract_required"

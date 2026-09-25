@@ -265,18 +265,75 @@ class TypesafeWakeHandoff:
     def recovery_delta_outstanding(self) -> bool:
         return bool(getattr(self.result, "recovery_delta_outstanding", False))
 
+    @property
+    def similarity_not_resolution(self) -> bool:
+        return bool(getattr(self.result, "similarity_not_resolution", False))
+
+    @property
+    def cold_execution_required(self) -> bool:
+        return bool(getattr(self.result, "cold_execution_required", False))
+
+    @property
+    def qualification_incomplete(self) -> bool:
+        return bool(getattr(self.result, "qualification_incomplete", False))
+
+    @property
+    def observations_not_preserved(self) -> bool:
+        return bool(getattr(self.result, "observations_not_preserved", False))
+
+    @property
+    def negative_memory_blocks(self) -> bool:
+        return bool(getattr(self.result, "negative_memory_blocks", False))
+
+    @property
+    def world_root_cas_not_completion(self) -> bool:
+        return bool(getattr(self.result, "world_root_cas_not_completion", False))
+
+    @property
+    def boundary_contract_required(self) -> bool:
+        return bool(getattr(self.result, "boundary_contract_required", False))
+
     def to_dict(self) -> dict[str, Any]:
         result = self.result
         record = result.to_record() if hasattr(result, "to_record") else {}
         outstanding = bool(getattr(result, "recovery_delta_outstanding", False))
-        if isinstance(record, Mapping) and record.get("recovery_delta_outstanding") is True:
-            outstanding = True
+        similar = bool(getattr(self.result, "similarity_not_resolution", False))
+        cold = bool(getattr(result, "cold_execution_required", False))
+        incomplete = bool(getattr(result, "qualification_incomplete", False))
+        preserved = bool(getattr(result, "observations_not_preserved", False))
+        negative = bool(getattr(result, "negative_memory_blocks", False))
+        world = bool(getattr(result, "world_root_cas_not_completion", False))
+        boundary = bool(getattr(result, "boundary_contract_required", False))
+        if isinstance(record, Mapping):
+            if record.get("recovery_delta_outstanding") is True:
+                outstanding = True
+            if record.get("similarity_not_resolution") is True:
+                similar = True
+            if record.get("cold_execution_required") is True:
+                cold = True
+            if record.get("qualification_incomplete") is True:
+                incomplete = True
+            if record.get("observations_not_preserved") is True:
+                preserved = True
+            if record.get("negative_memory_blocks") is True:
+                negative = True
+            if record.get("world_root_cas_not_completion") is True:
+                world = True
+            if record.get("boundary_contract_required") is True:
+                boundary = True
         return {
             "authorizes_effect": False,
             "completion_authority": False,
             "model_called": self.model_called,
             "status": getattr(getattr(result, "status", None), "value", ""),
             "recovery_delta_outstanding": outstanding,
+            "similarity_not_resolution": similar,
+            "cold_execution_required": cold,
+            "qualification_incomplete": incomplete,
+            "observations_not_preserved": preserved,
+            "negative_memory_blocks": negative,
+            "world_root_cas_not_completion": world,
+            "boundary_contract_required": boundary,
             "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
             "advice": None if self.advice is None else self.advice.to_dict(),
         }

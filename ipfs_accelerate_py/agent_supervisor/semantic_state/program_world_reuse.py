@@ -243,19 +243,12 @@ class ProgramWorldReuseGate:
                 fallback=True,
                 limitations=("typed_surface_unavailable", "raw_source_is_not_reuse"),
             )
-        if similarity_candidates:
-            reason = REASON_SIMILARITY
-            if any(
-                isinstance(item, Mapping)
-                and (set(item) & {"score", "ann_score", "nearest", "similarity"})
-                for item in similarity_candidates
-            ):
-                reason = "ann_not_authoritative"
-            return self._reject(
-                query,
-                reason,
-                limitations=("similarity_is_context_only", "ann_advisory_only"),
-            )
+        nominated = bool(similarity_candidates)
+        ann_shaped = nominated and any(
+            isinstance(item, Mapping)
+            and (set(item) & {"score", "ann_score", "nearest", "similarity"})
+            for item in similarity_candidates
+        )
         negative = self._negative.get(query.key_cid)
         if negative is not None:
             return self._reject(
@@ -280,6 +273,16 @@ class ProgramWorldReuseGate:
                         REASON_ENVIRONMENT,
                         limitations=("environment_incompatible",),
                     )
+            if nominated:
+                return self._reject(
+                    query,
+                    "ann_not_authoritative" if ann_shaped else REASON_SIMILARITY,
+                    limitations=(
+                        "similarity_is_context_only",
+                        "ann_advisory_only",
+                        "exact_reuse_required",
+                    ),
+                )
             return self._reject(
                 query,
                 REASON_INCOMPLETE,
@@ -332,6 +335,11 @@ class ProgramWorldReuseGate:
         proof_backed = cached.proof_cid is not None
         reason = REASON_PROOF_CACHE if proof_backed else REASON_EXACT_HIT
         admitted = admission_authority is not None
+        limitations = ["reuse_is_proposal_until_supervisor_admission"]
+        if nominated:
+            limitations.append("similarity_nominated_not_authority")
+            if ann_shaped:
+                limitations.append("ann_advisory_only")
         return ProgramWorldReuseDecision(
             verdict=ReuseVerdict.REUSE,
             state_cid=query.state_cid,
@@ -346,7 +354,7 @@ class ProgramWorldReuseGate:
             admitted=admitted,
             admission_authority=admission_authority,
             admission_evidence_cid=admission_evidence_cid,
-            limitations=("reuse_is_proposal_until_supervisor_admission",),
+            limitations=tuple(limitations),
         )
 
     def explain_program_world_reuse(

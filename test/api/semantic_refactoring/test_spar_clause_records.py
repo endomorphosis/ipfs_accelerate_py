@@ -123,6 +123,116 @@ def test_outstanding_recovery_plan_delta_cannot_mint_fixed_point():
     assert "fixed_point_accepted" not in records
 
 
+def test_similarity_not_resolution_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            similarity_not_resolution=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_memo_without_cold_execution_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            cold_execution_required=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_incomplete_qualification_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            qualification_incomplete=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_sealed_program_catalog_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            program_catalog=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_boundary_contract_required_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            boundary_contract_required=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_world_root_cas_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            world_root_cas_not_completion=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_negative_memory_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            negative_memory_blocks=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_mutated_observations_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            observations_not_preserved=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_required_spar_rollout_cannot_mint_fixed_point_while_others_are_partial():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            program_catalog=True,
+            current_rollout_mode="required",
+            current_branch="main",
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
 def test_supervisor_admits_materialized_current_bound_records():
     subject = _subject()
     records = materialize_clause_records(subject, _current())

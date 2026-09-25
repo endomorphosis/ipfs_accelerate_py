@@ -592,13 +592,32 @@ def test_ann_candidates_cannot_admit_reuse() -> None:
         policy_cid=_cid("policy"),
         environment_cid=_cid("env"),
         toolchain_cid=_cid("toolchain"),
-        prior_state_cid=_cid("state"),
+        prior_state_cid=_cid("other-state"),
         ann_candidates=({"score": 0.99, "nearest": True},),
     )
     assert decision.verdict == "reject"
     assert decision.reason_code == "ann_not_authoritative"
     assert decision.exact_match is False
     assert decision.admitted is False
+
+
+def test_exact_reuse_with_ann_nomination_is_still_exact() -> None:
+    facade = load_semantic_world_operational_adapters()
+    state = _cid("state")
+    decision = facade.evaluate_reuse(
+        state_cid=state,
+        goal_cid=_cid("goal"),
+        policy_cid=_cid("policy"),
+        environment_cid=_cid("env"),
+        toolchain_cid=_cid("toolchain"),
+        prior_state_cid=state,
+        ann_candidates=({"score": 0.99, "nearest": True},),
+    )
+    assert decision.verdict == "reuse"
+    assert decision.exact_match is True
+    assert decision.admitted is False
+    assert "similarity_nominated_not_authority" in decision.limitations
+    assert decision.ann_authoritative is False
 
 
 def test_reuse_self_admission_is_rejected() -> None:

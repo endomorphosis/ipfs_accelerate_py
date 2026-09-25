@@ -300,6 +300,475 @@ def test_empty_queue_stale_wake_is_not_board_success() -> None:
     assert stale.receipt_id != fresh.receipt_id
 
 
+def test_similarity_nomination_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    assert runtime.healthy_idle
+    similar = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:similar-empty",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "similarity_candidates": [{"score": 0.99, "nearest": True}],
+        },
+    )
+    assert similar.status is AutonomyRuntimeStatus.IDLE
+    assert "similarity_not_resolution" in similar.reason_codes
+    assert similar.similarity_not_resolution is True
+    assert similar.to_record()["similarity_not_resolution"] is True
+    assert similar.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+    assert runtime.similarity_not_resolution is True
+
+    tick = runtime.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = runtime.handle_wake(tick, candidates=(), context=_context())
+    assert held.reason_codes == ("similarity_not_resolution",)
+    assert held.scanned is False
+    assert runtime.healthy_idle is False
+
+    exact = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:exact-empty",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "reuse_decision": {
+                "decision": "reuse",
+                "exact_match": True,
+                "reason_code": "exact_identity_match",
+            },
+            "similarity_candidates": [{"score": 0.91}],
+        },
+    )
+    assert exact.status is AutonomyRuntimeStatus.IDLE
+    assert exact.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.similarity_not_resolution is False
+    assert runtime.healthy_idle is True
+    assert exact.similarity_not_resolution is False
+
+
+def test_mutated_wave_observations_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    mutated = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:wave-mutated",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "refactor_wave": True,
+            "declared_profile": "profile:spar-w4",
+            "observation_cids": ("obs:1", "obs:2"),
+            "wave_observation_cids": ("obs:1", "obs:changed"),
+        },
+    )
+    assert mutated.status is AutonomyRuntimeStatus.IDLE
+    assert "observations_not_preserved" in mutated.reason_codes
+    assert mutated.observations_not_preserved is True
+    assert mutated.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    preserved = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:wave-preserved",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "refactor_wave": True,
+            "declared_profile": "profile:spar-w4",
+            "observation_cids": ("obs:1", "obs:2"),
+            "current_observation_cids": ("obs:1", "obs:2"),
+        },
+    )
+    assert preserved.status is AutonomyRuntimeStatus.IDLE
+    assert preserved.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.observations_not_preserved is False
+    assert runtime.healthy_idle is True
+
+
+def test_negative_episode_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    blocked = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:neg-mem",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "negative_episode": True,
+            "key_cid": "key:failed",
+            "accepted_transition": {
+                "pre_cid": "pre:1",
+                "action_cid": "act:1",
+                "post_cid": "post:1",
+                "accepted": True,
+                "transition_cid": "key:failed",
+            },
+        },
+    )
+    assert blocked.status is AutonomyRuntimeStatus.IDLE
+    assert "negative_memory_blocks" in blocked.reason_codes
+    assert blocked.negative_memory_blocks is True
+    assert blocked.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    cleared = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:neg-clear",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "accepted_transition": {
+                "pre_cid": "pre:1",
+                "action_cid": "act:1",
+                "post_cid": "post:1",
+                "accepted": True,
+                "transition_cid": "tr:ok",
+            }
+        },
+    )
+    assert cleared.status is AutonomyRuntimeStatus.IDLE
+    assert cleared.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.negative_memory_blocks is False
+    assert runtime.healthy_idle is True
+
+
+def test_world_root_cas_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    published = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:world-cas",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "world_root_publication": {
+                "semantic_world_root_cid": "root:1",
+                "cas_completed": True,
+            }
+        },
+    )
+    assert published.status is AutonomyRuntimeStatus.IDLE
+    assert "world_root_cas_not_completion" in published.reason_codes
+    assert published.world_root_cas_not_completion is True
+    assert published.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    request = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:world-request",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "world_root_publication": {
+                "semantic_world_root_cid": "root:1",
+                "proposal_only": True,
+                "cas_completed": False,
+                "completion_authority": False,
+            }
+        },
+    )
+    assert request.status is AutonomyRuntimeStatus.IDLE
+    assert request.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.world_root_cas_not_completion is False
+    assert runtime.healthy_idle is True
+
+
+def test_cross_scc_wave_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    crossed = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:scc-cross",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "refactor_wave": True,
+            "declared_profile": "profile:spar-w4",
+            "observation_cids": ("obs:1",),
+            "current_observation_cids": ("obs:1",),
+            "write_sccs": ("scc:a", "scc:b"),
+        },
+    )
+    assert crossed.status is AutonomyRuntimeStatus.IDLE
+    assert "boundary_contract_required" in crossed.reason_codes
+    assert crossed.boundary_contract_required is True
+    assert crossed.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    inside = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:scc-in",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "refactor_wave": True,
+            "declared_profile": "profile:spar-w4",
+            "observation_cids": ("obs:1",),
+            "current_observation_cids": ("obs:1",),
+            "write_sccs": ("scc:a",),
+        },
+    )
+    assert inside.status is AutonomyRuntimeStatus.IDLE
+    assert inside.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.boundary_contract_required is False
+    assert runtime.healthy_idle is True
+
+
+def test_similar_transition_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    similar = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:transition-similar",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "accepted_transition": {
+                "pre_cid": "pre:1",
+                "action_cid": "act:1",
+                "post_cid": "post:1",
+                "accepted": True,
+            },
+            "query_transition": {
+                "pre_cid": "pre:1",
+                "action_cid": "act:1",
+                "post_cid": "post:near",
+            },
+            "similar_transition": True,
+        },
+    )
+    assert similar.status is AutonomyRuntimeStatus.IDLE
+    assert "similarity_not_resolution" in similar.reason_codes
+    assert similar.similarity_not_resolution is True
+    assert similar.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    exact = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:transition-exact",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "accepted_transition": {
+                "pre_cid": "pre:1",
+                "action_cid": "act:1",
+                "post_cid": "post:1",
+                "accepted": True,
+            }
+        },
+    )
+    assert exact.status is AutonomyRuntimeStatus.IDLE
+    assert exact.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.similarity_not_resolution is False
+    assert runtime.healthy_idle is True
+
+
+def test_hash_memo_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    assert runtime.healthy_idle
+    memo = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:memo-empty",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "proof_reuse_decision": {
+                "action": "SKIP",
+                "reason_code": "proof_cache_hit",
+            }
+        },
+    )
+    assert memo.status is AutonomyRuntimeStatus.IDLE
+    assert "cold_execution_required" in memo.reason_codes
+    assert memo.cold_execution_required is True
+    assert memo.to_record()["cold_execution_required"] is True
+    assert memo.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+    assert runtime.cold_execution_required is True
+
+    tick = runtime.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = runtime.handle_wake(tick, candidates=(), context=_context())
+    assert held.reason_codes == ("cold_execution_required",)
+    assert held.scanned is False
+    assert runtime.healthy_idle is False
+
+    cold = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:cold-empty",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"cold_execution": True, "action": "RUN"},
+    )
+    assert cold.status is AutonomyRuntimeStatus.IDLE
+    assert cold.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.cold_execution_required is False
+    assert runtime.healthy_idle is True
+    assert cold.cold_execution_required is False
+
+
+def test_collection_seed_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    seed = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:seed-empty",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "pctdd_stage": "collection_seed",
+            "hash_memo": True,
+            "current_inputs": True,
+            "current_effects": True,
+            "current_evidence": True,
+            "publication_checked": True,
+            "proof_reuse_decision": {
+                "action": "SKIP",
+                "reason_code": "proof_cache_hit",
+            },
+        },
+    )
+    assert seed.status is AutonomyRuntimeStatus.IDLE
+    assert "cold_execution_required" in seed.reason_codes
+    assert seed.cold_execution_required is True
+    assert seed.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+
+def test_collapsed_qualification_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    assert runtime.healthy_idle
+    collapsed = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:qualify-empty",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "qualification": {
+                "location": "specification_only",
+                "implementation": "present",
+                "integration": "adapter_only",
+                "validation": "reported",
+                "rollout": "shadow",
+                "landing_date": "2026-10-01",
+            }
+        },
+    )
+    assert collapsed.status is AutonomyRuntimeStatus.IDLE
+    assert "qualification_incomplete" in collapsed.reason_codes
+    assert collapsed.qualification_incomplete is True
+    assert collapsed.to_record()["qualification_incomplete"] is True
+    assert collapsed.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    tick = runtime.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = runtime.handle_wake(tick, candidates=(), context=_context())
+    assert held.reason_codes == ("qualification_incomplete",)
+    assert held.scanned is False
+    assert runtime.healthy_idle is False
+
+    sufficient = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:qualify-sufficient",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "qualification": {
+                "location": "main",
+                "implementation": "present",
+                "integration": "called",
+                "validation": "reproduced",
+                "rollout": "guarded",
+                "paper_claim": {
+                    "mechanism": "H.2 independent dimensions",
+                    "population": "autonomy idle path",
+                    "scope": "existing board owner",
+                    "limitations": "not a new campaign",
+                },
+            }
+        },
+    )
+    assert sufficient.status is AutonomyRuntimeStatus.IDLE
+    assert sufficient.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.qualification_incomplete is False
+    assert runtime.healthy_idle is True
+    assert sufficient.qualification_incomplete is False
+
+
+def test_program_catalog_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    assert runtime.healthy_idle
+    catalog = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:programs-empty",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"program_catalog": True},
+    )
+    assert catalog.status is AutonomyRuntimeStatus.IDLE
+    assert "qualification_incomplete" in catalog.reason_codes
+    assert catalog.qualification_incomplete is True
+    assert catalog.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    tick = runtime.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = runtime.handle_wake(tick, candidates=(), context=_context())
+    assert held.reason_codes == ("qualification_incomplete",)
+    assert runtime.healthy_idle is False
+
+
 def test_restart_preserves_outstanding_recovery_plan_delta() -> None:
     runtime = _complete_runtime(interval_ms=1_000)
     runtime.handle_wake(

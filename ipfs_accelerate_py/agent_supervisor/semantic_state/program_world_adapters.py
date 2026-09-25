@@ -1295,23 +1295,14 @@ class SemanticWorldOperationalAdapters:
         relation_cid = None
         if relation_claim is not None:
             relation_cid = self.datasets.cite_relation(relation_claim).identity_cid
-        if ann_candidates:
-            return _mirror_program_world_reuse(
-                verdict=ReuseVerdict.REJECT,
-                state_cid=state_cid,
-                goal_cid=goal_cid,
-                policy_cid=policy_cid,
-                environment_cid=environment_cid,
-                toolchain_cid=toolchain_cid,
-                relation_claim_cid=relation_cid,
-                procedure_revision_cid=procedure_revision_cid,
-                exact_match=False,
-                reason_code="ann_not_authoritative",
-                limitations=("similarity_is_not_reuse", "ann_advisory_only"),
-            )
         exact = prior_state_cid is not None and prior_state_cid == state_cid
         if exact:
             admitted = admission_authority is not None
+            limitations = ["reuse_is_proposal_until_supervisor_admission"]
+            if ann_candidates:
+                limitations.extend(
+                    ("similarity_nominated_not_authority", "ann_advisory_only")
+                )
             return _mirror_program_world_reuse(
                 verdict=ReuseVerdict.REUSE,
                 state_cid=state_cid,
@@ -1327,7 +1318,21 @@ class SemanticWorldOperationalAdapters:
                 admitted=admitted,
                 admission_authority=admission_authority,
                 admission_evidence_cid=admission_evidence_cid,
-                limitations=("reuse_is_proposal_until_supervisor_admission",),
+                limitations=tuple(limitations),
+            )
+        if ann_candidates:
+            return _mirror_program_world_reuse(
+                verdict=ReuseVerdict.REJECT,
+                state_cid=state_cid,
+                goal_cid=goal_cid,
+                policy_cid=policy_cid,
+                environment_cid=environment_cid,
+                toolchain_cid=toolchain_cid,
+                relation_claim_cid=relation_cid,
+                procedure_revision_cid=procedure_revision_cid,
+                exact_match=False,
+                reason_code="ann_not_authoritative",
+                limitations=("similarity_is_not_reuse", "ann_advisory_only"),
             )
         return _mirror_program_world_reuse(
             verdict=ReuseVerdict.ABSTAIN,

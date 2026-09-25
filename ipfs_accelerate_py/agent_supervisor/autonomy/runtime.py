@@ -711,6 +711,13 @@ class AutonomyCycleResult:
     refilled: bool
     safety_timer: bool
     recovery_delta_outstanding: bool = False
+    similarity_not_resolution: bool = False
+    cold_execution_required: bool = False
+    qualification_incomplete: bool = False
+    observations_not_preserved: bool = False
+    negative_memory_blocks: bool = False
+    world_root_cas_not_completion: bool = False
+    boundary_contract_required: bool = False
     reason_codes: tuple[str, ...] = ()
     step: MetaControllerStep | None = None
     suffix_receipt: PlanSuffixInvalidationReceipt | None = None
@@ -732,6 +739,13 @@ class AutonomyCycleResult:
             "refilled",
             "safety_timer",
             "recovery_delta_outstanding",
+            "similarity_not_resolution",
+            "cold_execution_required",
+            "qualification_incomplete",
+            "observations_not_preserved",
+            "negative_memory_blocks",
+            "world_root_cas_not_completion",
+            "boundary_contract_required",
         ):
             object.__setattr__(self, name, _bounded_bool(getattr(self, name), name))
         object.__setattr__(
@@ -774,6 +788,13 @@ class AutonomyCycleResult:
             "refilled": False,
             "safety_timer": self.safety_timer,
             "recovery_delta_outstanding": self.recovery_delta_outstanding,
+            "similarity_not_resolution": self.similarity_not_resolution,
+            "cold_execution_required": self.cold_execution_required,
+            "qualification_incomplete": self.qualification_incomplete,
+            "observations_not_preserved": self.observations_not_preserved,
+            "negative_memory_blocks": self.negative_memory_blocks,
+            "world_root_cas_not_completion": self.world_root_cas_not_completion,
+            "boundary_contract_required": self.boundary_contract_required,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "step_status": None if self.step is None else self.step.status.value,
@@ -808,6 +829,13 @@ class AutonomyCycleResult:
             "refilled": self.refilled,
             "safety_timer": self.safety_timer,
             "recovery_delta_outstanding": self.recovery_delta_outstanding,
+            "similarity_not_resolution": self.similarity_not_resolution,
+            "cold_execution_required": self.cold_execution_required,
+            "qualification_incomplete": self.qualification_incomplete,
+            "observations_not_preserved": self.observations_not_preserved,
+            "negative_memory_blocks": self.negative_memory_blocks,
+            "world_root_cas_not_completion": self.world_root_cas_not_completion,
+            "boundary_contract_required": self.boundary_contract_required,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "completion_authority": False,
@@ -1190,6 +1218,13 @@ class AutonomyRuntime:
         self._ephemeral_cursor_ids: set[str] = set()
         self._pending_cursor_id = ""
         self._recovery_delta_outstanding = False
+        self._similarity_not_resolution = False
+        self._cold_execution_required = False
+        self._qualification_incomplete = False
+        self._observations_not_preserved = False
+        self._negative_memory_blocks = False
+        self._world_root_cas_not_completion = False
+        self._boundary_contract_required = False
         self._healthy_idle = self._board_is_idle()
         self._healthy_exhausted = False
         self._last_durable_identity = self._durable_identity()
@@ -1271,6 +1306,152 @@ class AutonomyRuntime:
         return self._recovery_delta_outstanding
 
     @property
+    def similarity_not_resolution(self) -> bool:
+        return self._similarity_not_resolution
+
+    @property
+    def cold_execution_required(self) -> bool:
+        return self._cold_execution_required
+
+    @property
+    def qualification_incomplete(self) -> bool:
+        return self._qualification_incomplete
+
+    @property
+    def observations_not_preserved(self) -> bool:
+        return self._observations_not_preserved
+
+    @property
+    def negative_memory_blocks(self) -> bool:
+        return self._negative_memory_blocks
+
+    @property
+    def world_root_cas_not_completion(self) -> bool:
+        return self._world_root_cas_not_completion
+
+    @property
+    def boundary_contract_required(self) -> bool:
+        return self._boundary_contract_required
+
+    def _observe_partition_boundary(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .partition_boundary import partition_boundary_view
+
+        view = partition_boundary_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._boundary_contract_required = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("respected"):
+            self._boundary_contract_required = False
+        return view
+
+    def _observe_world_root_cas(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .world_root_cas import world_root_cas_view
+
+        view = world_root_cas_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._world_root_cas_not_completion = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("proposal_only"):
+            self._world_root_cas_not_completion = False
+        return view
+
+    def _observe_negative_memory(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .negative_memory import negative_memory_view
+
+        view = negative_memory_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._negative_memory_blocks = True
+            self._healthy_idle = False
+        elif not view["claimed"]:
+            self._negative_memory_blocks = False
+        return view
+
+    def _completion_blocked(self) -> bool:
+        return (
+            self._recovery_delta_outstanding
+            or self._similarity_not_resolution
+            or self._cold_execution_required
+            or self._qualification_incomplete
+            or self._observations_not_preserved
+            or self._negative_memory_blocks
+            or self._world_root_cas_not_completion
+            or self._boundary_contract_required
+        )
+
+    def _completion_block_reason(self) -> str:
+        if self._recovery_delta_outstanding:
+            return "recovery_plan_delta_outstanding"
+        if self._similarity_not_resolution:
+            return "similarity_not_resolution"
+        if self._cold_execution_required:
+            return "cold_execution_required"
+        if self._qualification_incomplete:
+            return "qualification_incomplete"
+        if self._observations_not_preserved:
+            return "observations_not_preserved"
+        if self._negative_memory_blocks:
+            return "negative_memory_blocks"
+        if self._world_root_cas_not_completion:
+            return "world_root_cas_not_completion"
+        if self._boundary_contract_required:
+            return "boundary_contract_required"
+        return ""
+
+    def _observe_observation_preservation(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .observation_preservation import observation_preservation_view
+
+        view = observation_preservation_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._observations_not_preserved = True
+            self._healthy_idle = False
+        elif view["preserved"] or not view["claimed"]:
+            self._observations_not_preserved = False
+        return view
+
+    def _observe_qualification(self, typesafe_state: Mapping[str, Any] | None) -> dict[str, Any]:
+        from .qualification import qualification_view
+
+        view = qualification_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._qualification_incomplete = True
+            self._healthy_idle = False
+        elif view["sufficient"] or not view["claimed"]:
+            self._qualification_incomplete = False
+        return view
+
+    def _observe_cold_execution(self, typesafe_state: Mapping[str, Any] | None) -> dict[str, Any]:
+        from .cold_execution import cold_execution_view
+
+        view = cold_execution_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._cold_execution_required = True
+            self._healthy_idle = False
+        elif view["reuse_permitted"] or view["cold_reference"] or not view["claimed"]:
+            self._cold_execution_required = False
+        return view
+
+    def _observe_exact_resolution(self, typesafe_state: Mapping[str, Any] | None) -> dict[str, Any]:
+        from .exact_resolution import exact_resolution_view
+
+        view = exact_resolution_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._similarity_not_resolution = True
+            self._healthy_idle = False
+        elif not view["claimed"]:
+            self._similarity_not_resolution = False
+        elif view["exact_match"]:
+            self._similarity_not_resolution = False
+        return view
+
+    @property
     def healthy_exhausted(self) -> bool:
         return self._healthy_exhausted
 
@@ -1283,7 +1464,7 @@ class AutonomyRuntime:
         return (
             (not self._controller.has_work())
             and horizon_idle
-            and not self._recovery_delta_outstanding
+            and not self._completion_blocked()
         )
 
     def _remember_cursor(self, cursor_id: str) -> None:
@@ -1368,6 +1549,13 @@ class AutonomyRuntime:
             refilled=False,
             safety_timer=event.safety_timer,
             recovery_delta_outstanding=self._recovery_delta_outstanding,
+            similarity_not_resolution=self._similarity_not_resolution,
+            cold_execution_required=self._cold_execution_required,
+            qualification_incomplete=self._qualification_incomplete,
+            observations_not_preserved=self._observations_not_preserved,
+            negative_memory_blocks=self._negative_memory_blocks,
+            world_root_cas_not_completion=self._world_root_cas_not_completion,
+            boundary_contract_required=self._boundary_contract_required,
             reason_codes=reason_codes,
             step=step,
             suffix_receipt=suffix_receipt,
@@ -1475,12 +1663,20 @@ class AutonomyRuntime:
                 reason=bound.reason,
                 state=typesafe_state,
             )
+            if not bound.safety_timer:
+                self._observe_exact_resolution(typesafe_state)
+                self._observe_cold_execution(typesafe_state)
+                self._observe_qualification(typesafe_state)
+                self._observe_observation_preservation(typesafe_state)
+                self._observe_negative_memory(typesafe_state)
+                self._observe_world_root_cas(typesafe_state)
+                self._observe_partition_boundary(typesafe_state)
             cached_idle = self._healthy_idle or self._healthy_exhausted
             if (
                 bound.safety_timer
                 and cached_idle
                 and not needs_recovery
-                and not self._recovery_delta_outstanding
+                and not self._completion_blocked()
             ):
                 reason = (
                     "healthy_exhaustion"
@@ -1504,12 +1700,10 @@ class AutonomyRuntime:
                     wrote_state=False,
                     acknowledged=acknowledged,
                 )
-            if bound.safety_timer and self._recovery_delta_outstanding:
+            if bound.safety_timer and self._completion_blocked():
                 self._healthy_idle = False
-                self._metrics.record_status(
-                    "idle",
-                    reason_codes=("recovery_plan_delta_outstanding",),
-                )
+                blocked = self._completion_block_reason() or "qualification_incomplete"
+                self._metrics.record_status("idle", reason_codes=(blocked,))
                 acknowledged = False
                 if auto_acknowledge:
                     self.acknowledge(bound)
@@ -1517,7 +1711,7 @@ class AutonomyRuntime:
                 return self._result(
                     status=AutonomyRuntimeStatus.IDLE,
                     event=bound,
-                    reason_codes=("recovery_plan_delta_outstanding",),
+                    reason_codes=(blocked,),
                     scanned=False,
                     wrote_state=False,
                     acknowledged=acknowledged,
@@ -1711,9 +1905,20 @@ class AutonomyRuntime:
                 step_reasons = tuple(merged)
             self._metrics.record_status(status.value, reason_codes=step_reasons)
             self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
+            for extra in (
+                "similarity_not_resolution",
+                "cold_execution_required",
+                "qualification_incomplete",
+                "observations_not_preserved",
+                "negative_memory_blocks",
+                "world_root_cas_not_completion",
+                "boundary_contract_required",
+            ):
+                if getattr(self, f"_{extra}") and extra not in step_reasons:
+                    step_reasons = step_reasons + (extra,)
             self._healthy_idle = (
                 status is AutonomyRuntimeStatus.IDLE
-                and not self._recovery_delta_outstanding
+                and not self._completion_blocked()
             )
             wrote = self._persist_if_changed()
             acknowledged = False
@@ -1813,6 +2018,13 @@ class AutonomyRuntime:
             "healthy_idle": self._healthy_idle,
             "healthy_exhausted": self._healthy_exhausted,
             "recovery_delta_outstanding": self._recovery_delta_outstanding,
+            "similarity_not_resolution": self._similarity_not_resolution,
+            "cold_execution_required": self._cold_execution_required,
+            "qualification_incomplete": self._qualification_incomplete,
+            "observations_not_preserved": self._observations_not_preserved,
+            "negative_memory_blocks": self._negative_memory_blocks,
+            "world_root_cas_not_completion": self._world_root_cas_not_completion,
+            "boundary_contract_required": self._boundary_contract_required,
             "safety_interval_ms": self._safety_interval_ms,
             "horizon": horizon_payload,
             "metrics_interface": AUTONOMY_METRICS_INTERFACE,
@@ -1863,6 +2075,13 @@ class AutonomyRuntime:
             "healthy_idle",
             "healthy_exhausted",
             "recovery_delta_outstanding",
+            "similarity_not_resolution",
+            "cold_execution_required",
+            "qualification_incomplete",
+            "observations_not_preserved",
+            "negative_memory_blocks",
+            "world_root_cas_not_completion",
+            "boundary_contract_required",
             "safety_interval_ms",
             "horizon",
             "metrics_interface",
@@ -1920,7 +2139,28 @@ class AutonomyRuntime:
         runtime._recovery_delta_outstanding = _bounded_bool(
             raw["recovery_delta_outstanding"], "recovery_delta_outstanding"
         )
-        if runtime._recovery_delta_outstanding:
+        runtime._similarity_not_resolution = _bounded_bool(
+            raw["similarity_not_resolution"], "similarity_not_resolution"
+        )
+        runtime._cold_execution_required = _bounded_bool(
+            raw["cold_execution_required"], "cold_execution_required"
+        )
+        runtime._qualification_incomplete = _bounded_bool(
+            raw["qualification_incomplete"], "qualification_incomplete"
+        )
+        runtime._observations_not_preserved = _bounded_bool(
+            raw["observations_not_preserved"], "observations_not_preserved"
+        )
+        runtime._negative_memory_blocks = _bounded_bool(
+            raw["negative_memory_blocks"], "negative_memory_blocks"
+        )
+        runtime._world_root_cas_not_completion = _bounded_bool(
+            raw["world_root_cas_not_completion"], "world_root_cas_not_completion"
+        )
+        runtime._boundary_contract_required = _bounded_bool(
+            raw["boundary_contract_required"], "boundary_contract_required"
+        )
+        if runtime._completion_blocked():
             runtime._healthy_idle = False
         if claim_coordinator is not None:
             runtime.bind_claim_coordinator(claim_coordinator)

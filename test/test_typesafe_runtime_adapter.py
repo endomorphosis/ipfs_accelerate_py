@@ -345,6 +345,13 @@ def test_adapter_handle_wake_prefers_smt_and_runtime_stays_provider_free(
     assert payload["authorizes_effect"] is False
     assert payload["completion_authority"] is False
     assert payload["recovery_delta_outstanding"] is False
+    assert payload["similarity_not_resolution"] is False
+    assert payload["cold_execution_required"] is False
+    assert payload["qualification_incomplete"] is False
+    assert payload["observations_not_preserved"] is False
+    assert payload["negative_memory_blocks"] is False
+    assert payload["world_root_cas_not_completion"] is False
+    assert payload["boundary_contract_required"] is False
 
 
 def _proof_wake_fixture():
