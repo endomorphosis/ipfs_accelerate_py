@@ -389,18 +389,34 @@ def _recovery_consumed_event_id(delta_event_id: str) -> str:
     return f"recovery-consumed:{digest}"
 
 
-def count_outstanding_recovery_plan_deltas(connection: Any) -> int:
+def _recovery_event_task_cid(body_json: Any) -> str:
+    try:
+        if isinstance(body_json, Mapping):
+            payload = dict(body_json)
+        else:
+            payload = json.loads(str(body_json or "{}"))
+    except Exception:
+        return ""
+    return str(payload.get("task_cid") or "").strip()
+
+
+def count_outstanding_recovery_plan_deltas(
+    connection: Any,
+    *,
+    task_cid: str = "",
+) -> int:
     """Read-only count of recorded recovery PlanDeltas without a consume event."""
 
     try:
         rows = connection.execute(
             """
-            SELECT event_id FROM lease_events WHERE event_type = ?
+            SELECT event_id, body_json FROM lease_events WHERE event_type = ?
             """,
             [RECOVERY_PLAN_DELTA_EVENT],
         ).fetchall()
     except Exception:
         return 0
+    wanted = str(task_cid or "").strip()
     outstanding = 0
     for row in rows:
         event_id = str(row[0] if not isinstance(row, Mapping) else row.get("event_id") or "")
@@ -410,9 +426,27 @@ def count_outstanding_recovery_plan_deltas(connection: Any) -> int:
             "SELECT 1 FROM lease_events WHERE event_id = ?",
             [_recovery_consumed_event_id(event_id)],
         ).fetchone()
-        if found is None:
-            outstanding += 1
+        if found is not None:
+            continue
+        if wanted:
+            body_json = row[1] if not isinstance(row, Mapping) else row.get("body_json")
+            recorded_cid = _recovery_event_task_cid(body_json)
+            if recorded_cid and recorded_cid != wanted:
+                continue
+        outstanding += 1
     return outstanding
+
+
+def _refuse_completion_if_recovery_outstanding(
+    connection: Any,
+    *,
+    task_cid: str,
+) -> None:
+    if count_outstanding_recovery_plan_deltas(connection, task_cid=task_cid) <= 0:
+        return
+    raise DatabaseCoordinationError(
+        "recovery PlanDelta outstanding; task completion is refused"
+    )
 
 
 def _bounded_mapping(
@@ -4703,12 +4737,14 @@ class DatabaseCoordinator:
             "task_cid": target,
         }
 
-    def outstanding_recovery_plan_delta_count(self) -> int:
+    def outstanding_recovery_plan_delta_count(self, task_cid: str = "") -> int:
         """Read-only count of unconsumed recovery PlanDelta events."""
 
         with self._lock:
             connection = self._require()
-            return count_outstanding_recovery_plan_deltas(connection)
+            return count_outstanding_recovery_plan_deltas(
+                connection, task_cid=task_cid
+            )
 
     def prepare_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
         from .unresolved_interruption_barrier import prepare
@@ -4782,6 +4818,9 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                _refuse_completion_if_recovery_outstanding(
+                    connection, task_cid=task_cid
+                )
                 existing = self._prepared_completion_unlocked(
                     connection,
                     task_cid,
@@ -4905,6 +4944,9 @@ class DatabaseCoordinator:
             connection = self._require()
             self._begin(connection)
             try:
+                _refuse_completion_if_recovery_outstanding(
+                    connection, task_cid=task_cid
+                )
                 completion = self._task_completion_for_identity_unlocked(
                     connection,
                     identity=identity,

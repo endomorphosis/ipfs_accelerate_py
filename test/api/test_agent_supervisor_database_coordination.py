@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     TASK_CLAIM_INTERFACE,
     AttemptStatus,
     DatabaseCoordinationConflictError,
+    DatabaseCoordinationError,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
     DatabaseCoordinationStaleFenceError,
@@ -443,6 +444,56 @@ def test_cross_store_callback_runs_under_exact_task_and_writer_fences(
         assert promoted["status"] == "succeeded"
         assert coordinator.get_task_claim(claim.claim_id) is not None
         assert coordinator.get_lease(writer.lease_id) is not None
+    finally:
+        coordinator.close()
+
+
+def test_outstanding_recovery_plan_delta_refuses_task_completion(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_board_fence import (
+        build_recovery_delta_items,
+    )
+    from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import (
+        LifecycleState,
+    )
+
+    coordinator, _clock = _open(tmp_path)
+    try:
+        claim, _writer = _claim_task_and_writer(coordinator)
+        items = build_recovery_delta_items(
+            {
+                "action": "invalidate_stale_evidence",
+                "admit": False,
+                "stall_reason": "stale_evidence",
+            },
+            target_cid="task:guarded",
+            lifecycle=LifecycleState.CLAIMED,
+        )
+        recorded = coordinator.record_recovery_plan_delta(
+            task_cid="task:guarded",
+            items=tuple(item.to_dict() for item in items),
+            now_ms=5,
+        )
+        with pytest.raises(DatabaseCoordinationError, match="recovery PlanDelta outstanding"):
+            coordinator.prepare_task_completion(
+                claim,
+                control_expected_revision=1,
+                control_expected_status="todo",
+                evidence_digest="sha256:evidence",
+            )
+        coordinator.consume_recovery_plan_delta(
+            delta_event_id=recorded["event_id"],
+            task_cid="task:guarded",
+            now_ms=6,
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=1,
+            control_expected_status="todo",
+            evidence_digest="sha256:evidence",
+        )
+        assert prepared["status"] == "prepared"
     finally:
         coordinator.close()
 
