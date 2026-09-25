@@ -205,6 +205,10 @@ def test_adapter_prepare_and_step_prefers_smt_and_does_not_authorize_effect(
     )
     assert handoff.admitted
     assert handoff.authorizes_effect is False
+    step_dict = handoff.to_dict()
+    assert step_dict["authorizes_effect"] is False
+    assert step_dict["completion_authority"] is False
+    assert step_dict["recovery_plan_delta_outstanding"] is False
     assert handoff.requires_decision_runtime
     assert handoff.step.status is MetaControllerStepStatus.ACTION_ADMITTED
     assert handoff.step.candidate is not None

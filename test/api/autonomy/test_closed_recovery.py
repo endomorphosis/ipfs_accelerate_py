@@ -161,3 +161,36 @@ def test_queue_empty_is_not_success_while_recovery_plan_delta_is_outstanding(
     assert last_closed_recovery()["consumed"] is True
     cleared = typesafe_ops_snapshot()
     assert cleared["recovery_plan_delta_outstanding"] is False
+
+
+def test_typesafe_step_handoff_reports_outstanding_recovery() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
+        MetaControllerStepStatus,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_runtime_adapter import (
+        TypesafeStepHandoff,
+    )
+
+    view = plan_closed_recovery(
+        reason="stale_evidence",
+        wake_kind="freshness",
+        candidates=(_candidate(MetaAction.RUN_LOCAL_STATIC_ANALYSIS),),
+        call_typesafe=False,
+    )
+    apply_recovery_plan(view, (), stale=True, target_cid="task:step")
+    step = SimpleNamespace(
+        admitted=False,
+        requires_decision_runtime=False,
+        status=MetaControllerStepStatus.IDLE,
+        decision=SimpleNamespace(selected_action=None),
+    )
+    payload = TypesafeStepHandoff(step=step, advice=None).to_dict()
+    assert payload["recovery_plan_delta_outstanding"] is True
+    assert payload["authorizes_effect"] is False
+    assert payload["completion_authority"] is False
+    consume_recovery_plan_delta()
+    assert TypesafeStepHandoff(step=step, advice=None).to_dict()[
+        "recovery_plan_delta_outstanding"
+    ] is False

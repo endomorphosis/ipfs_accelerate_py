@@ -45,10 +45,21 @@ class TypesafeStepHandoff:
         return bool(self.step.requires_decision_runtime)
 
     def to_dict(self) -> dict[str, Any]:
+        outstanding = False
+        try:
+            from ipfs_accelerate_py.agent_supervisor.autonomy.closed_recovery import (
+                outstanding_recovery_work,
+            )
+
+            outstanding = outstanding_recovery_work()
+        except Exception:
+            outstanding = False
         return {
             "admitted": self.admitted,
             "authorizes_effect": False,
+            "completion_authority": False,
             "requires_decision_runtime": self.requires_decision_runtime,
+            "recovery_plan_delta_outstanding": outstanding,
             "step_status": self.step.status.value,
             "selected_action": (
                 self.step.decision.selected_action.value

@@ -132,7 +132,12 @@ def main(argv: list[str] | None = None) -> int:
 
         print(
             json.dumps(
-                {"accepted_as_authority": False, "error": "snapshot_unavailable"},
+                {
+                    "accepted_as_authority": False,
+                    "completion_authority": False,
+                    "recovery_plan_delta_outstanding": False,
+                    "error": "snapshot_unavailable",
+                },
                 separators=(",", ":"),
             )
         )

@@ -340,6 +340,8 @@ def test_ops_cli_prints_json_without_key(forbid_typesafe_http: None, capsys) -> 
     assert main([]) == 0
     payload = __import__("json").loads(capsys.readouterr().out)
     assert payload["accepted_as_authority"] is False
+    assert payload["completion_authority"] is False
+    assert payload["recovery_plan_delta_outstanding"] is False
     assert "calibration" in payload
 
 
