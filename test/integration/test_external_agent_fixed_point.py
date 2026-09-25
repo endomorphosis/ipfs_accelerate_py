@@ -28,3 +28,17 @@ def test_complete_only_when_all_gates_hold() -> None:
         semantic_root="sha256:" + "b" * 64,
     )
     assert open_queue["terminal"] == "not_complete"
+    outstanding = terminate(
+        goals_complete=True,
+        tests_current=True,
+        proofs_current=True,
+        invalidations_empty=True,
+        merge_queue_empty=True,
+        claims_empty=True,
+        source_root="sha256:" + "a" * 64,
+        semantic_root="sha256:" + "b" * 64,
+        recovery_plan_delta_outstanding=True,
+    )
+    assert outstanding["terminal"] == "not_complete"
+    assert outstanding["recovery_plan_delta_outstanding"] is True
+    assert outstanding["completion_authority"] is False

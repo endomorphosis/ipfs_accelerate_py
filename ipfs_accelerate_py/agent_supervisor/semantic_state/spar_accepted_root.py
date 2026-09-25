@@ -377,8 +377,13 @@ def _producer_rejected_clause_record(raw: Mapping[str, Any]) -> bool:
 
 
 def _runtime_settled(runtime: Any) -> bool:
-    """True only for an independently admitted, settled runtime receipt."""
+    """True only for an independently admitted, settled runtime receipt.
+
+    An outstanding recovery PlanDelta is not settlement.
+    """
     if not isinstance(runtime, Mapping):
+        return False
+    if runtime.get("recovery_plan_delta_outstanding") is True:
         return False
     receipt_cid = runtime.get("receipt_cid")
     return (

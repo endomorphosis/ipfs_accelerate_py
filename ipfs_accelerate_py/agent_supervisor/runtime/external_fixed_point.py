@@ -26,6 +26,7 @@ def terminate(
     claims_empty: bool,
     source_root: str,
     semantic_root: str,
+    recovery_plan_delta_outstanding: bool = False,
 ) -> Mapping[str, Any]:
     if not source_root or not semantic_root:
         raise FixedPointError("source and semantic roots are required")
@@ -37,6 +38,7 @@ def terminate(
             invalidations_empty,
             merge_queue_empty,
             claims_empty,
+            not recovery_plan_delta_outstanding,
         )
     )
     return MappingProxyType(
@@ -45,5 +47,9 @@ def terminate(
             "terminal": "completed" if ok else "not_complete",
             "source_root": source_root,
             "semantic_root": semantic_root,
+            "recovery_plan_delta_outstanding": bool(
+                recovery_plan_delta_outstanding
+            ),
+            "completion_authority": False,
         }
     )

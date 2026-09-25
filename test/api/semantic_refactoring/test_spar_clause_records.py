@@ -94,6 +94,23 @@ def test_settled_runtime_without_empty_merge_queue_cannot_mint_fixed_point():
     assert "fixed_point_accepted" not in records
 
 
+def test_outstanding_recovery_is_not_runtime_settlement() -> None:
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root import (
+        _runtime_settled,
+    )
+
+    settled = {
+        "admitted": True,
+        "settled": True,
+        "receipt_cid": "runtime:1",
+    }
+    assert _runtime_settled(settled) is True
+    assert (
+        _runtime_settled({**settled, "recovery_plan_delta_outstanding": True})
+        is False
+    )
+
+
 def test_outstanding_recovery_plan_delta_cannot_mint_fixed_point():
     records = materialize_clause_records(
         _subject(),
