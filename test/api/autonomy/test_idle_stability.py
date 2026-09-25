@@ -270,6 +270,9 @@ def test_empty_queue_stale_wake_is_not_board_success() -> None:
     assert "recovery_plan_delta" in stale.reason_codes
     assert runtime.healthy_idle is False
     assert runtime.recovery_delta_outstanding is True
+    stale_record = stale.to_record()
+    assert stale_record["recovery_delta_outstanding"] is True
+    assert stale_record["completion_authority"] is False
 
     tick = runtime.safety_timer_event(now_ms=1_000)
     assert tick is not None
@@ -293,6 +296,8 @@ def test_empty_queue_stale_wake_is_not_board_success() -> None:
     assert fresh.reason_codes == ("no_unresolved_mandatory_question",)
     assert runtime.recovery_delta_outstanding is False
     assert runtime.healthy_idle is True
+    assert fresh.to_record()["recovery_delta_outstanding"] is False
+    assert stale.receipt_id != fresh.receipt_id
 
 
 def test_restart_preserves_outstanding_recovery_plan_delta() -> None:

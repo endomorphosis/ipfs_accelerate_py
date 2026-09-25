@@ -710,6 +710,7 @@ class AutonomyCycleResult:
     scanned: bool
     refilled: bool
     safety_timer: bool
+    recovery_delta_outstanding: bool = False
     reason_codes: tuple[str, ...] = ()
     step: MetaControllerStep | None = None
     suffix_receipt: PlanSuffixInvalidationReceipt | None = None
@@ -730,6 +731,7 @@ class AutonomyCycleResult:
             "scanned",
             "refilled",
             "safety_timer",
+            "recovery_delta_outstanding",
         ):
             object.__setattr__(self, name, _bounded_bool(getattr(self, name), name))
         object.__setattr__(
@@ -771,6 +773,7 @@ class AutonomyCycleResult:
             "scanned": self.scanned,
             "refilled": False,
             "safety_timer": self.safety_timer,
+            "recovery_delta_outstanding": self.recovery_delta_outstanding,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "step_status": None if self.step is None else self.step.status.value,
@@ -804,8 +807,10 @@ class AutonomyCycleResult:
             "scanned": self.scanned,
             "refilled": self.refilled,
             "safety_timer": self.safety_timer,
+            "recovery_delta_outstanding": self.recovery_delta_outstanding,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
+            "completion_authority": False,
         }
         return MappingProxyType(payload)
 
@@ -1362,6 +1367,7 @@ class AutonomyRuntime:
             scanned=scanned,
             refilled=False,
             safety_timer=event.safety_timer,
+            recovery_delta_outstanding=self._recovery_delta_outstanding,
             reason_codes=reason_codes,
             step=step,
             suffix_receipt=suffix_receipt,
