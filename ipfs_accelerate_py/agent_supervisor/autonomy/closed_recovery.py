@@ -70,14 +70,43 @@ def outstanding_recovery_work(
     return bool(cids) and action in {"invalidate_stale_evidence", "replan_suffix"}
 
 
-def consume_recovery_plan_delta() -> None:
-    """Mark the thread-local recovery PlanDelta as no longer current work."""
+def consume_recovery_plan_delta(
+    coordinator: Any | None = None,
+    *,
+    now_ms: int | None = None,
+) -> None:
+    """Mark the recovery PlanDelta consumed on the existing board owner.
+
+    Thread-local state is updated even when the coordinator is absent.
+    TypeSafe is not this owner.
+    """
 
     prior = last_closed_recovery()
     if not prior:
         return
     prior["consumed"] = True
     _LAST.value = prior
+    consume = getattr(coordinator, "consume_recovery_plan_delta", None)
+    if not callable(consume):
+        return
+    event_id = str(prior.get("delta_event_id") or "").strip()
+    if not event_id:
+        return
+    try:
+        kwargs: dict[str, Any] = {
+            "delta_event_id": event_id,
+            "task_cid": str(prior.get("task_cid") or "").strip(),
+        }
+        if now_ms is not None:
+            kwargs["now_ms"] = now_ms
+        consume(**kwargs)
+    except TypeError:
+        try:
+            consume(delta_event_id=event_id)
+        except Exception:
+            return
+    except Exception:
+        return
 
 
 def _action_name(candidate: ResolutionCandidate) -> str:
@@ -341,6 +370,8 @@ def _attach_board_fence(
             "delta_operations": list(fence.get("delta_operations") or ()),
             "claim_fenced": bool(fence.get("claim_fenced")),
             "claim_fence_reason": str(fence.get("claim_fence_reason") or ""),
+            "delta_event_id": str(fence.get("delta_event_id") or ""),
+            "task_cid": str(target_cid or ""),
         }
     )
     _LAST.value = {

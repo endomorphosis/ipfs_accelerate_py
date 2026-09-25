@@ -172,6 +172,7 @@ def apply_recovery_board_fence(
         "action": str(recovery.get("action") or "preserve"),
         "delta_item_cids": [],
         "delta_operations": [],
+        "delta_event_id": "",
         "claim_fenced": False,
         "claim_fence_reason": "not_required",
         "reason_codes": (),
@@ -223,14 +224,18 @@ def apply_recovery_board_fence(
             }
             if now_ms is not None:
                 kwargs["now_ms"] = now_ms
-            record(**kwargs)
+            recorded = record(**kwargs)
+            if isinstance(recorded, Mapping):
+                payload["delta_event_id"] = str(recorded.get("event_id") or "")
             reasons.append("recovery_delta_recorded")
         except TypeError:
             try:
-                record(
+                recorded = record(
                     task_cid=_target_cid(target_cid),
                     items=tuple(item.to_dict() for item in items),
                 )
+                if isinstance(recorded, Mapping):
+                    payload["delta_event_id"] = str(recorded.get("event_id") or "")
                 reasons.append("recovery_delta_recorded")
             except Exception:
                 reasons.append("recovery_delta_record_error")

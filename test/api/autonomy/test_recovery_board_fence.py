@@ -416,5 +416,20 @@ def test_record_recovery_plan_delta_is_idempotent_and_claimed_safe(tmp_path) -> 
             )
         empty = coordinator.record_recovery_plan_delta(task_cid="task:delta", items=())
         assert empty["recorded"] is False
+        assert coordinator.outstanding_recovery_plan_delta_count() == 1
+        consumed = coordinator.consume_recovery_plan_delta(
+            delta_event_id=first["event_id"],
+            task_cid="task:delta",
+            now_ms=11,
+        )
+        replay_consume = coordinator.consume_recovery_plan_delta(
+            delta_event_id=first["event_id"],
+            task_cid="task:delta",
+            now_ms=12,
+        )
+        assert consumed["recorded"] is True
+        assert consumed["completes_task"] is False
+        assert replay_consume["idempotent"] is True
+        assert coordinator.outstanding_recovery_plan_delta_count() == 0
     finally:
         coordinator.close()

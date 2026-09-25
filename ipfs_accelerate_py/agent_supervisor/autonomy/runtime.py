@@ -1497,7 +1497,9 @@ class AutonomyRuntime:
             self._healthy_idle = idle_now and not self._healthy_exhausted
             if idle_now and not self._healthy_exhausted:
                 if not bound.safety_timer:
-                    consume_recovery_plan_delta()
+                    consume_recovery_plan_delta(
+                        self._claim_coordinator, now_ms=now_ms
+                    )
                     self._recovery_delta_outstanding = False
                 self._metrics.record_idle(
                     status="idle",
@@ -1601,7 +1603,9 @@ class AutonomyRuntime:
                         suffix_receipt=suffix_receipt,
                     )
             elif not bound.safety_timer:
-                consume_recovery_plan_delta()
+                consume_recovery_plan_delta(
+                    self._claim_coordinator, now_ms=now_ms
+                )
                 self._recovery_delta_outstanding = False
                 idle_after = self._board_is_idle()
                 self._healthy_idle = idle_after and not self._healthy_exhausted

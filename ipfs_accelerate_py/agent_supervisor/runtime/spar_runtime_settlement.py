@@ -231,6 +231,28 @@ def _count_active(connection: Any, sql: str) -> int:
     return int(row[0] if row else 0)
 
 
+def _coordination_recovery_outstanding(path: Path) -> int:
+    import duckdb
+
+    connection = connect_duckdb_with_policy(duckdb, path, read_only=True)
+    try:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
+            ).fetchall()
+        }
+        if "lease_events" not in tables:
+            return 0
+        from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+            count_outstanding_recovery_plan_deltas,
+        )
+
+        return count_outstanding_recovery_plan_deltas(connection)
+    finally:
+        connection.close()
+
+
 def _sidecar_active(path: Path, kind: str) -> int:
     import duckdb
 
@@ -246,6 +268,15 @@ def _sidecar_active(path: Path, kind: str) -> int:
             required = {"task_claims", "fenced_leases", "resource_claims", "maintenance_leases"}
             if not required.issubset(tables):
                 raise ValueError("coordination sidecar schema is incomplete")
+            recovery_outstanding = 0
+            if "lease_events" in tables:
+                from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+                    count_outstanding_recovery_plan_deltas,
+                )
+
+                recovery_outstanding = count_outstanding_recovery_plan_deltas(
+                    connection
+                )
             return (
                 _count_active(
                     connection,
@@ -265,6 +296,7 @@ def _sidecar_active(path: Path, kind: str) -> int:
                     connection,
                     "SELECT COUNT(*) FROM maintenance_leases WHERE released_at_ms IS NULL",
                 )
+                + recovery_outstanding
             )
         required = {"database_task_attempts"}
         if not required.issubset(tables):
@@ -304,11 +336,13 @@ def _lane_snapshot(paths: Mapping[str, Path], index: int) -> dict[str, Any]:
         )
     coordination_active = _sidecar_active(paths["coordination"], "coordination")
     execution_active = _sidecar_active(paths["execution"], "execution")
+    recovery_outstanding = _coordination_recovery_outstanding(paths["coordination"])
     return {
         "index": index,
         "name": EXPECTED_LANES[index]["name"],
         "coordination_active": coordination_active,
         "execution_active": execution_active,
+        "recovery_plan_delta_outstanding": recovery_outstanding > 0,
         "active_count": coordination_active + execution_active,
     }
 
@@ -334,7 +368,11 @@ def observe_spar_runtime_settlement(
             target_branch=profile["merge_target_branch"],
             lock_timeout_seconds=0.05,
         )
-        settled = active == 0 and merge.get("settled") is True
+        recovery_outstanding = any(
+            lane.get("recovery_plan_delta_outstanding") is True for lane in lanes
+        )
+        merge_empty = merge.get("settled") is True
+        settled = active == 0 and merge_empty
         receipt = {
             "schema": SCHEMA,
             "admitted": settled,
@@ -350,6 +388,8 @@ def observe_spar_runtime_settlement(
             },
             "lanes": lanes,
             "active_count": active,
+            "merge_queue_empty": merge_empty and not recovery_outstanding,
+            "recovery_plan_delta_outstanding": recovery_outstanding,
             "merge_queue": {
                 "settled": merge.get("settled") is True,
                 "active_count": merge.get("active_count"),
@@ -399,7 +439,11 @@ def hold_spar_runtime_settlement(
             target_branch=profile["merge_target_branch"],
             lock_timeout_seconds=0.05,
         ) as merge:
-            settled = active == 0 and merge.get("settled") is True
+            recovery_outstanding = any(
+                lane.get("recovery_plan_delta_outstanding") is True for lane in lanes
+            )
+            merge_empty = merge.get("settled") is True
+            settled = active == 0 and merge_empty
             receipt = {
                 "schema": SCHEMA,
                 "admitted": settled,
@@ -416,6 +460,8 @@ def hold_spar_runtime_settlement(
                 },
                 "lanes": lanes,
                 "active_count": active,
+                "merge_queue_empty": merge_empty and not recovery_outstanding,
+                "recovery_plan_delta_outstanding": recovery_outstanding,
                 "merge_queue": {
                     "settled": merge.get("settled") is True,
                     "active_count": merge.get("active_count"),

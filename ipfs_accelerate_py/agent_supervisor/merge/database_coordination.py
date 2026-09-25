@@ -94,6 +94,7 @@ LEASE_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/lease-event@1"
 )
 RECOVERY_PLAN_DELTA_EVENT: Final[str] = "recovery_plan_delta"
+RECOVERY_PLAN_DELTA_CONSUMED_EVENT: Final[str] = "recovery_plan_delta_consumed"
 _CLAIMED_SAFE_RECOVERY_OPS: Final[frozenset[str]] = frozenset(
     {"record_uncertainty", "request_lifecycle_action"}
 )
@@ -381,6 +382,37 @@ def _normalize_recovery_delta_items(
             )
         normalized.append(payload)
     return tuple(normalized)
+
+
+def _recovery_consumed_event_id(delta_event_id: str) -> str:
+    digest = hashlib.sha256(str(delta_event_id).encode("utf-8")).hexdigest()
+    return f"recovery-consumed:{digest}"
+
+
+def count_outstanding_recovery_plan_deltas(connection: Any) -> int:
+    """Read-only count of recorded recovery PlanDeltas without a consume event."""
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT event_id FROM lease_events WHERE event_type = ?
+            """,
+            [RECOVERY_PLAN_DELTA_EVENT],
+        ).fetchall()
+    except Exception:
+        return 0
+    outstanding = 0
+    for row in rows:
+        event_id = str(row[0] if not isinstance(row, Mapping) else row.get("event_id") or "")
+        if not event_id:
+            continue
+        found = connection.execute(
+            "SELECT 1 FROM lease_events WHERE event_id = ?",
+            [_recovery_consumed_event_id(event_id)],
+        ).fetchone()
+        if found is None:
+            outstanding += 1
+    return outstanding
 
 
 def _bounded_mapping(
@@ -4582,6 +4614,102 @@ class DatabaseCoordinator:
             "item_cids": list(body["item_cids"]),
         }
 
+    def consume_recovery_plan_delta(
+        self,
+        *,
+        delta_event_id: str = "",
+        task_cid: str = "",
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Append a consume event for one recorded recovery PlanDelta.
+
+        Never completes a task and never mutates a live claim. Replay of the
+        same delta event id is idempotent. TypeSafe is not this owner.
+        """
+
+        delta_id = _text(delta_event_id, "delta_event_id", required=False)
+        target = _text(task_cid, "task_cid", required=False)
+        if not delta_id:
+            return {
+                "schema": LEASE_EVENT_SCHEMA,
+                "event_type": RECOVERY_PLAN_DELTA_CONSUMED_EVENT,
+                "event_id": "",
+                "recorded": False,
+                "idempotent": False,
+                "accepted_as_authority": False,
+                "completes_task": False,
+                "delta_event_id": "",
+                "task_cid": target,
+            }
+        event_id = _recovery_consumed_event_id(delta_id)
+        body = _bounded_mapping(
+            {
+                "accepted_as_authority": False,
+                "completes_task": False,
+                "typesafe_required": False,
+                "source": "closed-recovery",
+                "delta_event_id": delta_id,
+                "task_cid": target,
+            },
+            name="recovery_plan_delta_consumed",
+        )
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=target or delta_id,
+            task_cid=target or delta_id,
+        )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        existing = None
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                existing = connection.execute(
+                    "SELECT event_id FROM lease_events WHERE event_id = ?",
+                    [event_id],
+                ).fetchone()
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO lease_events(
+                            event_id, lease_id, scope_key, event_type,
+                            fencing_token, fence_epoch, observed_at_ms, body_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            event_id,
+                            f"recovery:{target or delta_id}",
+                            scope_key,
+                            RECOVERY_PLAN_DELTA_CONSUMED_EVENT,
+                            0,
+                            0,
+                            now,
+                            _canonical_json(body),
+                        ],
+                    )
+                self._commit_if_idle(connection)
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+        return {
+            "schema": LEASE_EVENT_SCHEMA,
+            "event_type": RECOVERY_PLAN_DELTA_CONSUMED_EVENT,
+            "event_id": event_id,
+            "recorded": existing is None,
+            "idempotent": existing is not None,
+            "accepted_as_authority": False,
+            "completes_task": False,
+            "delta_event_id": delta_id,
+            "task_cid": target,
+        }
+
+    def outstanding_recovery_plan_delta_count(self) -> int:
+        """Read-only count of unconsumed recovery PlanDelta events."""
+
+        with self._lock:
+            connection = self._require()
+            return count_outstanding_recovery_plan_deltas(connection)
+
     def prepare_unresolved_interruption(self, claim: Any, **kwargs: Any) -> dict[str, Any]:
         from .unresolved_interruption_barrier import prepare
         return prepare(self, claim, **kwargs)
@@ -7372,6 +7500,8 @@ _PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
         "execute_with_task_and_resource_fences",
         "expire_task_claim",
         "record_recovery_plan_delta",
+        "consume_recovery_plan_delta",
+        "outstanding_recovery_plan_delta_count",
         "prepare_unresolved_interruption",
         "admit_unresolved_interruption",
         "get_unresolved_interruption",
@@ -7741,6 +7871,8 @@ __all__ = [
     "CROSS_STORE_FENCE_GUARD_EVENT",
     "CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD",
     "RECOVERY_PLAN_DELTA_EVENT",
+    "RECOVERY_PLAN_DELTA_CONSUMED_EVENT",
+    "count_outstanding_recovery_plan_deltas",
     "DEFAULT_LEASE_MS",
     "DEFAULT_MAINTENANCE_SCOPE",
     "MIN_LEASE_MS",
