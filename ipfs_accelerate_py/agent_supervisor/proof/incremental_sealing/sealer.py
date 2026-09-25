@@ -374,6 +374,48 @@ def _unit_proof_cids(
 # ---------------------------------------------------------------------------
 
 
+def _mirror_seal_publication_recovery(result: Any) -> Any:
+    """Record a seal-recovery digest and closed disposition. Roots and diagnostics are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = {
+            "resume",
+            "replay",
+            "verify-existing",
+            "discard-uncommitted",
+            "repair",
+            "full-reproof",
+        }
+        identities: list[str] = []
+        dispositions: set[str] = set()
+        for item in tuple(getattr(result, "decisions", ()) or ()):
+            transition_id = str(getattr(item, "transition_id", "") or "")
+            if transition_id:
+                identities.append(transition_id)
+            disposition = str(getattr(getattr(item, "disposition", None), "value", "") or "")
+            if disposition in closed:
+                dispositions.add(disposition)
+        if not identities:
+            return result
+        digest = hashlib.sha256("\n".join(sorted(identities)).encode("utf-8")).hexdigest()
+        label = next(iter(dispositions)) if len(dispositions) == 1 else ("mixed" if dispositions else "none")
+        record_ref = f"{digest}:{label}"
+        mirror_work_record(
+            catalog_kind="proof_cache",
+            record_kind="seal_publication_recovery",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class IncrementalProofSealer:
     """Coordinate full/delta seal construction with kit WAL and current-root CAS.
 
@@ -540,13 +582,13 @@ class IncrementalProofSealer:
         after pre-CAS seal persistence rejects publication without overwrite.
         """
 
-        return recover_seal_transitions(
+        return _mirror_seal_publication_recovery(recover_seal_transitions(
             self._root,
             wal=self._wal,
             store=self._store,
             pointers=self._pointers,
             policy={"apply_mutations": apply_mutations},
-        )
+        ))
 
     # -- core workflow ------------------------------------------------------
 

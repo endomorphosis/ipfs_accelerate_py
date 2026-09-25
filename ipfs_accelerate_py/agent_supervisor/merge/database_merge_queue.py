@@ -926,6 +926,35 @@ class SettlementReceipt:
 # ---------------------------------------------------------------------------
 
 
+def _mirror_stale_claim_recovery(result: Any) -> Any:
+    """Record a released claim by entry id and closed status. Reasons and fences are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        status = str(getattr(getattr(result, "status", None), "value", "") or "")
+        if status not in {"pending", "quarantined"}:
+            return result
+        entry_id = str(getattr(result, "entry_id", "") or "")
+        if not entry_id or "/" in entry_id or "\\" in entry_id:
+            identity = hashlib.sha256(entry_id.encode("utf-8")).hexdigest() if entry_id else "stale-claim"
+        else:
+            identity = entry_id
+        record_ref = f"{identity}:{status}"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="stale_claim_recovery",
+            record_ref=record_ref,
+            subject_kind="record_cid",
+            subject_ref=record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class DatabaseMergeQueue:
     """DuckDB-backed validation, merge, and settlement authority.
 
@@ -2268,6 +2297,7 @@ class DatabaseMergeQueue:
 
         now = self._now_ms()
         reason_text = _text(reason, "reason", required=False) or "crash"
+        recovered: MergeQueueEntry | None = None
         with self._lock:
             connection = self._require()
             self._begin(connection)
@@ -2337,10 +2367,11 @@ class DatabaseMergeQueue:
                     [current.entry_id],
                 ).fetchone()
                 self._commit_if_idle(connection)
-                return self._entry_from_row(row)
+                recovered = self._entry_from_row(row)
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+        return _mirror_stale_claim_recovery(recovered)
 
     # -- queries -------------------------------------------------------------
 

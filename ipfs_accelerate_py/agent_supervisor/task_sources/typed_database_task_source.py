@@ -514,6 +514,53 @@ def _mirror_typed_retry_cooldown(result: Any) -> Any:
     return result
 
 
+def _mirror_typed_post_merge_retry(result: Any, task_cid: str, disposition: str) -> Any:
+    """Record a typed post-merge retry by task id. Receipts, delays, and reasons are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        closed = str(disposition or "")
+        if closed not in {"replay", "recovered"}:
+            return result
+        task = str(task_cid or "")
+        record_ref = f"{task}:{closed}" if task else closed
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_post_merge_retry_recovery",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
+def _mirror_typed_leftover_wait_recovery(result: Any, task_cid: str) -> Any:
+    """Record a typed leftover-wait recovery by task id. Receipt bodies are not stored."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
+            mirror_work_record,
+        )
+
+        task = str(task_cid or "")
+        record_ref = task or "typed-leftover-wait"
+        mirror_work_record(
+            catalog_kind="metadata",
+            record_kind="typed_leftover_wait_recovery",
+            record_ref=record_ref,
+            subject_kind="task_id",
+            subject_ref=task or record_ref,
+        )
+    except Exception:
+        pass
+    return result
+
+
 class TypedDatabaseTaskSource:
     """Closed named-operation adapter consumed by DatabaseImplementationDaemon."""
 
@@ -2731,7 +2778,7 @@ class TypedDatabaseTaskSource:
                 changed=False,
                 receipt_cid=content_identity(dict(current_receipt)),
             )
-            return MappingProxyType(
+            return _mirror_typed_post_merge_retry(MappingProxyType(
                 {
                     "previous_status": "blocked",
                     "queue_receipt": dict(queue_receipt),
@@ -2744,7 +2791,7 @@ class TypedDatabaseTaskSource:
                     "transition_receipt": dict(current_receipt),
                     "cas_result": cas_result,
                 }
-            )
+            ), str(prior.task_cid), "replay")
         if (
             prior.status != "blocked"
             or prior.revision != expected_revision
@@ -2829,7 +2876,7 @@ class TypedDatabaseTaskSource:
             changed=bool(result.changed),
             receipt_cid=str(result.result_digest or ""),
         )
-        return MappingProxyType(
+        return _mirror_typed_post_merge_retry(MappingProxyType(
             {
                 "previous_status": "blocked",
                 "queue_receipt": dict(queue_receipt),
@@ -2840,7 +2887,7 @@ class TypedDatabaseTaskSource:
                 "transition_receipt": dict(transition_receipt),
                 "cas_result": cas_result,
             }
-        )
+        ), str(prior.task_cid), "recovered")
 
     def recover_leftover_wait_deferral_budget(
         self,
@@ -2936,7 +2983,7 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "leftover-wait recovery owner result values are malformed"
             )
-        return MappingProxyType(
+        return _mirror_typed_leftover_wait_recovery(MappingProxyType(
             {
                 "previous_status": str(result_map["previous_status"]),
                 "queue_receipt": dict(queue_receipt),
@@ -2945,7 +2992,7 @@ class TypedDatabaseTaskSource:
                 "transition_receipt": dict(transition_receipt),
                 "cas_result": _cas_result_from_dict(cas_payload),
             }
-        )
+        ), str(task_cid))
 
     def record_task_retry_cooldown(
         self,
