@@ -331,6 +331,99 @@ def test_restart_preserves_outstanding_recovery_plan_delta() -> None:
         )
 
 
+def test_wake_state_coordinator_consume_clears_board_owner(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        duckdb_available,
+        open_database_coordinator,
+    )
+
+    if not duckdb_available():
+        pytest.skip("DuckDB is required for board-owner consume")
+
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
+    try:
+        runtime = _complete_runtime(interval_ms=1_000)
+        stale = runtime.handle_wake(
+            AutonomyWakeEvent(
+                kind=AutonomyWakeKind.FRESHNESS,
+                cursor_id="cursor:coord-stale",
+                sequence=1,
+                stale=True,
+            ),
+            candidates=(),
+            context=_context(),
+            typesafe_state={"claim_coordinator": coordinator},
+        )
+        assert "recovery_plan_delta" in stale.reason_codes
+        assert coordinator.outstanding_recovery_plan_delta_count() == 1
+        fresh = runtime.handle_wake(
+            AutonomyWakeEvent(
+                kind=AutonomyWakeKind.TASK,
+                cursor_id="cursor:coord-fresh",
+                sequence=2,
+            ),
+            candidates=(),
+            context=_context(),
+            typesafe_state={"claim_coordinator": coordinator},
+        )
+        assert fresh.reason_codes == ("no_unresolved_mandatory_question",)
+        assert runtime.recovery_delta_outstanding is False
+        assert coordinator.outstanding_recovery_plan_delta_count() == 0
+    finally:
+        coordinator.close()
+
+
+def test_restore_reconciles_outstanding_from_board_owner(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_board_fence import (
+        build_recovery_delta_items,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        duckdb_available,
+        open_database_coordinator,
+    )
+    from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import (
+        LifecycleState,
+    )
+
+    if not duckdb_available():
+        pytest.skip("DuckDB is required for board-owner restore")
+
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
+    try:
+        items = build_recovery_delta_items(
+            {
+                "action": "invalidate_stale_evidence",
+                "admit": False,
+                "stall_reason": "stale_evidence",
+            },
+            target_cid="task:restore",
+            lifecycle=LifecycleState.CLAIMED,
+        )
+        recorded = coordinator.record_recovery_plan_delta(
+            task_cid="task:restore",
+            items=tuple(item.to_dict() for item in items),
+            now_ms=3,
+        )
+        idle = _complete_runtime(interval_ms=1_000)
+        assert idle.recovery_delta_outstanding is False
+        recovered = AutonomyRuntime.from_snapshot(
+            idle.snapshot_json(),
+            budget_loader=lambda value: _FakeBudgetController.from_snapshot(dict(value)),
+            claim_coordinator=coordinator,
+        )
+        assert recovered.recovery_delta_outstanding is True
+        assert recovered.healthy_idle is False
+        coordinator.consume_recovery_plan_delta(
+            delta_event_id=recorded["event_id"],
+            task_cid="task:restore",
+            now_ms=4,
+        )
+        recovered.bind_claim_coordinator(coordinator)
+        assert recovered.recovery_delta_outstanding is False
+    finally:
+        coordinator.close()
+
+
 def test_meaningful_wakes_on_a_complete_board_confirm_idle_without_writes_or_models() -> None:
     sink = InMemoryAutonomyCheckpointSink()
     runtime = _complete_runtime(sink=sink)

@@ -1206,6 +1206,36 @@ class AutonomyRuntime:
         else:
             self._recovery_leases = recovery_leases
         self._claim_coordinator = claim_coordinator
+        self._reconcile_recovery_delta_outstanding()
+
+    def bind_claim_coordinator(self, coordinator: Any | None) -> None:
+        """Attach the existing board-owner coordinator. Never invents one."""
+
+        self._claim_coordinator = coordinator
+        self._reconcile_recovery_delta_outstanding()
+
+    def _claim_coordinator_for(self, typesafe_state: Mapping[str, Any] | None) -> Any:
+        coordinator = self._claim_coordinator
+        if coordinator is None:
+            extra = (typesafe_state or {}).get("claim_coordinator")
+            if extra is not None:
+                self.bind_claim_coordinator(extra)
+                coordinator = self._claim_coordinator
+        return coordinator
+
+    def _reconcile_recovery_delta_outstanding(self) -> None:
+        count = getattr(
+            self._claim_coordinator, "outstanding_recovery_plan_delta_count", None
+        )
+        if not callable(count):
+            return
+        try:
+            outstanding = int(count() or 0) > 0
+        except Exception:
+            return
+        self._recovery_delta_outstanding = outstanding
+        if outstanding:
+            self._healthy_idle = False
 
     @property
     def controller(self) -> AutonomousMetaController:
@@ -1498,9 +1528,10 @@ class AutonomyRuntime:
             if idle_now and not self._healthy_exhausted:
                 if not bound.safety_timer:
                     consume_recovery_plan_delta(
-                        self._claim_coordinator, now_ms=now_ms
+                        self._claim_coordinator_for(typesafe_state), now_ms=now_ms
                     )
                     self._recovery_delta_outstanding = False
+                    self._reconcile_recovery_delta_outstanding()
                 self._metrics.record_idle(
                     status="idle",
                     reason_codes=("no_unresolved_mandatory_question",),
@@ -1563,9 +1594,7 @@ class AutonomyRuntime:
                     stale=bound.stale,
                 )
                 payload = typesafe_state or {}
-                coordinator = self._claim_coordinator
-                if coordinator is None:
-                    coordinator = payload.get("claim_coordinator")
+                coordinator = self._claim_coordinator_for(payload)
                 disposition, recovered, extra_reasons = apply_recovery_plan(
                     recovery,
                     wake_candidates,
@@ -1604,9 +1633,10 @@ class AutonomyRuntime:
                     )
             elif not bound.safety_timer:
                 consume_recovery_plan_delta(
-                    self._claim_coordinator, now_ms=now_ms
+                    self._claim_coordinator_for(typesafe_state), now_ms=now_ms
                 )
                 self._recovery_delta_outstanding = False
+                self._reconcile_recovery_delta_outstanding()
                 idle_after = self._board_is_idle()
                 self._healthy_idle = idle_after and not self._healthy_exhausted
                 if idle_after and not self._healthy_exhausted:
@@ -1808,6 +1838,7 @@ class AutonomyRuntime:
         horizon: RecedingHorizonController | None = None,
         checkpoint_sink: AutonomyCheckpointSink | None = None,
         now_ms: int = 0,
+        claim_coordinator: Any | None = None,
     ) -> AutonomyRuntime:
         raw = _parse_snapshot_mapping(
             snapshot, max_bytes=MAX_AUTONOMY_RUNTIME_SNAPSHOT_BYTES
@@ -1881,6 +1912,8 @@ class AutonomyRuntime:
         )
         if runtime._recovery_delta_outstanding:
             runtime._healthy_idle = False
+        if claim_coordinator is not None:
+            runtime.bind_claim_coordinator(claim_coordinator)
         runtime._last_durable_identity = runtime._durable_identity()
         return runtime
 
