@@ -337,6 +337,10 @@ def test_adapter_handle_wake_prefers_smt_and_runtime_stays_provider_free(
     )
     assert not handoff.result.authorizes_effect
     assert not handoff.result.authorizes_completion
+    payload = handoff.to_dict()
+    assert payload["authorizes_effect"] is False
+    assert payload["completion_authority"] is False
+    assert payload["recovery_delta_outstanding"] is False
 
 
 def _proof_wake_fixture():

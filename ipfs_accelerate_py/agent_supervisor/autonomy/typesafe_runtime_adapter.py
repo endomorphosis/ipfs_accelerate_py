@@ -250,11 +250,23 @@ class TypesafeWakeHandoff:
     def model_called(self) -> bool:
         return bool(getattr(self.result, "model_called", False))
 
+    @property
+    def recovery_delta_outstanding(self) -> bool:
+        return bool(getattr(self.result, "recovery_delta_outstanding", False))
+
     def to_dict(self) -> dict[str, Any]:
+        result = self.result
+        record = result.to_record() if hasattr(result, "to_record") else {}
+        outstanding = bool(getattr(result, "recovery_delta_outstanding", False))
+        if isinstance(record, Mapping) and record.get("recovery_delta_outstanding") is True:
+            outstanding = True
         return {
             "authorizes_effect": False,
+            "completion_authority": False,
             "model_called": self.model_called,
-            "status": getattr(getattr(self.result, "status", None), "value", ""),
+            "status": getattr(getattr(result, "status", None), "value", ""),
+            "recovery_delta_outstanding": outstanding,
+            "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
             "advice": None if self.advice is None else self.advice.to_dict(),
         }
 

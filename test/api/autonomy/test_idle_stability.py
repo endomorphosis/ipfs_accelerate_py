@@ -458,6 +458,10 @@ def test_dispatch_wake_uses_bound_claim_coordinator(tmp_path) -> None:
         )
         assert stale.model_called is False
         assert stale.authorizes_effect is False
+        stale_dict = stale.to_dict()
+        assert stale_dict["authorizes_effect"] is False
+        assert stale_dict["completion_authority"] is False
+        assert stale_dict["recovery_delta_outstanding"] is True
         assert coordinator.outstanding_recovery_plan_delta_count() == 1
         fresh = dispatch_autonomy_wake(
             runtime,
@@ -470,6 +474,7 @@ def test_dispatch_wake_uses_bound_claim_coordinator(tmp_path) -> None:
             context=_context(),
         )
         assert fresh.result.reason_codes == ("no_unresolved_mandatory_question",)
+        assert fresh.to_dict()["recovery_delta_outstanding"] is False
         assert coordinator.outstanding_recovery_plan_delta_count() == 0
     finally:
         coordinator.close()
