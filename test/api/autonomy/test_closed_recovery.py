@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from ipfs_accelerate_py.agent_supervisor.autonomy.closed_recovery import (
     apply_recovery_plan,
+    consume_recovery_plan_delta,
+    last_closed_recovery,
+    outstanding_recovery_work,
     plan_closed_recovery,
     should_recover,
 )
@@ -130,3 +133,21 @@ def test_false_missing_preserves_and_does_not_replan(monkeypatch) -> None:
 def test_notification_task_wake_does_not_recover() -> None:
     assert should_recover(stale=False, wake_kind="task", reason="notification") is False
     assert should_recover(stale=True, wake_kind="task", reason="notification") is True
+
+
+def test_queue_empty_is_not_success_while_recovery_plan_delta_is_outstanding(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    view = plan_closed_recovery(
+        reason="stale_evidence",
+        wake_kind="freshness",
+        candidates=(_candidate(MetaAction.RUN_LOCAL_STATIC_ANALYSIS),),
+        call_typesafe=False,
+    )
+    apply_recovery_plan(view, (), stale=True, target_cid="task:empty")
+    assert outstanding_recovery_work() is True
+    assert last_closed_recovery()["delta_item_cids"]
+    consume_recovery_plan_delta()
+    assert outstanding_recovery_work() is False
+    assert last_closed_recovery()["consumed"] is True

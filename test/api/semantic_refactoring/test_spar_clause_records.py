@@ -87,6 +87,25 @@ def test_missing_runtime_settlement_cannot_mint_fixed_point():
     assert "required_mode_roots_accepted" in records
 
 
+def test_settled_runtime_without_empty_merge_queue_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(), _current(runtime_settled=True, merge_queue_empty=False)
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_outstanding_recovery_plan_delta_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            recovery_plan_delta_outstanding=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
 def test_supervisor_admits_materialized_current_bound_records():
     subject = _subject()
     records = materialize_clause_records(subject, _current())

@@ -1184,6 +1184,7 @@ class AutonomyRuntime:
         self._acked_index: set[str] = set()
         self._ephemeral_cursor_ids: set[str] = set()
         self._pending_cursor_id = ""
+        self._recovery_delta_outstanding = False
         self._healthy_idle = self._board_is_idle()
         self._healthy_exhausted = False
         self._last_durable_identity = self._durable_identity()
@@ -1227,6 +1228,10 @@ class AutonomyRuntime:
         return self._healthy_idle
 
     @property
+    def recovery_delta_outstanding(self) -> bool:
+        return self._recovery_delta_outstanding
+
+    @property
     def healthy_exhausted(self) -> bool:
         return self._healthy_exhausted
 
@@ -1236,7 +1241,11 @@ class AutonomyRuntime:
 
     def _board_is_idle(self) -> bool:
         horizon_idle = True if self._horizon is None else self._horizon.idle
-        return (not self._controller.has_work()) and horizon_idle
+        return (
+            (not self._controller.has_work())
+            and horizon_idle
+            and not self._recovery_delta_outstanding
+        )
 
     def _remember_cursor(self, cursor_id: str) -> None:
         if cursor_id in self._acked_index:
@@ -1412,8 +1421,27 @@ class AutonomyRuntime:
         wake_session: Any | None = None
         wake_candidates = tuple(candidates)
         try:
+            from .closed_recovery import (
+                apply_recovery_plan,
+                collect_recovery_bindings,
+                consume_recovery_plan_delta,
+                plan_closed_recovery,
+                should_recover,
+            )
+
+            needs_recovery = should_recover(
+                stale=bound.stale,
+                wake_kind=bound.kind.value,
+                reason=bound.reason,
+                state=typesafe_state,
+            )
             cached_idle = self._healthy_idle or self._healthy_exhausted
-            if bound.safety_timer and cached_idle:
+            if (
+                bound.safety_timer
+                and cached_idle
+                and not needs_recovery
+                and not self._recovery_delta_outstanding
+            ):
                 reason = (
                     "healthy_exhaustion"
                     if self._healthy_exhausted
@@ -1436,6 +1464,24 @@ class AutonomyRuntime:
                     wrote_state=False,
                     acknowledged=acknowledged,
                 )
+            if bound.safety_timer and self._recovery_delta_outstanding:
+                self._healthy_idle = False
+                self._metrics.record_status(
+                    "idle",
+                    reason_codes=("recovery_plan_delta_outstanding",),
+                )
+                acknowledged = False
+                if auto_acknowledge:
+                    self.acknowledge(bound)
+                    acknowledged = True
+                return self._result(
+                    status=AutonomyRuntimeStatus.IDLE,
+                    event=bound,
+                    reason_codes=("recovery_plan_delta_outstanding",),
+                    scanned=False,
+                    wrote_state=False,
+                    acknowledged=acknowledged,
+                )
 
             suffix_receipt: PlanSuffixInvalidationReceipt | None = None
             if self._horizon is not None and horizon_evidence is not None:
@@ -1447,9 +1493,12 @@ class AutonomyRuntime:
                 )
 
             self._metrics.record_scan()
-            idle_now = self._board_is_idle()
+            idle_now = self._board_is_idle() and not needs_recovery
             self._healthy_idle = idle_now and not self._healthy_exhausted
             if idle_now and not self._healthy_exhausted:
+                if not bound.safety_timer:
+                    consume_recovery_plan_delta()
+                    self._recovery_delta_outstanding = False
                 self._metrics.record_idle(
                     status="idle",
                     reason_codes=("no_unresolved_mandatory_question",),
@@ -1487,19 +1536,7 @@ class AutonomyRuntime:
                     suffix_receipt=suffix_receipt,
                 )
 
-            from .closed_recovery import (
-                apply_recovery_plan,
-                collect_recovery_bindings,
-                plan_closed_recovery,
-                should_recover,
-            )
-
-            if should_recover(
-                stale=bound.stale,
-                wake_kind=bound.kind.value,
-                reason=bound.reason,
-                state=typesafe_state,
-            ):
+            if needs_recovery:
                 question = None
                 try:
                     question = self._controller.next_unresolved_question()
@@ -1539,9 +1576,15 @@ class AutonomyRuntime:
                 if disposition == "admit":
                     wake_candidates = recovered
                     recovery_reasons = extra_reasons
+                    if "recovery_plan_delta" in extra_reasons:
+                        self._recovery_delta_outstanding = True
+                        self._healthy_idle = False
                     if wake_session is not None:
                         wake_session.renew()
                 elif disposition == "idle":
+                    if "recovery_plan_delta" in extra_reasons:
+                        self._recovery_delta_outstanding = True
+                    self._healthy_idle = False
                     self._metrics.record_status("idle", reason_codes=extra_reasons)
                     wrote = self._persist_if_changed()
                     acknowledged = False
@@ -1552,6 +1595,30 @@ class AutonomyRuntime:
                         status=AutonomyRuntimeStatus.IDLE,
                         event=bound,
                         reason_codes=extra_reasons,
+                        scanned=True,
+                        wrote_state=wrote,
+                        acknowledged=acknowledged,
+                        suffix_receipt=suffix_receipt,
+                    )
+            elif not bound.safety_timer:
+                consume_recovery_plan_delta()
+                self._recovery_delta_outstanding = False
+                idle_after = self._board_is_idle()
+                self._healthy_idle = idle_after and not self._healthy_exhausted
+                if idle_after and not self._healthy_exhausted:
+                    self._metrics.record_idle(
+                        status="idle",
+                        reason_codes=("no_unresolved_mandatory_question",),
+                    )
+                    wrote = self._persist_if_changed()
+                    acknowledged = False
+                    if auto_acknowledge:
+                        self.acknowledge(bound)
+                        acknowledged = True
+                    return self._result(
+                        status=AutonomyRuntimeStatus.IDLE,
+                        event=bound,
+                        reason_codes=("no_unresolved_mandatory_question",),
                         scanned=True,
                         wrote_state=wrote,
                         acknowledged=acknowledged,
@@ -1600,7 +1667,10 @@ class AutonomyRuntime:
                 step_reasons = tuple(merged)
             self._metrics.record_status(status.value, reason_codes=step_reasons)
             self._healthy_exhausted = status is AutonomyRuntimeStatus.EXHAUSTED
-            self._healthy_idle = status is AutonomyRuntimeStatus.IDLE
+            self._healthy_idle = (
+                status is AutonomyRuntimeStatus.IDLE
+                and not self._recovery_delta_outstanding
+            )
             wrote = self._persist_if_changed()
             acknowledged = False
             if auto_acknowledge:

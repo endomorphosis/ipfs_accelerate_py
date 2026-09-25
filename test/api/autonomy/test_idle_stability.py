@@ -248,6 +248,49 @@ def test_unchanged_complete_board_window_ticks_do_not_call_write_scan_or_refill(
     assert runtime.metrics.idle_cycles == 5
 
 
+def test_empty_queue_stale_wake_is_not_board_success() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    assert runtime.healthy_idle
+    stale = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.FRESHNESS,
+            cursor_id="cursor:empty-stale",
+            sequence=1,
+            stale=True,
+        ),
+        candidates=(),
+        context=_context(),
+    )
+    assert stale.status is AutonomyRuntimeStatus.IDLE
+    assert stale.reason_codes[0] == "stale_invalidated"
+    assert "recovery_plan_delta" in stale.reason_codes
+    assert runtime.healthy_idle is False
+    assert runtime.recovery_delta_outstanding is True
+
+    tick = runtime.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = runtime.handle_wake(tick, candidates=(), context=_context())
+    assert held.status is AutonomyRuntimeStatus.IDLE
+    assert held.reason_codes == ("recovery_plan_delta_outstanding",)
+    assert held.scanned is False
+    assert runtime.healthy_idle is False
+    assert runtime.recovery_delta_outstanding is True
+
+    fresh = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:empty-fresh",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+    )
+    assert fresh.status is AutonomyRuntimeStatus.IDLE
+    assert fresh.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.recovery_delta_outstanding is False
+    assert runtime.healthy_idle is True
+
+
 def test_meaningful_wakes_on_a_complete_board_confirm_idle_without_writes_or_models() -> None:
     sink = InMemoryAutonomyCheckpointSink()
     runtime = _complete_runtime(sink=sink)

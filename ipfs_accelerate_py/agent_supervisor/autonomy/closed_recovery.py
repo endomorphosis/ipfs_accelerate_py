@@ -54,6 +54,32 @@ def last_closed_recovery() -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
 
+def outstanding_recovery_work(
+    recovery: Mapping[str, Any] | None = None,
+) -> bool:
+    """True when a recovery PlanDelta still blocks board completion.
+
+    Queue-empty and an idle question graph are not success while this is true.
+    """
+
+    payload = recovery if isinstance(recovery, Mapping) else last_closed_recovery()
+    if payload.get("consumed") is True:
+        return False
+    action = str(payload.get("action") or "").strip()
+    cids = payload.get("delta_item_cids") or ()
+    return bool(cids) and action in {"invalidate_stale_evidence", "replan_suffix"}
+
+
+def consume_recovery_plan_delta() -> None:
+    """Mark the thread-local recovery PlanDelta as no longer current work."""
+
+    prior = last_closed_recovery()
+    if not prior:
+        return
+    prior["consumed"] = True
+    _LAST.value = prior
+
+
 def _action_name(candidate: ResolutionCandidate) -> str:
     action = getattr(getattr(candidate, "resolution_action", None), "action", "")
     return str(getattr(action, "value", action) or "").strip()
@@ -389,7 +415,9 @@ def apply_recovery_plan(
 __all__ = [
     "apply_recovery_plan",
     "collect_recovery_bindings",
+    "consume_recovery_plan_delta",
     "last_closed_recovery",
+    "outstanding_recovery_work",
     "RECOVERY_ACTIONS",
     "RECOVERY_META",
     "STALL_REASONS",

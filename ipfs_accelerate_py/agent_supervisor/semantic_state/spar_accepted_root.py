@@ -258,7 +258,11 @@ def materialize_clause_records(
             ),
         )
         break
-    if source.get("runtime_settled") is True and source.get("merge_queue_empty") is True:
+    if (
+        source.get("runtime_settled") is True
+        and source.get("merge_queue_empty") is True
+        and source.get("recovery_plan_delta_outstanding") is not True
+    ):
         records.setdefault(
             "fixed_point_accepted",
             _clause_record(
@@ -383,6 +387,22 @@ def _runtime_settled(runtime: Any) -> bool:
         and type(receipt_cid) is str
         and bool(receipt_cid.strip())
     )
+
+
+def _merge_queue_empty(runtime: Any) -> bool:
+    """True only when the merge queue is independently empty.
+
+    Runtime settlement is not this bit. An outstanding recovery PlanDelta or
+    required work cannot be treated as queue-empty success.
+    """
+    if not isinstance(runtime, Mapping):
+        return False
+    if runtime.get("recovery_plan_delta_outstanding") is True:
+        return False
+    work = runtime.get("outstanding_required_work")
+    if isinstance(work, int) and work > 0:
+        return False
+    return runtime.get("merge_queue_empty") is True
 
 
 def _producer_subject_verified(
@@ -561,7 +581,11 @@ def admit_accepted_root(
             "required_gate_task": "SPAR-043",
             "required_gate_receipt_cid": _required_gate_receipt_cid(task_evidence),
             "runtime_settled": _runtime_settled(runtime),
-            "merge_queue_empty": _runtime_settled(runtime),
+            "merge_queue_empty": _merge_queue_empty(runtime),
+            "recovery_plan_delta_outstanding": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("recovery_plan_delta_outstanding") is True
+            ),
         }
         current_source["clause_records"] = materialize_clause_records(subject, current_source)
         try:
