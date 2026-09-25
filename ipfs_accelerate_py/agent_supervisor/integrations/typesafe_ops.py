@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 
 _TEXT_KEYS = (
@@ -62,6 +62,7 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
     )
 
     recovery = _last_closed_recovery()
+    blocks = _completion_blocks(recovery)
     return {
         "accepted_as_authority": False,
         "trace_guardrail": _advisory(last_trace_guardrail()),
@@ -85,9 +86,52 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "calibration": recommend_skip_policy(),
         "autoresearch": _advisory(_last_autoresearch()),
         "closed_recovery": _advisory(recovery),
-        "recovery_plan_delta_outstanding": recovery.get("outstanding") is True,
+        "completion_blocks": blocks,
+        "recovery_plan_delta_outstanding": blocks["recovery_plan_delta_outstanding"],
+        "similarity_not_resolution": blocks["similarity_not_resolution"],
+        "cold_execution_required": blocks["cold_execution_required"],
+        "qualification_incomplete": blocks["qualification_incomplete"],
+        "observations_not_preserved": blocks["observations_not_preserved"],
+        "negative_memory_blocks": blocks["negative_memory_blocks"],
+        "world_root_cas_not_completion": blocks["world_root_cas_not_completion"],
+        "boundary_contract_required": blocks["boundary_contract_required"],
+        "incompatible_identity": blocks.get("incompatible_identity") is True,
+        "blocks_completion": blocks["blocks_completion"],
         "completion_authority": False,
     }
+
+
+def _completion_blocks(recovery: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+            last_completion_blocks,
+        )
+
+        blocks = last_completion_blocks()
+    except Exception:
+        blocks = {
+            "recovery_plan_delta_outstanding": False,
+            "similarity_not_resolution": False,
+            "cold_execution_required": False,
+            "qualification_incomplete": False,
+            "observations_not_preserved": False,
+            "negative_memory_blocks": False,
+            "world_root_cas_not_completion": False,
+            "boundary_contract_required": False,
+            "incompatible_identity": False,
+            "blocks_completion": False,
+            "reason": "",
+            "accepted_as_authority": False,
+            "completion_authority": False,
+        }
+    if recovery.get("outstanding") is True:
+        blocks["recovery_plan_delta_outstanding"] = True
+        blocks["blocks_completion"] = True
+        if not blocks.get("reason"):
+            blocks["reason"] = "recovery_plan_delta_outstanding"
+    blocks["accepted_as_authority"] = False
+    blocks["completion_authority"] = False
+    return blocks
 
 
 def _last_closed_recovery() -> dict[str, Any]:

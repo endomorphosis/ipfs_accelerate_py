@@ -171,6 +171,18 @@ def test_sealed_program_catalog_cannot_mint_fixed_point():
     assert "fixed_point_accepted" not in records
 
 
+def test_incompatible_identity_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            incompatible_identity=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
 def test_boundary_contract_required_cannot_mint_fixed_point():
     records = materialize_clause_records(
         _subject(),

@@ -718,6 +718,7 @@ class AutonomyCycleResult:
     negative_memory_blocks: bool = False
     world_root_cas_not_completion: bool = False
     boundary_contract_required: bool = False
+    incompatible_identity: bool = False
     reason_codes: tuple[str, ...] = ()
     step: MetaControllerStep | None = None
     suffix_receipt: PlanSuffixInvalidationReceipt | None = None
@@ -746,6 +747,7 @@ class AutonomyCycleResult:
             "negative_memory_blocks",
             "world_root_cas_not_completion",
             "boundary_contract_required",
+            "incompatible_identity",
         ):
             object.__setattr__(self, name, _bounded_bool(getattr(self, name), name))
         object.__setattr__(
@@ -795,6 +797,7 @@ class AutonomyCycleResult:
             "negative_memory_blocks": self.negative_memory_blocks,
             "world_root_cas_not_completion": self.world_root_cas_not_completion,
             "boundary_contract_required": self.boundary_contract_required,
+            "incompatible_identity": self.incompatible_identity,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "step_status": None if self.step is None else self.step.status.value,
@@ -836,6 +839,7 @@ class AutonomyCycleResult:
             "negative_memory_blocks": self.negative_memory_blocks,
             "world_root_cas_not_completion": self.world_root_cas_not_completion,
             "boundary_contract_required": self.boundary_contract_required,
+            "incompatible_identity": self.incompatible_identity,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "completion_authority": False,
@@ -1225,6 +1229,7 @@ class AutonomyRuntime:
         self._negative_memory_blocks = False
         self._world_root_cas_not_completion = False
         self._boundary_contract_required = False
+        self._incompatible_identity = False
         self._healthy_idle = self._board_is_idle()
         self._healthy_exhausted = False
         self._last_durable_identity = self._durable_identity()
@@ -1333,6 +1338,23 @@ class AutonomyRuntime:
     def boundary_contract_required(self) -> bool:
         return self._boundary_contract_required
 
+    @property
+    def incompatible_identity(self) -> bool:
+        return self._incompatible_identity
+
+    def _observe_compatibility(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .compatibility import compatibility_view
+
+        view = compatibility_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._incompatible_identity = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("respected"):
+            self._incompatible_identity = False
+        return view
+
     def _observe_partition_boundary(
         self, typesafe_state: Mapping[str, Any] | None
     ) -> dict[str, Any]:
@@ -1382,6 +1404,7 @@ class AutonomyRuntime:
             or self._negative_memory_blocks
             or self._world_root_cas_not_completion
             or self._boundary_contract_required
+            or self._incompatible_identity
         )
 
     def _completion_block_reason(self) -> str:
@@ -1401,6 +1424,8 @@ class AutonomyRuntime:
             return "world_root_cas_not_completion"
         if self._boundary_contract_required:
             return "boundary_contract_required"
+        if self._incompatible_identity:
+            return "incompatible_identity"
         return ""
 
     def _observe_observation_preservation(
@@ -1539,6 +1564,19 @@ class AutonomyRuntime:
             segment_ids = suffix_receipt.nearest_safe_segment_ids
         elif self._horizon is not None and scanned:
             segment_ids = self._horizon.select_nearest_safe_segment().step_ids
+        from .completion_blocks import publish_completion_blocks
+
+        publish_completion_blocks(
+            recovery_plan_delta_outstanding=self._recovery_delta_outstanding,
+            similarity_not_resolution=self._similarity_not_resolution,
+            cold_execution_required=self._cold_execution_required,
+            qualification_incomplete=self._qualification_incomplete,
+            observations_not_preserved=self._observations_not_preserved,
+            negative_memory_blocks=self._negative_memory_blocks,
+            world_root_cas_not_completion=self._world_root_cas_not_completion,
+            boundary_contract_required=self._boundary_contract_required,
+            incompatible_identity=self._incompatible_identity,
+        )
         result = AutonomyCycleResult(
             status=status,
             cursor_id=event.cursor_id,
@@ -1556,6 +1594,7 @@ class AutonomyRuntime:
             negative_memory_blocks=self._negative_memory_blocks,
             world_root_cas_not_completion=self._world_root_cas_not_completion,
             boundary_contract_required=self._boundary_contract_required,
+            incompatible_identity=self._incompatible_identity,
             reason_codes=reason_codes,
             step=step,
             suffix_receipt=suffix_receipt,
@@ -1671,6 +1710,7 @@ class AutonomyRuntime:
                 self._observe_negative_memory(typesafe_state)
                 self._observe_world_root_cas(typesafe_state)
                 self._observe_partition_boundary(typesafe_state)
+                self._observe_compatibility(typesafe_state)
             cached_idle = self._healthy_idle or self._healthy_exhausted
             if (
                 bound.safety_timer
@@ -1913,6 +1953,7 @@ class AutonomyRuntime:
                 "negative_memory_blocks",
                 "world_root_cas_not_completion",
                 "boundary_contract_required",
+                "incompatible_identity",
             ):
                 if getattr(self, f"_{extra}") and extra not in step_reasons:
                     step_reasons = step_reasons + (extra,)
@@ -2025,6 +2066,7 @@ class AutonomyRuntime:
             "negative_memory_blocks": self._negative_memory_blocks,
             "world_root_cas_not_completion": self._world_root_cas_not_completion,
             "boundary_contract_required": self._boundary_contract_required,
+            "incompatible_identity": self._incompatible_identity,
             "safety_interval_ms": self._safety_interval_ms,
             "horizon": horizon_payload,
             "metrics_interface": AUTONOMY_METRICS_INTERFACE,
@@ -2082,6 +2124,7 @@ class AutonomyRuntime:
             "negative_memory_blocks",
             "world_root_cas_not_completion",
             "boundary_contract_required",
+            "incompatible_identity",
             "safety_interval_ms",
             "horizon",
             "metrics_interface",
@@ -2160,10 +2203,26 @@ class AutonomyRuntime:
         runtime._boundary_contract_required = _bounded_bool(
             raw["boundary_contract_required"], "boundary_contract_required"
         )
+        runtime._incompatible_identity = _bounded_bool(
+            raw["incompatible_identity"], "incompatible_identity"
+        )
         if runtime._completion_blocked():
             runtime._healthy_idle = False
         if claim_coordinator is not None:
             runtime.bind_claim_coordinator(claim_coordinator)
+        from .completion_blocks import publish_completion_blocks
+
+        publish_completion_blocks(
+            recovery_plan_delta_outstanding=runtime._recovery_delta_outstanding,
+            similarity_not_resolution=runtime._similarity_not_resolution,
+            cold_execution_required=runtime._cold_execution_required,
+            qualification_incomplete=runtime._qualification_incomplete,
+            observations_not_preserved=runtime._observations_not_preserved,
+            negative_memory_blocks=runtime._negative_memory_blocks,
+            world_root_cas_not_completion=runtime._world_root_cas_not_completion,
+            boundary_contract_required=runtime._boundary_contract_required,
+            incompatible_identity=runtime._incompatible_identity,
+        )
         runtime._last_durable_identity = runtime._durable_identity()
         return runtime
 

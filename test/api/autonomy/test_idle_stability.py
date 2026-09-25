@@ -322,6 +322,33 @@ def test_similarity_nomination_cannot_complete_an_empty_board() -> None:
     assert similar.to_record()["completion_authority"] is False
     assert runtime.healthy_idle is False
     assert runtime.similarity_not_resolution is True
+    from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_runtime_adapter import (
+        TypesafeStepHandoff,
+    )
+    from ipfs_accelerate_py.agent_supervisor.integrations.typesafe_ops import (
+        typesafe_ops_snapshot,
+    )
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
+        MetaControllerStepStatus,
+    )
+
+    snap = typesafe_ops_snapshot()
+    assert snap["similarity_not_resolution"] is True
+    assert snap["blocks_completion"] is True
+    assert snap["completion_authority"] is False
+    step = SimpleNamespace(
+        admitted=False,
+        requires_decision_runtime=False,
+        status=MetaControllerStepStatus.IDLE,
+        decision=SimpleNamespace(selected_action=None),
+    )
+    handoff = TypesafeStepHandoff(step=step, advice=None).to_dict()
+    assert handoff["similarity_not_resolution"] is True
+    assert handoff["blocks_completion"] is True
+    assert handoff["authorizes_effect"] is False
+    assert handoff["completion_authority"] is False
 
     tick = runtime.safety_timer_event(now_ms=1_000)
     assert tick is not None
@@ -539,6 +566,40 @@ def test_cross_scc_wave_cannot_complete_an_empty_board() -> None:
     assert inside.status is AutonomyRuntimeStatus.IDLE
     assert inside.reason_codes == ("no_unresolved_mandatory_question",)
     assert runtime.boundary_contract_required is False
+    assert runtime.healthy_idle is True
+
+
+def test_pickle_fallback_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    pickle = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:pickle-id",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"pickle_fallback": True},
+    )
+    assert pickle.status is AutonomyRuntimeStatus.IDLE
+    assert "incompatible_identity" in pickle.reason_codes
+    assert pickle.incompatible_identity is True
+    assert pickle.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    ok = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:compat-ok",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"compatibility": {"compatible": True}},
+    )
+    assert ok.status is AutonomyRuntimeStatus.IDLE
+    assert ok.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.incompatible_identity is False
     assert runtime.healthy_idle is True
 
 

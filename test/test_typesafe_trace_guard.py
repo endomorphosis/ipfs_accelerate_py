@@ -259,6 +259,9 @@ def test_ops_snapshot_is_never_authority() -> None:
     assert "autoresearch" in snap
     assert "closed_recovery" in snap
     assert snap["recovery_plan_delta_outstanding"] is False
+    assert snap["similarity_not_resolution"] is False
+    assert snap["incompatible_identity"] is False
+    assert snap["blocks_completion"] is False
     assert snap["completion_authority"] is False
     dumped = str(snap)
     assert "line_text" not in dumped

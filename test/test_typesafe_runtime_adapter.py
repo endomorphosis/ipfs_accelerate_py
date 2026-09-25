@@ -352,6 +352,7 @@ def test_adapter_handle_wake_prefers_smt_and_runtime_stays_provider_free(
     assert payload["negative_memory_blocks"] is False
     assert payload["world_root_cas_not_completion"] is False
     assert payload["boundary_contract_required"] is False
+    assert payload["incompatible_identity"] is False
 
 
 def _proof_wake_fixture():

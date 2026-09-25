@@ -20,6 +20,7 @@ _COMPLETION_BLOCKS = (
     "negative_memory_blocks",
     "world_root_cas_not_completion",
     "boundary_contract_required",
+    "incompatible_identity",
 )
 
 

@@ -269,6 +269,7 @@ def materialize_clause_records(
         and source.get("negative_memory_blocks") is not True
         and source.get("world_root_cas_not_completion") is not True
         and source.get("boundary_contract_required") is not True
+        and source.get("incompatible_identity") is not True
         and not _program_catalog_blocks(source)
     ):
         records.setdefault(
@@ -421,6 +422,8 @@ def _runtime_settled(runtime: Any) -> bool:
         return False
     if runtime.get("boundary_contract_required") is True:
         return False
+    if runtime.get("incompatible_identity") is True:
+        return False
     receipt_cid = runtime.get("receipt_cid")
     return (
         runtime.get("admitted") is True
@@ -453,6 +456,8 @@ def _merge_queue_empty(runtime: Any) -> bool:
     if runtime.get("world_root_cas_not_completion") is True:
         return False
     if runtime.get("boundary_contract_required") is True:
+        return False
+    if runtime.get("incompatible_identity") is True:
         return False
     work = runtime.get("outstanding_required_work")
     if isinstance(work, int) and work > 0:
@@ -668,6 +673,10 @@ def admit_accepted_root(
             "boundary_contract_required": bool(
                 isinstance(runtime, Mapping)
                 and runtime.get("boundary_contract_required") is True
+            ),
+            "incompatible_identity": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("incompatible_identity") is True
             ),
         }
         current_source["clause_records"] = materialize_clause_records(subject, current_source)

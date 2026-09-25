@@ -46,20 +46,37 @@ class TypesafeStepHandoff:
 
     def to_dict(self) -> dict[str, Any]:
         outstanding = False
+        blocks: dict[str, Any] = {}
         try:
             from ipfs_accelerate_py.agent_supervisor.autonomy.closed_recovery import (
                 outstanding_recovery_work,
             )
+            from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+                last_completion_blocks,
+            )
 
             outstanding = outstanding_recovery_work()
+            blocks = last_completion_blocks()
         except Exception:
             outstanding = False
+            blocks = {}
+        if blocks.get("recovery_plan_delta_outstanding") is True:
+            outstanding = True
         return {
             "admitted": self.admitted,
             "authorizes_effect": False,
             "completion_authority": False,
             "requires_decision_runtime": self.requires_decision_runtime,
             "recovery_plan_delta_outstanding": outstanding,
+            "similarity_not_resolution": blocks.get("similarity_not_resolution") is True,
+            "cold_execution_required": blocks.get("cold_execution_required") is True,
+            "qualification_incomplete": blocks.get("qualification_incomplete") is True,
+            "observations_not_preserved": blocks.get("observations_not_preserved") is True,
+            "negative_memory_blocks": blocks.get("negative_memory_blocks") is True,
+            "world_root_cas_not_completion": blocks.get("world_root_cas_not_completion") is True,
+            "boundary_contract_required": blocks.get("boundary_contract_required") is True,
+            "incompatible_identity": blocks.get("incompatible_identity") is True,
+            "blocks_completion": outstanding or blocks.get("blocks_completion") is True,
             "step_status": self.step.status.value,
             "selected_action": (
                 self.step.decision.selected_action.value
@@ -293,6 +310,10 @@ class TypesafeWakeHandoff:
     def boundary_contract_required(self) -> bool:
         return bool(getattr(self.result, "boundary_contract_required", False))
 
+    @property
+    def incompatible_identity(self) -> bool:
+        return bool(getattr(self.result, "incompatible_identity", False))
+
     def to_dict(self) -> dict[str, Any]:
         result = self.result
         record = result.to_record() if hasattr(result, "to_record") else {}
@@ -304,6 +325,7 @@ class TypesafeWakeHandoff:
         negative = bool(getattr(result, "negative_memory_blocks", False))
         world = bool(getattr(result, "world_root_cas_not_completion", False))
         boundary = bool(getattr(result, "boundary_contract_required", False))
+        incompatible = bool(getattr(result, "incompatible_identity", False))
         if isinstance(record, Mapping):
             if record.get("recovery_delta_outstanding") is True:
                 outstanding = True
@@ -321,6 +343,8 @@ class TypesafeWakeHandoff:
                 world = True
             if record.get("boundary_contract_required") is True:
                 boundary = True
+            if record.get("incompatible_identity") is True:
+                incompatible = True
         return {
             "authorizes_effect": False,
             "completion_authority": False,
@@ -334,6 +358,7 @@ class TypesafeWakeHandoff:
             "negative_memory_blocks": negative,
             "world_root_cas_not_completion": world,
             "boundary_contract_required": boundary,
+            "incompatible_identity": incompatible,
             "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
             "advice": None if self.advice is None else self.advice.to_dict(),
         }

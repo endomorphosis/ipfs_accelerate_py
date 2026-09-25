@@ -34,6 +34,7 @@ def terminate(
     negative_memory_blocks: bool = False,
     world_root_cas_not_completion: bool = False,
     boundary_contract_required: bool = False,
+    incompatible_identity: bool = False,
 ) -> Mapping[str, Any]:
     if not source_root or not semantic_root:
         raise FixedPointError("source and semantic roots are required")
@@ -47,6 +48,7 @@ def terminate(
             negative_memory_blocks,
             world_root_cas_not_completion,
             boundary_contract_required,
+            incompatible_identity,
         )
     )
     ok = all(
@@ -76,6 +78,7 @@ def terminate(
             "negative_memory_blocks": bool(negative_memory_blocks),
             "world_root_cas_not_completion": bool(world_root_cas_not_completion),
             "boundary_contract_required": bool(boundary_contract_required),
+            "incompatible_identity": bool(incompatible_identity),
             "completion_authority": False,
         }
     )
