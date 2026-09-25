@@ -59,6 +59,8 @@ def observe_goal_settlement(
     kit: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Read-only: goals are accepted only from native completed SPAR receipts."""
+    if runtime.get("recovery_plan_delta_outstanding") is True:
+        return _deferred("recovery_plan_delta_outstanding")
     if (
         accepted_root.get("admitted") is not True
         or runtime.get("admitted") is not True
@@ -147,6 +149,8 @@ def settle_spar_goals(
         kit=kit,
     )
     if observed.get("admitted") is True:
+        return observed
+    if runtime.get("recovery_plan_delta_outstanding") is True:
         return observed
     if (
         accepted_root.get("admitted") is not True

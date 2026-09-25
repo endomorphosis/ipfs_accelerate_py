@@ -203,6 +203,9 @@ class TypesafeSupervisorAdapter:
             merged["lane_id"] = bound.lane_id
         if bound.subject_id and not merged.get("subject_id"):
             merged["subject_id"] = bound.subject_id
+        coordinator = getattr(runtime, "claim_coordinator", None)
+        if coordinator is not None and merged.get("claim_coordinator") is None:
+            merged["claim_coordinator"] = coordinator
         controller = runtime.controller
         question = controller.next_unresolved_question()
         advice = None

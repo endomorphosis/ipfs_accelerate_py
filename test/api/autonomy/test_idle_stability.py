@@ -424,6 +424,52 @@ def test_restore_reconciles_outstanding_from_board_owner(tmp_path) -> None:
         coordinator.close()
 
 
+def test_dispatch_wake_uses_bound_claim_coordinator(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.typesafe_runtime_adapter import (
+        dispatch_autonomy_wake,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        duckdb_available,
+        open_database_coordinator,
+    )
+
+    if not duckdb_available():
+        pytest.skip("DuckDB is required for board-owner consume")
+
+    coordinator = open_database_coordinator(tmp_path / "coordination.duckdb")
+    try:
+        runtime = _complete_runtime(interval_ms=1_000)
+        runtime.bind_claim_coordinator(coordinator)
+        stale = dispatch_autonomy_wake(
+            runtime,
+            AutonomyWakeEvent(
+                kind=AutonomyWakeKind.FRESHNESS,
+                cursor_id="cursor:dispatch-stale",
+                sequence=1,
+                stale=True,
+            ),
+            candidates=(),
+            context=_context(),
+        )
+        assert stale.model_called is False
+        assert stale.authorizes_effect is False
+        assert coordinator.outstanding_recovery_plan_delta_count() == 1
+        fresh = dispatch_autonomy_wake(
+            runtime,
+            AutonomyWakeEvent(
+                kind=AutonomyWakeKind.TASK,
+                cursor_id="cursor:dispatch-fresh",
+                sequence=2,
+            ),
+            candidates=(),
+            context=_context(),
+        )
+        assert fresh.result.reason_codes == ("no_unresolved_mandatory_question",)
+        assert coordinator.outstanding_recovery_plan_delta_count() == 0
+    finally:
+        coordinator.close()
+
+
 def test_meaningful_wakes_on_a_complete_board_confirm_idle_without_writes_or_models() -> None:
     sink = InMemoryAutonomyCheckpointSink()
     runtime = _complete_runtime(sink=sink)

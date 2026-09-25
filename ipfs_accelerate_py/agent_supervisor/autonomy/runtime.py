@@ -1208,6 +1208,10 @@ class AutonomyRuntime:
         self._claim_coordinator = claim_coordinator
         self._reconcile_recovery_delta_outstanding()
 
+    @property
+    def claim_coordinator(self) -> Any:
+        return self._claim_coordinator
+
     def bind_claim_coordinator(self, coordinator: Any | None) -> None:
         """Attach the existing board-owner coordinator. Never invents one."""
 
