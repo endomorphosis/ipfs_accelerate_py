@@ -1768,6 +1768,7 @@ class AutonomyRuntime:
             "acknowledged_cursor_ids": list(self._acknowledged_cursor_ids),
             "healthy_idle": self._healthy_idle,
             "healthy_exhausted": self._healthy_exhausted,
+            "recovery_delta_outstanding": self._recovery_delta_outstanding,
             "safety_interval_ms": self._safety_interval_ms,
             "horizon": horizon_payload,
             "metrics_interface": AUTONOMY_METRICS_INTERFACE,
@@ -1816,6 +1817,7 @@ class AutonomyRuntime:
             "acknowledged_cursor_ids",
             "healthy_idle",
             "healthy_exhausted",
+            "recovery_delta_outstanding",
             "safety_interval_ms",
             "horizon",
             "metrics_interface",
@@ -1870,6 +1872,11 @@ class AutonomyRuntime:
         runtime._healthy_exhausted = _bounded_bool(
             raw["healthy_exhausted"], "healthy_exhausted"
         )
+        runtime._recovery_delta_outstanding = _bounded_bool(
+            raw["recovery_delta_outstanding"], "recovery_delta_outstanding"
+        )
+        if runtime._recovery_delta_outstanding:
+            runtime._healthy_idle = False
         runtime._last_durable_identity = runtime._durable_identity()
         return runtime
 

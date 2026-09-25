@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import replace
 from typing import Any
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.autonomy.cognitive_budget import (
     ObjectiveCognitiveBudgetLedger,
@@ -39,6 +42,7 @@ from ipfs_accelerate_py.agent_supervisor.autonomy.runtime import (
     AutonomyWakeEvent,
     AutonomyWakeKind,
     AutonomousMetaController,
+    AutonomousMetaControllerError,
     BudgetAdmission,
     BudgetAdmissionStatus,
     InMemoryAutonomyCheckpointSink,
@@ -289,6 +293,42 @@ def test_empty_queue_stale_wake_is_not_board_success() -> None:
     assert fresh.reason_codes == ("no_unresolved_mandatory_question",)
     assert runtime.recovery_delta_outstanding is False
     assert runtime.healthy_idle is True
+
+
+def test_restart_preserves_outstanding_recovery_plan_delta() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.FRESHNESS,
+            cursor_id="cursor:restart-stale",
+            sequence=1,
+            stale=True,
+        ),
+        candidates=(),
+        context=_context(),
+    )
+    assert runtime.recovery_delta_outstanding is True
+    snapshot = runtime.snapshot_json()
+    recovered = AutonomyRuntime.from_snapshot(
+        snapshot,
+        budget_loader=lambda value: _FakeBudgetController.from_snapshot(dict(value)),
+    )
+    assert recovered.snapshot_json() == snapshot
+    assert recovered.recovery_delta_outstanding is True
+    assert recovered.healthy_idle is False
+    tick = recovered.safety_timer_event(now_ms=1_000)
+    assert tick is not None
+    held = recovered.handle_wake(tick, candidates=(), context=_context())
+    assert held.reason_codes == ("recovery_plan_delta_outstanding",)
+    assert recovered.healthy_idle is False
+
+    forged = json.loads(snapshot)
+    forged["recovery_delta_outstanding"] = False
+    with pytest.raises(AutonomousMetaControllerError, match="identity mismatch"):
+        AutonomyRuntime.from_snapshot(
+            forged,
+            budget_loader=lambda value: _FakeBudgetController.from_snapshot(dict(value)),
+        )
 
 
 def test_meaningful_wakes_on_a_complete_board_confirm_idle_without_writes_or_models() -> None:
