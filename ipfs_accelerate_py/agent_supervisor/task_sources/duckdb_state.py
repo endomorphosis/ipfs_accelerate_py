@@ -392,13 +392,27 @@ def is_sqlite_database(path: Path | str) -> bool:
         return False
 
 
+def _place_duckdb_target(target: Path, legacy: Path | None) -> tuple[Path, Path | None]:
+    """Move a checkout-resident catalog to the account home. Temp files stay."""
+
+    from .board_control_plane import repo_resident_duckdb
+
+    return repo_resident_duckdb(target), legacy
+
+
 def resolve_duckdb_path(
     path: str | os.PathLike[str] | None,
     *,
     default_filename: str,
     temporary_prefix: str,
 ) -> tuple[Path, Path | None]:
-    """Resolve a DuckDB target and its optional legacy SQLite sibling."""
+    """Resolve a DuckDB target and its optional legacy SQLite sibling.
+
+    A missing path stays in a temporary directory. A path inside a Git
+    checkout is stored under the account home
+    (``<home>/.ipfs_accelerate/agent_supervisor``: Linux ``/home/<user>``,
+    macOS ``/Users/<user>``, Windows ``C:/Users/<user>``).
+    """
 
     if not default_filename.endswith(".duckdb"):
         raise ValueError("default_filename must end in .duckdb")
@@ -408,24 +422,30 @@ def resolve_duckdb_path(
         import tempfile
 
         root = Path(tempfile.mkdtemp(prefix=temporary_prefix))
-        return root / default_filename, None
+        return _place_duckdb_target(root / default_filename, None)
 
     supplied = Path(path)
     suffix = supplied.suffix.lower()
     if suffix in {".sqlite", ".sqlite3", ".db"}:
         target = supplied.with_suffix(".duckdb")
         legacy = None if strict_duckdb_only else supplied if is_sqlite_database(supplied) else None
-        return target, legacy
+        return _place_duckdb_target(target, legacy)
     if suffix == ".duckdb":
         if strict_duckdb_only:
-            return supplied, None
+            return _place_duckdb_target(supplied, None)
         legacy_candidate = supplied.with_suffix(".sqlite3")
-        return supplied, (legacy_candidate if is_sqlite_database(legacy_candidate) else None)
+        return _place_duckdb_target(
+            supplied,
+            legacy_candidate if is_sqlite_database(legacy_candidate) else None,
+        )
     target = supplied / default_filename
     if strict_duckdb_only:
-        return target, None
+        return _place_duckdb_target(target, None)
     legacy_candidate = supplied / legacy_filename
-    return target, (legacy_candidate if is_sqlite_database(legacy_candidate) else None)
+    return _place_duckdb_target(
+        target,
+        legacy_candidate if is_sqlite_database(legacy_candidate) else None,
+    )
 
 
 class DuckDBConnection:

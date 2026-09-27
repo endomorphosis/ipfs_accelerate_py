@@ -85,7 +85,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--database",
         default=None,
-        help="Path to control.duckdb (required for start/stop/status/ready)",
+        help=(
+            "Path to the exclusive control.duckdb owner "
+            "(required for start/stop/status/ready). Other supervisor "
+            "DuckDB catalogs use the account home "
+            ".ipfs_accelerate/agent_supervisor "
+            "(Linux /home/<user>, macOS /Users/<user>, "
+            "Windows C:\\Users\\<user>)."
+        ),
     )
     parser.add_argument(
         "--state-dir",

@@ -72,7 +72,12 @@ def register_supervisor_cli(
         )
         child.add_argument(
             "--state-root",
-            help="Optional state root override.",
+            help=(
+                "Optional log and manifest root. DuckDB catalogs default to "
+                "the account home .ipfs_accelerate/agent_supervisor "
+                "(Linux /home/<user>, macOS /Users/<user>, "
+                "Windows C:\\Users\\<user>)."
+            ),
         )
         child.add_argument(
             "--output-json",

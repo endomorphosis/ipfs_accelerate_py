@@ -353,6 +353,38 @@ def test_unlocked_git_catalogs_move_to_the_orchestration_home(
     assert ".git" not in moved_queue.parts
 
 
+def test_proof_catalog_inside_a_checkout_uses_the_account_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tempfile
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+        ORCHESTRATION_DIR_ENV,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        resolve_duckdb_path,
+    )
+
+    monkeypatch.setenv(ORCHESTRATION_DIR_ENV, str(tmp_path / "orchestration"))
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path / "system-temp"))
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    catalog = repo / "data" / "proof_scheduler.duckdb"
+    catalog.parent.mkdir()
+    catalog.write_bytes(b"proof")
+
+    target, legacy = resolve_duckdb_path(
+        catalog,
+        default_filename="proof_scheduler.duckdb",
+        temporary_prefix="proof-scheduler-",
+    )
+    assert legacy is None
+    assert "catalogs" in target.parts
+    assert target.read_bytes() == b"proof"
+    assert not catalog.exists()
+    assert ".git" not in target.parts
+
+
 def test_database_home_uses_the_account_home_on_each_platform(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

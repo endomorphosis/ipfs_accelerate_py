@@ -237,6 +237,18 @@ def complete_launch_plan_from_materialization(
     )
 
 
+def _account_duckdb(path: Path) -> Path:
+    """Keep a launch-plan catalog out of a Git checkout.
+
+    The account home is ``/home/<user>`` on Linux, ``/Users/<user>`` on
+    macOS, and ``C:\\Users\\<user>`` on Windows.
+    """
+
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
+    return repo_resident_duckdb(path)
+
+
 def launch_plan_from_observation(
     observation: Mapping[str, Any],
     *,
@@ -267,7 +279,7 @@ def launch_plan_from_observation(
         raise RuntimeConstructionError("fixture launch-plan identities are forbidden")
     shard = CoordinationShardBinding(
         backend="duckdb",
-        database_path=str(Path(state_root) / "coord.duckdb"),
+        database_path=str(_account_duckdb(Path(state_root) / "coord.duckdb")),
         shard_id="shard-0",
         shard_count=1,
         shard_index=0,
@@ -303,7 +315,9 @@ def launch_plan_from_observation(
         ),
         working_directory=repository_root,
         state_path=str(Path(state_root) / "run.json"),
-        task_source_path=str(Path(state_root) / "projections" / "tasks.duckdb"),
+        task_source_path=str(
+            _account_duckdb(Path(state_root) / "projections" / "tasks.duckdb")
+        ),
         supervisor_argv=("python", "-m", "ipfs_accelerate_py.cli_entry", "supervisor"),
         daemon_argv=("python", "-m", "ipfs_accelerate_py.cli_entry", "supervisor"),
         environment_names=(),
