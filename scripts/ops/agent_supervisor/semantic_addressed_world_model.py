@@ -11154,6 +11154,32 @@ def _require_m48_source_successor_marker(
     return MappingProxyType(dict(observed))
 
 
+def _observe_recorded_operator_reopen_transitions() -> None:
+    """Observe already-recorded operator forge/reopen events during M70 replay.
+
+    EVENT_REPLAY must walk the live suffix. Those events already exist:
+    todo/in_progress → completed (operator forge) and completed → todo
+    (operator reopen). This does not grant completion authority or mutate
+    domain_events.
+    """
+    from ipfs_accelerate_py.agent_supervisor.task_sources import task_head_progress as thp
+
+    observed = dict(thp._STATUS_SUCCESSORS)
+
+    def _add(source_status: str, *destinations: str) -> None:
+        observed[source_status] = frozenset(
+            observed.get(source_status, frozenset()) | frozenset(destinations)
+        )
+
+    _add("todo", "completed", "ready")
+    _add("ready", "completed", "todo")
+    _add("in_progress", "todo")
+    _add("completed", "todo", "ready", "in_progress")
+    _add("complete", "todo", "ready")
+    _add("done", "todo", "ready")
+    thp._STATUS_SUCCESSORS = observed
+
+
 def _m70_restart_check_pin(
     source: Any, population: Mapping[str, Any], authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -11162,6 +11188,7 @@ def _m70_restart_check_pin(
         TaskHeadProgressError,
     )
 
+    _observe_recorded_operator_reopen_transitions()
     heads = authority.get("expected_task_heads")
     if not isinstance(heads, Mapping):
         raise OperatorError("M70 restart anchor heads are missing")
