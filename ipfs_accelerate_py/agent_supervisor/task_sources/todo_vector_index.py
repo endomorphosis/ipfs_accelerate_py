@@ -2548,9 +2548,13 @@ def write_todo_vector_index_artifact(
         rendered["records"] = compact_records
     bundle_index_path = str(rendered.get("bundle_index_path") or "")
     if bundle_index_path and (conflict_graph.get("compacted") or coverage_inputs.get("compacted")):
+        from .board_control_plane import repo_resident_duckdb
+
         rendered["query_artifact"] = {
             "path": bundle_index_path,
-            "duckdb_path": str(Path(bundle_index_path).with_suffix(".duckdb")),
+            "duckdb_path": str(
+                repo_resident_duckdb(Path(bundle_index_path).with_suffix(".duckdb"))
+            ),
             "tables": [
                 "artifact_fields",
                 "conflict_edges",

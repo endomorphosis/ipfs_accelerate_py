@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 from typing import Any
 
@@ -427,7 +428,19 @@ def test_one_packet_is_applied_with_before_hashes_and_checkpoint() -> None:
     assert receipt.can_authorize_completion is False
     assert verify_before_hashes(packet) == packet.preimage.source_cids
     assert receipt.vfs_mutation_cids
+    assert len(receipt.vfs_mutation_cids) >= 2
     assert receipt.effect_audit_cids
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_world_handoff import (
+        last_cst_handoffs,
+    )
+
+    applied = [item for item in last_cst_handoffs() if item.applied]
+    assert applied
+    rewritten = "\n".join(text for item in applied for _path, text in item.sources)
+    assert "keep this comment" in rewritten
+    assert applied[-1].cas_completed is False
+    assert applied[-1].writes_repository is False
+    assert applied[-1].changes_current_root is False
     assert receipt.write_paths == WRITE_PATHS
 
 
@@ -710,6 +723,311 @@ def test_executor_adapter_matches_module_functions() -> None:
     rolled = adapter.rollback(packet)
     assert rolled.status == WaveStatus.ROLLED_BACK.value
     assert adapter.schema == "ipfs_accelerate_py/agent-supervisor/extraction-wave@1"
+
+
+def test_guarded_mode_nominates_merge_without_merging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "semantic-world"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(tmp_path / "orchestration"))
+    monkeypatch.setenv("SAWM_COORDINATION_DIR", str(directory))
+    monkeypatch.setenv("SPAR_ROLLOUT_MODE", "guarded")
+    receipt = execute_extraction_wave(_compile(), **_wave_kwargs())
+    assert receipt.writes_repository is False
+    assert receipt.can_authorize_completion is False
+    written = directory / "disposable-worktree" / "pkg" / "mod.py"
+    assert written.is_file()
+    assert not (directory / "disposable-worktree" / ".git").exists()
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        stored_merge_record,
+    )
+
+    nomination = stored_merge_record(directory / "merge-nomination.json")
+    assert not (directory / "merge-nomination.json").exists()
+    assert nomination["merge_authority"] == "current authority gates"
+    assert nomination["rollout_mode"] == "guarded"
+    assert nomination["merged"] is False
+    assert nomination["self_merge"] is False
+    assert nomination["writes_repository"] is False
+    assert nomination["promotes_root"] is False
+    assert nomination["completion_authority"] is False
+    assert "pkg/mod.py" in nomination["source_paths"]
+    from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+        clear_completion_blocks,
+        completion_is_blocked,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+        accept_spar_merge_nomination,
+        release_spar_merge_hold,
+    )
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        merge_handoff_outstanding,
+        merge_nomination_outstanding,
+        spar_merge_hold_outstanding,
+    )
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root import (
+        _merge_queue_empty,
+    )
+
+    assert merge_nomination_outstanding() is True
+    assert completion_is_blocked() is True
+    assert _merge_queue_empty({"merge_queue_empty": True}) is False
+    hold_path = accept_spar_merge_nomination()
+    hold = stored_merge_record(hold_path)
+    assert not hold_path.exists()
+    assert hold["held_by"] == "current authority gates"
+    assert hold["released"] is False
+    assert hold["merged"] is False
+    assert hold["writes_repository"] is False
+    assert merge_nomination_outstanding() is False
+    assert spar_merge_hold_outstanding() is True
+    assert merge_handoff_outstanding() is True
+    assert _merge_queue_empty({"merge_queue_empty": True}) is False
+    released = release_spar_merge_hold()
+    released_record = stored_merge_record(released)
+    assert released_record["released"] is True
+    assert released_record["merged"] is False
+    assert released_record["released_by"] == "current authority gates"
+    clear_completion_blocks()
+    assert merge_handoff_outstanding() is False
+    assert _merge_queue_empty({"merge_queue_empty": True}) is True
+
+
+def test_daemon_maintenance_accepts_nomination_from_its_state_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(tmp_path / "orchestration"))
+    directory = tmp_path / "semantic-world"
+    directory.mkdir()
+    (directory / "merge-nomination.json").write_text(
+        json.dumps(
+            {
+                "schema": "spar/current-authority-merge-nomination@1",
+                "rollout_mode": "guarded",
+                "merged": False,
+                "writes_repository": False,
+                "worktree": str(directory / "disposable-worktree"),
+                "source_paths": ["pkg/mod.py"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    daemon = SimpleNamespace(state_path=tmp_path / "state.json")
+    result = PortalImplementationDaemon._accept_spar_merge_nomination(daemon)
+    assert result["accepted"] is True
+    assert result["merged"] is False
+    assert result["writes_repository"] is False
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        stored_merge_record,
+    )
+
+    hold = stored_merge_record(directory / "merge-owner-hold.json")
+    assert not (directory / "merge-owner-hold.json").exists()
+    assert hold["held_by"] == "current authority gates"
+    assert hold["merged"] is False
+    assert hold["released"] is False
+    absent = PortalImplementationDaemon._accept_spar_merge_nomination(
+        SimpleNamespace(state_path=None)
+    )
+    assert absent == {"accepted": False, "reason": "no_coordination_dir", "merged": False}
+
+
+def test_daemon_accepts_lane_coordination_dir_not_the_state_file_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(tmp_path / "orchestration"))
+    lane_dir = tmp_path / "lane-root" / "semantic-world"
+    lane_dir.mkdir(parents=True)
+    (lane_dir / "merge-nomination.json").write_text(
+        json.dumps(
+            {
+                "schema": "spar/current-authority-merge-nomination@1",
+                "rollout_mode": "guarded",
+                "merged": False,
+                "writes_repository": False,
+                "worktree": str(lane_dir / "disposable-worktree"),
+                "source_paths": ["pkg/mod.py"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SAWM_COORDINATION_DIR", str(lane_dir))
+    state_file = tmp_path / "state-dir" / "task_state.json"
+    daemon = SimpleNamespace(state_path=state_file)
+    result = PortalImplementationDaemon._accept_spar_merge_nomination(daemon)
+    assert result["accepted"] is True
+    assert result["merged"] is False
+    assert result["writes_repository"] is False
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        stored_merge_record,
+    )
+
+    hold = stored_merge_record(lane_dir / "merge-owner-hold.json")
+    assert not (lane_dir / "merge-owner-hold.json").exists()
+    assert hold["merged"] is False
+    assert hold["held_by"] == "current authority gates"
+    assert not (state_file.parent / "semantic-world").exists()
+
+
+def test_implementation_worker_receives_the_daemon_coordination_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    monkeypatch.delenv("SAWM_COORDINATION_DIR", raising=False)
+    monkeypatch.delenv("SAWM_BIND_KIT_STORE", raising=False)
+
+    class _Daemon:
+        state_path = tmp_path / "state" / "task_state.json"
+        _sawm_coordination_dir = PortalImplementationDaemon._sawm_coordination_dir
+
+        @staticmethod
+        def _implementation_untrusted_process_environment() -> dict[str, str]:
+            return {"PATH": "/usr/bin"}
+
+        @staticmethod
+        def _canonical_ref(_task: object) -> str:
+            return "task-cid:spar"
+
+    environment = PortalImplementationDaemon._implementation_process_environment(
+        _Daemon(),
+        SimpleNamespace(task_id="SPAR-TEST"),
+        attempt=1,
+        checkpoint_dir=tmp_path / "checkpoint",
+    )
+    expected = str((tmp_path / "state" / "semantic-world").resolve())
+    assert environment["SAWM_COORDINATION_DIR"] == expected
+    assert environment["SAWM_BIND_KIT_STORE"] == "1"
+    assert environment["PATH"] == "/usr/bin"
+
+
+def test_auto_rescue_child_receives_the_daemon_coordination_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    monkeypatch.delenv("SAWM_COORDINATION_DIR", raising=False)
+    monkeypatch.delenv("SAWM_BIND_KIT_STORE", raising=False)
+
+    class _Daemon:
+        implementation_timeout = 5
+        state_path = tmp_path / "state" / "task_state.json"
+        _sawm_coordination_dir = PortalImplementationDaemon._sawm_coordination_dir
+
+        @staticmethod
+        def _record_event(_event: str, _payload: object) -> None:
+            return None
+
+    command = (
+        f"{sys.executable} -c \"import os; print(os.environ.get('SAWM_COORDINATION_DIR', ''))\""
+    )
+    results = PortalImplementationDaemon._run_auto_rescue_materialize_commands(
+        _Daemon(),
+        workspace_path=tmp_path,
+        log_path=tmp_path / "auto-rescue.log",
+        commands=(command,),
+        task=SimpleNamespace(task_id="SPAR-TEST"),
+    )
+    expected = (tmp_path / "state" / "semantic-world").resolve()
+    assert results[0]["ok"] is True
+    assert results[0]["output_tail"].strip() == str(expected)
+
+
+def test_shadow_apply_materializes_a_disposable_worktree_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "semantic-world"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(tmp_path / "orchestration"))
+    monkeypatch.setenv("SAWM_COORDINATION_DIR", str(directory))
+    monkeypatch.setenv("SPAR_ROLLOUT_MODE", "shadow_apply")
+    packet = _compile()
+    kwargs = _wave_kwargs()
+    dry = dry_run_extraction_wave(packet, **kwargs)
+    assert dry.writes_repository is False
+    assert not (directory / "disposable-worktree").exists()
+    receipt = execute_extraction_wave(packet, **kwargs)
+    assert receipt.writes_repository is False
+    assert receipt.mutated is False
+    assert receipt.can_authorize_completion is False
+    written = directory / "disposable-worktree" / "pkg" / "mod.py"
+    assert written.is_file()
+    assert "keep this comment" in written.read_text(encoding="utf-8")
+    assert not (directory / "disposable-worktree" / ".git").exists()
+    assert not (directory / "merge-nomination.json").exists()
+
+
+def test_configured_coordination_dir_commits_the_wave(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    directory = tmp_path / "semantic-world"
+    monkeypatch.setenv("SAWM_COORDINATION_DIR", str(directory))
+    packet = _compile()
+    kwargs = _wave_kwargs()
+    dry = dry_run_extraction_wave(packet, **kwargs)
+    assert dry.writes_repository is False
+    assert dry.mutated is False
+    assert not directory.exists()
+    receipt = execute_extraction_wave(packet, **kwargs)
+    assert not (directory / "disposable-worktree").exists()
+    assert receipt.status == WaveStatus.APPLIED.value
+    assert receipt.writes_repository is False
+    assert receipt.mutated is False
+    assert receipt.can_authorize_completion is False
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_world_handoff import (
+        last_cst_handoffs,
+    )
+
+    committed = [
+        item
+        for item in last_cst_handoffs()
+        if item.applied and item.reason == "kit_root_committed"
+    ]
+    assert committed
+    assert all(item.vfs_published and not item.completion_authority for item in committed)
+    from ipfs_kit_py.core.vfs.contracts import VFSOperationKind
+    from ipfs_kit_py.core.vfs.service import make_op
+    from ipfs_kit_py.mcp_server.mcplusplus.coordination_storage import (
+        DurableCoordinationStore,
+    )
+    from ipfs_kit_py.semantic_world_store import SemanticWorldStore
+
+    store = DurableCoordinationStore(directory)
+    try:
+        facade = SemanticWorldStore(store)
+        current = facade.current_world_root()
+        assert current.generation >= 1
+        assert current.supervisor_accepted is False
+        assert facade.outbox.read_published() == (current.root_cid or "").encode("utf-8")
+        source = facade.outbox.vfs.execute(
+            make_op(
+                VFSOperationKind.READ,
+                operation_id="read-committed-mod",
+                path="sources/pkg/mod.py",
+            )
+        )
+        assert source.success is True
+        assert b"keep this comment" in source.data
+    finally:
+        store.close()
 
 
 def test_absolute_and_escaping_write_paths_are_rejected() -> None:

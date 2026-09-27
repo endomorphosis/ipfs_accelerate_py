@@ -11761,6 +11761,11 @@ def build_bundle_task_payloads(
                 )
             )
         )
+        from ..task_sources.board_control_plane import repo_resident_duckdb
+
+        bundle_index_duckdb = str(
+            repo_resident_duckdb(bundle_index_path.with_suffix(".duckdb"))
+        )
         bundle_payload.update(
             {
                 "canonical_task_cid": execution_task_cid,
@@ -11809,7 +11814,7 @@ def build_bundle_task_payloads(
                 "planning_evidence_ref": {
                     "schema": "ipfs_accelerate_py.agent_supervisor.planning_evidence_ref@1",
                     "bundle_index": str(bundle_index_path),
-                    "bundle_index_duckdb": str(bundle_index_path.with_suffix(".duckdb")),
+                    "bundle_index_duckdb": bundle_index_duckdb,
                     "bundle_key": bundle_key,
                     "bundle_table": "bundles",
                     "task_table": "bundle_tasks",

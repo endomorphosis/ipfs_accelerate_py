@@ -301,22 +301,43 @@ def recover_stopped_board(*, inventory: Path, board_id: str, apply: bool) -> dic
     require_stopped(owner, database)
     with DatabaseTaskSource(database, owner_id="verification-deferral-discovery", install_schema=False) as source:
         tasks = source.list_tasks(status="blocked", limit=128).tasks
-    executions = sorted(Path(board["state_root"]).glob("lane-*/*_database_execution.duckdb"))
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
+    executions: list[tuple[Path, Path, str]] = []
+    for lane in sorted(path for path in Path(board["state_root"]).glob("lane-*") if path.is_dir()):
+        names = {path.name for path in lane.glob("*_database_execution.duckdb")}
+        relocated_dir = repo_resident_duckdb(
+            lane / "probe_database_execution.duckdb",
+            relocate=False,
+        ).parent
+        if relocated_dir != lane and relocated_dir.is_dir():
+            names.update(
+                path.name for path in relocated_dir.glob("*_database_execution.duckdb")
+            )
+        for name in sorted(names):
+            if name == "probe_database_execution.duckdb":
+                continue
+            prefix = name.removesuffix("_database_execution.duckdb")
+            executions.append(
+                (
+                    repo_resident_duckdb(lane / name),
+                    lane / (prefix + "_database_portal_attempts"),
+                    lane.name,
+                )
+            )
     require(len(executions) <= 16, "lane execution population exceeds the bound")
     results = []
     for task in tasks:
         receipt = dict(task.body).get("completion_receipt", {})
         if receipt.get("operation") != "database_portal_typed_deferral_budget_exhausted":
             continue
-        for execution in executions:
-            prefix = execution.name.removesuffix("_database_execution.duckdb")
-            attempt_root = execution.parent / (prefix + "_database_portal_attempts")
+        for execution, attempt_root, lane_name in executions:
             try:
                 result = recover(repo=Path(board["cwd"]), database=database, execution=execution,
                     attempt_root=attempt_root, owner_status=owner, config_path=Path(board["config_path"]),
                     task_alias=task.task_alias, apply=apply)
             except (VerificationDeferralRecoveryError, KeyError) as exc:
-                results.append({"task_alias": task.task_alias, "lane": execution.parent.name,
+                results.append({"task_alias": task.task_alias, "lane": lane_name,
                     "changed": False, "reason": str(exc)})
                 continue
             results.append(result)

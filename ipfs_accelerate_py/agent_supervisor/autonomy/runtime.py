@@ -719,6 +719,9 @@ class AutonomyCycleResult:
     world_root_cas_not_completion: bool = False
     boundary_contract_required: bool = False
     incompatible_identity: bool = False
+    undeclared_cst_transform: bool = False
+    unbounded_procedure: bool = False
+    rollout_not_required: bool = False
     reason_codes: tuple[str, ...] = ()
     step: MetaControllerStep | None = None
     suffix_receipt: PlanSuffixInvalidationReceipt | None = None
@@ -748,6 +751,9 @@ class AutonomyCycleResult:
             "world_root_cas_not_completion",
             "boundary_contract_required",
             "incompatible_identity",
+            "undeclared_cst_transform",
+            "unbounded_procedure",
+            "rollout_not_required",
         ):
             object.__setattr__(self, name, _bounded_bool(getattr(self, name), name))
         object.__setattr__(
@@ -798,6 +804,9 @@ class AutonomyCycleResult:
             "world_root_cas_not_completion": self.world_root_cas_not_completion,
             "boundary_contract_required": self.boundary_contract_required,
             "incompatible_identity": self.incompatible_identity,
+            "undeclared_cst_transform": self.undeclared_cst_transform,
+            "unbounded_procedure": self.unbounded_procedure,
+            "rollout_not_required": self.rollout_not_required,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "step_status": None if self.step is None else self.step.status.value,
@@ -840,6 +849,9 @@ class AutonomyCycleResult:
             "world_root_cas_not_completion": self.world_root_cas_not_completion,
             "boundary_contract_required": self.boundary_contract_required,
             "incompatible_identity": self.incompatible_identity,
+            "undeclared_cst_transform": self.undeclared_cst_transform,
+            "unbounded_procedure": self.unbounded_procedure,
+            "rollout_not_required": self.rollout_not_required,
             "reason_codes": list(self.reason_codes),
             "nearest_safe_segment_ids": list(self.nearest_safe_segment_ids),
             "completion_authority": False,
@@ -1230,6 +1242,9 @@ class AutonomyRuntime:
         self._world_root_cas_not_completion = False
         self._boundary_contract_required = False
         self._incompatible_identity = False
+        self._undeclared_cst_transform = False
+        self._unbounded_procedure = False
+        self._rollout_not_required = False
         self._healthy_idle = self._board_is_idle()
         self._healthy_exhausted = False
         self._last_durable_identity = self._durable_identity()
@@ -1342,6 +1357,57 @@ class AutonomyRuntime:
     def incompatible_identity(self) -> bool:
         return self._incompatible_identity
 
+    @property
+    def undeclared_cst_transform(self) -> bool:
+        return self._undeclared_cst_transform
+
+    @property
+    def unbounded_procedure(self) -> bool:
+        return self._unbounded_procedure
+
+    @property
+    def rollout_not_required(self) -> bool:
+        return self._rollout_not_required
+
+    def _observe_rollout_claim(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .rollout_claim import rollout_claim_view
+
+        view = rollout_claim_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._rollout_not_required = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("respected"):
+            self._rollout_not_required = False
+        return view
+
+    def _observe_bounded_procedure(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .bounded_procedure import bounded_procedure_view
+
+        view = bounded_procedure_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._unbounded_procedure = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("bounded"):
+            self._unbounded_procedure = False
+        return view
+
+    def _observe_cst_codemod(
+        self, typesafe_state: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        from .cst_codemod import cst_codemod_view
+
+        view = cst_codemod_view(typesafe_state)
+        if view["blocks_completion"]:
+            self._undeclared_cst_transform = True
+            self._healthy_idle = False
+        elif not view["claimed"] or view.get("preserved"):
+            self._undeclared_cst_transform = False
+        return view
+
     def _observe_compatibility(
         self, typesafe_state: Mapping[str, Any] | None
     ) -> dict[str, Any]:
@@ -1405,6 +1471,9 @@ class AutonomyRuntime:
             or self._world_root_cas_not_completion
             or self._boundary_contract_required
             or self._incompatible_identity
+            or self._undeclared_cst_transform
+            or self._unbounded_procedure
+            or self._rollout_not_required
         )
 
     def _completion_block_reason(self) -> str:
@@ -1426,6 +1495,12 @@ class AutonomyRuntime:
             return "boundary_contract_required"
         if self._incompatible_identity:
             return "incompatible_identity"
+        if self._undeclared_cst_transform:
+            return "undeclared_cst_transform"
+        if self._unbounded_procedure:
+            return "unbounded_procedure"
+        if self._rollout_not_required:
+            return "rollout_not_required"
         return ""
 
     def _observe_observation_preservation(
@@ -1576,6 +1651,9 @@ class AutonomyRuntime:
             world_root_cas_not_completion=self._world_root_cas_not_completion,
             boundary_contract_required=self._boundary_contract_required,
             incompatible_identity=self._incompatible_identity,
+            undeclared_cst_transform=self._undeclared_cst_transform,
+            unbounded_procedure=self._unbounded_procedure,
+            rollout_not_required=self._rollout_not_required,
         )
         result = AutonomyCycleResult(
             status=status,
@@ -1595,6 +1673,9 @@ class AutonomyRuntime:
             world_root_cas_not_completion=self._world_root_cas_not_completion,
             boundary_contract_required=self._boundary_contract_required,
             incompatible_identity=self._incompatible_identity,
+            undeclared_cst_transform=self._undeclared_cst_transform,
+            unbounded_procedure=self._unbounded_procedure,
+            rollout_not_required=self._rollout_not_required,
             reason_codes=reason_codes,
             step=step,
             suffix_receipt=suffix_receipt,
@@ -1711,6 +1792,9 @@ class AutonomyRuntime:
                 self._observe_world_root_cas(typesafe_state)
                 self._observe_partition_boundary(typesafe_state)
                 self._observe_compatibility(typesafe_state)
+                self._observe_cst_codemod(typesafe_state)
+                self._observe_bounded_procedure(typesafe_state)
+                self._observe_rollout_claim(typesafe_state)
             cached_idle = self._healthy_idle or self._healthy_exhausted
             if (
                 bound.safety_timer
@@ -1954,6 +2038,9 @@ class AutonomyRuntime:
                 "world_root_cas_not_completion",
                 "boundary_contract_required",
                 "incompatible_identity",
+                "undeclared_cst_transform",
+                "unbounded_procedure",
+                "rollout_not_required",
             ):
                 if getattr(self, f"_{extra}") and extra not in step_reasons:
                     step_reasons = step_reasons + (extra,)
@@ -2067,6 +2154,9 @@ class AutonomyRuntime:
             "world_root_cas_not_completion": self._world_root_cas_not_completion,
             "boundary_contract_required": self._boundary_contract_required,
             "incompatible_identity": self._incompatible_identity,
+            "undeclared_cst_transform": self._undeclared_cst_transform,
+            "unbounded_procedure": self._unbounded_procedure,
+            "rollout_not_required": self._rollout_not_required,
             "safety_interval_ms": self._safety_interval_ms,
             "horizon": horizon_payload,
             "metrics_interface": AUTONOMY_METRICS_INTERFACE,
@@ -2125,6 +2215,9 @@ class AutonomyRuntime:
             "world_root_cas_not_completion",
             "boundary_contract_required",
             "incompatible_identity",
+            "undeclared_cst_transform",
+            "unbounded_procedure",
+            "rollout_not_required",
             "safety_interval_ms",
             "horizon",
             "metrics_interface",
@@ -2206,6 +2299,15 @@ class AutonomyRuntime:
         runtime._incompatible_identity = _bounded_bool(
             raw["incompatible_identity"], "incompatible_identity"
         )
+        runtime._undeclared_cst_transform = _bounded_bool(
+            raw["undeclared_cst_transform"], "undeclared_cst_transform"
+        )
+        runtime._unbounded_procedure = _bounded_bool(
+            raw["unbounded_procedure"], "unbounded_procedure"
+        )
+        runtime._rollout_not_required = _bounded_bool(
+            raw["rollout_not_required"], "rollout_not_required"
+        )
         if runtime._completion_blocked():
             runtime._healthy_idle = False
         if claim_coordinator is not None:
@@ -2222,6 +2324,9 @@ class AutonomyRuntime:
             world_root_cas_not_completion=runtime._world_root_cas_not_completion,
             boundary_contract_required=runtime._boundary_contract_required,
             incompatible_identity=runtime._incompatible_identity,
+            undeclared_cst_transform=runtime._undeclared_cst_transform,
+            unbounded_procedure=runtime._unbounded_procedure,
+            rollout_not_required=runtime._rollout_not_required,
         )
         runtime._last_durable_identity = runtime._durable_identity()
         return runtime

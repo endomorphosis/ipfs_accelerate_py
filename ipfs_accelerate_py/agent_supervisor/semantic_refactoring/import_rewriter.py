@@ -6,9 +6,11 @@ This module extends current supervisor partition orchestration with
 symbol import/callsite rewrites and authorized re-exports, verifies
 preimages, and rejects new cycles or undispositioned consumers.
 
-The executor is nomination-only.  It does not apply CST transforms, does
-not mutate, and cannot authorize a transition, completion, or competing
-authority.  Vector, model, and heuristic evidence cannot admit a rewrite.
+The receipt is nomination-only and cannot authorize a transition,
+completion, or competing authority.  When raw sources are supplied, nominated
+import edits are applied with the CST parser and staged to the VFS outbox and
+world-root publisher.  The repository is not written.  Vector, model, and
+heuristic evidence cannot admit a rewrite.
 Observational metadata is excluded from identity.  Dry-run is
 deterministic and never mutates.
 """
@@ -1306,11 +1308,76 @@ def execute_import_rewrites(
     packet: RefactorTransformationPacket | Mapping[str, Any],
     **kwargs: Any,
 ) -> ImportRewriteReceipt:
-    """Execute SPAR-021 as a deterministic no-mutation dry-run."""
+    """Execute SPAR-021. Receipt stays nomination-only.
+
+    When ``raw_sources`` is supplied, nominated import edits are applied with
+    the CST parser and staged to the VFS outbox / world-root publisher. The
+    repository is not written.
+    """
 
     if kwargs.pop("mutate", False):
         raise ImportRewriterError("executor cannot mutate")
-    return compile_import_rewrite_receipt(packet, **kwargs)
+    raw_sources = kwargs.pop("raw_sources", None)
+    pre_world_root_cid = kwargs.pop("pre_world_root_cid", None)
+    kit_store = kwargs.pop("kit_store", None)
+    receipt = compile_import_rewrite_receipt(packet, **kwargs)
+    if raw_sources is not None:
+        from .cst_import_apply import apply_import_cst_and_stage
+
+        resolved = _coerce_packet(packet)
+        rewrites = compile_import_rewrites(
+            resolved,
+            consumer_plans=kwargs.get("consumer_plans") or (),
+            undispositioned_consumer_ids=kwargs.get("undispositioned_consumer_ids")
+            or (),
+            claimed_preimage_cid=kwargs.get("claimed_preimage_cid") or "",
+            import_graph=kwargs.get("import_graph"),
+        )
+        handoff = apply_import_cst_and_stage(
+            resolved,
+            raw_sources,
+            rewrites=rewrites,
+            pre_world_root_cid=pre_world_root_cid,
+            kit_store=kit_store,
+        )
+        if handoff.blocked and handoff.reason != "import_not_rewritten":
+            raise ImportRewriterError(f"cst import apply blocked: {handoff.reason}")
+        current_sources = dict(raw_sources)
+        if handoff.applied:
+            current_sources.update(dict(handoff.sources))
+        try:
+            reexport_plans = compile_reexport_plans(
+                resolved,
+                consumer_plans=kwargs.get("consumer_plans") or (),
+                undispositioned_consumer_ids=kwargs.get(
+                    "undispositioned_consumer_ids"
+                )
+                or (),
+                claimed_preimage_cid=kwargs.get("claimed_preimage_cid") or "",
+                import_graph=kwargs.get("import_graph"),
+            )
+        except ImportRewriterError as exc:
+            if "authorized reexport" not in str(exc):
+                raise
+            reexport_plans = ()
+        if reexport_plans:
+            from .cst_import_apply import apply_reexport_cst_and_stage
+
+            reexport_handoff = apply_reexport_cst_and_stage(
+                resolved,
+                current_sources,
+                plans=reexport_plans,
+                pre_world_root_cid=pre_world_root_cid,
+                kit_store=kit_store,
+            )
+            if (
+                reexport_handoff.blocked
+                and reexport_handoff.reason != "reexport_not_applied"
+            ):
+                raise ImportRewriterError(
+                    f"cst reexport apply blocked: {reexport_handoff.reason}"
+                )
+    return receipt
 
 
 def execute_reexport_plan(

@@ -763,9 +763,15 @@ def merge_target_queue_dir(
 ) -> Path:
     """Return the queue namespace for one physical repository and target ref.
 
-    Older supervisors used one queue directly under ``agent-merge-train``.
-    Keeping target-scoped queues in a new directory prevents a still-running
-    legacy consumer from claiming requests produced by upgraded daemons.
+    Older supervisors used one queue directly under ``agent-merge-train``
+    inside the Git common directory. The catalog now lives under the account
+    home in ``.ipfs_accelerate/agent_supervisor`` (``/home/<user>`` on Linux,
+    ``/Users/<user>`` on macOS, ``C:\\Users\\<user>`` on Windows), unless
+    ``IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR`` or
+    ``IPFS_ACCELERATE_AGENT_HOME`` is set. Every worktree of the repository
+    shares that directory. Target-scoped
+    directories still keep upgraded producers invisible to old repo-wide
+    consumers. ``.git`` is not a database directory.
     """
 
     branch = str(target_branch or "").strip()
@@ -780,10 +786,27 @@ def merge_target_queue_dir(
         ).strip("-")
         or "target"
     )
-    return (
-        git_common_dir(repo_root)
-        / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
-        / f"{safe_branch[:48]}-{digest}"
+    from ..task_sources.board_control_plane import (
+        adopt_legacy_catalog,
+        orchestration_database,
+        orchestration_scope_dir,
+    )
+
+    legacy_root = git_common_dir(repo_root) / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
+    destination_root = orchestration_scope_dir(repo_root) / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
+    if legacy_root.is_dir() and not legacy_root.is_symlink():
+        for child in list(legacy_root.iterdir()):
+            if child.is_symlink():
+                continue
+            adopt_legacy_catalog(child, destination_root / child.name)
+        try:
+            legacy_root.rmdir()
+        except OSError:
+            pass
+    return orchestration_database(
+        repo_root,
+        DEFAULT_MERGE_TRAIN_DIRECTORY_NAME,
+        f"{safe_branch[:48]}-{digest}",
     )
 
 

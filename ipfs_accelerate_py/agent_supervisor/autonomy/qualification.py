@@ -11,6 +11,7 @@ wake. TypeSafe is never this owner. This is not a new board.
 
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping
 
 QUALIFICATION_INCOMPLETE = "qualification_incomplete"
@@ -175,7 +176,7 @@ _SEALED_PROGRAMS: dict[str, dict[str, Any]] = {
             "mechanism": "similarity nominates; exact identity resolves",
             "population": "wakes with similarity_candidates or reuse_decision",
             "scope": "AutonomyRuntime exact_resolution",
-            "limitations": "full world-model and VFS are outside this seam",
+            "limitations": "a bound kit store CAS-commits the root and publishes sources plus the outbox into a durable VFS namespace; git writes stay outside this adapter",
         },
     },
     "PCTDD": {
@@ -201,7 +202,7 @@ _SEALED_PROGRAMS: dict[str, dict[str, Any]] = {
             "mechanism": "fixed_point_accepted is conjunctive",
             "population": "SPAR accepted-root clause records",
             "scope": "spar_accepted_root materialize and admit",
-            "limitations": "full W4 remmodularization is not this seam",
+            "limitations": "guarded and required nominate the current merge owner and do not merge; bootstrap does not write git",
         },
     },
 }
@@ -262,6 +263,14 @@ def observe_rollout(state: Mapping[str, Any] | None) -> str | None:
     mode = str(
         payload.get("current_rollout_mode") or payload.get("rollout_mode") or ""
     ).strip()
+    if not mode:
+        # Same names the extraction wave uses. An explicit payload mode wins,
+        # so an unobserved process does not invent required.
+        mode = str(
+            os.environ.get("SPAR_ROLLOUT_MODE")
+            or os.environ.get("SAWM_ROLLOUT_MODE")
+            or ""
+        ).strip()
     if not mode:
         return None
     mapped = _ROLLOUT_MODE_MAP.get(mode)

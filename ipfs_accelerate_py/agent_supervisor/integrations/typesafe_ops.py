@@ -96,6 +96,9 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
         "world_root_cas_not_completion": blocks["world_root_cas_not_completion"],
         "boundary_contract_required": blocks["boundary_contract_required"],
         "incompatible_identity": blocks.get("incompatible_identity") is True,
+        "undeclared_cst_transform": blocks.get("undeclared_cst_transform") is True,
+        "unbounded_procedure": blocks.get("unbounded_procedure") is True,
+        "rollout_not_required": blocks.get("rollout_not_required") is True,
         "blocks_completion": blocks["blocks_completion"],
         "completion_authority": False,
     }
@@ -104,26 +107,25 @@ def typesafe_ops_snapshot() -> dict[str, Any]:
 def _completion_blocks(recovery: Mapping[str, Any]) -> dict[str, Any]:
     try:
         from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+            empty_completion_blocks,
             last_completion_blocks,
         )
 
         blocks = last_completion_blocks()
     except Exception:
-        blocks = {
-            "recovery_plan_delta_outstanding": False,
-            "similarity_not_resolution": False,
-            "cold_execution_required": False,
-            "qualification_incomplete": False,
-            "observations_not_preserved": False,
-            "negative_memory_blocks": False,
-            "world_root_cas_not_completion": False,
-            "boundary_contract_required": False,
-            "incompatible_identity": False,
-            "blocks_completion": False,
-            "reason": "",
-            "accepted_as_authority": False,
-            "completion_authority": False,
-        }
+        try:
+            from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+                empty_completion_blocks,
+            )
+
+            blocks = empty_completion_blocks()
+        except Exception:
+            blocks = {
+                "blocks_completion": False,
+                "reason": "",
+                "accepted_as_authority": False,
+                "completion_authority": False,
+            }
     if recovery.get("outstanding") is True:
         blocks["recovery_plan_delta_outstanding"] = True
         blocks["blocks_completion"] = True

@@ -832,20 +832,32 @@ def _configured_board_task_state_snapshots(
             entry_path = Path(entry.path)
             if stat.S_ISDIR(metadata.st_mode):
                 pending.append(entry_path)
-            elif (
-                stat.S_ISREG(metadata.st_mode)
-                and entry.name.endswith("_task_state.json")
-            ):
+            elif stat.S_ISREG(metadata.st_mode) and entry.name.endswith("_task_state.json"):
                 discovered.append(entry_path)
-    paths = tuple(sorted(discovered))
+    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+        orchestration_scope_dir,
+    )
+
+    lanes = orchestration_scope_dir(state_root) / "lanes"
+    if lanes.is_dir():
+        for database in lanes.glob("*_task_state.duckdb"):
+            discovered.append(state_root / f"{database.stem}.json")
+    logical_paths: dict[Path, Path] = {}
+    for path in discovered:
+        logical_paths.setdefault(path, path)
+    paths = tuple(sorted(logical_paths))
     if len(paths) > 128:
         raise ConfiguredBoardError("task-state projection population exceeds bound")
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+        read_task_state_payload,
+    )
+
     snapshots: list[Mapping[str, Any]] = []
     for path in paths:
         try:
             path.relative_to(state_root)
             _lexical_repo_artifact(board.repo_root, path)
-            payload, _identity = _read_stable_regular_json(path)
+            payload = read_task_state_payload(path)
             if payload is None:
                 raise _StableArtifactReadError(
                     f"task-state projection disappeared: {path}"

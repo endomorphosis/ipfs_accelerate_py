@@ -217,39 +217,65 @@ def _safe_identity_segment(identity: str) -> str:
     return f"{prefix}-{digest[:24]}"
 
 
+def _account_home_text(
+    env: Mapping[str, str],
+    home_directory: str | None,
+) -> str:
+    """Return the account home as a stable absolute path string.
+
+    Linux and macOS use ``HOME`` (``/home/<user>`` or ``/Users/<user>``).
+    Windows uses ``USERPROFILE`` (``C:/Users/<user>``).
+    """
+
+    if home_directory is not None:
+        return _absolute_posix_path(home_directory, "home_directory")
+    for key in ("HOME", "USERPROFILE"):
+        raw = str(env.get(key, "") or "").strip()
+        if not raw:
+            continue
+        text = raw.replace("\\", "/")
+        if text.startswith("/"):
+            return _absolute_posix_path(text, key)
+        if len(text) >= 3 and text[1] == ":" and text[2] == "/":
+            return text.rstrip("/")
+        raise StateResolverError(f"{key} must be an absolute path")
+    from pathlib import Path
+
+    return Path.home().as_posix()
+
+
 def default_platform_state_home(
     *,
     environ: Mapping[str, str] | None = None,
     home_directory: str | None = None,
 ) -> str:
-    """Resolve the platform state home **outside** any source checkout.
+    """Resolve the platform state home outside any source checkout.
 
     Precedence:
 
-    1. ``IPFS_ACCELERATE_AGENT_STATE_HOME`` (explicit platform home);
-    2. ``$XDG_STATE_HOME/ipfs_accelerate_py/agent_supervisor``;
-    3. ``$HOME/.local/state/ipfs_accelerate_py/agent_supervisor``.
+    1. ``IPFS_ACCELERATE_AGENT_STATE_HOME``;
+    2. ``IPFS_ACCELERATE_AGENT_HOME``;
+    3. ``<account home>/.ipfs_accelerate/agent_supervisor``.
+
+    The account home is ``/home/<user>`` on Linux, ``/Users/<user>`` on
+    macOS, and ``C:/Users/<user>`` on Windows. ``XDG_STATE_HOME`` is not a
+    database location.
     """
 
     env = environ if environ is not None else os.environ
     explicit = str(env.get(PLATFORM_STATE_ENV, "") or "").strip()
     if explicit:
         return _absolute_posix_path(explicit, PLATFORM_STATE_ENV)
-
-    xdg = str(env.get(XDG_STATE_HOME_ENV, "") or "").strip()
-    if xdg:
-        base = _absolute_posix_path(xdg, XDG_STATE_HOME_ENV)
-        return f"{base}/{PLATFORM_PRODUCT}/{PLATFORM_COMPONENT}"
-
-    if home_directory is not None:
-        home = _absolute_posix_path(home_directory, "home_directory")
-    else:
-        home = str(env.get("HOME", "") or "").strip()
-        if not home:
-            # Last-resort portable default that remains outside typical checkouts.
-            home = "/var/tmp"
-        home = _absolute_posix_path(home, "HOME")
-    return f"{home}/.local/state/{PLATFORM_PRODUCT}/{PLATFORM_COMPONENT}"
+    agent_home = str(env.get("IPFS_ACCELERATE_AGENT_HOME", "") or "").strip()
+    if agent_home:
+        text = agent_home.replace("\\", "/")
+        if text.startswith("/"):
+            return _absolute_posix_path(text, "IPFS_ACCELERATE_AGENT_HOME")
+        if len(text) >= 3 and text[1] == ":" and text[2] == "/":
+            return text.rstrip("/")
+        raise StateResolverError("IPFS_ACCELERATE_AGENT_HOME must be an absolute path")
+    home = _account_home_text(env, home_directory)
+    return f"{home}/.ipfs_accelerate/agent_supervisor"
 
 
 def repository_state_root(

@@ -21,6 +21,7 @@ Modules owned by this package:
 * ``taskboard_store``
 * ``taskboard_ingest``
 * ``todo_vector_index``
+* ``huggingface_todo_locator``
 
 Import them via::
 
@@ -70,6 +71,7 @@ TASK_SOURCES_OWNED_MODULES: Final[tuple[str, ...]] = (
     "taskboard_store",
     "taskboard_ingest",
     "todo_vector_index",
+    "huggingface_todo_locator",
 )
 
 # Packages that may import from task_sources (DAG dependents).

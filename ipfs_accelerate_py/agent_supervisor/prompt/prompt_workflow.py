@@ -5988,7 +5988,16 @@ def build_prompt_workflow_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--directory", help="Directory parameter for workflow ops.")
     parser.add_argument("--repository-root", help="Absolute allowlisted repository root.")
-    parser.add_argument("--state-root", help="Absolute allowlisted supervisor state root.")
+    parser.add_argument(
+        "--state-root",
+        help=(
+            "Absolute allowlisted supervisor state root for logs and manifests. "
+            "DuckDB catalogs default to the account home "
+            ".ipfs_accelerate/agent_supervisor "
+            "(Linux /home/<user>, macOS /Users/<user>, "
+            "Windows C:\\Users\\<user>)."
+        ),
+    )
     parser.add_argument("--repository-id", help="Canonical repository identity.")
     parser.add_argument("--tree-id", help="Current repository tree identity.")
     parser.add_argument("--objective-id", help="Objective identity.")

@@ -185,6 +185,35 @@ def test_ancestor_of_main_is_still_branch_and_bootstrap_is_off() -> None:
     assert observe_rollout({"current_rollout_mode": "required"}) == "required"
     assert observe_rollout({"current_rollout_mode": "canary"}) == "off"
 
+
+def test_process_rollout_mode_is_observed_without_promoting_other_programs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.autonomy.qualification import (
+        apply_program_catalog,
+        observe_rollout,
+        pending_dimensions,
+    )
+    from ipfs_accelerate_py.agent_supervisor.autonomy.rollout_claim import (
+        rollout_claim_view,
+    )
+
+    monkeypatch.setenv("SPAR_ROLLOUT_MODE", "guarded")
+    assert observe_rollout({}) == "guarded"
+    assert observe_rollout({"current_rollout_mode": "bootstrap"}) == "off"
+    catalog = apply_program_catalog({"program_catalog": True})
+    assert catalog["SPAR"]["rollout"] == "guarded"
+    assert catalog["SAWM"]["rollout"] == "off"
+    assert catalog["SAWM"]["implementation"] == "partial"
+    assert pending_dimensions(catalog["SPAR"])
+    claim = rollout_claim_view({"claimed_rollout": "required"})
+    assert claim["observed_rollout"] == "guarded"
+    assert claim["blocks_completion"] is True
+    assert claim["completes_task"] is False
+    respected = rollout_claim_view({"claimed_rollout": "guarded"})
+    assert respected["respected"] is True
+    assert respected["completes_task"] is False
+
     catalog = apply_program_catalog(
         {
             "program_catalog": True,

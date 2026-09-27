@@ -6,9 +6,10 @@ mappings plus SPAR-020/021/022/023/024 nomination-only executors, then applies
 one bounded packet at a time in an isolated fenced worktree with exact before
 hashes, dependency order, rollback, VFS mutation receipts, and effect auditing.
 
-The executor is nomination-only.  It does not write the repository, does not
-replace kit VFS/CAS authority, does not apply undeclared CST transforms, and
-cannot authorize a transition, completion, merge, or competing authority.
+It does not write the repository and does not replace kit VFS/CAS authority.
+Declared CST transforms are applied in memory and staged to the VFS outbox
+and world-root publisher.  Undeclared CST transforms are refused.  It cannot
+authorize a transition, completion, merge, or competing authority.
 Failed waves restore exact preimages or discard the isolated worktree, retain
 negative evidence, and release lease/fence identifiers.  Vector, model, and
 heuristic evidence cannot admit a wave.  Observational metadata is excluded
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, ClassVar, Final, Mapping, Sequence
+import json
 import unicodedata
 
 from ipfs_accelerate_py.utils.cid_utils import cid_for_dag_json, validate_cid
@@ -1634,8 +1636,11 @@ def _dispatch_packet(
     locators: Sequence[Any] | None,
     destination_paths: Mapping[str, str] | None,
     predecessor_kwargs: Mapping[str, Any],
+    pre_world_root_cid: str = "",
+    kit_store: Any | None = None,
 ) -> tuple[tuple[str, ...], Any | None]:
     receipts: list[str] = []
+    handoff_cids: list[str] = []
     move_receipt = None
     kinds = _edit_kinds(packet)
     adapters = _adapter_kinds(packet)
@@ -1654,23 +1659,124 @@ def _dispatch_packet(
             locators=scoped_locators or (),
             destination_paths=scoped_destinations,
         )
+        from .cst_world_handoff import CstWorldHandoffError, stage_cst_world_root
+
+        try:
+            handoff = stage_cst_world_root(
+                result,
+                pre_world_root_cid=pre_world_root_cid or None,
+                kit_store=kit_store,
+            )
+        except CstWorldHandoffError as exc:
+            raise ExtractionWaveError(str(exc)) from exc
+        if handoff.blocked:
+            raise ExtractionWaveError(
+                f"cst world handoff blocked: {handoff.reason}"
+            )
+        if handoff.outbox_nomination_cid:
+            handoff_cids.append(handoff.outbox_nomination_cid)
         move_receipt = result.receipt()
         receipts.append(move_receipt.receipt_cid)
+    apply_kwargs = dict(kwargs)
+    if scoped_sources:
+        apply_kwargs["raw_sources"] = scoped_sources
+    if pre_world_root_cid:
+        apply_kwargs["pre_world_root_cid"] = pre_world_root_cid
+    if kit_store is not None:
+        apply_kwargs["kit_store"] = kit_store
     if rewrites & SPAR021_REWRITE_KINDS:
-        receipt = execute_import_rewrites(packet, **kwargs)
+        receipt = execute_import_rewrites(packet, **apply_kwargs)
         receipts.append(receipt.receipt_cid)
     if adapters & _SPAR022_STATE_KINDS:
-        receipt = execute_explicit_state_objects(packet, **kwargs)
+        receipt = execute_explicit_state_objects(packet, **apply_kwargs)
         receipts.append(receipt.receipt_cid)
     if adapters & SPAR023_ADAPTER_KINDS:
-        receipt = execute_initialization_rewrites(packet, **kwargs)
+        receipt = execute_initialization_rewrites(packet, **apply_kwargs)
         receipts.append(receipt.receipt_cid)
     if AdapterKind.WRAPPER.value in adapters or rewrites & _SPAR024_REWRITE_KINDS:
-        receipt = execute_binding_compatibility_adapters(packet, **kwargs)
+        receipt = execute_binding_compatibility_adapters(packet, **apply_kwargs)
         receipts.append(receipt.receipt_cid)
+    if EditKind.FACADE.value in kinds and scoped_sources:
+        from .cst_nominated_apply import (
+            apply_nominated_cst_and_stage,
+            nominations_from_facade_edits,
+        )
+
+        facade_moves = nominations_from_facade_edits(packet)
+        if facade_moves:
+            facade_handoff = apply_nominated_cst_and_stage(
+                packet,
+                scoped_sources,
+                nominations=facade_moves,
+                pre_world_root_cid=pre_world_root_cid or None,
+                kit_store=kit_store,
+            )
+            if (
+                facade_handoff.blocked
+                and facade_handoff.reason != "nominated_edit_not_applied"
+            ):
+                raise ExtractionWaveError(
+                    f"cst facade apply blocked: {facade_handoff.reason}"
+                )
+            if facade_handoff.outbox_nomination_cid:
+                handoff_cids.append(facade_handoff.outbox_nomination_cid)
     if not receipts and EditKind.FACADE.value not in kinds:
         raise ExtractionWaveError("packet has no dispatchable extraction-wave edits")
-    return tuple(sorted(set(receipts))), move_receipt
+    return tuple(sorted(set(receipts))), move_receipt, tuple(handoff_cids)
+
+
+def _materialize_shadow_apply_worktree() -> None:
+    """Write applied CST sources into a disposable worktree when one is configured."""
+
+    from .cst_kit_commit import (
+        CstKitCommitError,
+        _MERGE_NOMINATION_MODES,
+        disposable_worktree_root_from_env,
+        kit_coordination_dir_from_env,
+        materialize_disposable_worktree,
+        nominate_current_authority_merge,
+        rollout_mode_from_env,
+        stored_merge_record,
+    )
+    from .cst_world_handoff import last_cst_handoffs
+
+    root = disposable_worktree_root_from_env()
+    if root is None:
+        return
+    sources: dict[str, str] = {}
+    for handoff in last_cst_handoffs():
+        if not handoff.applied:
+            continue
+        sources.update(dict(handoff.sources))
+    if not sources:
+        return
+    try:
+        materialized = materialize_disposable_worktree(root, sources)
+    except CstKitCommitError as exc:
+        raise ExtractionWaveError(str(exc)) from exc
+    if (materialized / ".git").exists():
+        raise ExtractionWaveError("disposable worktree cannot write the repository")
+    mode = rollout_mode_from_env()
+    if mode not in _MERGE_NOMINATION_MODES:
+        return
+    coordination = kit_coordination_dir_from_env() or materialized.parent
+    try:
+        nomination = nominate_current_authority_merge(
+            coordination,
+            materialized,
+            sources,
+            mode=mode,
+        )
+    except CstKitCommitError as exc:
+        raise ExtractionWaveError(str(exc)) from exc
+    record = stored_merge_record(nomination)
+    if record.get("merged") is not False or record.get("writes_repository") is not False:
+        raise ExtractionWaveError("merge nomination cannot claim a merge")
+    from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+        publish_completion_blocks,
+    )
+
+    publish_completion_blocks(merge_nomination_outstanding=True)
 
 
 def execute_extraction_wave(
@@ -1685,12 +1791,35 @@ def execute_extraction_wave(
     claimed_before_hashes: Mapping[str, Sequence[str]] | None = None,
     worktree_id: str = "",
     mutate: bool = False,
+    kit_store: Any | None = None,
+    bind_kit_store: bool = True,
+    materialize_worktree: bool = True,
     **predecessor_kwargs: Any,
 ) -> ExtractionWaveReceipt:
-    """Apply one bounded packet at a time. Nomination only; never mutates."""
+    """Apply one bounded packet at a time.
+
+    CST moves and, when raw sources are present, import/state/initialization/
+    binding module edits are applied in memory and staged to the VFS outbox
+    and world-root publisher. When ``kit_store`` is bound, or the process
+    environment names a kit coordination directory, kit CAS-commits one
+    successor root and publishes sources plus the outbox. When rollout is
+    ``shadow_apply`` or ``SAWM_DISPOSABLE_WORKTREE`` is set, those sources
+    are also written to a disposable directory. A dry run does neither.
+    The git repository is not written, and the commit is not task completion.
+    """
 
     if mutate is not False:
         raise ExtractionWaveError("executor cannot mutate")
+    from .cst_world_handoff import clear_cst_handoffs
+
+    clear_cst_handoffs()
+    opened_store = None
+    if kit_store is None and bind_kit_store:
+        from .cst_kit_commit import open_kit_store_from_env
+
+        opened_store = open_kit_store_from_env()
+        if opened_store is not None:
+            kit_store = opened_store
     if WAVE_WRITES_REPOSITORY is not False:
         raise ExtractionWaveError("wave cannot write the repository")
     resolved = _coerce_packets(packets)
@@ -1702,6 +1831,44 @@ def execute_extraction_wave(
         worktree_id, tree_id=tree_id, lease_id=lease_id, fence_id=fence_id
     )
     rollback = compile_wave_rollback(ordered, worktree_id=isolated)
+    try:
+        receipt = _execute_ordered_wave(
+            ordered,
+            raw_sources=raw_sources,
+            locators=locators,
+            destination_paths=destination_paths,
+            claimed_before_hashes=claimed_before_hashes,
+            predecessor_kwargs=predecessor_kwargs,
+            kit_store=kit_store,
+            tree_id=tree_id,
+            lease_id=lease_id,
+            fence_id=fence_id,
+            isolated=isolated,
+            rollback=rollback,
+        )
+        if materialize_worktree and receipt.writes_repository is False:
+            _materialize_shadow_apply_worktree()
+        return receipt
+    finally:
+        if opened_store is not None:
+            opened_store.close()
+
+
+def _execute_ordered_wave(
+    ordered: Sequence[Any],
+    *,
+    raw_sources: Mapping[str, str] | None,
+    locators: Sequence[Any] | None,
+    destination_paths: Mapping[str, str] | None,
+    claimed_before_hashes: Mapping[str, Sequence[str]] | None,
+    predecessor_kwargs: Mapping[str, Any],
+    kit_store: Any | None,
+    tree_id: str,
+    lease_id: str,
+    fence_id: str,
+    isolated: str,
+    rollback: Any,
+) -> ExtractionWaveReceipt:
     checkpoints: list[ExtractionWaveCheckpoint] = []
     vfs_cids: list[str] = []
     audit_cids: list[str] = []
@@ -1714,12 +1881,14 @@ def execute_extraction_wave(
                 claimed = claimed_before_hashes.get(packet.packet_cid)
             before = verify_before_hashes(packet, claimed_before_hashes=claimed)
             audit = audit_wave_effects(packet)
-            receipts, move_receipt = _dispatch_packet(
+            receipts, move_receipt, handoff_cids = _dispatch_packet(
                 packet,
                 raw_sources=raw_sources,
                 locators=locators,
                 destination_paths=destination_paths,
                 predecessor_kwargs=predecessor_kwargs,
+                pre_world_root_cid=before[0],
+                kit_store=kit_store,
             )
             after = _after_source_cids(
                 packet, before=before, move_receipt=move_receipt
@@ -1746,6 +1915,9 @@ def execute_extraction_wave(
             )
             checkpoints.append(checkpoint)
             vfs_cids.append(vfs.receipt_cid)
+            for cid in handoff_cids:
+                if cid not in vfs_cids:
+                    vfs_cids.append(cid)
             audit_cids.append(audit.audit_cid)
             for path in packet.effect_scope.write_paths:
                 if path not in seen_paths:
@@ -1885,6 +2057,10 @@ def dry_run_extraction_wave(
 
     if kwargs.pop("mutate", False):
         raise ExtractionWaveError("dry-run cannot mutate")
+    if kwargs.get("kit_store") is not None:
+        raise ExtractionWaveError("dry-run cannot commit a world root")
+    kwargs["bind_kit_store"] = False
+    kwargs["materialize_worktree"] = False
     receipt = execute_extraction_wave(packets, **kwargs)
     if receipt.mutated:
         raise ExtractionWaveError("dry-run cannot mutate")

@@ -166,7 +166,13 @@ def test_parse_markdown_board_tasks_extracts_status_and_deps() -> None:
     assert tasks[1]["depends_on"] == ["LCR-034"]
 
 
-def test_isolate_board_runtime_registers_duckdb_catalog(tmp_path: Path) -> None:
+def test_isolate_board_runtime_registers_duckdb_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR",
+        str(tmp_path / "orchestration"),
+    )
     pytest.importorskip("duckdb")
     from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
         open_board_control_plane,
@@ -286,8 +292,12 @@ def test_isolate_board_runtime_registers_duckdb_catalog(tmp_path: Path) -> None:
 
 
 def test_ingest_codebase_artefacts_stores_ast_vector_kg_and_proof(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR",
+        str(tmp_path / "orchestration"),
+    )
     pytest.importorskip("duckdb")
     from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
         open_board_control_plane,

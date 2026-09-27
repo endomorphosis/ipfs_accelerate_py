@@ -7,6 +7,8 @@ import stat
 import sys
 from pathlib import Path
 
+import pytest
+
 repo_root = Path(__file__).resolve().parents[2]
 repo_root_text = str(repo_root)
 
@@ -151,6 +153,19 @@ def _restore_control_plane_modes() -> None:
             os.chmod(path, mode)
         except OSError:
             continue
+
+
+@pytest.fixture(autouse=True)
+def _isolate_agent_orchestration_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default supervisor DuckDB catalogs must not land in the real home directory."""
+
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR",
+        str(tmp_path / "agent-orchestration"),
+    )
 
 
 def pytest_configure(config) -> None:

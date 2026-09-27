@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+    clear_completion_blocks,
+    publish_completion_blocks,
+)
 from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root import (
     CLAUSE_EVIDENCE_SCHEMA,
     REQUIRED_CLAUSES,
@@ -9,6 +14,13 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root impor
     admit_current_bound_clause_records,
     materialize_clause_records,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_completion_blocks() -> None:
+    clear_completion_blocks()
+    yield
+    clear_completion_blocks()
 
 
 def _subject() -> dict:
@@ -94,6 +106,13 @@ def test_settled_runtime_without_empty_merge_queue_cannot_mint_fixed_point():
     assert "fixed_point_accepted" not in records
 
 
+def test_settled_empty_queue_mints_fixed_point_only_when_blocks_are_clear():
+    records = materialize_clause_records(
+        _subject(), _current(runtime_settled=True, merge_queue_empty=True)
+    )
+    assert "fixed_point_accepted" in records
+
+
 def test_outstanding_recovery_is_not_runtime_settlement() -> None:
     from ipfs_accelerate_py.agent_supervisor.semantic_state.spar_accepted_root import (
         _runtime_settled,
@@ -166,6 +185,51 @@ def test_sealed_program_catalog_cannot_mint_fixed_point():
             runtime_settled=True,
             merge_queue_empty=True,
             program_catalog=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_last_completion_blocks_cannot_mint_fixed_point_without_source_flag():
+    publish_completion_blocks(unbounded_procedure=True)
+    records = materialize_clause_records(
+        _subject(),
+        _current(runtime_settled=True, merge_queue_empty=True),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_rollout_not_required_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            rollout_not_required=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_unbounded_procedure_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            unbounded_procedure=True,
+        ),
+    )
+    assert "fixed_point_accepted" not in records
+
+
+def test_undeclared_cst_cannot_mint_fixed_point():
+    records = materialize_clause_records(
+        _subject(),
+        _current(
+            runtime_settled=True,
+            merge_queue_empty=True,
+            undeclared_cst_transform=True,
         ),
     )
     assert "fixed_point_accepted" not in records

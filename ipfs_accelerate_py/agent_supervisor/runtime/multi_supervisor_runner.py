@@ -2690,10 +2690,26 @@ def reassign_fenced_plan_bound_child(
             donor_state_path = (
                 donor_state_dir / f"{donor.state_prefix}_task_state.json"
             )
-            try:
-                attempt_state, attempt_state_identity = (
-                    _read_stable_regular_json(donor_state_path)
+
+            def donor_attempt_observation() -> tuple[dict[str, Any] | None, dict[str, Any]]:
+                from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+                    read_task_state_payload,
                 )
+
+                payload = read_task_state_payload(donor_state_path)
+                if payload is not None:
+                    return payload, {
+                        "schema": (
+                            "ipfs_accelerate_py/portal-task-state-control-plane@1"
+                        ),
+                        "canonical": json.dumps(
+                            payload, sort_keys=True, separators=(",", ":")
+                        ),
+                    }
+                return _read_stable_regular_json(donor_state_path)
+
+            try:
+                attempt_state, attempt_state_identity = donor_attempt_observation()
             except _StableArtifactReadError as exc:
                 raise ExecutionClaimConflictError(
                     "cannot prove canonical donor attempt state pristine"
@@ -2947,7 +2963,7 @@ def reassign_fenced_plan_bound_child(
                         )
                 try:
                     final_attempt_state, final_attempt_identity = (
-                        _read_stable_regular_json(donor_state_path)
+                        donor_attempt_observation()
                     )
                 except _StableArtifactReadError as exc:
                     raise ExecutionClaimConflictError(
@@ -5803,16 +5819,20 @@ def terminal_task_state_fields(
     path = _track_task_state_path(track, repo_root=repo_root)
     if path is None:
         return {"terminal_quiescent": False, "task_state_status": "untracked"}
-    payload = _read_json_dict(path)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+        read_task_state_payload,
+        task_state_authority_mtime,
+    )
+
+    payload = read_task_state_payload(path)
     if not payload:
         return {
             "terminal_quiescent": False,
             "task_state_status": "missing",
             "task_state_path": str(path),
         }
-    try:
-        modified_at = path.stat().st_mtime
-    except OSError:
+    modified_at = task_state_authority_mtime(path)
+    if modified_at is None:
         modified_at = 0.0
     fresh = modified_at + 1e-6 >= float(fresh_after_epoch_seconds)
     task_count = int(payload.get("task_count") or 0)

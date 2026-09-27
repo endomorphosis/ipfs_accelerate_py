@@ -1736,10 +1736,18 @@ class ProverMatrixPaths:
 
 def prover_matrix_paths(path: Path | str) -> ProverMatrixPaths:
     resolved = Path(path).resolve()
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
     if resolved.suffix.lower() == ".json":
-        return ProverMatrixPaths(resolved, resolved.with_suffix(".duckdb"))
+        return ProverMatrixPaths(
+            resolved,
+            repo_resident_duckdb(resolved.with_suffix(".duckdb")),
+        )
     if resolved.suffix.lower() == ".duckdb":
-        return ProverMatrixPaths(resolved.with_suffix(".json"), resolved)
+        return ProverMatrixPaths(
+            resolved.with_suffix(".json"),
+            repo_resident_duckdb(resolved),
+        )
     raise ValueError("prover matrix output path must end in .json or .duckdb")
 
 

@@ -8298,7 +8298,11 @@ class PortalImplementationSupervisor:
                 "reason": "legacy_cleanup_owner_status_or_receipt_path_invalid",
             }
 
-        task_state = load_json_dict(state_path)
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        task_state = read_task_state_payload(state_path)
         status = load_json_dict(status_path)
         receipt = load_json_dict(receipt_path)
         if (
@@ -8798,7 +8802,11 @@ class PortalImplementationSupervisor:
             or not self._path_is_regular_nofollow(status_path)
         ):
             return {**base, "reason": "legacy_cleanup_external_status_invalid"}
-        task_state = load_json_dict(state_path)
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        task_state = read_task_state_payload(state_path)
         status = load_json_dict(status_path)
         if not isinstance(task_state, Mapping) or not isinstance(status, Mapping):
             return {**base, "reason": "legacy_cleanup_external_status_unavailable"}
@@ -16715,6 +16723,16 @@ class PortalImplementationSupervisor:
                 state_paths.update(state_dir.glob("*task_state.json"))
             except OSError:
                 continue
+        from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+            orchestration_scope_dir,
+        )
+
+        home_lanes = orchestration_scope_dir(self.config.state_path.parent) / "lanes"
+        if home_lanes.is_dir():
+            state_paths.update(
+                self.config.state_path.parent / f"{database.stem}.json"
+                for database in home_lanes.glob("*_task_state.duckdb")
+            )
 
         for state_path in sorted(state_paths):
             try:

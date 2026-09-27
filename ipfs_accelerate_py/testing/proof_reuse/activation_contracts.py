@@ -2328,6 +2328,39 @@ def disposition_deferred(
     )
 
 
+def gate_skip_disposition(
+    disposition: RuntimeReuseDisposition,
+) -> RuntimeReuseDisposition:
+    """Refuse an admitted SKIP while the board owner has outstanding blocks.
+
+    Cold execution remains the reference. A blocked board cannot treat a
+    certificate hit as a pass. Import failure is fail-open so proof reuse
+    still runs without the supervisor package.
+    """
+
+    if disposition.action is not RuntimeReuseAction.SKIP:
+        return disposition
+    try:
+        from ipfs_accelerate_py.agent_supervisor.autonomy.completion_blocks import (
+            completion_is_blocked,
+            last_completion_blocks,
+        )
+    except Exception:
+        return disposition
+    if not completion_is_blocked():
+        return disposition
+    reason = str(last_completion_blocks().get("reason") or "completion_blocked")
+    return disposition_run(
+        "completion_blocked",
+        diagnostics={
+            "stage": "activation_skip_refused",
+            "refused_reason": reason,
+            "certificate_cid": disposition.certificate_cid,
+            "receipt_cid": disposition.receipt_cid,
+        },
+    )
+
+
 def disposition_skip(
     *,
     certificate_cid: str,
@@ -2638,11 +2671,13 @@ class ProofReuseActivationContract(CanonicalContract):
             )
 
         return _mirror_skip(
-            disposition_skip(
-            certificate_cid=certificate.certificate_cid,
-            receipt_cid=certificate.receipt_cid,
-            candidate_context_cid=candidate.candidate_context_id,
-            diagnostics={"stage": "activation_skip_admitted"},
+            gate_skip_disposition(
+                disposition_skip(
+                    certificate_cid=certificate.certificate_cid,
+                    receipt_cid=certificate.receipt_cid,
+                    candidate_context_cid=candidate.candidate_context_id,
+                    diagnostics={"stage": "activation_skip_admitted"},
+                )
             )
         )
 

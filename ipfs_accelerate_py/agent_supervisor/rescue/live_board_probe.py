@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Bounded, read-only health observations for existing DuckDB board operators.
 
-This adapter never opens a DuckDB file or signals a process. Process identity,
-fresh lane projections and existing operator status commands are observations;
-they cannot authorize task completion or Git publication. A separate closeout
-gate must admit completion, even when every observed task is terminal.
+Task-state projections are read from the DuckDB/Quack control plane. DuckLake
+is history and is not current authority. This adapter does not signal a
+process. Observations cannot authorize task completion or Git publication. A
+separate closeout gate must admit completion, even when every observed task
+is terminal. Legacy status commands that open the owner database during an
+outage are still not executed.
 """
 
 from __future__ import annotations
@@ -128,6 +130,29 @@ def read_json(path: Path) -> dict[str, Any]:
         return read_json_object(path)
     except (OSError, ValueError, RecursionError):
         return {}
+
+
+def read_task_state_projection(lane_dir: Path, prefix: str) -> dict[str, Any]:
+    """Read task state from the DuckDB/Quack control plane.
+
+    A legacy JSON file is imported only when no control-plane row exists.
+    The result cannot authorize completion.
+    """
+
+    path = lane_dir / f"{prefix}_task_state.json"
+    try:
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        payload = read_task_state_payload(path)
+    except Exception:
+        payload = None
+    if payload:
+        projected = dict(payload)
+        projected["completion_authority"] = False
+        return projected
+    return read_json(path)
 
 
 def _age(value: Any, now: float) -> float | None:
@@ -875,7 +900,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             reasons.append(f"lane_{index}_reports_stalled")
         if status.get("last_exit_code") == 78 and not daemon:
             reasons.append(f"lane_{index}_typed_fail_closed_exit")
-        projection = read_json(lane_dir / f"{prefix}_task_state.json")
+        projection = read_task_state_projection(lane_dir, prefix)
         if projection:
             readiness_projections.append(projection)
         projection_age = _age(projection.get("heartbeat_at"), now)

@@ -1924,11 +1924,18 @@ def _compact_bundle_manifest_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else {}
     )
     if omitted or existing_reference:
+        from ..task_sources.board_control_plane import repo_resident_duckdb
+
         index_path = str(payload.get("objective_bundle_index") or "")
+        index_duckdb = (
+            str(repo_resident_duckdb(Path(index_path).with_suffix(".duckdb")))
+            if index_path
+            else ""
+        )
         compact["planning_evidence_ref"] = {
             **existing_reference,
             "bundle_index": index_path,
-            "bundle_index_duckdb": str(Path(index_path).with_suffix(".duckdb")) if index_path else "",
+            "bundle_index_duckdb": index_duckdb,
             "bundle_key": str(payload.get("bundle_key") or ""),
             "omitted_fields": sorted(_MANIFEST_REFERENCED_BUNDLE_FIELDS),
             "bundle_table": "bundles",
@@ -3736,7 +3743,11 @@ def launch_bundle_lanes(
 
     results: list[dict[str, Any]] = []
     active_lanes: list[BundleLaneSpec] = []
-    path = coordination_path or default_state_root(repo_root) / "coordination.duckdb"
+    path = (
+        Path(coordination_path)
+        if coordination_path is not None
+        else default_coordination_database(repo_root)
+    )
     with LeaseCoordinator(path) as coordinator:
         for lane in lanes:
             policy_error = policy_errors[id(lane)]
@@ -4002,6 +4013,11 @@ def _spawn_accepted_lane(
     )
     env["AUTONOMY_OWNER_ID"] = str(lane.parallel_lane or lane.bundle_key)[:256]
     env.setdefault("AGENT_SUPERVISOR_STATE_ROOT", str(lane.state_dir.parent))
+    env.setdefault("SAWM_BIND_KIT_STORE", "1")
+    env.setdefault(
+        "SAWM_COORDINATION_DIR",
+        str(Path(env["AGENT_SUPERVISOR_STATE_ROOT"]) / "semantic-world"),
+    )
     from ipfs_accelerate_py.agent_supervisor.autonomy.recovery_leases import (
         bundle_recovery_lease_ttl_seconds,
     )
@@ -4148,6 +4164,14 @@ def default_state_root(repo_root: Path) -> Path:
     return repo_root / "data" / "agent_supervisor" / "bundle_lanes"
 
 
+def default_coordination_database(repo_root: Path) -> Path:
+    """Bundle lease catalog under the orchestration home, not the checkout."""
+
+    from ..task_sources.board_control_plane import orchestration_database
+
+    return orchestration_database(repo_root, "bundle", "coordination.duckdb")
+
+
 class DynamicBundleScheduler:
     """Persistent, capacity-bounded reconciler for objective bundle workers.
 
@@ -4204,7 +4228,9 @@ class DynamicBundleScheduler:
         self.metrics_path = Path(metrics_path or self.state_root / "scheduler_metrics.json").resolve()
         self.decision_metrics_path = self.metrics_path.with_name("scheduler_decision_metrics.json")
         self.coordination_path = Path(
-            coordination_path or self.state_root / "coordination.duckdb"
+            coordination_path
+            if coordination_path is not None
+            else default_coordination_database(self.repo_root)
         ).resolve()
         self.max_lanes = int(max_lanes)
         self.claimant_did = str(claimant_did)
@@ -4660,11 +4686,14 @@ class DynamicBundleScheduler:
                 # the next scheduler cycle even if the log is continuously
                 # active.
                 receipt_revision = (("<unstable>", -1, -1),)
+            from ..task_sources.board_control_plane import repo_resident_duckdb
+
             source_paths = tuple(
                 sorted(
                     {
                         self.bundle_index_path,
                         self.bundle_index_path.with_suffix(".duckdb"),
+                        repo_resident_duckdb(self.bundle_index_path.with_suffix(".duckdb")),
                         *(lane.todo_path for lane in base_lanes),
                     },
                     key=str,
@@ -4792,10 +4821,12 @@ class DynamicBundleScheduler:
         portal_task_ids = {str(task.task_id) for task in portal_tasks}
 
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            state = {}
+        from ..todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+            task_state_authority_file,
+        )
+
+        state = read_task_state_payload(state_path) or {}
         if isinstance(state, dict):
             task_count = _schedule_int(state, "task_count")
             completed_count = _schedule_int(state, "completed_count")
@@ -4808,7 +4839,8 @@ class DynamicBundleScheduler:
                 for task_id in (state.get("task_identities") or {})
             }
             try:
-                state_mtime_ns = state_path.stat().st_mtime_ns
+                authority = task_state_authority_file(state_path) or state_path
+                state_mtime_ns = authority.stat().st_mtime_ns
                 board_mtime_ns = operational_todo_path.stat().st_mtime_ns
             except OSError:
                 state_covers_current_board = True
@@ -4994,10 +5026,12 @@ class DynamicBundleScheduler:
         if not lane.task_ids:
             return False
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return False
+        from ..todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+            save_portal_task_state,
+        )
+
+        state = read_task_state_payload(state_path)
         if not isinstance(state, dict):
             return False
         statuses = state.get("task_statuses")
@@ -5070,11 +5104,12 @@ class DynamicBundleScheduler:
         state["active_task_cid"] = ""
         try:
             lane.state_dir.mkdir(parents=True, exist_ok=True)
-            state_path.write_text(
-                json.dumps(state, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+            saved = save_portal_task_state(
+                state_path.stem, state, state_path=state_path
             )
         except OSError:
+            return False
+        if saved is None:
             return False
         # Failure cooldowns (up to hours) would still starve residual
         # redispatch after an infrastructure fix. Clear queue backoff for
@@ -5184,10 +5219,11 @@ class DynamicBundleScheduler:
         if not lane.task_ids:
             return ""
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return ""
+        from ..todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        state = read_task_state_payload(state_path)
         if not isinstance(state, Mapping):
             return ""
         if (
@@ -5424,12 +5460,12 @@ class DynamicBundleScheduler:
         """Read the durable lane heartbeat as one current-state event."""
 
         state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            state_observed = isinstance(state, dict)
-        except (OSError, json.JSONDecodeError):
-            state = {}
-            state_observed = False
+        from ..todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        state = read_task_state_payload(state_path)
+        state_observed = isinstance(state, dict)
         if not isinstance(state, dict):
             state = {}
         phase = str(state.get("active_phase") or "")
@@ -6472,7 +6508,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Plan or launch isolated daemon lanes for objective bundle shards")
     parser.add_argument("--bundle-index-path", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument("--state-root", type=Path, default=None)
+    parser.add_argument(
+        "--state-root",
+        type=Path,
+        default=None,
+        help=(
+            "Lane logs, pid files, and manifests. DuckDB catalogs are stored "
+            "under the account home in .ipfs_accelerate/agent_supervisor "
+            "(Linux /home/<user>, macOS /Users/<user>, "
+            "Windows C:\\Users\\<user>)."
+        ),
+    )
     parser.add_argument("--worktree-root", type=Path, default=None)
     parser.add_argument("--log-dir", type=Path, default=None)
     parser.add_argument("--manifest-path", type=Path, default=None)
@@ -6611,7 +6657,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Repeatable nested submodule path to prepare, commit, merge, and clean in every lane.",
     )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--coordination-path", type=Path, default=None)
+    parser.add_argument(
+        "--coordination-path",
+        type=Path,
+        default=None,
+        help=(
+            "DuckDB lease catalog. Stored under the account home in "
+            ".ipfs_accelerate/agent_supervisor "
+            "(Linux /home/<user>, macOS /Users/<user>, "
+            "Windows C:\\Users\\<user>), not inside the checkout or .git."
+        ),
+    )
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
     parser.add_argument("--lease-ms", type=int, default=60_000)
     parser.add_argument("--heartbeat-interval", type=float, default=5.0)

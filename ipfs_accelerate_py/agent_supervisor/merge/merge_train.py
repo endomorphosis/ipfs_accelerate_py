@@ -1266,9 +1266,15 @@ class MergeTrain:
             self.distributed_publication_ledger_path = None
             self.owner_id = runtime.consumer_id
         else:
-            queue_dir = Path(
-                getattr(queue, "queue_dir", self.repo_root / ".merge-queue")
-            ).resolve()
+            if hasattr(queue, "queue_dir"):
+                queue_dir = Path(queue.queue_dir).resolve()
+            else:
+                from ..task_sources.board_control_plane import orchestration_database
+
+                queue_dir = orchestration_database(
+                    self.repo_root,
+                    "merge-queue",
+                ).resolve()
             self.state_dir = Path(state_dir) if state_dir is not None else queue_dir / "train"
             self.receipt_dir = self.state_dir / "receipts"
             self.receipt_dir.mkdir(parents=True, exist_ok=True)

@@ -863,6 +863,30 @@ def hold_merge_queue_settlement(
                 )
 
 
+def accept_spar_merge_nomination(
+    coordination_dir: Path | str | None = None,
+) -> Path:
+    """Take custody of a SPAR nomination. This does not enqueue or merge it."""
+
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        accept_spar_merge_nomination as _accept,
+    )
+
+    return _accept(coordination_dir=coordination_dir)
+
+
+def release_spar_merge_hold(
+    coordination_dir: Path | str | None = None,
+) -> Path:
+    """Release a held SPAR nomination. This does not merge it."""
+
+    from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+        release_spar_merge_hold as _release,
+    )
+
+    return _release(coordination_dir=coordination_dir)
+
+
 def read_merge_queue_settlement(
     queue_dir: Path | str,
     *,

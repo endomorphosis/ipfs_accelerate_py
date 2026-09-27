@@ -393,25 +393,21 @@ def _git(root: Path, *args: str) -> str:
 
 
 def _default_state_root(repository_id: str) -> Path:
+    """Per-repository state under the account's ``.ipfs_accelerate`` home.
+
+    Linux ``/home/<user>``, macOS ``/Users/<user>``, Windows
+    ``C:\\Users\\<user>``. ``IPFS_ACCELERATE_AGENT_STATE_HOME`` replaces the
+    product directory. ``XDG_STATE_HOME`` does not.
+    """
+
     env = os.environ.get("IPFS_ACCELERATE_AGENT_STATE_HOME")
     if env:
-        return Path(env) / repository_id.replace(":", "_")
-    xdg = os.environ.get("XDG_STATE_HOME")
-    if xdg:
-        return (
-            Path(xdg)
-            / "ipfs_accelerate_py"
-            / "agent_supervisor"
-            / repository_id.replace(":", "_")
-        )
-    return (
-        Path.home()
-        / ".local"
-        / "share"
-        / "ipfs_accelerate_py"
-        / "agent_supervisor"
-        / repository_id.replace(":", "_")
-    )
+        base = Path(env).expanduser()
+    else:
+        from ..task_sources.board_control_plane import agent_supervisor_home
+
+        base = agent_supervisor_home()
+    return base / repository_id.replace(":", "_")
 
 
 def observe_production_bindings(

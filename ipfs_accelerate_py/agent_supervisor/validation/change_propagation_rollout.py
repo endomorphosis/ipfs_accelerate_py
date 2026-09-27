@@ -2422,9 +2422,13 @@ def check_supervisor_process_state(
                 except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
                     errors.append(f"lane {lane} supervisor state error: {exc}")
                     lane_info["supervisor"] = "error"
-            if task_path.is_file():
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+                read_task_state_payload,
+            )
+
+            task = read_task_state_payload(task_path)
+            if task is not None:
                 try:
-                    task = json.loads(task_path.read_text(encoding="utf-8"))
                     if not isinstance(task, Mapping):
                         raise ValueError("task state is not an object")
                     lane_info["task_state"] = str(task.get("status") or "unknown")

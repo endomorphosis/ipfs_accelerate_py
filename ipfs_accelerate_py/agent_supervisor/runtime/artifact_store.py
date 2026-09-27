@@ -1849,10 +1849,18 @@ def query_artifact_paths(path: Path | str) -> QueryArtifactPaths:
 
     resolved = Path(path).resolve()
     suffix = resolved.suffix.lower()
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
     if suffix == ".duckdb":
-        return QueryArtifactPaths(json_path=resolved.with_suffix(".json"), duckdb_path=resolved)
+        return QueryArtifactPaths(
+            json_path=resolved.with_suffix(".json"),
+            duckdb_path=repo_resident_duckdb(resolved),
+        )
     if suffix == ".json":
-        return QueryArtifactPaths(json_path=resolved, duckdb_path=resolved.with_suffix(".duckdb"))
+        return QueryArtifactPaths(
+            json_path=resolved,
+            duckdb_path=repo_resident_duckdb(resolved.with_suffix(".duckdb")),
+        )
     raise ValueError(f"queryable artifacts require a .json or .duckdb path: {resolved}")
 
 

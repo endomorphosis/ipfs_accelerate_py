@@ -603,6 +603,122 @@ def test_pickle_fallback_cannot_complete_an_empty_board() -> None:
     assert runtime.healthy_idle is True
 
 
+def test_ast_only_codemod_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    ast_only = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:ast-only",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"ast_only": True, "cst_preserving": True},
+    )
+    assert ast_only.status is AutonomyRuntimeStatus.IDLE
+    assert "undeclared_cst_transform" in ast_only.reason_codes
+    assert ast_only.undeclared_cst_transform is True
+    assert ast_only.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    preserved = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:cst-ok",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "cst_preserving": True,
+            "comments_preserved": True,
+            "source_map_preserved": True,
+        },
+    )
+    assert preserved.status is AutonomyRuntimeStatus.IDLE
+    assert preserved.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.undeclared_cst_transform is False
+    assert runtime.healthy_idle is True
+
+
+def test_unbounded_procedure_cannot_complete_an_empty_board() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    unbounded = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:unbounded-proc",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={"unbounded": True},
+    )
+    assert unbounded.status is AutonomyRuntimeStatus.IDLE
+    assert "unbounded_procedure" in unbounded.reason_codes
+    assert unbounded.unbounded_procedure is True
+    assert unbounded.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    bounded = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:bounded-proc",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "bounded": True,
+            "verified_episode": True,
+            "reanalysis": True,
+        },
+    )
+    assert bounded.status is AutonomyRuntimeStatus.IDLE
+    assert bounded.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.unbounded_procedure is False
+    assert runtime.healthy_idle is True
+
+
+def test_bootstrap_cannot_complete_as_required_rollout() -> None:
+    runtime = _complete_runtime(interval_ms=1_000)
+    claimed = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:rollout-claim",
+            sequence=1,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "claimed_rollout": "required",
+            "current_rollout_mode": "bootstrap",
+        },
+    )
+    assert claimed.status is AutonomyRuntimeStatus.IDLE
+    assert "rollout_not_required" in claimed.reason_codes
+    assert claimed.rollout_not_required is True
+    assert claimed.to_record()["completion_authority"] is False
+    assert runtime.healthy_idle is False
+
+    honest = runtime.handle_wake(
+        AutonomyWakeEvent(
+            kind=AutonomyWakeKind.TASK,
+            cursor_id="cursor:rollout-ok",
+            sequence=2,
+        ),
+        candidates=(),
+        context=_context(),
+        typesafe_state={
+            "claimed_rollout": "required",
+            "current_rollout_mode": "required",
+        },
+    )
+    assert honest.status is AutonomyRuntimeStatus.IDLE
+    assert honest.reason_codes == ("no_unresolved_mandatory_question",)
+    assert runtime.rollout_not_required is False
+    assert runtime.healthy_idle is True
+
+
 def test_similar_transition_cannot_complete_an_empty_board() -> None:
     runtime = _complete_runtime(interval_ms=1_000)
     similar = runtime.handle_wake(

@@ -20,6 +20,7 @@ is side-effect free: no DuckDB handle is opened until
 from __future__ import annotations
 
 import ast
+import fcntl
 import hashlib
 import json
 import math
@@ -382,10 +383,338 @@ def control_plane_git_common_dir(repo_root: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def default_control_plane_root(repo_root: Path) -> Path:
-    """Return the shared control-plane directory for every worktree of ``repo``."""
+ORCHESTRATION_DIR_ENV: Final = "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR"
+AGENT_HOME_ENV: Final = "IPFS_ACCELERATE_AGENT_HOME"
+DATABASE_HOME_HELP: Final = (
+    "Supervisor databases are under the account home in "
+    ".ipfs_accelerate/agent_supervisor: /home/<user> on Linux, "
+    "/Users/<user> on macOS, and C:\\Users\\<user> on Windows. "
+    "Set IPFS_ACCELERATE_AGENT_HOME to move that directory."
+)
 
-    return control_plane_git_common_dir(repo_root) / CONTROL_PLANE_DIRECTORY_NAME
+
+def agent_supervisor_home() -> Path:
+    """Return the per-account directory for agent-supervisor databases.
+
+    ``Path.home()`` selects the account home: ``/home/<user>`` on Linux,
+    ``/Users/<user>`` on macOS, and ``C:\\Users\\<user>`` on Windows. The
+    product directory is ``<home>/.ipfs_accelerate/agent_supervisor``. It is
+    outside every Git checkout and does not follow ``XDG_STATE_HOME``.
+    ``IPFS_ACCELERATE_AGENT_HOME`` replaces that directory.
+    """
+
+    configured = str(os.environ.get(AGENT_HOME_ENV, "") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".ipfs_accelerate" / "agent_supervisor"
+
+
+_LEGACY_PLATFORM_ADOPTED = False
+
+
+def adopt_legacy_platform_databases() -> int:
+    """Move unlocked DuckDB files out of the old ``~/.local`` platform dirs.
+
+    The destination keeps the relative path under
+    ``<agent_supervisor_home>/legacy-platform-state``. Locked files and the
+    extra-gate ``control.duckdb`` owner stay where they are. The scan runs
+    once per process.
+    """
+
+    global _LEGACY_PLATFORM_ADOPTED
+    if _LEGACY_PLATFORM_ADOPTED:
+        return 0
+    _LEGACY_PLATFORM_ADOPTED = True
+    home = Path.home()
+    destination_root = agent_supervisor_home() / "legacy-platform-state"
+    moved = 0
+    for legacy_root in (
+        home / ".local" / "state" / "ipfs_accelerate_py",
+        home / ".local" / "share" / "ipfs_accelerate_py",
+    ):
+        if not legacy_root.is_dir():
+            continue
+        for directory, dirnames, filenames in os.walk(legacy_root):
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if name not in {".git", "node_modules", "__pycache__"}
+                and name != "sidecar-quarantine"
+            ]
+            current = Path(directory)
+            for name in filenames:
+                if not name.endswith(".duckdb"):
+                    continue
+                if (
+                    name in _SEALED_CHECKOUT_DUCKDB_NAMES
+                    or name.startswith("quack-lane-control")
+                ):
+                    continue
+                source = current / name
+                if not source.is_file() or source.is_symlink():
+                    continue
+                try:
+                    relative = source.relative_to(legacy_root)
+                except ValueError:
+                    continue
+                destination = destination_root / relative
+                if destination.exists():
+                    continue
+                if _path_locked(source) or any(
+                    _path_locked(companion)
+                    for companion in _duckdb_companions(source)
+                ):
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    os.rename(source, destination)
+                except OSError:
+                    continue
+                moved += 1
+                for companion in _duckdb_companions(source):
+                    if (
+                        not companion.exists()
+                        or companion.is_symlink()
+                        or _path_locked(companion)
+                    ):
+                        continue
+                    target = destination.parent / companion.name
+                    if target.exists():
+                        continue
+                    try:
+                        os.rename(companion, target)
+                    except OSError:
+                        continue
+    return moved
+
+
+def orchestration_state_root() -> Path:
+    """Parent of per-repository orchestration DuckDB catalogs.
+
+    The default is ``<agent_supervisor_home>/orchestration``. Set
+    ``IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR`` to replace only that subtree.
+    The first unconfigured lookup also moves unlocked DuckDB files out of
+    ``~/.local/state/ipfs_accelerate_py`` and
+    ``~/.local/share/ipfs_accelerate_py``.
+    """
+
+    configured = str(os.environ.get(ORCHESTRATION_DIR_ENV, "") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    adopt_legacy_platform_databases()
+    return agent_supervisor_home() / "orchestration"
+
+
+def orchestration_scope_for_identity(identity_root: Path | str) -> Path:
+    """Return the orchestration directory for one already-resolved Git identity."""
+
+    digest = hashlib.sha256(str(Path(identity_root).resolve()).encode("utf-8")).hexdigest()[:20]
+    return orchestration_state_root() / digest
+
+
+def orchestration_scope_dir(anchor: Path | str) -> Path:
+    """Stable directory for one repository, keyed by Git identity but not stored in ``.git``."""
+
+    path = Path(anchor).expanduser()
+    current = path if path.is_dir() else path.parent
+    identity_root: Path | None = None
+    for parent in (current, *current.parents):
+        if (parent / ".git").exists():
+            identity_root = control_plane_git_common_dir(parent)
+            break
+    if identity_root is None:
+        identity_root = current.resolve()
+    return orchestration_scope_for_identity(identity_root)
+
+
+def _catalog_busy(directory: Path) -> bool:
+    """Return whether a process holds a lock on a catalog file in ``directory``."""
+
+    if not directory.exists():
+        return False
+    for path in directory.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        name = path.name
+        if not (
+            name.endswith(".duckdb")
+            or name.endswith(".duckdb.wal")
+            or name.endswith(".lock")
+        ):
+            continue
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except BlockingIOError:
+            return True
+        finally:
+            os.close(fd)
+    return False
+
+
+def _path_locked(path: Path) -> bool:
+    if not path.exists() or path.is_symlink():
+        return False
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except BlockingIOError:
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
+def _duckdb_companions(database: Path) -> tuple[Path, ...]:
+    name = database.name
+    parent = database.parent
+    return (
+        Path(str(database) + ".wal"),
+        parent / f".{name}.lock",
+        parent / f".{name}.writer.lock",
+        parent / f".{name}.state-owner.lock",
+    )
+
+
+_SEALED_CHECKOUT_DUCKDB_NAMES = frozenset(
+    {
+        "control.duckdb",
+        "quack-lane-control.duckdb",
+        "quack-lane-control.coordination.duckdb",
+        "quack-lane-control.execution.duckdb",
+    }
+)
+
+
+def repo_resident_duckdb(path: Path | str, *, relocate: bool = True) -> Path:
+    """Place a checkout DuckDB file under the orchestration home.
+
+    Files under the system temp directory stay put, as do the extra-gate
+    ``control.duckdb`` owner, sealed VRIF lane catalogs, and files that are
+    already outside a Git checkout. An unlocked file inside a checkout is
+    moved, with its WAL and lock companions. A held lock keeps the current
+    path. ``relocate=False`` only computes the destination.
+    """
+
+    import tempfile
+
+    candidate = Path(path).expanduser()
+    absolute = candidate if candidate.is_absolute() else Path.cwd() / candidate
+    try:
+        absolute.resolve(strict=False).relative_to(Path(tempfile.gettempdir()).resolve())
+        return absolute
+    except ValueError:
+        pass
+    if (
+        absolute.suffix.lower() not in {".duckdb", ".ddb"}
+        or absolute.name in _SEALED_CHECKOUT_DUCKDB_NAMES
+    ):
+        return absolute
+    try:
+        absolute.resolve(strict=False).relative_to(orchestration_state_root().resolve())
+        return absolute
+    except ValueError:
+        pass
+    repo: Path | None = None
+    for parent in (absolute.parent, *absolute.parent.parents):
+        if (parent / ".git").exists():
+            repo = parent
+            break
+    if repo is None:
+        return absolute
+    try:
+        relative = absolute.resolve(strict=False).relative_to(repo.resolve())
+    except ValueError:
+        return absolute
+    if "sidecar-quarantine" in relative.parts:
+        return absolute
+    parts: list[str] = []
+    for part in relative.parts:
+        safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in part)
+        parts.append((safe or "_")[:120])
+    destination = orchestration_scope_dir(repo).joinpath("catalogs", *parts)
+    if destination == absolute or not relocate:
+        return destination
+    if not absolute.exists() or absolute.is_symlink():
+        return destination
+    if _path_locked(absolute) or any(
+        _path_locked(companion) for companion in _duckdb_companions(absolute)
+    ):
+        return absolute
+    if destination.exists():
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.rename(absolute, destination)
+    except OSError:
+        return absolute
+    for companion in _duckdb_companions(absolute):
+        if not companion.exists() or companion.is_symlink() or _path_locked(companion):
+            continue
+        target = destination.parent / companion.name
+        if target.exists():
+            continue
+        try:
+            os.rename(companion, target)
+        except OSError:
+            continue
+    return destination
+
+
+def adopt_legacy_catalog(legacy: Path, destination: Path) -> bool:
+    """Move an unlocked legacy catalog onto ``destination`` when that path is free.
+
+    A held lock or an existing destination leaves ``legacy`` where it is.
+    Returns whether the directory was moved.
+    """
+
+    source = Path(legacy)
+    target = Path(destination)
+    if not source.exists() or source.is_symlink() or target.exists():
+        return False
+    if _catalog_busy(source):
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.rename(source, target)
+    except OSError:
+        return False
+    return True
+
+
+def default_control_plane_root(repo_root: Path) -> Path:
+    """Return the shared control-plane directory for every worktree of ``repo``.
+
+    The Git common directory identifies the repository. The catalog itself
+    lives under ``agent_supervisor_home()``, not inside ``.git``. An unlocked
+    catalog left at ``.git/agent-board-control-plane`` is moved on first use.
+    """
+
+    destination = orchestration_scope_dir(repo_root) / "board-control-plane"
+    legacy = control_plane_git_common_dir(repo_root) / CONTROL_PLANE_DIRECTORY_NAME
+    adopt_legacy_catalog(legacy, destination)
+    return destination
+
+
+def orchestration_database(anchor: Path | str, *parts: str) -> Path:
+    """Return one DuckDB catalog path under the repository orchestration scope.
+
+    ``parts`` is a relative path such as ``("bundle", "coordination.duckdb")``.
+    The Git common directory identifies the repository and is not the storage
+    location.
+    """
+
+    if not parts:
+        raise ValueError("orchestration database path requires at least one component")
+    return orchestration_scope_dir(anchor).joinpath(*parts)
 
 
 def board_database_path(root: Path, namespace: str) -> Path:

@@ -1503,7 +1503,12 @@ def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path
 
 def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR",
+        str(tmp_path / "orchestration"),
+    )
     repo = _repo(tmp_path)
     todo = repo / "tasks.md"
     todo.write_text("## REF-038 Merge train\n\n- Status: todo\n", encoding="utf-8")
@@ -1522,8 +1527,18 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     lane_a = daemon("lane-a")
     lane_b = daemon("lane-b")
     target_branch = lane_a.resolved_merge_target_branch
+    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+        orchestration_scope_dir,
+    )
+
+    scope = orchestration_scope_dir(repo)
     assert lane_a.merge_queue.database_path == lane_b.merge_queue.database_path
-    assert lane_a.merge_queue_dir.parent == repo / ".git" / "agent-merge-trains"
+    assert lane_a.merge_queue.database_path == (
+        lane_a.merge_queue_dir / "merge_queue.duckdb"
+    )
+    assert lane_a.merge_queue_dir.parent == scope / "agent-merge-trains"
+    assert ".git" not in lane_a.merge_queue_dir.parts
+    assert not (repo / ".git" / "agent-merge-trains").exists()
     assert target_branch == "implementation/tasks"
     assert lane_a.merge_queue.target_branch == target_branch
 

@@ -1111,11 +1111,14 @@ class DatabaseRepositoryIndexer:
                 "the optional duckdb dependency"
             )
         self._path = Path(database_path)
-        self._ast_path = (
-            Path(ast_database_path)
-            if ast_database_path is not None
-            else self._path.with_name(self._path.stem + ".ast.duckdb")
-        )
+        if ast_database_path is not None:
+            self._ast_path = Path(ast_database_path)
+        else:
+            from ..task_sources.board_control_plane import repo_resident_duckdb
+
+            self._ast_path = repo_resident_duckdb(
+                self._path.with_name(self._path.stem + ".ast.duckdb")
+            )
         self._parser_id = _text(parser_id or DEFAULT_PARSER_ID, "parser_id")
         self._scanner_version = _text(
             scanner_version or DEFAULT_INDEXER_SCANNER_VERSION,

@@ -261,15 +261,7 @@ def materialize_clause_records(
     if (
         source.get("runtime_settled") is True
         and source.get("merge_queue_empty") is True
-        and source.get("recovery_plan_delta_outstanding") is not True
-        and source.get("similarity_not_resolution") is not True
-        and source.get("cold_execution_required") is not True
-        and source.get("qualification_incomplete") is not True
-        and source.get("observations_not_preserved") is not True
-        and source.get("negative_memory_blocks") is not True
-        and source.get("world_root_cas_not_completion") is not True
-        and source.get("boundary_contract_required") is not True
-        and source.get("incompatible_identity") is not True
+        and not _completion_is_blocked(source)
         and not _program_catalog_blocks(source)
     ):
         records.setdefault(
@@ -385,6 +377,14 @@ def _producer_rejected_clause_record(raw: Mapping[str, Any]) -> bool:
     return False
 
 
+def _completion_is_blocked(source: Any) -> bool:
+    try:
+        from ..autonomy.completion_blocks import completion_is_blocked
+    except Exception:
+        return True
+    return bool(completion_is_blocked(source if isinstance(source, Mapping) else None))
+
+
 def _program_catalog_blocks(source: Any) -> bool:
     if not isinstance(source, Mapping):
         return False
@@ -424,6 +424,12 @@ def _runtime_settled(runtime: Any) -> bool:
         return False
     if runtime.get("incompatible_identity") is True:
         return False
+    if runtime.get("undeclared_cst_transform") is True:
+        return False
+    if runtime.get("unbounded_procedure") is True:
+        return False
+    if runtime.get("rollout_not_required") is True:
+        return False
     receipt_cid = runtime.get("receipt_cid")
     return (
         runtime.get("admitted") is True
@@ -458,6 +464,22 @@ def _merge_queue_empty(runtime: Any) -> bool:
     if runtime.get("boundary_contract_required") is True:
         return False
     if runtime.get("incompatible_identity") is True:
+        return False
+    if runtime.get("undeclared_cst_transform") is True:
+        return False
+    if runtime.get("unbounded_procedure") is True:
+        return False
+    if runtime.get("rollout_not_required") is True:
+        return False
+    if runtime.get("merge_nomination_outstanding") is True:
+        return False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+            merge_handoff_outstanding,
+        )
+    except Exception:
+        merge_handoff_outstanding = None
+    if merge_handoff_outstanding is not None and merge_handoff_outstanding():
         return False
     work = runtime.get("outstanding_required_work")
     if isinstance(work, int) and work > 0:
@@ -677,6 +699,18 @@ def admit_accepted_root(
             "incompatible_identity": bool(
                 isinstance(runtime, Mapping)
                 and runtime.get("incompatible_identity") is True
+            ),
+            "undeclared_cst_transform": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("undeclared_cst_transform") is True
+            ),
+            "unbounded_procedure": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("unbounded_procedure") is True
+            ),
+            "rollout_not_required": bool(
+                isinstance(runtime, Mapping)
+                and runtime.get("rollout_not_required") is True
             ),
         }
         current_source["clause_records"] = materialize_clause_records(subject, current_source)

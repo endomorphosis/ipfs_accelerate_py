@@ -72,8 +72,14 @@ def _lane_prefix(index: int) -> str:
 def lane_paths(state_path: Path, index: int) -> dict[str, Path]:
     directory = state_path / f"lane-{index}"
     prefix = _lane_prefix(index)
-    coordination = directory / f"{prefix}_database_coordination.duckdb"
-    execution = directory / f"{prefix}_database_execution.duckdb"
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
+    coordination = repo_resident_duckdb(
+        directory / f"{prefix}_database_coordination.duckdb"
+    )
+    execution = repo_resident_duckdb(
+        directory / f"{prefix}_database_execution.duckdb"
+    )
     return {
         "directory": directory,
         "coordination": coordination,
@@ -371,7 +377,15 @@ def observe_spar_runtime_settlement(
         recovery_outstanding = any(
             lane.get("recovery_plan_delta_outstanding") is True for lane in lanes
         )
-        merge_empty = merge.get("settled") is True
+        try:
+            from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+                merge_handoff_outstanding,
+            )
+
+            nomination_outstanding = merge_handoff_outstanding()
+        except Exception:
+            nomination_outstanding = False
+        merge_empty = merge.get("settled") is True and not nomination_outstanding
         settled = active == 0 and merge_empty
         receipt = {
             "schema": SCHEMA,
@@ -389,6 +403,7 @@ def observe_spar_runtime_settlement(
             "lanes": lanes,
             "active_count": active,
             "merge_queue_empty": merge_empty and not recovery_outstanding,
+            "merge_nomination_outstanding": nomination_outstanding,
             "recovery_plan_delta_outstanding": recovery_outstanding,
             "merge_queue": {
                 "settled": merge.get("settled") is True,
@@ -442,7 +457,15 @@ def hold_spar_runtime_settlement(
             recovery_outstanding = any(
                 lane.get("recovery_plan_delta_outstanding") is True for lane in lanes
             )
-            merge_empty = merge.get("settled") is True
+            try:
+                from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+                    merge_handoff_outstanding,
+                )
+
+                nomination_outstanding = merge_handoff_outstanding()
+            except Exception:
+                nomination_outstanding = False
+            merge_empty = merge.get("settled") is True and not nomination_outstanding
             settled = active == 0 and merge_empty
             receipt = {
                 "schema": SCHEMA,
@@ -461,6 +484,7 @@ def hold_spar_runtime_settlement(
                 "lanes": lanes,
                 "active_count": active,
                 "merge_queue_empty": merge_empty and not recovery_outstanding,
+                "merge_nomination_outstanding": nomination_outstanding,
                 "recovery_plan_delta_outstanding": recovery_outstanding,
                 "merge_queue": {
                     "settled": merge.get("settled") is True,

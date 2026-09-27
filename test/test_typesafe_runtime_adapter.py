@@ -353,6 +353,9 @@ def test_adapter_handle_wake_prefers_smt_and_runtime_stays_provider_free(
     assert payload["world_root_cas_not_completion"] is False
     assert payload["boundary_contract_required"] is False
     assert payload["incompatible_identity"] is False
+    assert payload["undeclared_cst_transform"] is False
+    assert payload["unbounded_procedure"] is False
+    assert payload["rollout_not_required"] is False
 
 
 def _proof_wake_fixture():

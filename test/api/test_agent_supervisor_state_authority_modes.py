@@ -500,7 +500,9 @@ def test_database_state_resolver_quack_authoritative_ignores_tampered_files() ->
     assert resolution.export_payload["authority_class"] == "export"
     assert resolution.export_payload["authoritative"] is False
     assert "projection_mutation_invariant_holds" in resolution.reason_codes
-    assert resolution.state_root.startswith("/home/dev/.local/state/")
+    assert resolution.state_root.startswith(
+        "/home/dev/.ipfs_accelerate/agent_supervisor/"
+    )
     assert "/src/project" not in resolution.state_root
 
 

@@ -1716,10 +1716,13 @@ def check_supervisor_process_state(
                     f"lane {lane} claims running but pid {pid} is dead",
                     {**evidence, "lanes": lane_reports + [lane_info]},
                 ))
-        if task_path.is_file():
-            try:
-                task = json.loads(task_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+            read_task_state_payload,
+        )
+
+        task = read_task_state_payload(task_path)
+        if task is not None:
+            if not isinstance(task, dict):
                 task = {}
             lane_info["active_task_id"] = task.get("active_task_id")
             lane_info["eligible_ready_count"] = task.get("eligible_ready_count")

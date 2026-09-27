@@ -10,8 +10,10 @@ reflection, tracebacks, docs, and patch targets, and classifies intentional
 incompatibility.
 
 SPAR-011 payloads are ingested as mappings only.  This module does not
-replace datasets semantic authority, does not apply CST transforms, and
-cannot authorize a transition, completion, or competing authority.
+replace datasets semantic authority and cannot authorize a transition,
+completion, or competing authority.  When raw sources are supplied, nominated
+module moves are applied with the CST parser and staged.  Pickle and repr are
+not identity.  The repository is not written.
 Vector, model, and heuristic evidence cannot admit an adapter.
 Observational metadata is excluded from identity.  Dry-run is
 deterministic and never mutates.  Silent public incompatibility is a
@@ -1562,11 +1564,35 @@ def execute_binding_compatibility_adapters(
     packet: RefactorTransformationPacket | Mapping[str, Any],
     **kwargs: Any,
 ) -> BindingCompatibilityReceipt:
-    """Execute SPAR-024 as a deterministic no-mutation dry-run."""
+    """Execute SPAR-024. Receipt stays nomination-only.
+
+    When ``raw_sources`` is supplied, nominated module moves are applied with
+    the CST parser and staged. Pickle and repr are not used as identity. The
+    repository is not written.
+    """
 
     if kwargs.pop("mutate", False):
         raise BindingCompatibilityError("executor cannot mutate")
-    return compile_binding_compatibility_receipt(packet, **kwargs)
+    raw_sources = kwargs.pop("raw_sources", None)
+    pre_world_root_cid = kwargs.pop("pre_world_root_cid", None)
+    kit_store = kwargs.pop("kit_store", None)
+    receipt = compile_binding_compatibility_receipt(packet, **kwargs)
+    if raw_sources is not None:
+        from .cst_nominated_apply import apply_nominated_cst_and_stage
+
+        nominations = compile_binding_compatibility_adapters(packet, **kwargs)
+        handoff = apply_nominated_cst_and_stage(
+            receipt,
+            raw_sources,
+            nominations=nominations,
+            pre_world_root_cid=pre_world_root_cid,
+            kit_store=kit_store,
+        )
+        if handoff.blocked and handoff.reason != "nominated_edit_not_applied":
+            raise BindingCompatibilityError(
+                f"cst binding apply blocked: {handoff.reason}"
+            )
+    return receipt
 
 
 def execute_binding_compatibility_plan(

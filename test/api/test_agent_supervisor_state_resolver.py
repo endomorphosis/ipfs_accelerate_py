@@ -157,10 +157,11 @@ def test_worktree_isolation_separates_run_namespace_when_required() -> None:
 
 
 def test_xdg_and_env_platform_home_resolution() -> None:
+    # XDG_STATE_HOME is not the database location.
     xdg = default_platform_state_home(
-        environ={"XDG_STATE_HOME": "/var/xdg-state"},
+        environ={"XDG_STATE_HOME": "/var/xdg-state", "HOME": "/home/alice"},
     )
-    assert xdg == "/var/xdg-state/ipfs_accelerate_py/agent_supervisor"
+    assert xdg == "/home/alice/.ipfs_accelerate/agent_supervisor"
 
     explicit = default_platform_state_home(
         environ={"IPFS_ACCELERATE_AGENT_STATE_HOME": "/opt/supervisor-state"},
@@ -168,9 +169,13 @@ def test_xdg_and_env_platform_home_resolution() -> None:
     assert explicit == "/opt/supervisor-state"
 
     home = default_platform_state_home(home_directory="/home/alice", environ={})
-    assert home == (
-        "/home/alice/.local/state/ipfs_accelerate_py/agent_supervisor"
+    assert home == "/home/alice/.ipfs_accelerate/agent_supervisor"
+    mac = default_platform_state_home(home_directory="/Users/ada", environ={})
+    assert mac == "/Users/ada/.ipfs_accelerate/agent_supervisor"
+    windows = default_platform_state_home(
+        environ={"USERPROFILE": r"C:\Users\ada"},
     )
+    assert windows == "C:/Users/ada/.ipfs_accelerate/agent_supervisor"
 
     root = repository_state_root(
         _repo_id("keyed"),

@@ -4299,24 +4299,58 @@ class PortalTaskState:
     selection_idle_reason: str = ""
 
     def save(self, path: Path) -> bool:
-        """Persist the projection if it changed and report whether bytes moved."""
+        """Persist the projection if it changed and report whether bytes moved.
 
-        return write_json_atomic_if_changed(path, asdict(self))
+        DuckDB or Quack is the authority. DuckLake is only the history
+        projection. This does not write a task-state JSON file.
+        """
+
+        from .portal_task_state_control_plane import save_portal_task_state
+
+        routed = save_portal_task_state(path.stem, asdict(self), state_path=path)
+        if routed is None:
+            raise RuntimeError("task state requires the DuckDB/Quack control plane")
+        return bool(routed.get("changed"))
 
     @classmethod
     def load(cls, path: Path) -> "PortalTaskState":
-        if not path.exists():
-            return cls()
-        try:
-            text = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            return cls()
-        if not text:
-            return cls()
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return cls()
+        from .portal_task_state_control_plane import (
+            load_portal_task_state,
+            save_portal_task_state,
+        )
+
+        routed = load_portal_task_state(path.stem, state_path=path)
+        if routed:
+            payload = routed
+        elif routed == {}:
+            if not path.exists():
+                return cls()
+            try:
+                text = path.read_text(encoding="utf-8").strip()
+            except OSError:
+                return cls()
+            if not text:
+                return cls()
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                return cls()
+            if not isinstance(payload, dict):
+                return cls()
+            save_portal_task_state(path.stem, payload, state_path=path)
+        else:
+            if not path.exists():
+                return cls()
+            try:
+                text = path.read_text(encoding="utf-8").strip()
+            except OSError:
+                return cls()
+            if not text:
+                return cls()
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                return cls()
         if not isinstance(payload, dict):
             return cls()
         try:
@@ -5003,6 +5037,14 @@ class PortalImplementationDaemon:
                 **source_options,
             )
             self.todo_path = self.task_source.path
+            from .portal_task_state_control_plane import (
+                bind_task_state_control_plane,
+                target_from_task_source,
+            )
+
+            control_target = target_from_task_source(self.task_source)
+            if control_target and self.state_path is not None:
+                bind_task_state_control_plane(self.state_path, control_target)
         self.implementation_protected_paths = normalize_implementation_protected_paths(
             implementation_protected_paths,
             repo_root=self.repo_root,
@@ -5344,10 +5386,15 @@ class PortalImplementationDaemon:
         )
         self._last_periodic_maintenance_monotonic: float | None = None
         # Lane state directories are intentionally isolated, so the merge train
-        # cannot live next to ``state_path``.  The git common directory is shared
-        # by every worktree and supervisor lane for this repository. A second
-        # namespace component binds the train to its exact destination, keeping
-        # upgraded producers invisible to old repo-wide consumers.
+        # cannot live next to ``state_path``. Every worktree of this repository
+        # shares one orchestration scope under the account home
+        # .ipfs_accelerate/agent_supervisor (Linux /home/<user>, macOS
+        # /Users/<user>, Windows C:\Users\<user>; override
+        # IPFS_ACCELERATE_AGENT_HOME or
+        # IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR). The catalog is not stored
+        # in .git. A second namespace component binds the train to its exact
+        # destination, keeping upgraded producers invisible to old repo-wide
+        # consumers.
         self.resolved_merge_target_branch = self._main_branch_name()
         self.merge_target_repository_id = checkout_repository_id(self.repo_root)
         default_merge_queue_dir = merge_target_queue_dir(
@@ -14543,6 +14590,9 @@ class PortalImplementationDaemon:
         }
         self._attach_runtime_retry_schedule(result)
         apply_lease_held_backoff(result, self._wake_lease_session)
+        from ..autonomy.completion_blocks import attach_completion_blocks
+
+        result = attach_completion_blocks(result)
         # Ack so the coordinator does not tight-loop. The incumbent lease
         # TTL (or the next real change) is the next wake.
         self._acknowledge_runtime_events()
@@ -14584,6 +14634,9 @@ class PortalImplementationDaemon:
             }
         )
         self._attach_runtime_retry_schedule(result)
+        from ..autonomy.completion_blocks import attach_completion_blocks
+
+        result = attach_completion_blocks(result)
         self._acknowledge_runtime_events()
         return result
 
@@ -45294,6 +45347,15 @@ class PortalImplementationDaemon:
         if not commands:
             return results
         env = dict(os.environ)
+        resolver = getattr(self, "_sawm_coordination_dir", None)
+        if callable(resolver):
+            try:
+                sawm_dir = resolver()
+            except Exception:
+                sawm_dir = None
+            if sawm_dir is not None:
+                env.setdefault("SAWM_COORDINATION_DIR", str(sawm_dir))
+                env.setdefault("SAWM_BIND_KIT_STORE", "1")
         # Match common board PYTHONPATH layout for multi-root workspaces.
         pythonpath_parts = [
             str(workspace_path / relative)
@@ -52913,6 +52975,49 @@ class PortalImplementationDaemon:
             self._record_event("stale_lock_cleanup", result)
         return result
 
+    def _sawm_coordination_dir(self) -> Path | None:
+        """Same kit directory the extraction wave writes. Not a git checkout.
+
+        A supervisor lane sets ``SAWM_COORDINATION_DIR``. That wins over the
+        directory next to this daemon's state file, so maintenance does not
+        look beside the state file while the wave wrote one level up.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+            kit_coordination_dir_from_env,
+        )
+
+        configured = kit_coordination_dir_from_env()
+        if configured is not None:
+            return configured
+        if self.state_path is None:
+            return None
+        return Path(self.state_path).expanduser().resolve().parent / "semantic-world"
+
+    def _accept_spar_merge_nomination(self) -> dict[str, Any]:
+        """Take custody of a SPAR nomination during maintenance. Do not merge."""
+
+        directory = PortalImplementationDaemon._sawm_coordination_dir(self)
+        if directory is None:
+            return {"accepted": False, "reason": "no_coordination_dir", "merged": False}
+        from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+            accept_spar_merge_nomination,
+        )
+        from ipfs_accelerate_py.agent_supervisor.semantic_refactoring.cst_kit_commit import (
+            CstKitCommitError,
+        )
+
+        try:
+            hold = accept_spar_merge_nomination(coordination_dir=directory)
+        except CstKitCommitError as exc:
+            return {"accepted": False, "reason": str(exc), "merged": False}
+        return {
+            "accepted": True,
+            "hold": str(hold),
+            "merged": False,
+            "writes_repository": False,
+        }
+
     def _periodic_maintenance(self) -> dict[str, Any]:
         """Run periodic maintenance tasks to keep the supervisor healthy for 24/7 operation.
 
@@ -52958,6 +53063,10 @@ class PortalImplementationDaemon:
             results["stale_locks"] = self._cleanup_stale_locks()
         except Exception as exc:
             results["stale_locks"] = {"error": str(exc)}
+        try:
+            results["spar_merge_nomination"] = self._accept_spar_merge_nomination()
+        except Exception as exc:
+            results["spar_merge_nomination"] = {"error": str(exc)}
         try:
             results["dirty_submodule_reset"] = self._reset_persistently_dirty_submodules()
         except Exception as exc:
@@ -62666,6 +62775,15 @@ class PortalImplementationDaemon:
         checkpoint_dir: Path,
     ) -> dict[str, str]:
         environment = self._implementation_untrusted_process_environment()
+        resolver = getattr(self, "_sawm_coordination_dir", None)
+        if callable(resolver):
+            try:
+                sawm_dir = resolver()
+            except Exception:
+                sawm_dir = None
+            if sawm_dir is not None:
+                environment.setdefault("SAWM_COORDINATION_DIR", str(sawm_dir))
+                environment.setdefault("SAWM_BIND_KIT_STORE", "1")
         environment.update({
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
@@ -68978,6 +69096,14 @@ def publish_database_daemon_pass_heartbeat(
     return payload
 
 
+def _checkout_sidecar_duckdb(path: Path) -> Path:
+    """Move a derived lane sidecar out of a Git checkout. Explicit paths stay."""
+
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
+    return Path(repo_resident_duckdb(path))
+
+
 def _database_daemon_lane_execution_path(
     *,
     state_dir: Path | str | None,
@@ -69303,31 +69429,39 @@ class DatabaseImplementationDaemon:
                     coordination_path
                 ).absolute()
             elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
-                self._strict_lane_coordination_path = control_path.with_name(
-                    f"{control_path.stem}.coordination.duckdb"
+                self._strict_lane_coordination_path = _checkout_sidecar_duckdb(
+                    control_path.with_name(
+                        f"{control_path.stem}.coordination.duckdb"
+                    )
                 ).absolute()
             else:
-                self._strict_lane_coordination_path = Path(
-                    "control.coordination.duckdb"
-                ).absolute()
+                self._strict_lane_coordination_path = _checkout_sidecar_duckdb(
+                    Path("control.coordination.duckdb").absolute()
+                )
             if lane_execution_path is not None:
                 self.execution_path = lane_execution_path
             elif execution_path is not None:
                 self.execution_path = Path(execution_path)
             elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
-                self.execution_path = control_path.with_name(
-                    f"{control_path.stem}.execution.duckdb"
+                self.execution_path = _checkout_sidecar_duckdb(
+                    control_path.with_name(
+                        f"{control_path.stem}.execution.duckdb"
+                    )
                 ).absolute()
             else:
-                self.execution_path = Path("control.execution.duckdb").absolute()
+                self.execution_path = _checkout_sidecar_duckdb(
+                    Path("control.execution.duckdb").absolute()
+                )
         else:
             self._quack_uri = ""
             self.database_path = Path(database_path).absolute()
             self.coordination_path = Path(
                 coordination_path
                 if coordination_path is not None
-                else self.database_path.with_name(
-                    f"{self.database_path.stem}.coordination.duckdb"
+                else _checkout_sidecar_duckdb(
+                    self.database_path.with_name(
+                        f"{self.database_path.stem}.coordination.duckdb"
+                    )
                 )
             ).absolute()
             self._strict_lane_coordination_path = self.coordination_path
@@ -69337,8 +69471,10 @@ class DatabaseImplementationDaemon:
                 else (
                     execution_path
                     if execution_path is not None
-                    else self.database_path.with_name(
-                        f"{self.database_path.stem}.execution.duckdb"
+                    else _checkout_sidecar_duckdb(
+                        self.database_path.with_name(
+                            f"{self.database_path.stem}.execution.duckdb"
+                        )
                     )
                 )
             ).absolute()
@@ -69366,6 +69502,12 @@ class DatabaseImplementationDaemon:
         self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
         # Optional projections — never required under database authority.
         self.state_path = Path(state_path).absolute() if state_path else None
+        if self.state_path is not None:
+            from .portal_task_state_control_plane import bind_task_state_control_plane
+
+            bound_target = self._quack_uri or str(self.database_path)
+            if bound_target:
+                bind_task_state_control_plane(self.state_path, bound_target)
         self.strategy_path = Path(strategy_path).absolute() if strategy_path else None
         self.events_path = Path(events_path).absolute() if events_path else None
         self.pid_path = Path(pid_path).absolute() if pid_path else None
@@ -69644,12 +69786,16 @@ class DatabaseImplementationDaemon:
                             self._strict_lane_coordination_path
                             if self.task_shard_count > 1
                             else (
-                                self.database_path.with_name(
-                                    f"{self.database_path.stem}.coordination.duckdb"
+                                _checkout_sidecar_duckdb(
+                                    self.database_path.with_name(
+                                        f"{self.database_path.stem}.coordination.duckdb"
+                                    )
                                 )
                                 if self.database_path.suffix.lower()
                                 in {".duckdb", ".ddb"}
-                                else Path("control.coordination.duckdb")
+                                else _checkout_sidecar_duckdb(
+                                    Path("control.coordination.duckdb").absolute()
+                                )
                             )
                         )
                     else:
@@ -75578,7 +75724,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--merge-queue-dir",
         type=Path,
         default=None,
-        help="Shared merge queue directory. Defaults to the target-branch queue root.",
+        help=(
+            "Shared merge queue directory. Defaults to the target-branch queue "
+            "under the account home in .ipfs_accelerate/agent_supervisor "
+            "(Linux /home/<user>, macOS /Users/<user>, "
+            "Windows C:\\Users\\<user>), not inside .git."
+        ),
     )
     parser.add_argument(
         "--worktree-submodule-path",

@@ -1575,10 +1575,18 @@ def prover_evidence_projection_paths(
     path: str | os.PathLike[str],
 ) -> ProverEvidenceProjectionPaths:
     resolved = Path(path).resolve()
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
     if resolved.suffix.lower() == ".json":
-        return ProverEvidenceProjectionPaths(resolved, resolved.with_suffix(".duckdb"))
+        return ProverEvidenceProjectionPaths(
+            resolved,
+            repo_resident_duckdb(resolved.with_suffix(".duckdb")),
+        )
     if resolved.suffix.lower() == ".duckdb":
-        return ProverEvidenceProjectionPaths(resolved.with_suffix(".json"), resolved)
+        return ProverEvidenceProjectionPaths(
+            resolved.with_suffix(".json"),
+            repo_resident_duckdb(resolved),
+        )
     raise ValueError("prover evidence projection path must end in .json or .duckdb")
 
 

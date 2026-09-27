@@ -76,6 +76,9 @@ class TypesafeStepHandoff:
             "world_root_cas_not_completion": blocks.get("world_root_cas_not_completion") is True,
             "boundary_contract_required": blocks.get("boundary_contract_required") is True,
             "incompatible_identity": blocks.get("incompatible_identity") is True,
+            "undeclared_cst_transform": blocks.get("undeclared_cst_transform") is True,
+            "unbounded_procedure": blocks.get("unbounded_procedure") is True,
+            "rollout_not_required": blocks.get("rollout_not_required") is True,
             "blocks_completion": outstanding or blocks.get("blocks_completion") is True,
             "step_status": self.step.status.value,
             "selected_action": (
@@ -314,6 +317,18 @@ class TypesafeWakeHandoff:
     def incompatible_identity(self) -> bool:
         return bool(getattr(self.result, "incompatible_identity", False))
 
+    @property
+    def undeclared_cst_transform(self) -> bool:
+        return bool(getattr(self.result, "undeclared_cst_transform", False))
+
+    @property
+    def unbounded_procedure(self) -> bool:
+        return bool(getattr(self.result, "unbounded_procedure", False))
+
+    @property
+    def rollout_not_required(self) -> bool:
+        return bool(getattr(self.result, "rollout_not_required", False))
+
     def to_dict(self) -> dict[str, Any]:
         result = self.result
         record = result.to_record() if hasattr(result, "to_record") else {}
@@ -326,6 +341,9 @@ class TypesafeWakeHandoff:
         world = bool(getattr(result, "world_root_cas_not_completion", False))
         boundary = bool(getattr(result, "boundary_contract_required", False))
         incompatible = bool(getattr(result, "incompatible_identity", False))
+        cst = bool(getattr(result, "undeclared_cst_transform", False))
+        procedure = bool(getattr(result, "unbounded_procedure", False))
+        rollout = bool(getattr(result, "rollout_not_required", False))
         if isinstance(record, Mapping):
             if record.get("recovery_delta_outstanding") is True:
                 outstanding = True
@@ -345,6 +363,12 @@ class TypesafeWakeHandoff:
                 boundary = True
             if record.get("incompatible_identity") is True:
                 incompatible = True
+            if record.get("undeclared_cst_transform") is True:
+                cst = True
+            if record.get("unbounded_procedure") is True:
+                procedure = True
+            if record.get("rollout_not_required") is True:
+                rollout = True
         return {
             "authorizes_effect": False,
             "completion_authority": False,
@@ -359,6 +383,9 @@ class TypesafeWakeHandoff:
             "world_root_cas_not_completion": world,
             "boundary_contract_required": boundary,
             "incompatible_identity": incompatible,
+            "undeclared_cst_transform": cst,
+            "unbounded_procedure": procedure,
+            "rollout_not_required": rollout,
             "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
             "advice": None if self.advice is None else self.advice.to_dict(),
         }

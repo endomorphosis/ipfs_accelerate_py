@@ -10,8 +10,10 @@ plugins, signals, atexit, and resources, verifies preimages, and requires
 trace validation.
 
 SPAR-010 payloads are ingested as mappings only.  This module does not
-replace datasets semantic authority, does not apply CST transforms, and
-cannot authorize a transition, completion, or competing authority.
+replace datasets semantic authority and cannot authorize a transition,
+completion, or competing authority.  When raw sources are supplied, nominated
+module moves are applied with the CST parser and staged.  The repository is
+not written.
 Vector, model, and heuristic evidence cannot admit a rewrite.
 Observational metadata is excluded from identity.  Dry-run is
 deterministic and never mutates.
@@ -1476,11 +1478,35 @@ def execute_initialization_rewrites(
     packet: RefactorTransformationPacket | Mapping[str, Any],
     **kwargs: Any,
 ) -> InitializationRewriteReceipt:
-    """Execute SPAR-023 as a deterministic no-mutation dry-run."""
+    """Execute SPAR-023. Receipt stays nomination-only.
+
+    When ``raw_sources`` is supplied, nominated module moves are applied with
+    the CST parser and staged. Statement order is not rearranged. The
+    repository is not written.
+    """
 
     if kwargs.pop("mutate", False):
         raise InitializationTransformError("executor cannot mutate")
-    return compile_initialization_rewrite_receipt(packet, **kwargs)
+    raw_sources = kwargs.pop("raw_sources", None)
+    pre_world_root_cid = kwargs.pop("pre_world_root_cid", None)
+    kit_store = kwargs.pop("kit_store", None)
+    receipt = compile_initialization_rewrite_receipt(packet, **kwargs)
+    if raw_sources is not None:
+        from .cst_nominated_apply import apply_nominated_cst_and_stage
+
+        nominations = compile_initialization_rewrites(packet, **kwargs)
+        handoff = apply_nominated_cst_and_stage(
+            receipt,
+            raw_sources,
+            nominations=nominations,
+            pre_world_root_cid=pre_world_root_cid,
+            kit_store=kit_store,
+        )
+        if handoff.blocked and handoff.reason != "nominated_edit_not_applied":
+            raise InitializationTransformError(
+                f"cst initialization apply blocked: {handoff.reason}"
+            )
+    return receipt
 
 
 def execute_initialization_rewrite_plan(

@@ -1995,18 +1995,33 @@ def repair_stale_execution_sidecars(state_root: Path) -> list[str]:
     if not state_root.is_dir():
         return changed
     seen: set[Path] = set()
+    candidates: list[Path] = []
     for pattern in _STALE_SIDECAR_GLOBS:
-        for path in state_root.glob(pattern):
-            # Hidden writer.lock pins survive duckdb unlink and fail
-            # "writer-lock pin has no execution-sidecar authority".
-            if path in seen or not path.is_file():
-                continue
-            seen.add(path)
-            try:
-                path.unlink()
-            except OSError:
-                continue
-            changed.append(str(path))
+        candidates.extend(state_root.glob(pattern))
+    from ..task_sources.board_control_plane import repo_resident_duckdb
+
+    for lane in state_root.glob("lane-*"):
+        if not lane.is_dir():
+            continue
+        relocated_dir = repo_resident_duckdb(
+            lane / "probe_database_execution.duckdb",
+            relocate=False,
+        ).parent
+        if relocated_dir == lane or not relocated_dir.is_dir():
+            continue
+        for pattern in _STALE_SIDECAR_GLOBS:
+            candidates.extend(relocated_dir.glob(pattern.split("/", 1)[1]))
+    for path in candidates:
+        # Hidden writer.lock pins survive duckdb unlink and fail
+        # "writer-lock pin has no execution-sidecar authority".
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        changed.append(str(path))
     return changed
 
 
