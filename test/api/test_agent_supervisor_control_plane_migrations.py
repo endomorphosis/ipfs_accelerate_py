@@ -549,8 +549,10 @@ def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
     (sql_dir / "0001_control_plane.sql").write_text(
         read_bundled_sql_text("0001_control_plane.sql"), encoding="utf-8"
     )
+    # The packaged repair is 0005 so it does not collide with federation.
+    # This isolated catalog keeps it contiguous as version 2.
     (sql_dir / "0002_tasks_index_repair.sql").write_text(
-        read_bundled_sql_text("0002_tasks_index_repair.sql"), encoding="utf-8"
+        read_bundled_sql_text("0005_tasks_index_repair.sql"), encoding="utf-8"
     )
     catalog = MigrationCatalog.from_sql_directory(sql_dir)
     assert catalog.get(2).migration_id == "0002_tasks_index_repair"

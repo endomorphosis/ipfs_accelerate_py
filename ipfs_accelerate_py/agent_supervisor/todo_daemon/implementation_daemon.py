@@ -68826,6 +68826,19 @@ _ATTEMPT_PHASE_ORDER: tuple[str, ...] = (
     ATTEMPT_PHASE_COMPLETE,
 )
 
+
+def _unapplied_router_proposal(result: Mapping[str, Any]) -> bool:
+    """A recorded router edit that was not applied and does not admit the clause."""
+
+    return (
+        str(result.get("status") or "") == "router_proposal"
+        and result.get("accepted") is False
+        and result.get("wrote_compiler") is False
+        and result.get("imported") is False
+        and result.get("admitted") is False
+        and result.get("formalized") is False
+    )
+
 _DATABASE_AUTHORITY_MODES = frozenset(
     {"embedded", "embedded_exclusive", "quack"}
 )
@@ -69356,6 +69369,8 @@ class DatabaseImplementationDaemon:
         task_shard_count: int = 1,
         task_shard_index: int = 0,
         strict_task_sharding: bool = False,
+        execution_slice_task_cids: Sequence[str] = (),
+        execution_slice_task_ids: Sequence[str] = (),
     ) -> None:
         (
             self.task_shard_count,
@@ -69365,6 +69380,12 @@ class DatabaseImplementationDaemon:
             task_shard_count=task_shard_count,
             task_shard_index=task_shard_index,
             strict_task_sharding=strict_task_sharding,
+        )
+        self.execution_slice_task_cids = frozenset(
+            str(item) for item in execution_slice_task_cids if str(item)
+        )
+        self.execution_slice_task_ids = frozenset(
+            str(item) for item in execution_slice_task_ids if str(item)
         )
         lane_execution_path = _database_daemon_lane_execution_path(
             state_dir=state_dir,
@@ -72068,13 +72089,25 @@ class DatabaseImplementationDaemon:
             if str(task_cid)
         }
         excluded.update(self._automatic_claim_exclusions())
-        if self.task_prefix:
+        from ipfs_datasets_py.logic.autoformal.supervisor_loop import (
+            ready_task_cids_under_inconclusive_goals,
+        )
+
+        parked_goals = ready_task_cids_under_inconclusive_goals(self.task_source)
+        excluded.update(parked_goals)
+        if self.task_prefix or self.execution_slice_task_cids or self.execution_slice_task_ids:
             ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-            excluded.update(
-                str(task.task_cid)
-                for task in ready.tasks
-                if not str(task.task_alias or "").startswith(self.task_prefix)
-            )
+            for task in ready.tasks:
+                cid = str(task.task_cid)
+                alias = str(task.task_alias or "")
+                if self.task_prefix and not alias.startswith(self.task_prefix):
+                    excluded.add(cid)
+                if (
+                    (self.execution_slice_task_cids or self.execution_slice_task_ids)
+                    and cid not in self.execution_slice_task_cids
+                    and alias not in self.execution_slice_task_ids
+                ):
+                    excluded.add(cid)
         accept_task_cid = None
         if self.strict_task_sharding and self.task_shard_count > 1:
             def accept_task_cid(task_cid: str) -> bool:
@@ -72104,6 +72137,14 @@ class DatabaseImplementationDaemon:
                 accept_task_cid=accept_task_cid,
             )
         if claim is None:
+            if parked_goals:
+                self._last_claim_withdrawal = {
+                    "admitted": False,
+                    "claim_state": "not_claimed",
+                    "formalized": False,
+                    "reason": "goals_inconclusive",
+                    "task_cids": sorted(parked_goals),
+                }
             return None
         task = self.task_source.get(claim.task_cid)
         if task is None:
@@ -73822,6 +73863,48 @@ class DatabaseImplementationDaemon:
             provider_result = prior or {"status": "already_committed"}
             provider_duplicated = True
 
+        if _unapplied_router_proposal(provider_result):
+            # A router proposal is evidence, not a patch. Do not validate it
+            # as passed and do not complete the attempt.
+            if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
+                current, effect_result, effect_duplicated = self.run_effect(
+                    current,
+                    provider_result,
+                    effect_fn=lambda _attempt, proposal: {
+                        "status": "refused",
+                        "effect": "router_proposal_not_applied",
+                        "applied": False,
+                        "wrote_compiler": False,
+                        "imported": False,
+                        "admitted": False,
+                        "formalized": False,
+                        "proposal_sha256": str(proposal.get("proposal_sha256") or ""),
+                    },
+                )
+            else:
+                effect_result = self.effect_claim_recorded(
+                    current.attempt_id,
+                    idempotency_key=f"effect:{current.attempt_id}",
+                ) or {"status": "refused", "applied": False}
+                effect_duplicated = True
+            released = self.return_unapplied_router_proposal(current)
+            return {
+                "resumed": False,
+                "reason": "router_proposal_not_applied",
+                "attempt": current.to_dict(),
+                "provider_result": dict(provider_result),
+                "effect_result": dict(effect_result),
+                "provider_duplicated": bool(provider_duplicated),
+                "effect_duplicated": bool(effect_duplicated),
+                "committed_phase": current.committed_phase,
+                "status": current.status,
+                "admitted": False,
+                "formalized": False,
+                "wrote_compiler": False,
+                "requeued": bool(released.get("requeued")),
+                "task_status": released.get("status") or "",
+            }
+
         if not current.phase_committed(ATTEMPT_PHASE_EFFECT):
             current, effect_result, effect_duplicated = self.run_effect(
                 current,
@@ -73908,6 +73991,111 @@ class DatabaseImplementationDaemon:
             "effect_duplicated": bool(effect_duplicated),
             "committed_phase": current.committed_phase,
             "status": current.status,
+        }
+
+    def return_unapplied_router_proposal(self, attempt: DatabaseTaskAttempt | str) -> dict[str, Any]:
+        """Put a refused router proposal back on the queue. Do not admit it."""
+
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        provider = self.provider_invocation_recorded(
+            current.attempt_id,
+            idempotency_key=f"provider:{current.attempt_id}",
+        ) or {}
+        if not _unapplied_router_proposal(provider):
+            raise DatabaseImplementationConflictError(
+                "attempt has no unapplied router proposal"
+            )
+        effect = self.effect_claim_recorded(
+            current.attempt_id,
+            idempotency_key=f"effect:{current.attempt_id}",
+        ) or {}
+        if str(effect.get("status") or "") != "refused" or effect.get("applied") is not False:
+            raise DatabaseImplementationConflictError(
+                "router proposal effect was not refused"
+            )
+        task = self.task_source.get(current.task_cid)
+        body = getattr(task, "body", None) if task is not None else None
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        proposal_sha = str(provider.get("proposal_sha256") or "")
+        proposal_keys = [str(key) for key in provider.get("proposal_keys") or [] if str(key)]
+        if not proposal_keys and isinstance(body, Mapping):
+            recorded_proposal = body.get("router_proposal")
+            if isinstance(recorded_proposal, Mapping):
+                proposal_keys = [
+                    str(key) for key in recorded_proposal.get("proposal_keys") or [] if str(key)
+                ]
+        already_recorded = (
+            provider.get("router_called") is False
+            or provider.get("reason") == "proposal_already_recorded"
+        )
+        held_status = "blocked" if already_recorded else "ready"
+        held_operation = (
+            "router_proposal_review" if already_recorded else "router_proposal_not_applied"
+        )
+        if (
+            task is not None
+            and str(task.status) == held_status
+            and isinstance(receipt, Mapping)
+            and receipt.get("operation") == held_operation
+            and receipt.get("attempt_id") == current.attempt_id
+        ):
+            return {
+                "status": held_status,
+                "requeued": False,
+                "admitted": False,
+                "formalized": False,
+                "wrote_compiler": False,
+                "proposal_sha256": proposal_sha,
+            }
+        if (
+            task is None
+            or str(task.status) != "in_progress"
+            or not self._task_has_exact_database_claim_receipt(task, current)
+        ):
+            raise DatabaseImplementationConflictError(
+                "router proposal is not bound to the current claim"
+            )
+        stored = dict(task.body["completion_receipt"])
+        self.task_source.compare_and_set_status(
+            current.task_cid,
+            int(task.revision),
+            held_status,
+            {
+                "operation": held_operation,
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "proposal_keys": proposal_keys,
+                "proposal_sha256": proposal_sha,
+                "applied": False,
+                "wrote_compiler": False,
+                "imported": False,
+                "admitted": False,
+                "formalized": False,
+            },
+            expected_control_receipt=stored,
+        )
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        if claim is not None:
+            self._release_unadmitted_new_claim(claim, reason=held_operation)
+        if already_recorded:
+            from ipfs_datasets_py.logic.autoformal.supervisor_loop import mark_span_subgoal_review
+
+            mark_span_subgoal_review(
+                self.task_source, current.task_cid, proposal_sha, proposal_keys,
+            )
+        return {
+            "status": held_status,
+            "requeued": not already_recorded,
+            "admitted": False,
+            "formalized": False,
+            "wrote_compiler": False,
+            "proposal_sha256": proposal_sha,
         }
 
     def _attempt_execution_evidence_counts(
@@ -75700,6 +75888,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Weighted validation resource budget. Defaults to "
             f"${VALIDATION_RESOURCE_BUDGET_ENV} or validation-max-workers."
         ),
+    )
+    parser.add_argument(
+        "--retain-worktree-artifacts",
+        action="store_true",
+        help="Keep scratch worktrees. Use with merged-worktree cleanup max 0.",
     )
     parser.add_argument(
         "--no-ephemeral-worktree",

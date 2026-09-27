@@ -361,6 +361,35 @@ def _jsonable(value: Any) -> Any:
     )
 
 
+def _require_control_receipt(body: Any, expected: Mapping[str, Any] | None) -> None:
+    """Refuse a status change that is not fenced on the stored control receipt.
+
+    ``None`` keeps older callers unchanged. A provided receipt must be the
+    task's current ``completion_receipt``, byte for byte after canonical JSON.
+    """
+
+    if expected is None:
+        return
+    if isinstance(expected, bool) or not isinstance(expected, Mapping):
+        raise IntentRepositoryIntegrityError(
+            "expected task control receipt is not a mapping"
+        )
+    stored = body.get("completion_receipt") if isinstance(body, Mapping) else None
+    try:
+        expected_text = _canonical(dict(expected), noun="expected control receipt")
+        stored_text = (
+            _canonical(dict(stored), noun="stored control receipt")
+            if isinstance(stored, Mapping) and not isinstance(stored, (str, bytes))
+            else None
+        )
+    except IntentRepositoryError as exc:
+        raise IntentRepositoryIntegrityError(
+            "task control receipt is outside the canonical contract"
+        ) from exc
+    if stored_text != expected_text:
+        raise IntentRepositoryConflictError("task control receipt CAS is stale")
+
+
 def _canonical(value: Any, *, noun: str = "payload") -> str:
     try:
         payload = canonical_json_bytes(_jsonable(value))
@@ -2942,6 +2971,7 @@ class IntentRepository:
         receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
         allow_completion_without_evidence: bool = False,
+        expected_control_receipt: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
         expected = _positive_int(expected_revision, noun="expected_revision")
@@ -2970,6 +3000,10 @@ class IntentRepository:
             current_revision = int(task_row[4])
             if current_revision != expected:
                 raise IntentRepositoryConflictError("task revision CAS is stale")
+            _require_control_receipt(
+                _decode_json(task_row[5], noun="task body"),
+                expected_control_receipt,
+            )
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -3016,6 +3050,23 @@ class IntentRepository:
                 evidence = receipt_map.get("required_evidence")
                 if isinstance(evidence, list) and evidence:
                     body_map["required_evidence"] = evidence
+                if receipt_map.get("operation") == "router_proposal_not_applied":
+                    # The next claim replaces completion_receipt. Keep the
+                    # unapplied proposal beside it so the router is not asked again.
+                    body_map["router_proposal"] = {
+                        "attempt_id": str(receipt_map.get("attempt_id") or ""),
+                        "proposal_keys": [
+                            str(key)
+                            for key in receipt_map.get("proposal_keys") or []
+                            if str(key)
+                        ],
+                        "proposal_sha256": str(receipt_map.get("proposal_sha256") or ""),
+                        "applied": False,
+                        "wrote_compiler": False,
+                        "imported": False,
+                        "admitted": False,
+                        "formalized": False,
+                    }
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
