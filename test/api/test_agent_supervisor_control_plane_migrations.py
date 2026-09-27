@@ -535,6 +535,7 @@ def test_default_package_catalog_loads() -> None:
     versions = [int(item.version) for item in catalog.migrations]
     assert versions == sorted(set(versions))
     assert catalog.get(2).migration_id == "0002_causal_event_federation_core"
+    assert catalog.get(5).migration_id == "0005_tasks_index_repair"
 
 
 def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
@@ -549,8 +550,6 @@ def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
     (sql_dir / "0001_control_plane.sql").write_text(
         read_bundled_sql_text("0001_control_plane.sql"), encoding="utf-8"
     )
-    # The packaged repair is 0005 so it does not collide with federation.
-    # This isolated catalog keeps it contiguous as version 2.
     (sql_dir / "0002_tasks_index_repair.sql").write_text(
         read_bundled_sql_text("0005_tasks_index_repair.sql"), encoding="utf-8"
     )
@@ -574,7 +573,8 @@ def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
             ).fetchall()
         }
         assert "tasks_status_idx" not in names
-        assert "tasks_goal_idx" in names
+        assert "tasks_goal_idx" not in names
+        assert "tasks_goal_replacement_idx" in names
         assert "tasks_ordinal_idx" in names
         connection.execute(
             "INSERT INTO tasks ("

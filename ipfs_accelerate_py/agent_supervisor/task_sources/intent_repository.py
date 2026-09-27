@@ -24,6 +24,7 @@ provider, or process action.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -326,6 +327,31 @@ def _identifier(value: Any, *, noun: str) -> str:
     if "\x00" in text or not _SAFE_ID.match(text):
         raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")
     return text
+
+
+def _automatic_claim_forbidden_body(body: Any) -> bool:
+    """One shared manual/review/schedulable rule for automatic claim selection."""
+    if not isinstance(body, Mapping):
+        return False
+    completion = body.get("completion")
+    if isinstance(completion, Mapping):
+        completion = completion.get("mode") or completion.get("kind")
+    manual_completion = str(completion or "").strip().lower() == "manual"
+    review_raw = body.get("review_only", body.get("review only"))
+    review_only = review_raw is True or str(review_raw or "").strip().lower() in {
+        "1", "true", "yes",
+    }
+    schedulable_raw = body.get("is_schedulable", body.get("is schedulable", True))
+    unschedulable = schedulable_raw is False or str(schedulable_raw).strip().lower() in {
+        "0", "false", "no", "off",
+    }
+    return manual_completion or review_only or unschedulable
+
+
+def _selection_identifiers(values: Sequence[str], *, noun: str) -> frozenset[str]:
+    if not isinstance(values, (tuple, list, set, frozenset)) or len(values) > MAX_PAGE_LIMIT:
+        raise IntentRepositoryBoundsError(f"{noun} must be a bounded identifier collection")
+    return frozenset(_identifier(item, noun=noun) for item in values)
 
 
 def _optional_identifier(value: Any, *, noun: str) -> str:
@@ -3004,6 +3030,19 @@ class IntentRepository:
                 _decode_json(task_row[5], noun="task body"),
                 expected_control_receipt,
             )
+            if (
+                status_text == "in_progress"
+                and receipt_map.get("operation") == "database_claim"
+            ):
+                # Goal parking and canonical claim admission share this write
+                # transaction/owner boundary. A pre-claim snapshot is advisory.
+                goal = connection.execute(
+                    "SELECT status FROM goals WHERE goal_cid = ?", [str(task_row[2])],
+                ).fetchone()
+                if goal is None:
+                    raise IntentRepositoryIntegrityError("database claim has no owning goal")
+                if str(goal[0]) == "analysis_inconclusive":
+                    raise IntentRepositoryConflictError("database claim goal is analysis_inconclusive")
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -3044,12 +3083,6 @@ class IntentRepository:
             body_map = dict(body_map)
             if receipt_map:
                 body_map["completion_receipt"] = receipt_map
-                remaining = receipt_map.get("remaining_requirements")
-                if isinstance(remaining, list) and remaining:
-                    body_map["remaining_requirements"] = remaining
-                evidence = receipt_map.get("required_evidence")
-                if isinstance(evidence, list) and evidence:
-                    body_map["required_evidence"] = evidence
                 if receipt_map.get("operation") == "router_proposal_not_applied":
                     # The next claim replaces completion_receipt. Keep the
                     # unapplied proposal beside it so the router is not asked again.
@@ -3067,6 +3100,12 @@ class IntentRepository:
                         "admitted": False,
                         "formalized": False,
                     }
+                remaining = receipt_map.get("remaining_requirements")
+                if isinstance(remaining, list) and remaining:
+                    body_map["remaining_requirements"] = remaining
+                evidence = receipt_map.get("required_evidence")
+                if isinstance(evidence, list) and evidence:
+                    body_map["required_evidence"] = evidence
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -3617,6 +3656,55 @@ class IntentRepository:
         limit: int = DEFAULT_PAGE_LIMIT,
         now_ms: int | None = None,
         include_completion_candidates: bool = False,
+        task_cids: Sequence[str] = (),
+        task_aliases: Sequence[str] = (),
+        task_prefix: str = "",
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        automatic_only: bool = False,
+    ) -> tuple[Mapping[str, Any], ...]:
+        return self._select_ready_tasks(
+            limit=limit, now_ms=now_ms,
+            include_completion_candidates=include_completion_candidates,
+            task_cids=task_cids, task_aliases=task_aliases, task_prefix=task_prefix,
+            task_shard_count=task_shard_count, task_shard_index=task_shard_index,
+            automatic_only=automatic_only,
+            parked_only=False,
+        )
+
+    def parked_ready_task_cids(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        task_cids: Sequence[str] = (),
+        task_aliases: Sequence[str] = (),
+        task_prefix: str = "",
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        automatic_only: bool = False,
+    ) -> tuple[str, ...]:
+        """Bounded diagnostic only; these tasks cannot receive a native claim."""
+        return tuple(str(row["task_cid"]) for row in self._select_ready_tasks(
+            limit=limit, now_ms=None, include_completion_candidates=False,
+            task_cids=task_cids, task_aliases=task_aliases, task_prefix=task_prefix,
+            task_shard_count=task_shard_count, task_shard_index=task_shard_index,
+            automatic_only=automatic_only,
+            parked_only=True,
+        ))
+
+    def _select_ready_tasks(
+        self,
+        *,
+        limit: int,
+        now_ms: int | None,
+        include_completion_candidates: bool,
+        task_cids: Sequence[str],
+        task_aliases: Sequence[str],
+        task_prefix: str,
+        parked_only: bool,
+        automatic_only: bool,
+        task_shard_count: int,
+        task_shard_index: int,
     ) -> tuple[Mapping[str, Any], ...]:
         """Return dependency-ready tasks that are not cooling down or blocked.
 
@@ -3627,6 +3715,17 @@ class IntentRepository:
         """
 
         selected = _bounded_limit(limit)
+        if type(automatic_only) is not bool:
+            raise IntentRepositoryBoundsError("automatic_only must be a boolean")
+        selected_cids = _selection_identifiers(task_cids, noun="selected task CID")
+        selected_aliases = _selection_identifiers(task_aliases, noun="selected task alias")
+        prefix = _optional_identifier(task_prefix, noun="task prefix")
+        if (
+            type(task_shard_count) is not int or task_shard_count < 1
+            or type(task_shard_index) is not int
+            or not 0 <= task_shard_index < task_shard_count
+        ):
+            raise IntentRepositoryBoundsError("invalid task selection shard")
         clock = int(now_ms if now_ms is not None else self._clock_ms())
         _ = include_completion_candidates  # reserved for future selection modes
         with self._connection(write=False) as connection:
@@ -3637,6 +3736,10 @@ class IntentRepository:
                 ORDER BY ordinal, task_cid
                 """
             ).fetchall()
+            goal_statuses = {
+                str(row[0]): str(row[1])
+                for row in connection.execute("SELECT goal_cid, status FROM goals").fetchall()
+            }
             dep_rows = connection.execute(
                 "SELECT task_cid, dependency_task_cid FROM task_dependencies"
             ).fetchall()
@@ -3658,47 +3761,74 @@ class IntentRepository:
                     list(_COMPLETED_STATUSES),
                 ).fetchall()
             }
-        dependencies: dict[str, set[str]] = {}
-        # DuckDBRow is a Mapping: iterate rows and index columns, never unpack.
-        for row in dep_rows:
-            dependencies.setdefault(str(row[0]), set()).add(str(row[1]))
-        cooldown = {
-            str(row[0]): int(row[1] or 0)
-            for row in lease_rows
-        }
-        ready: list[Mapping[str, Any]] = []
-        for row in task_rows:
-            tcid = str(row[0])
-            alias = str(row[1])
-            goal_cid = str(row[2])
-            ordinal = int(row[3])
-            status = str(row[4])
-            revision = int(row[5])
-            if status not in _READY_STATUSES:
-                continue
-            if tcid in active_blocks:
-                continue
-            if cooldown.get(tcid, 0) > clock:
-                continue
-            deps = dependencies.get(tcid, set())
-            if not deps.issubset(completed):
-                continue
-            ready.append(
-                MappingProxyType(
-                    {
-                        "task_cid": tcid,
-                        "task_alias": alias,
-                        "goal_cid": goal_cid,
-                        "ordinal": ordinal,
-                        "status": status,
-                        "revision": revision,
-                        "dependencies": tuple(sorted(deps)),
-                    }
-                )
-            )
-            if len(ready) >= selected:
-                break
-        return tuple(ready)
+            dependencies: dict[str, set[str]] = {}
+            # DuckDBRow is a Mapping: iterate rows and index columns, never unpack.
+            for row in dep_rows:
+                dependencies.setdefault(str(row[0]), set()).add(str(row[1]))
+            cooldown = {
+                str(row[0]): int(row[1] or 0)
+                for row in lease_rows
+            }
+            ready: list[Mapping[str, Any]] = []
+            for offset in range(0, len(task_rows), 128):
+                chunk = task_rows[offset:offset + 128]
+                bodies: dict[str, Any] = {}
+                if automatic_only:
+                    cids = [str(row[0]) for row in chunk]
+                    body_rows = connection.execute(
+                        "SELECT task_cid, body_json FROM tasks WHERE task_cid IN ("
+                        + ", ".join("?" for _ in cids) + ")", cids,
+                    ).fetchall()
+                    bodies = {str(row[0]): _decode_json(row[1], noun="task body") for row in body_rows}
+                    if set(bodies) != set(cids):
+                        raise IntentRepositoryIntegrityError("task selection body snapshot differs")
+                for row in chunk:
+                    tcid = str(row[0])
+                    alias = str(row[1])
+                    goal_cid = str(row[2])
+                    ordinal = int(row[3])
+                    status = str(row[4])
+                    revision = int(row[5])
+                    if status not in _READY_STATUSES:
+                        continue
+                    goal_status = goal_statuses.get(goal_cid)
+                    if goal_status is None or (goal_status == "analysis_inconclusive") != parked_only:
+                        continue
+                    if prefix and not alias.startswith(prefix):
+                        continue
+                    if (selected_cids or selected_aliases) and tcid not in selected_cids and alias not in selected_aliases:
+                        continue
+                    if task_shard_count > 1:
+                        # Exactly the daemon's alias-or-CID, final-colon-segment key.
+                        shard_key = (alias.strip() or tcid.strip()).rsplit(":", 1)[-1]
+                        digest = hashlib.sha256(shard_key.encode("utf-8")).hexdigest()
+                        if int(digest[:8], 16) % task_shard_count != task_shard_index:
+                            continue
+                    if automatic_only and _automatic_claim_forbidden_body(bodies[tcid]):
+                        continue
+                    if tcid in active_blocks:
+                        continue
+                    if cooldown.get(tcid, 0) > clock:
+                        continue
+                    deps = dependencies.get(tcid, set())
+                    if not deps.issubset(completed):
+                        continue
+                    ready.append(
+                        MappingProxyType(
+                            {
+                                "task_cid": tcid,
+                                "task_alias": alias,
+                                "goal_cid": goal_cid,
+                                "ordinal": ordinal,
+                                "status": status,
+                                "revision": revision,
+                                "dependencies": tuple(sorted(deps)),
+                            }
+                        )
+                    )
+                    if len(ready) >= selected:
+                        return tuple(ready)
+            return tuple(ready)
 
     # -- recovery / rebuild --------------------------------------------------
 

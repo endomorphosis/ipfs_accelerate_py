@@ -1129,6 +1129,28 @@ def test_cas_task_status_refuses_a_stale_control_receipt(tmp_path: Path) -> None
         assert again is not None
         assert again["status"] == "retrying"
         assert again["body"]["completion_receipt"]["operation"] == "next"
+        proposal = {
+            "operation": "router_proposal_not_applied",
+            "attempt_id": "attempt:proposal", "proposal_keys": ["parser"],
+            "proposal_sha256": "a" * 64,
+            "remaining_requirements": ["review proposal"],
+            "required_evidence": ["review receipt"],
+        }
+        repo.cas_task_status(
+            task_cid=ids["task_a"], expected_revision=int(again["revision"]),
+            new_status="ready", receipt=proposal,
+            expected_control_receipt={"operation": "next"},
+        )
+        preserved = repo.get_task(ids["task_a"])["body"]
+        assert preserved["completion_receipt"] == proposal
+        assert preserved["remaining_requirements"] == proposal["remaining_requirements"]
+        assert preserved["required_evidence"] == proposal["required_evidence"]
+        assert preserved["router_proposal"] == {
+            "attempt_id": "attempt:proposal", "proposal_keys": ["parser"],
+            "proposal_sha256": "a" * 64, "applied": False,
+            "wrote_compiler": False, "imported": False,
+            "admitted": False, "formalized": False,
+        }
 
 
 def test_plan_revision_repository_supersession_and_continuation(

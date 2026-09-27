@@ -1409,6 +1409,8 @@ def build_portal_implementation_daemon_from_args(
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            execution_slice_task_cids=tuple(getattr(parsed, "execution_slice_task_cid", ()) or ()),
+            execution_slice_task_ids=tuple(getattr(parsed, "execution_slice_task_id", ()) or ()),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
             task_shard_count=getattr(parsed, "task_shard_count", 1),
             task_shard_index=getattr(parsed, "task_shard_index", 0),
