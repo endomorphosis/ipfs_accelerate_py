@@ -1095,6 +1095,64 @@ def test_guarded_retry_replaces_wrong_deadline_and_rejects_drift(
 # ---------------------------------------------------------------------------
 
 
+def test_cas_task_status_refuses_a_stale_control_receipt(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        receipt = {"operation": "database_claim", "attempt_id": "attempt:fence"}
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt=receipt,
+        )
+        claimed = repo.get_task(ids["task_a"])
+        assert claimed is not None
+        with pytest.raises(IntentRepositoryConflictError, match="control receipt CAS is stale"):
+            repo.cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=int(claimed["revision"]),
+                new_status="retrying",
+                receipt={"operation": "next"},
+                expected_control_receipt={"operation": "other"},
+            )
+        moved = repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=int(claimed["revision"]),
+            new_status="retrying",
+            receipt={"operation": "next"},
+            expected_control_receipt=receipt,
+        )
+        assert moved.changed is True
+        again = repo.get_task(ids["task_a"])
+        assert again is not None
+        assert again["status"] == "retrying"
+        assert again["body"]["completion_receipt"]["operation"] == "next"
+        proposal = {
+            "operation": "router_proposal_not_applied",
+            "attempt_id": "attempt:proposal", "proposal_keys": ["parser"],
+            "proposal_sha256": "a" * 64,
+            "remaining_requirements": ["review proposal"],
+            "required_evidence": ["review receipt"],
+        }
+        repo.cas_task_status(
+            task_cid=ids["task_a"], expected_revision=int(again["revision"]),
+            new_status="ready", receipt=proposal,
+            expected_control_receipt={"operation": "next"},
+        )
+        preserved = repo.get_task(ids["task_a"])["body"]
+        assert preserved["completion_receipt"] == proposal
+        assert preserved["remaining_requirements"] == proposal["remaining_requirements"]
+        assert preserved["required_evidence"] == proposal["required_evidence"]
+        assert preserved["router_proposal"] == {
+            "attempt_id": "attempt:proposal", "proposal_keys": ["parser"],
+            "proposal_sha256": "a" * 64, "applied": False,
+            "wrote_compiler": False, "imported": False,
+            "admitted": False, "formalized": False,
+        }
+
+
 def test_plan_revision_repository_supersession_and_continuation(
     tmp_path: Path,
 ) -> None:

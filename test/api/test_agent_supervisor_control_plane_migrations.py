@@ -535,6 +535,7 @@ def test_default_package_catalog_loads() -> None:
     versions = [int(item.version) for item in catalog.migrations]
     assert versions == sorted(set(versions))
     assert catalog.get(2).migration_id == "0002_causal_event_federation_core"
+    assert catalog.get(5).migration_id == "0005_tasks_index_repair"
 
 
 def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
@@ -550,7 +551,7 @@ def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
         read_bundled_sql_text("0001_control_plane.sql"), encoding="utf-8"
     )
     (sql_dir / "0002_tasks_index_repair.sql").write_text(
-        read_bundled_sql_text("0002_tasks_index_repair.sql"), encoding="utf-8"
+        read_bundled_sql_text("0005_tasks_index_repair.sql"), encoding="utf-8"
     )
     catalog = MigrationCatalog.from_sql_directory(sql_dir)
     assert catalog.get(2).migration_id == "0002_tasks_index_repair"
@@ -572,7 +573,8 @@ def test_tasks_status_index_repair_allows_status_update(tmp_path: Path) -> None:
             ).fetchall()
         }
         assert "tasks_status_idx" not in names
-        assert "tasks_goal_idx" in names
+        assert "tasks_goal_idx" not in names
+        assert "tasks_goal_replacement_idx" in names
         assert "tasks_ordinal_idx" in names
         connection.execute(
             "INSERT INTO tasks ("

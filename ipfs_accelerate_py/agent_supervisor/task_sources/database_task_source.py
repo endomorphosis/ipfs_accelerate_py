@@ -3535,6 +3535,13 @@ class DatabaseTaskSource:
         completed_ids: Iterable[str] = (),
         blocked_ids: Iterable[str] = (),
         limit: int = DEFAULT_QUERY_LIMIT,
+        *,
+        task_cids: Sequence[str] = (),
+        task_aliases: Sequence[str] = (),
+        task_prefix: str = "",
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
+        automatic_only: bool = False,
     ) -> TaskPage:
         if (
             isinstance(limit, bool)
@@ -3549,7 +3556,12 @@ class DatabaseTaskSource:
         blocked = {str(item).strip() for item in blocked_ids if str(item).strip()}
         if completed & blocked:
             raise ValueError("completed_ids and blocked_ids must be disjoint")
-        selected = self._intent.select_ready_tasks(limit=MAX_QUERY_LIMIT)
+        selected = self._intent.select_ready_tasks(
+            limit=MAX_QUERY_LIMIT, task_cids=task_cids,
+            task_aliases=task_aliases, task_prefix=task_prefix,
+            task_shard_count=task_shard_count, task_shard_index=task_shard_index,
+            automatic_only=automatic_only,
+        )
         filtered: list[TaskRecord] = []
         for item in selected:
             tcid = str(item["task_cid"])
@@ -3571,6 +3583,18 @@ class DatabaseTaskSource:
         )
 
     readiness = ready_tasks
+
+    def parked_ready_task_cids(
+        self, *, limit: int = DEFAULT_QUERY_LIMIT,
+        task_cids: Sequence[str] = (), task_aliases: Sequence[str] = (), task_prefix: str = "",
+        task_shard_count: int = 1, task_shard_index: int = 0,
+        automatic_only: bool = False,
+    ) -> tuple[str, ...]:
+        return self._intent.parked_ready_task_cids(
+            limit=limit, task_cids=task_cids, task_aliases=task_aliases, task_prefix=task_prefix,
+            task_shard_count=task_shard_count, task_shard_index=task_shard_index,
+            automatic_only=automatic_only,
+        )
 
     def get_objective(self, objective_id: str) -> Mapping[str, Any] | None:
         return self._intent.get_objective(objective_id)
@@ -3606,6 +3630,7 @@ class DatabaseTaskSource:
         status: str,
         receipt: Mapping[str, Any] | None,
         *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         """CAS through protocol-2 mutation bundles the extra-gate owner drains."""
@@ -3615,6 +3640,7 @@ class DatabaseTaskSource:
             expected_revision=int(expected_revision),
             new_status=status,
             receipt=receipt,
+            expected_control_receipt=expected_control_receipt,
             evidence_digests=evidence_digests,
         )
         record = self.get_task(key)
@@ -3648,6 +3674,7 @@ class DatabaseTaskSource:
                     expected_revision,
                     status,
                     receipt,
+                    expected_control_receipt=expected_control_receipt,
                     evidence_digests=evidence_digests,
                 ),
                 "status_cas_record",
