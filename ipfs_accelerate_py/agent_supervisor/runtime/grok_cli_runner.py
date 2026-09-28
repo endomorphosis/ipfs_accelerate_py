@@ -7008,14 +7008,30 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
 
         try:
-            # Docker creation above already bound cmd to the exact attached
-            # start. Run it through the live typed-output path once; passing a
-            # start command to the create helper would buffer provider output
-            # and misclassify its 120-second wait as container creation.
-            primary_returncode = _run_grok_with_typed_failure_capture(
-                cmd,
-                env=grok_launch_env,
-            )
+            # A Codex-fallback route keeps cmd as ``docker create``. Create
+            # prints a 64-hex container id and exits 0 without running Grok.
+            # Verify that id, then attach the same container. A non-Docker
+            # command is already the provider process.
+            if isolation_backend == GROK_ISOLATION_DOCKER:
+                if docker_lease is None:
+                    raise ValueError(
+                        "Docker Grok isolation lease is missing before start"
+                    )
+                primary_returncode = (
+                    _run_created_grok_container_with_typed_failure_capture(
+                        cmd,
+                        docker_bin=docker_lease.docker_bin,
+                        docker_config=docker_lease.docker_config,
+                        cidfile=docker_lease.cidfile,
+                        workspace=workspace,
+                        env=grok_launch_env,
+                    )
+                )
+            else:
+                primary_returncode = _run_grok_with_typed_failure_capture(
+                    cmd,
+                    env=grok_launch_env,
+                )
             docker_run_finished = True
         except (OSError, ValueError) as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)

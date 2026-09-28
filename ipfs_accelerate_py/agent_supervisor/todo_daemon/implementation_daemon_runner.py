@@ -1220,6 +1220,7 @@ def bind_database_portal_execution_from_args(
         )
 
     state_dir = Path(parsed.state_dir).absolute()
+    state_dir.mkdir(parents=True, exist_ok=True)
     state_prefix = str(parsed.state_prefix or "database")
     attempt_root = state_dir / f"{state_prefix}_database_portal_attempts"
     worktree_submodule_paths = (
@@ -1265,6 +1266,9 @@ def bind_database_portal_execution_from_args(
             max_task_attempts=parsed.max_task_attempts,
             implementation_log_dir=paths.implementation_logs,
             use_ephemeral_worktree=not parsed.no_ephemeral_worktree,
+            retain_worktree_artifacts=bool(getattr(parsed, "retain_worktree_artifacts", False)),
+            operator_repair_note=getattr(parsed, "operator_repair_note", None),
+            operator_repair_note_sha256=str(getattr(parsed, "operator_repair_note_sha256", "") or ""),
             worktree_root=parsed.worktree_root,
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
@@ -1409,6 +1413,7 @@ def build_portal_implementation_daemon_from_args(
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            max_task_attempts=int(getattr(parsed, "max_task_attempts", 0)),
             execution_slice_task_cids=tuple(getattr(parsed, "execution_slice_task_cid", ()) or ()),
             execution_slice_task_ids=tuple(getattr(parsed, "execution_slice_task_id", ()) or ()),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
@@ -1479,11 +1484,15 @@ def build_portal_implementation_daemon_from_args(
         implementation_command=parsed.implementation_command or None,
         implementation_timeout=parsed.implementation_timeout
         or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0)),
         use_ephemeral_worktree=(
             parsed.implement
             and not parsed.no_ephemeral_worktree
             and not authority_revalidation_only
         ),
+        retain_worktree_artifacts=bool(getattr(parsed, "retain_worktree_artifacts", False)),
+        operator_repair_note=getattr(parsed, "operator_repair_note", None),
+        operator_repair_note_sha256=str(getattr(parsed, "operator_repair_note_sha256", "") or ""),
         worktree_root=parsed.worktree_root,
         merge_target_branch=(
             None

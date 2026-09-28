@@ -4911,6 +4911,9 @@ class PortalImplementationDaemon:
         max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
+        retain_worktree_artifacts: bool = False,
+        operator_repair_note: Path | None = None,
+        operator_repair_note_sha256: str = "",
         worktree_root: Path | None = None,
         merge_target_branch: str | None = None,
         board_namespace: str = "",
@@ -5192,6 +5195,11 @@ class PortalImplementationDaemon:
             str, dict[str, Any]
         ] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
+        self.retain_worktree_artifacts = bool(retain_worktree_artifacts)
+        self.operator_repair_note = operator_repair_note
+        self.operator_repair_note_sha256 = str(operator_repair_note_sha256 or "")
+        if bool(operator_repair_note) != bool(self.operator_repair_note_sha256):
+            raise ValueError("operator repair note path and SHA-256 are both required")
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
         # its cwd.  Keep the path supplied to Codex/Copilot absolute so a
@@ -39079,6 +39087,66 @@ class PortalImplementationDaemon:
         return "".join(rewritten)
 
     @staticmethod
+    def _proposal_untracked_add_sections(
+        repo_root: Path,
+        *,
+        entries: Sequence[Any],
+        path_prefix: str = "",
+    ) -> list[str]:
+        """Render diffs for untracked additions when no tracked path changed."""
+
+        prefix = path_prefix.strip("/")
+        raw_untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if raw_untracked.returncode != 0:
+            raise RuntimeError("unable to enumerate untracked candidate paths")
+        untracked_paths = {
+            item.decode("utf-8", errors="surrogateescape")
+            for item in raw_untracked.stdout.split(b"\0")
+            if item
+        }
+        sections: list[str] = []
+        for entry in entries:
+            if (
+                str(getattr(getattr(entry, "change_kind", ""), "value", ""))
+                != "add"
+                or getattr(entry, "old_path", "")
+            ):
+                continue
+            relative = str(getattr(entry, "new_path", "") or "")
+            if not relative or relative not in untracked_paths:
+                continue
+            command = ["git", "diff", "--no-index", "--no-color"]
+            if prefix:
+                command.extend(
+                    [
+                        f"--src-prefix=a/{prefix}/",
+                        f"--dst-prefix=b/{prefix}/",
+                    ]
+                )
+            command.extend(["--", "/dev/null", relative])
+            untracked = subprocess.run(
+                command,
+                cwd=repo_root,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if untracked.returncode not in (0, 1):
+                raise RuntimeError("unable to render untracked candidate patch")
+            if untracked.stdout:
+                sections.append(untracked.stdout)
+        return sections
+
+    @staticmethod
     def _proposal_repo_patch_text(
         repo_root: Path,
         *,
@@ -47119,6 +47187,10 @@ class PortalImplementationDaemon:
                         ),
                         "sealed": launcher_receipt.sealed,
                     }
+                    # The launcher path is /proc/self/fd/N on a CLOEXEC memfd.
+                    # The child only has that descriptor when it is passed
+                    # explicitly; otherwise exec fails before validation runs.
+                    sealed_fds = tuple(launcher_receipt.inherited_fds)
                     try:
                         launcher_probe = subprocess.run(
                             [
@@ -47138,7 +47210,7 @@ class PortalImplementationDaemon:
                             ),
                             check=False,
                             env=launcher_environment,
-                            pass_fds=launcher_receipt.inherited_fds,
+                            pass_fds=sealed_fds,
                         )
                     except (OSError, subprocess.TimeoutExpired) as exc:
                         return {
@@ -47198,7 +47270,7 @@ class PortalImplementationDaemon:
                         timeout=timeout_seconds,
                         check=False,
                         env=launcher_environment,
-                        pass_fds=launcher_receipt.inherited_fds,
+                        pass_fds=sealed_fds,
                     )
             except ValidationRuntimeError as exc:
                 return {
@@ -64948,6 +65020,36 @@ class PortalImplementationDaemon:
                     )
                 ),
             )
+        note_path = getattr(self, "operator_repair_note", None)
+        if note_path is not None:
+            from ..context.operator_repair_note import read_operator_repair_note
+
+            # A database repair note is sealed to the DuckDB task before the
+            # portal projection exists. The projection cid includes
+            # attempt-specific lines, so it cannot match that seal.
+            authority = getattr(self, "_database_attempt_authority", None)
+            bound_task_cid = ""
+            if isinstance(authority, Mapping):
+                bound_task_cid = str(authority.get("database_task_cid") or "").strip()
+            note_text = read_operator_repair_note(
+                note_path,
+                self.operator_repair_note_sha256,
+                task_cid=bound_task_cid or self._canonical_ref(task),
+                tree_id=tree_id,
+            )
+            evidence = (
+                *evidence,
+                *build_text_context_references(
+                    note_text,
+                    reference_prefix="operator-repair-note-" + self.operator_repair_note_sha256,
+                    kind="diagnostic-context",
+                    path="",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=110,
+                    chunk_bytes=6_144,
+                ),
+            )
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
@@ -76023,6 +76125,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Weighted validation resource budget. Defaults to "
             f"${VALIDATION_RESOURCE_BUDGET_ENV} or validation-max-workers."
         ),
+    )
+    parser.add_argument(
+        "--retain-worktree-artifacts",
+        action="store_true",
+        help="Keep scratch worktrees. Use with merged-worktree cleanup max 0.",
+    )
+    parser.add_argument(
+        "--operator-repair-note",
+        type=Path,
+        default=None,
+        help="Sealed operator diagnostic note for one task. Not edit authority.",
+    )
+    parser.add_argument(
+        "--operator-repair-note-sha256",
+        default="",
+        help="SHA-256 of the sealed operator repair note.",
     )
     parser.add_argument(
         "--no-ephemeral-worktree",

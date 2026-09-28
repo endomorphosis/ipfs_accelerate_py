@@ -929,6 +929,36 @@ def _is_dependency_neutral_file_predicate(
     )
 
 
+_AUTOFORMAL_REPAIR_VALIDATOR = "scripts/ops/legal_ir/validate_autoformal_repair.py"
+_PACKET_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _is_sealed_autoformal_repair_validator(segment: Sequence[str]) -> bool:
+    """The autoformal repair validator is a fixed script plus a content-addressed packet.
+
+    Each task's packet path is unique, so it cannot be predeclared by hash.
+    The script path, launcher, and packet filename are fixed. Anything else
+    stays project-required.
+    """
+
+    if len(segment) != 6:
+        return False
+    if (
+        segment[0] != "python3"
+        or segment[1] != _AUTOFORMAL_REPAIR_VALIDATOR
+        or segment[2] != "--packet"
+        or segment[4] != "--sha256"
+    ):
+        return False
+    digest = str(segment[5])
+    packet = str(segment[3])
+    if not _PACKET_SHA256.fullmatch(digest):
+        return False
+    if packet.startswith("-") or "\n" in packet or "\x00" in packet:
+        return False
+    return PurePosixPath(packet.replace("\\", "/")).name == digest + ".json"
+
+
 def validation_command_dependency_scope(
     command: str,
 ) -> ValidationDependencyScope:
@@ -961,7 +991,7 @@ def validation_command_dependency_scope(
         predicate_segment = segments[1]
     else:
         return ValidationDependencyScope.PROJECT_REQUIRED
-    if _is_dependency_neutral_file_predicate(predicate_segment):
+    if _is_dependency_neutral_file_predicate(predicate_segment) or _is_sealed_autoformal_repair_validator(predicate_segment):
         return ValidationDependencyScope.DEPENDENCY_NEUTRAL
     return ValidationDependencyScope.PROJECT_REQUIRED
 
