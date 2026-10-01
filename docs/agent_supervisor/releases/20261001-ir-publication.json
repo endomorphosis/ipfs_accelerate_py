@@ -1,0 +1,62 @@
+{
+  "schema": "supervisor-ir-publication-validation/v1",
+  "datasets_revision": "f4e28be225455add0f29259fa6ecf238d23c6316",
+  "base_revision": "5306d49957bba7444a31639584e26378f3e3fb19",
+  "tests": {
+    "passed": 654,
+    "failed": 8,
+    "skipped": 0,
+    "focused": {
+      "passed": 527,
+      "failed": 8
+    },
+    "dependency_preflight": {
+      "passed": 127,
+      "failed": 0
+    }
+  },
+  "known_upstream_failures": [
+    "test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+    "test_missing_ruff_is_typed_as_infrastructure_unavailable",
+    "test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+    "test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+    "test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+    "test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+    "test_raw_no_site_authority_validation_rejects_docker_substitution",
+    "test_sealed_ruff_survives_proof_state_landlock_fence"
+  ],
+  "baseline_reproduction": {
+    "selected": 8,
+    "failed": 8,
+    "identical_failure_messages": true,
+    "baseline_checkout_clean": true
+  },
+  "receipts": [
+    {
+      "name": "accelerate-release-focused-tests-02.xml",
+      "sha256": "2759663493319bf0d379c39cd9c15eaba447d88c6d76a22d94f78cf64497ae6c"
+    },
+    {
+      "name": "accelerate-preflight-restored-tests-03.xml",
+      "sha256": "e34cc6aae405e69f3fc1da21c522cd598f95416b4d9fb45356f3b8d427103864"
+    },
+    {
+      "name": "accelerate-baseline-scheduler-tests.xml",
+      "sha256": "2d60941a2efc27b18dd6fd7d332e3ae15dfe1064b92c60a18926853f1f64c3e7"
+    }
+  ],
+  "corrections": [
+    "Restore existing native dependency-receipt compaction and event-projection helpers",
+    "Restore pytest-only dependency-selection policy from existing history",
+    "Declare packaging>=23.2 required by dependency probe",
+    "Retain inherited descriptor support through remote merge",
+    "Fix misplaced parametrization decorator and sealed ZIP fixture loader specification"
+  ],
+  "checkpoint_consumption": {
+    "canonical_models": "immutable Hub catalog in datasets library",
+    "structured_source_models": "explicit regular file and SHA through source-program configuration",
+    "optional_input_view": "guarded_ast_normalized",
+    "default_model_promoted": false
+  },
+  "checkpoint_catalog": "https://github.com/endomorphosis/ipfs_datasets_py/blob/f4e28be225455add0f29259fa6ecf238d23c6316/docs/autoencoders/experimental_structured_checkpoints.md"
+}

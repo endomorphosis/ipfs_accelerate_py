@@ -97,3 +97,23 @@ def test_effective_container_contract_separates_parent_formal_identity(tmp_path)
     assert G.FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV not in approved
     assert effective[G._GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV]=='parent-formal-proof'
     assert effective[G.PROVIDER_COMMAND_ENV_DIGEST_ENV]==G.provider_command_environment_sha256(approved)
+
+
+def test_task_file_profile_cannot_fetch_external_benchmark_answers(tmp_path):
+    data = inputs(tmp_path)
+    data['base_env'][G._GROK_TASK_TOOL_PROFILE_ENV] = 'files'
+    command = G._docker_grok_command(**data, task_execution=True)
+    assert command[command.index('--tools') + 1] == G._SEALED_GROK_TOOLS
+    denied = set(command[command.index('--disallowed-tools') + 1].split(','))
+    assert {'run_terminal_cmd', 'run_terminal_command', 'web_fetch', 'web_search',
+            'call_mcp_tool', 'spawn_subagent'} <= denied
+    assert '--disable-web-search' in command
+    assert '--no-subagents' in command
+
+
+def test_task_tool_profile_rejects_misspelling_before_launchers(tmp_path):
+    data = inputs(tmp_path)
+    data['base_env'][G._GROK_TASK_TOOL_PROFILE_ENV] = 'filez'
+    with pytest.raises(ValueError, match='tool profile'):
+        G._docker_grok_command(**data, task_execution=True)
+    assert not (tmp_path / 'task-launchers').exists()

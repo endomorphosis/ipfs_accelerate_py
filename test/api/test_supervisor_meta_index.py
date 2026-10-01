@@ -25,6 +25,32 @@ def test_refuses_extra_gate_control_duckdb(tmp_path) -> None:
         index.register_catalog(kind="ast", locator_ref="ast.duckdb")
 
 
+def test_batched_links_match_single_identities_and_roll_back_on_database_failure(tmp_path):
+    import duckdb
+
+    index = SupervisorMetaIndex(tmp_path / "meta.duckdb")
+    catalog = index.register_catalog(kind="vector", locator_ref="vectors.duckdb", project=False)
+    records = [dict(subject_kind="path", subject_ref="target.py", catalog_id=catalog["catalog_id"],
+                    record_kind="symbol", record_ref=f"symbol:{i}", freshness_mtime_ns=i,
+                    capsule_cid="capsule:target") for i in range(3)]
+    batch = index.link_identities(records, project=False)
+    assert batch == [index.link_identity(**record, project=False) for record in records]
+    with duckdb.connect(str(index.duckdb_path), config={"threads": 1}) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM identity_links").fetchone()[0] == 3
+        assert connection.execute("SELECT COUNT(*) FROM capsule_bindings").fetchone()[0] == 1
+    with pytest.raises(duckdb.Error):
+        index.link_identities([
+            {**records[0], "freshness_mtime_ns": 999},
+            {**records[1], "record_ref": "new", "freshness_mtime_ns": "not-an-integer"},
+        ], project=False)
+    with duckdb.connect(str(index.duckdb_path), config={"threads": 1}) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM identity_links").fetchone()[0] == 3
+        assert connection.execute("SELECT freshness_mtime_ns FROM identity_links WHERE link_id=?",
+                                  [batch[0]["link_id"]]).fetchone()[0] == 0
+    with pytest.raises(SupervisorMetaIndexError):
+        index.link_identities([records[0], {**records[1], "subject_kind": "unsupported"}], project=False)
+
+
 def test_links_catalogs_and_composes_without_attaching_taskboard(tmp_path) -> None:
     index = SupervisorMetaIndex(tmp_path / "meta_index.duckdb")
     kinds = (

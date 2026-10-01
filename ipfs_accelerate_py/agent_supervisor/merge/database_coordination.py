@@ -7948,3 +7948,22 @@ __all__ = [
     "open_process_serialized_database_coordinator",
     "read_coordination_registry_projection",
 ]
+
+
+CONTROL_READY_FRONTIER_RECONCILIATION_EVENT: Final[str] = (
+    "control_ready_frontier_reconciled"
+)
+
+
+TASK_COMPLETION_REARM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-completion-rearm@1"
+)
+
+
+TASK_COMPLETION_REARM_EVENT: Final[str] = "task_completion_rearmed"
+
+
+CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-ready-frontier-reconciliation@1"
+)

@@ -116,6 +116,7 @@ def test_operation_taxonomy_is_exact_and_versioned():
         "text.generate",
         "text.chat",
         "embedding.generate",
+        "security.advise",
         "vision.generate",
         "audio.transcribe",
         "audio.synthesize",

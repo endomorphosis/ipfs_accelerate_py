@@ -1,0 +1,32 @@
+FROM python:3.12-slim-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends git z3 cvc5 \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pytest==9.1.1 duckdb==1.5.5 \
+    multiformats==0.3.1.post4 requests==2.34.2 anyio==4.14.2 cryptography==49.0.0
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin supervisor
+# Supply an installed DuckLake extension via the explicit build context. LOAD
+# verifies compatibility with this DuckDB version and architecture. Runtime
+# tests use no network, host credentials, or home-directory mounts.
+COPY --from=ducklake-extension /ducklake.duckdb_extension /opt/ducklake.duckdb_extension
+COPY --from=ducklake-extension /httpfs.duckdb_extension /opt/httpfs.duckdb_extension
+COPY --from=ducklake-extension /quack.duckdb_extension /opt/quack.duckdb_extension
+RUN python - <<'PY'
+from pathlib import Path
+import duckdb
+connection = duckdb.connect()
+platform = connection.execute('PRAGMA platform').fetchone()[0]
+version = 'v' + duckdb.__version__
+target = Path('/home/supervisor/.duckdb/extensions') / version / platform
+target.mkdir(parents=True, exist_ok=True)
+for extension in ('ducklake', 'httpfs', 'quack'):
+    filename = extension + '.duckdb_extension'
+    (target / filename).write_bytes((Path('/opt') / filename).read_bytes())
+    connection.execute("LOAD '/opt/" + filename + "'")
+PY
+ENV PYTHONPATH=/source:/datasets:/kit PYTHONDONTWRITEBYTECODE=1 \
+    PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 HOME=/home/supervisor
+# Proof executables must be outside the provider's writable deployment. Root
+# execution would correctly fail the native hammer's ownership checks.
+USER supervisor
+WORKDIR /source
+ENTRYPOINT ["python", "-m", "pytest", "-o", "addopts=", "--noconftest", "-p", "no:cacheprovider", "-o", "log_cli=false", "-o", "junit_family=xunit1", "--show-capture=no", "--tb=short", "-q"]

@@ -222,24 +222,52 @@ class SupervisorMetaIndex:
         capsule_cid: str = "",
         project: bool = True,
     ) -> dict[str, Any]:
-        if subject_kind not in SUBJECT_KINDS:
-            raise SupervisorMetaIndexError(f"unknown subject kind {subject_kind}")
-        if not subject_ref or not catalog_id or not record_ref:
-            raise SupervisorMetaIndexError("subject, catalog, and record refs are required")
+        return self.link_identities([{
+            "subject_kind": subject_kind, "subject_ref": subject_ref,
+            "catalog_id": catalog_id, "record_kind": record_kind, "record_ref": record_ref,
+            "freshness_mtime_ns": freshness_mtime_ns, "capsule_cid": capsule_cid,
+        }], project=project)[0]
+
+    def link_identities(
+        self, records: Sequence[Mapping[str, Any]], *, project: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Persist a bounded batch atomically, then project DuckLake once.
+
+        Link identities and capsule bindings match ``link_identity`` exactly.
+        A batch avoids opening the catalog for every symbol during hydration.
+        """
+        if not isinstance(records, (list, tuple)) or not 1 <= len(records) <= 10_000:
+            raise SupervisorMetaIndexError("identity batch requires 1 to 10000 records")
         recorded_at = _now()
-        link_cid = _cid(
-            {
-                "subject_kind": subject_kind,
-                "subject_ref": subject_ref,
-                "catalog_id": catalog_id,
-                "record_kind": record_kind,
-                "record_ref": record_ref,
-            }
-        )
-        link_id = f"link:{link_cid}"
+        identities, bindings, results = [], [], []
+        required = {"subject_kind", "subject_ref", "catalog_id", "record_kind", "record_ref"}
+        for record in records:
+            if (not isinstance(record, Mapping) or not required <= set(record)
+                    or set(record) - required - {"freshness_mtime_ns", "capsule_cid"}):
+                raise SupervisorMetaIndexError("invalid identity batch record")
+            subject_kind, subject_ref = record["subject_kind"], record["subject_ref"]
+            catalog_id, record_ref = record["catalog_id"], record["record_ref"]
+            if subject_kind not in SUBJECT_KINDS:
+                raise SupervisorMetaIndexError(f"unknown subject kind {subject_kind}")
+            if not subject_ref or not catalog_id or not record_ref:
+                raise SupervisorMetaIndexError("subject, catalog, and record refs are required")
+            link_cid = _cid({key: record[key] for key in required})
+            link_id = f"link:{link_cid}"
+            identities.append([
+                link_id, link_cid, subject_kind, subject_ref, catalog_id,
+                record["record_kind"], record_ref, record.get("freshness_mtime_ns"), recorded_at,
+            ])
+            if capsule_cid := record.get("capsule_cid"):
+                binding_cid = _cid({"capsule_cid": capsule_cid, "catalog_id": catalog_id,
+                                    "subject_ref": subject_ref})
+                bindings.append([f"binding:{binding_cid}", capsule_cid, catalog_id,
+                                 subject_kind, subject_ref, recorded_at])
+            results.append({"schema": SCHEMA, "link_id": link_id, "link_cid": link_cid,
+                            "completion_authority": False})
         connection = _connect(self.duckdb_path)
         try:
-            connection.execute(
+            connection.execute("BEGIN TRANSACTION")
+            connection.executemany(
                 """
                 INSERT INTO identity_links (
                     link_id, link_cid, subject_kind, subject_ref, catalog_id,
@@ -250,27 +278,10 @@ class SupervisorMetaIndex:
                     freshness_mtime_ns=excluded.freshness_mtime_ns,
                     recorded_at=excluded.recorded_at
                 """,
-                [
-                    link_id,
-                    link_cid,
-                    subject_kind,
-                    subject_ref,
-                    catalog_id,
-                    record_kind,
-                    record_ref,
-                    freshness_mtime_ns,
-                    recorded_at,
-                ],
+                identities,
             )
-            if capsule_cid:
-                binding_cid = _cid(
-                    {
-                        "capsule_cid": capsule_cid,
-                        "catalog_id": catalog_id,
-                        "subject_ref": subject_ref,
-                    }
-                )
-                connection.execute(
+            if bindings:
+                connection.executemany(
                     """
                     INSERT INTO capsule_bindings (
                         binding_id, capsule_cid, catalog_id, subject_kind,
@@ -279,25 +290,17 @@ class SupervisorMetaIndex:
                     ON CONFLICT (binding_id) DO UPDATE SET
                         recorded_at=excluded.recorded_at
                     """,
-                    [
-                        f"binding:{binding_cid}",
-                        capsule_cid,
-                        catalog_id,
-                        subject_kind,
-                        subject_ref,
-                        recorded_at,
-                    ],
+                    bindings,
                 )
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
         finally:
             connection.close()
         if project:
             self.project_ducklake()
-        return {
-            "schema": SCHEMA,
-            "link_id": link_id,
-            "link_cid": link_cid,
-            "completion_authority": False,
-        }
+        return results
 
     def bind_supervisor_catalogs(
         self,

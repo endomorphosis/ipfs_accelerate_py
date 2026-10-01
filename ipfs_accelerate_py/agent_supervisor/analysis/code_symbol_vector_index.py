@@ -20,7 +20,7 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 
@@ -57,6 +57,8 @@ DEFAULT_MAX_ROW_BYTES = 8_192
 HARD_MAX_ROW_BYTES = 65_536
 DEFAULT_MAX_METADATA_ITEMS = 32
 DEFAULT_MAX_REFERENCE_BYTES = 320
+# Reserve row space for the other fact kinds, roots, lineage and embedding.
+DEFAULT_MAX_INLINE_NATIVE_FACT_BYTES = 1_024
 DEFAULT_MAX_RESULTS = 50
 HARD_MAX_RESULTS = 200
 _BODY_KEYS = frozenset({
@@ -839,18 +841,75 @@ def _feature_refs(features: Mapping[str, Any] | None, keys: Sequence[str]) -> di
     return result
 
 
+def _native_sidecar_facts(indexed: IndexedASTPath, symbol: str) -> dict[str, tuple[str, ...]]:
+    record = indexed.ast_record
+    return {
+        "signature_refs": tuple(item for item in record.interfaces if item.startswith(symbol + ":") or item.startswith(symbol + "(")),
+        "call_refs": tuple(item for item in record.calls if item.startswith(symbol + "->")),
+        "effect_refs": tuple(item for item in record.state_transitions if item.startswith(symbol + ":")),
+    }
+
+
+def _native_fact_references(indexed: IndexedASTPath, symbol: str, kind: str, facts: Sequence[str]) -> tuple[str, ...]:
+    """Address oversized native fact sets through their exact AST record.
+
+    Python signatures and effect descriptions can contain arbitrarily large
+    expressions. They are not compact references. Bind the complete set instead
+    of truncating it or allowing source bodies to bypass the row budget.
+    """
+    ordered = tuple(sorted(set(facts)))
+    if (len(ordered) <= DEFAULT_MAX_METADATA_ITEMS
+            and len(json.dumps(ordered, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            <= DEFAULT_MAX_INLINE_NATIVE_FACT_BYTES and all(
+        len(value.encode("utf-8")) <= DEFAULT_MAX_REFERENCE_BYTES
+        and "\n" not in value and "\r" not in value and "\x00" not in value
+        for value in ordered
+    )):
+        return ordered
+    return (_identity("code-ast-facts", {
+        "schema": "code-symbol-native-fact-set@1", "ast_record_id": indexed.record_id,
+        "symbol": symbol, "kind": kind, "facts": ordered,
+    }),)
+
+
+def resolve_code_symbol_ast_facts(indexed: IndexedASTPath, row: CodeSymbolIndexRow) -> dict[str, tuple[str, ...]]:
+    """Hydrate native sidecar facts only from the exact bound producer record.
+
+    External feature references remain external; this resolver does not infer
+    semantic authority or substitute another snapshot's source record.
+    """
+    sidecar = row.sidecar
+    if (row.symbol not in indexed.ast_record.qualified_symbols
+            or row.path != indexed.path or sidecar.ast_record_id != indexed.record_id
+            or sidecar.blob_identity != indexed.blob_identity
+            or sidecar.source_sha256 != indexed.source_sha256
+            or sidecar.symbol_hash != indexed.ast_record.symbol_hashes.get(row.symbol, "")):
+        raise CodeSymbolVectorIndexStaleError("sidecar AST record binding changed")
+    facts = _native_sidecar_facts(indexed, row.symbol)
+    for kind, values in facts.items():
+        expected = _native_fact_references(indexed, row.symbol, kind, values)
+        actual = getattr(sidecar, kind)
+        # Persisted @1 rows may predate byte-based compaction. Accept their
+        # exact canonical inline facts too; the native row constructor still
+        # enforces reference/count/row bounds. Neither shape permits truncation.
+        representations = (expected, tuple(sorted(set(values))))
+        if not any(set(candidate) <= set(actual) if kind == "effect_refs"
+                   else tuple(actual) == candidate for candidate in representations):
+            raise CodeSymbolVectorIndexIntegrityError("native sidecar facts do not replay")
+    return facts
+
+
 def _sidecar(indexed: IndexedASTPath, symbol: str, features: Mapping[str, Any] | None) -> CodeSymbolASTSidecarRef:
     record = indexed.ast_record
-    # These are compact AST facts, not source slices.  Extra docs/tests/etc.
-    # must be immutable external references supplied by the caller.
-    signature = tuple(item for item in record.interfaces if item.startswith(symbol + ":") or item.startswith(symbol + "("))
-    calls = tuple(item for item in record.calls if item.startswith(symbol + "->"))
-    effects = tuple(item for item in record.state_transitions if item.startswith(symbol + ":"))
+    # Native facts stay recoverable from the bound AST record. Extra docs,
+    # tests and effects must already be compact external caller references.
+    native = {kind: _native_fact_references(indexed, symbol, kind, values)
+              for kind, values in _native_sidecar_facts(indexed, symbol).items()}
     supplied = _feature_refs(features, ("error_refs", "documentation_refs", "test_refs", "ownership_refs", "effect_refs"))
     return CodeSymbolASTSidecarRef(
         ast_record_id=indexed.record_id, blob_identity=indexed.blob_identity,
         source_sha256=indexed.source_sha256, symbol_hash=record.symbol_hashes.get(symbol, ""),
-        signature_refs=signature, call_refs=calls, effect_refs=tuple((*effects, *supplied.get("effect_refs", ()))),
+        signature_refs=native["signature_refs"], call_refs=native["call_refs"], effect_refs=tuple((*native["effect_refs"], *supplied.get("effect_refs", ()))),
         error_refs=supplied.get("error_refs", ()), documentation_refs=supplied.get("documentation_refs", ()),
         test_refs=supplied.get("test_refs", ()), ownership_refs=supplied.get("ownership_refs", ()),
     )
@@ -1129,5 +1188,6 @@ CodeVectorTombstone = CodeSymbolIndexTombstone
 
 
 __all__ = [
+    "resolve_code_symbol_ast_facts",
     "CODE_SYMBOL_VECTOR_INDEX_SCHEMA", "CODE_SYMBOL_VECTOR_ROW_SCHEMA", "CODE_SYMBOL_VECTOR_QUERY_SCHEMA", "CODE_SYMBOL_VECTOR_HIT_SCHEMA", "CodeSymbolVectorIndexError", "CodeSymbolVectorIndexIntegrityError", "CodeSymbolVectorIndexStaleError", "CodeSymbolVectorIndexBoundsError", "CodeVectorIndexConfig", "CodeSymbolASTSidecarRef", "CodeSymbolLineage", "CodeSymbolIndexRow", "CodeSymbolIndexTombstone", "CodeVectorIndexSnapshot", "CodeVectorQuery", "CodeVectorHit", "CodeVectorSearchResult", "VectorSearchProvider", "canonical_code_symbol_vector_index_bytes", "build_code_symbol_vector_index", "build_code_vector_index", "search_code_symbol_vector_index", "search_code_vector_index", "validate_code_vector_search_result", "CodeSymbolVectorIndex", "CodeSymbolVectorIndexSnapshot", "CodeVectorIndexRow", "CodeVectorTombstone",
 ]

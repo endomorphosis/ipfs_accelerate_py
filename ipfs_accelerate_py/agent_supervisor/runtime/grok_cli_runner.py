@@ -384,6 +384,7 @@ _DOCKER_TASK_GROK_DISALLOWED_TOOLS = ",".join(
     name for name in _SEALED_GROK_DISALLOWED_TOOLS.split(",")
     if name not in {"run_terminal_cmd", "run_terminal_command"}
 )
+_GROK_TASK_TOOL_PROFILE_ENV = "IPFS_ACCELERATE_AGENT_GROK_TASK_TOOL_PROFILE"
 _GROK_CONTAINER_COMMAND_WRAPPER = Path("/opt/ipfs-accelerate/provider-command-env")
 _GROK_CONTAINER_BOOTSTRAP = Path("/opt/ipfs-accelerate/task-bootstrap.py")
 _GROK_PARENT_FORMAL_TOOLCHAIN_SHA256_ENV = "IPFS_ACCELERATE_AGENT_PARENT_FORMAL_TOOLCHAIN_SHA256"
@@ -2994,6 +2995,15 @@ def _docker_grok_command(
         raise ValueError("Docker Grok isolation image is not an immutable image ID")
     if task_execution and image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
         raise ValueError("Grok task execution requires the pinned task-toolchain image")
+    tool_profile = (base_env.get(_GROK_TASK_TOOL_PROFILE_ENV, "terminal")
+                    if task_execution else "files")
+    if tool_profile not in {"terminal", "files"}:
+        raise ValueError("Grok task tool profile must be terminal or files")
+    task_tools = _SEALED_GROK_TOOLS if tool_profile == "files" else _DOCKER_TASK_GROK_TOOLS
+    task_disallowed = (
+        _SEALED_GROK_DISALLOWED_TOOLS if tool_profile == "files"
+        else _DOCKER_TASK_GROK_DISALLOWED_TOOLS
+    )
     task_environment: dict[str, str] = {}
     launchers: tuple[Path, Path] | None = None
     tex_toolchain: dict[str, str] = {}
@@ -3149,8 +3159,8 @@ def _docker_grok_command(
         inner.extend(["--sandbox", "off"])
         # Tool widening happens here, after exact Docker/toolchain admission.
         for flag, expected, replacement in (
-            ("--tools", _SEALED_GROK_TOOLS, _DOCKER_TASK_GROK_TOOLS),
-            ("--disallowed-tools", _SEALED_GROK_DISALLOWED_TOOLS, _DOCKER_TASK_GROK_DISALLOWED_TOOLS),
+            ("--tools", _SEALED_GROK_TOOLS, task_tools),
+            ("--disallowed-tools", _SEALED_GROK_DISALLOWED_TOOLS, task_disallowed),
         ):
             if inner.count(flag) != 1 or inner[inner.index(flag) + 1] != expected:
                 raise ValueError("Grok task tool profile is not the sealed source profile")

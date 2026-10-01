@@ -1677,7 +1677,9 @@ def _derived_call_contract_findings(
                     f"call supplies {observed} positional arguments; "
                     f"declared interface requires {expected_text}"
                 ),
-                observation_refs=(call.fact_id, definition.fact_id),
+                # The call is the observation; the declaration independently
+                # supplies the expected interface. Keep both in evidence_refs.
+                observation_refs=(call.fact_id,),
                 expectation_source=ExpectationSourceKind.DECLARED_INTERFACE,
                 expectation_ref=definition.fact_id,
                 expectation_precedence=50,

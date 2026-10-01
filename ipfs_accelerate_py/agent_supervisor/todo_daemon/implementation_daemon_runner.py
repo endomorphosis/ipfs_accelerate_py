@@ -1250,7 +1250,19 @@ def bind_database_portal_execution_from_args(
     )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
-        return portal_daemon_class(
+        from .portal_task_state_control_plane import bind_task_state_control_plane
+
+        # This projection's execution state has no canonical completion
+        # authority. Bind it to its sealed private attempt directory so an
+        # ambient canonical Quack endpoint cannot redirect its reads/writes.
+        state_database = paths.root / "portal-state.duckdb"
+        if (
+            paths.state.parent != paths.root
+            or state_database.resolve(strict=False) != state_database
+        ):
+            raise ValueError("Portal state requires the exact private attempt directory")
+        bind_task_state_control_plane(paths.state, str(state_database))
+        portal = portal_daemon_class(
             todo_path=paths.task_projection,
             state_path=paths.state,
             strategy_path=paths.strategy,
@@ -1259,7 +1271,7 @@ def bind_database_portal_execution_from_args(
             board_namespace=str(
                 getattr(parsed, "board_namespace", "") or ""
             ),
-            task_header_prefix=parsed.task_prefix,
+            task_header_prefix=f"## {task_alias}",
             implement=True,
             implementation_command=parsed.implementation_command or None,
             implementation_timeout=parsed.implementation_timeout,
@@ -1314,6 +1326,19 @@ def bind_database_portal_execution_from_args(
                 parsed, "maintenance_interval_seconds", None
             ),
         )
+        artifact = str(getattr(parsed, "task_context_bundle_artifact", "") or "")
+        digest = str(getattr(parsed, "task_context_bundle_sha256", "") or "")
+        if artifact or digest:
+            if not artifact or not digest:
+                raise ValueError("task context bundle requires artifact and digest")
+            portal._task_context_nomination_bundle = {"artifact": artifact, "sha256": digest}
+        from ..runtime.candidate_execution import (
+            candidate_runner_from_environment, install_portal_candidate_runner,
+        )
+        candidate_runner = candidate_runner_from_environment()
+        if candidate_runner is not None:
+            install_portal_candidate_runner(portal, candidate_runner)
+        return portal
 
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
@@ -1327,6 +1352,7 @@ def bind_database_portal_execution_from_args(
             getattr(parsed, "merge_target_branch", "") or ""
         ),
         task_header_prefix=parsed.task_prefix,
+        max_task_attempts=getattr(parsed, "max_task_attempts", 0),
         prior_attempt_authority=(
             daemon.authorize_superseded_portal_attempt_binding
         ),
@@ -1390,6 +1416,8 @@ def build_portal_implementation_daemon_from_args(
         )
     ):
         # Database-authoritative cutover: JSON projections may be absent.
+        from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+        owner_bootstrap = database_owner_bootstrap_kwargs(parsed, program)
         optional_state = state_paths["state_path"]
         optional_strategy = state_paths["strategy_path"]
         optional_events = state_paths["events_path"]
@@ -1422,6 +1450,7 @@ def build_portal_implementation_daemon_from_args(
             strict_task_sharding=getattr(
                 parsed, "strict_task_sharding", False
             ),
+            **owner_bootstrap,
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1566,6 +1595,8 @@ def build_database_implementation_daemon_from_args(
     task_source_kind = (
         program.task_source_kind if program is not None else "duckdb"
     )
+    from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+    owner_bootstrap = database_owner_bootstrap_kwargs(parsed, program)
     return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
@@ -1590,6 +1621,7 @@ def build_database_implementation_daemon_from_args(
         strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
         execution_slice_task_cids=tuple(getattr(parsed, "execution_slice_task_cid", ()) or ()),
         execution_slice_task_ids=tuple(getattr(parsed, "execution_slice_task_id", ()) or ()),
+        **owner_bootstrap,
     )
 
 

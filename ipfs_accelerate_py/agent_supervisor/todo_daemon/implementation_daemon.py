@@ -61805,6 +61805,19 @@ class PortalImplementationDaemon:
             str(key).strip().lower().replace("_", " "): str(value).strip()
             for key, value in task.metadata.items()
         }
+        bundle = getattr(self, "_task_context_nomination_bundle", None)
+        if bundle is not None:
+            from ..runtime.task_context_bundle import KEYS, load_task_context_nomination
+
+            if any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys):
+                nominations = load_task_context_nomination(
+                    repository=self.repo_root, artifact=bundle["artifact"],
+                    expected_sha256=bundle["sha256"], task_id=task.task_id,
+                    task_cid=normalized.get("database task cid") or task.canonical_task_cid,
+                )
+                if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
+                    raise ValueError("launch context nomination conflicts with task metadata")
+                normalized.update(nominations)
         for key in keys:
             value = normalized.get(str(key).strip().lower().replace("_", " "))
             if value:
@@ -62963,635 +62976,455 @@ class PortalImplementationDaemon:
         return observe
 
     @staticmethod
-    @staticmethod
     def _normalize_implementation_failure(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Project a failure to stable diagnostic evidence without raw logs."""
-
-        if not isinstance(failure, Mapping):
-            raise TypeError("implementation failure must be a mapping")
-        selected: dict[str, Any] = {}
-        for key in (
-            "kind",
-            "reason",
-            "returncode",
-            "exception_type",
-            "phase",
-            "counterexample_id",
-            "counterexample_ids",
-            "reason_codes",
-            "failed_commands",
-            "failing_checks",
-            "missing_outputs",
-            "timeout_reason",
-            "timeout_policy",
-            "checkpoint_manifest",
-            "failure_review",
-            "next_attempt_prompt_addendum",
-            "validation_environment_guidance",
+        """Total bounded boundary for ordinary and hostile retry evidence."""
+        for normalizer in (
+            PortalImplementationDaemon._normalize_implementation_failure_unchecked,
+            PortalImplementationDaemon._project_implementation_failure,
         ):
-            value = failure.get(key)
-            if value not in (None, "", (), [], {}):
-                selected[key] = value
-        validation = failure.get("validation_result")
-        if isinstance(validation, Mapping):
-            selected["validation"] = {
-                key: validation[key]
-                for key in (
-                    "passed",
-                    "returncode",
-                    "reason",
-                    "reason_codes",
-                    "failed_commands",
-                    "failure_review",
-                )
-                if validation.get(key) not in (None, "", (), [], {})
-            }
-            proposal = validation.get("proposal_gate")
-            if isinstance(proposal, Mapping):
-                selected["proposal_gate"] = {
-                    key: proposal[key]
-                    for key in (
-                        "reason_codes",
-                        "proposal_id",
-                        "policy_id",
-                        "receipt_id",
-                        "repository_tree_id",
-                    )
-                    if proposal.get(key) not in (None, "", (), [], {})
-                }
-            scope_adjudication = validation.get("scope_adjudication")
-            if isinstance(scope_adjudication, Mapping):
-                selected["scope_adjudication"] = {
-                    key: scope_adjudication[key]
-                    for key in (
-                        "accepted",
-                        "receipt_id",
-                        "proposal_id",
-                        "authorized_paths",
-                        "denied_paths",
-                        "decisions",
-                    )
-                    if scope_adjudication.get(key)
-                    not in (None, "", (), [], {})
-                }
-        if not selected:
-            selected = {"kind": "implementation_failure", "reason": "unknown"}
-        encoded = canonical_json(selected).encode("utf-8")
-        maximum_bytes = 16_384
-        if len(encoded) <= maximum_bytes:
-            return selected
+            try:
+                return normalizer(failure)
+            except BaseException:
+                # Diagnostic recovery must also survive cancellation hooks or
+                # malformed objects without publishing their private text.
+                pass
+        returncode = 1
+        if type(failure) is dict:
+            for key, value in dict.items(failure):
+                if type(key) is str and key == "returncode":
+                    if type(value) is int and -(2**31) <= value <= 2**31 - 1:
+                        returncode = value
+                    break
+        return {
+            "kind": "implementation_failure",
+            "returncode": returncode,
+            "reason": "failure_evidence_unavailable",
+        }
 
-        # Reviewed failures can repeat the same bounded prompt addendum at the
-        # top level, in ``failure_review``, and again below ``validation``.
-        # Raising here loses the useful diagnosis and turns an ordinary retry
-        # into a supervisor failure.  Project verbose evidence deterministically
-        # instead: retain authority/identity fields and actionable paths,
-        # commands, and head/tail guidance while bounding every variable-width
-        # field.  The source identity makes truncation explicit and auditable.
-        truncated_fields: set[str] = set()
+    @staticmethod
+    def _project_implementation_failure(
+        failure: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Independent exact-container emergency projection, with no hooks."""
+        def get(mapping: Any, key: str, default: Any = None) -> Any:
+            if type(mapping) is dict:
+                for candidate, value in dict.items(mapping):
+                    if type(candidate) is str and candidate == key:
+                        return value
+            return default
 
-        def bounded_text(value: Any, *, limit: int, field: str) -> str:
-            if isinstance(value, (set, frozenset)):
-                text = canonical_json(
-                    sorted(value, key=lambda item: canonical_json(item))
-                ).strip()
-            elif isinstance(value, (Mapping, Sequence)) and not isinstance(
-                value,
-                (str, bytes, bytearray),
-            ):
-                # Structured values in a nominal scalar field are malformed,
-                # but still project them canonically so insertion order cannot
-                # change the diagnostic identity.
-                text = canonical_json(value).strip()
-            else:
-                text = str(value or "").strip()
-            if len(canonical_json(text).encode("utf-8")) <= limit:
-                return text
-            truncated_fields.add(field)
-            marker = " ...<truncated>... "
+        source = failure if type(failure) is dict else {}
+        candidate = get(source, "validation_result")
+        validation = candidate if type(candidate) is dict else {}
+        records: dict[tuple[int, str], dict[str, Any]] = {}
+        private_sources: list[bytes] = []
 
-            def candidate(kept_characters: int) -> str:
-                head_characters = (kept_characters * 2) // 3
-                tail_characters = kept_characters - head_characters
-                head = text[:head_characters]
-                tail = text[-tail_characters:] if tail_characters else ""
-                return head.rstrip() + marker + tail.lstrip()
-
-            # Budget the canonical JSON representation, not raw UTF-8: control
-            # characters may expand sixfold as ``\u0000`` escapes.
-            low = 0
-            high = len(text)
-            result = marker.strip()
-            while low <= high:
-                midpoint = (low + high) // 2
-                projected = candidate(midpoint)
-                if len(canonical_json(projected).encode("utf-8")) <= limit:
-                    result = projected
-                    low = midpoint + 1
-                else:
-                    high = midpoint - 1
-            return result
-
-        def bounded_scalar(value: Any, *, limit: int, field: str) -> Any:
-            if value is None or isinstance(value, (bool, float)):
+        def exact_int(value: Any, default: int = 1) -> int:
+            if type(value) is int and -(2**31) <= value <= 2**31 - 1:
                 return value
-            if isinstance(value, int):
-                if len(canonical_json(value).encode("utf-8")) <= limit:
-                    return value
-                truncated_fields.add(field)
-                return bounded_text(value, limit=limit, field=field)
-            return bounded_text(value, limit=limit, field=field)
+            return default
 
-        def bounded_strings(
-            value: Any,
+        def remember(
+            raw: bytes,
             *,
-            count: int,
-            width: int,
-            field: str,
-        ) -> list[str]:
-            if isinstance(value, Sequence) and not isinstance(
-                value,
-                (str, bytes, bytearray),
-            ):
-                candidates = value
-            elif value not in (None, ""):
-                candidates = (value,)
-            else:
-                candidates = ()
-            if len(candidates) > count:
-                truncated_fields.add(field)
-            result: list[str] = []
-            for index, item in enumerate(candidates[:count]):
-                bounded = bounded_text(
-                    item,
-                    limit=width,
-                    field=f"{field}[{index}]",
-                )
-                if bounded:
-                    result.append(bounded)
-            return result
-
-        def project_review(
-            value: Any,
-            *,
-            field: str,
-            include_guidance: bool,
-            minimal: bool = False,
-        ) -> dict[str, Any]:
-            if not isinstance(value, Mapping):
-                return {}
-            result: dict[str, Any] = {}
-            for name in (
-                "receipt_id",
-                "task_id",
-                "attempt",
-                "decision",
-                "accepted",
-                "policy_version",
-                "proof_authoritative",
-                "completion_authoritative",
-            ):
-                item = value.get(name)
-                if item not in (None, "", (), [], {}):
-                    result[name] = bounded_scalar(
-                        item,
-                        limit=192,
-                        field=f"{field}.{name}",
-                    )
-            sequence_limits = {
-                "reason_codes": (4 if minimal else 6, 96),
-                "finding_codes": (4 if minimal else 6, 96),
-                "missing_expected_outputs": (2 if minimal else 4, 192),
-                "out_of_scope_paths": (1 if minimal else 2, 192),
-                "justified_paths": (1 if minimal else 2, 192),
-                "denied_paths": (2, 192),
-                "contract_gap_paths": (2, 192),
-                "failed_commands": (1, 256),
-            }
-            for name, (count, width) in sequence_limits.items():
-                items = bounded_strings(
-                    value.get(name),
-                    count=count,
-                    width=width,
-                    field=f"{field}.{name}",
-                )
-                if items:
-                    result[name] = items
-            addendum = value.get("next_attempt_prompt_addendum")
-            if include_guidance and addendum not in (None, ""):
-                result["next_attempt_prompt_addendum"] = bounded_text(
-                    addendum,
-                    limit=1_536 if minimal else 2_048,
-                    field=f"{field}.next_attempt_prompt_addendum",
-                )
-            elif addendum not in (None, ""):
-                truncated_fields.add(
-                    f"{field}.next_attempt_prompt_addendum"
-                )
-            return result
-
-        bounded: dict[str, Any] = {}
-        for name in (
-            "kind",
-            "reason",
-            "returncode",
-            "exception_type",
-            "phase",
-            "counterexample_id",
-            "timeout_reason",
-        ):
-            value = selected.get(name)
-            if value not in (None, "", (), [], {}):
-                bounded[name] = bounded_scalar(
-                    value,
-                    limit=192,
-                    field=name,
-                )
-        for name, count, width in (
-            ("counterexample_ids", 2, 128),
-            ("reason_codes", 6, 96),
-            ("failed_commands", 2, 256),
-            ("failing_checks", 2, 192),
-            ("missing_outputs", 4, 192),
-        ):
-            values = bounded_strings(
-                selected.get(name),
-                count=count,
-                width=width,
-                field=name,
-            )
-            if values:
-                bounded[name] = values
-
-        root_addendum = selected.get("next_attempt_prompt_addendum")
-        if root_addendum not in (None, ""):
-            bounded["next_attempt_prompt_addendum"] = bounded_text(
-                root_addendum,
-                limit=2_048,
-                field="next_attempt_prompt_addendum",
-            )
-        environment_guidance = selected.get(
-            "validation_environment_guidance"
-        )
-        if environment_guidance not in (None, ""):
-            bounded["validation_environment_guidance"] = bounded_text(
-                environment_guidance,
-                limit=512,
-                field="validation_environment_guidance",
-            )
-
-        review_source = selected.get("failure_review")
-        review_addendum = (
-            review_source.get("next_attempt_prompt_addendum")
-            if isinstance(review_source, Mapping)
-            else None
-        )
-        review = project_review(
-            review_source,
-            field="failure_review",
-            include_guidance=(
-                review_addendum not in (None, "", root_addendum)
-            ),
-        )
-        if review:
-            bounded["failure_review"] = review
-
-        validation = selected.get("validation")
-        if isinstance(validation, Mapping):
-            compact_validation: dict[str, Any] = {}
-            for name in ("passed", "returncode", "reason"):
-                value = validation.get(name)
-                if value not in (None, "", (), [], {}):
-                    compact_validation[name] = bounded_scalar(
-                        value,
-                        limit=192,
-                        field=f"validation.{name}",
-                    )
-            for name, count, width in (
-                ("reason_codes", 4, 96),
-                ("failed_commands", 1, 256),
-            ):
-                values = bounded_strings(
-                    validation.get(name),
-                    count=count,
-                    width=width,
-                    field=f"validation.{name}",
-                )
-                if values:
-                    compact_validation[name] = values
-            nested_review = project_review(
-                validation.get("failure_review"),
-                field="validation.failure_review",
-                include_guidance=(
-                    validation.get("failure_review", {}).get(
-                        "next_attempt_prompt_addendum"
-                    )
-                    not in (None, "", root_addendum, review_addendum)
-                    if isinstance(validation.get("failure_review"), Mapping)
-                    else False
-                ),
-                minimal=True,
-            )
-            if nested_review:
-                compact_validation["failure_review"] = nested_review
-            if compact_validation:
-                bounded["validation"] = compact_validation
-
-        proposal = selected.get("proposal_gate")
-        if isinstance(proposal, Mapping):
-            compact_proposal: dict[str, Any] = {}
-            for name in (
-                "proposal_id",
-                "policy_id",
-                "receipt_id",
-                "repository_tree_id",
-            ):
-                value = proposal.get(name)
-                if value not in (None, "", (), [], {}):
-                    compact_proposal[name] = bounded_scalar(
-                        value,
-                        limit=192,
-                        field=f"proposal_gate.{name}",
-                    )
-            reason_codes = bounded_strings(
-                proposal.get("reason_codes"),
-                count=4,
-                width=96,
-                field="proposal_gate.reason_codes",
-            )
-            if reason_codes:
-                compact_proposal["reason_codes"] = reason_codes
-            if compact_proposal:
-                bounded["proposal_gate"] = compact_proposal
-
-        scope = selected.get("scope_adjudication")
-        if isinstance(scope, Mapping):
-            compact_scope: dict[str, Any] = {}
-            for name in ("accepted", "receipt_id", "proposal_id"):
-                value = scope.get(name)
-                if value not in (None, "", (), [], {}):
-                    compact_scope[name] = bounded_scalar(
-                        value,
-                        limit=192,
-                        field=f"scope_adjudication.{name}",
-                    )
-            for name in ("authorized_paths", "denied_paths"):
-                values = bounded_strings(
-                    scope.get(name),
-                    count=2,
-                    width=192,
-                    field=f"scope_adjudication.{name}",
-                )
-                if values:
-                    compact_scope[name] = values
-            if scope.get("decisions") not in (None, "", (), [], {}):
-                truncated_fields.add("scope_adjudication.decisions")
-            if compact_scope:
-                bounded["scope_adjudication"] = compact_scope
-
-        timeout_policy = selected.get("timeout_policy")
-        if isinstance(timeout_policy, Mapping):
-            compact_timeout: dict[str, Any] = {}
-            for name in (
-                "configured_timeout_seconds",
-                "progress_timeout_seconds",
-                "max_timeout_seconds",
-                "progress_aware",
-                "source",
-            ):
-                value = timeout_policy.get(name)
-                if value not in (None, "", (), [], {}):
-                    compact_timeout[name] = bounded_scalar(
-                        value,
-                        limit=128,
-                        field=f"timeout_policy.{name}",
-                    )
-            if compact_timeout:
-                bounded["timeout_policy"] = compact_timeout
-
-        checkpoint = selected.get("checkpoint_manifest")
-        if isinstance(checkpoint, Mapping):
-            compact_checkpoint: dict[str, Any] = {}
-            for name in (
-                "schema",
-                "task_id",
-                "canonical_task_cid",
-                "file_count",
-                "total_size_bytes",
-                "truncated",
-                "manifest_cid",
-            ):
-                value = checkpoint.get(name)
-                if value not in (None, "", (), [], {}):
-                    compact_checkpoint[name] = bounded_scalar(
-                        value,
-                        limit=192,
-                        field=f"checkpoint_manifest.{name}",
-                    )
-            if checkpoint.get("files") not in (None, "", (), [], {}):
-                truncated_fields.add("checkpoint_manifest.files")
-            if compact_checkpoint:
-                bounded["checkpoint_manifest"] = compact_checkpoint
-
-        source_failure_id = content_identity(selected)
-
-        def normalization_metadata(projection: str) -> dict[str, Any]:
-            fields = sorted(truncated_fields)
-            return {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "bounded-implementation-failure@1"
-                ),
-                "projection": projection,
-                "source_failure_id": source_failure_id,
-                "source_bytes": len(encoded),
-                "maximum_bytes": maximum_bytes,
-                "truncated_field_count": len(fields),
-                "truncated_fields": [
-                    bounded_text(
-                        field,
-                        limit=96,
-                        field="normalization.truncated_fields",
-                    )
-                    for field in fields[:12]
-                ],
-            }
-
-        bounded["normalization"] = normalization_metadata("bounded")
-        if len(canonical_json(bounded).encode("utf-8")) <= maximum_bytes:
-            return bounded
-
-        # A hostile or unusually broad reviewed failure can still contain many
-        # individually useful fields.  The minimal projection keeps the retry
-        # decision, reasons, paths, commands, and guidance plus the immutable
-        # source identity, while dropping lower-priority duplicated context.
-        minimal: dict[str, Any] = {
-            name: bounded[name]
-            for name in (
-                "kind",
-                "reason",
-                "returncode",
-                "exception_type",
-                "phase",
-                "timeout_reason",
-            )
-            if name in bounded
-        }
-        minimal_review = project_review(
-            review_source,
-            field="failure_review",
-            include_guidance=(
-                review_addendum not in (None, "", root_addendum)
-            ),
-            minimal=True,
-        )
-        if minimal_review:
-            minimal["failure_review"] = minimal_review
-        for output_name, sources in (
-            (
-                "reason_codes",
-                (
-                    selected.get("reason_codes"),
-                    (
-                        selected.get("failure_review", {}).get("reason_codes")
-                        if isinstance(selected.get("failure_review"), Mapping)
-                        else ()
+            omitted_items: int = 0,
+        ) -> str:
+            digest = hashlib.sha256(raw).hexdigest()
+            identity = (len(raw), digest)
+            record = records.get(identity)
+            if record is None:
+                record = {
+                    "original_bytes": len(raw),
+                    "sha256": digest,
+                    "marker": (
+                        f"[truncated original_bytes={len(raw)} "
+                        f"sha256={digest}]"
                     ),
-                ),
-            ),
-            (
-                "missing_outputs",
-                (
-                    selected.get("missing_outputs"),
-                    (
-                        selected.get("failure_review", {}).get(
-                            "missing_expected_outputs"
-                        )
-                        if isinstance(selected.get("failure_review"), Mapping)
-                        else ()
-                    ),
-                ),
-            ),
-            (
-                "failed_commands",
-                (
-                    selected.get("failed_commands"),
-                    (
-                        selected.get("failure_review", {}).get("failed_commands")
-                        if isinstance(selected.get("failure_review"), Mapping)
-                        else ()
-                    ),
-                ),
-            ),
-        ):
-            merged: list[Any] = []
-            for source in sources:
-                if isinstance(source, Sequence) and not isinstance(
-                    source,
-                    (str, bytes, bytearray),
+                    "occurrence_count": 0,
+                }
+                records[identity] = record
+            record["occurrence_count"] += 1
+            if omitted_items:
+                record.setdefault(
+                    "omitted_item_count", omitted_items
+                )
+                record["total_omitted_item_count"] = (
+                    int(
+                        record.get("total_omitted_item_count") or 0
+                    )
+                    + omitted_items
+                )
+            return record["marker"]
+
+        for container in (source, validation):
+            for key in ("output", "stdout", "stderr", "raw_output"):
+                value = get(container, key)
+                if type(value) is str and value:
+                    raw = value.encode("utf-8", errors="replace")
+                    private_sources.append(raw)
+                    remember(raw)
+            review_value = get(container, "failure_review")
+            if type(review_value) is dict:
+                for key in (
+                    "guidance_markdown",
+                    "review_markdown",
+                    "body",
+                    "analysis",
+                    "raw_response",
+                    "next_attempt_prompt_addendum",
                 ):
-                    merged.extend(source)
-                elif source not in (None, ""):
-                    merged.append(source)
-            values = bounded_strings(
-                merged,
-                count=4 if output_name != "failed_commands" else 2,
-                width=192 if output_name != "failed_commands" else 256,
-                field=output_name,
+                    value = get(review_value, key)
+                    if type(value) is str and value:
+                        raw = value.encode(
+                            "utf-8", errors="replace"
+                        )
+                        private_sources.append(raw)
+                        remember(raw)
+            addendum = get(
+                container, "next_attempt_prompt_addendum"
             )
-            if values:
-                minimal[output_name] = list(dict.fromkeys(values))
-        retry_guidance = root_addendum
-        if retry_guidance in (None, "") and isinstance(
-            selected.get("failure_review"), Mapping
-        ):
-            retry_guidance = selected["failure_review"].get(
-                "next_attempt_prompt_addendum"
-            )
-        if retry_guidance not in (None, ""):
-            minimal["next_attempt_prompt_addendum"] = bounded_text(
-                retry_guidance,
-                limit=1_536,
-                field="next_attempt_prompt_addendum",
-            )
-        if isinstance(validation, Mapping):
-            minimal_validation = {
-                name: bounded_scalar(
-                    validation[name],
-                    limit=128,
-                    field=f"validation.{name}",
-                )
-                for name in ("passed", "returncode", "reason")
-                if validation.get(name) not in (None, "", (), [], {})
-            }
-            if minimal_validation:
-                minimal["validation"] = minimal_validation
-        minimal["normalization"] = normalization_metadata("minimal")
-        minimal_encoded = canonical_json(minimal).encode("utf-8")
-        if len(minimal_encoded) <= maximum_bytes:
-            return minimal
+            if type(addendum) is str and addendum:
+                raw = addendum.encode("utf-8", errors="replace")
+                private_sources.append(raw)
+                remember(raw)
 
-        # Last-resort projection has a fixed small shape and therefore cannot
-        # turn valid diagnostic input into a supervisor exception. It retains
-        # the reviewed action, its source identity, and bounded retry guidance.
-        source_review = (
-            selected.get("failure_review")
-            if isinstance(selected.get("failure_review"), Mapping)
-            else {}
-        )
-        emergency_review: dict[str, Any] = {}
-        for name in ("receipt_id", "decision", "accepted", "policy_version"):
-            value = source_review.get(name)
-            if value not in (None, "", (), [], {}):
-                emergency_review[name] = bounded_scalar(
-                    value,
-                    limit=128,
-                    field=f"failure_review.{name}",
-                )
-        for name, count, width in (
-            ("reason_codes", 4, 96),
-            ("missing_expected_outputs", 2, 160),
-            ("denied_paths", 2, 160),
-            ("failed_commands", 1, 192),
-        ):
-            values = bounded_strings(
-                source_review.get(name),
-                count=count,
-                width=width,
-                field=f"failure_review.{name}",
+        def redact(raw: bytes) -> bytes:
+            rendered = raw.decode("utf-8", errors="replace")
+            rendered = re.sub(
+                r"(?i)\b((?:authorization\s*[:=]\s*)?bearer)\s+"
+                r"([^\s,;\"']+)",
+                lambda match: (
+                    match.group(1)
+                    + "=<redacted sha256="
+                    + hashlib.sha256(
+                        match.group(2).encode(
+                            "utf-8", errors="replace"
+                        )
+                    ).hexdigest()
+                    + ">"
+                ),
+                rendered,
             )
-            if values:
-                emergency_review[name] = values
-        emergency: dict[str, Any] = {}
-        for name in ("kind", "reason", "returncode", "exception_type", "phase"):
-            value = selected.get(name)
-            if value not in (None, "", (), [], {}):
-                emergency[name] = bounded_scalar(
-                    value,
-                    limit=128,
-                    field=name,
-                )
-        if emergency_review:
-            emergency["failure_review"] = emergency_review
-        if retry_guidance not in (None, ""):
-            emergency["next_attempt_prompt_addendum"] = bounded_text(
-                retry_guidance,
-                limit=512,
-                field="next_attempt_prompt_addendum",
+            rendered = re.sub(
+                r"(?i)(--?(?:password|passwd|token|secret|credential|"
+                r"api[_-]?key|authorization)|\b(?:password|passwd|"
+                r"token|secret|credential|api[_-]?key|authorization))"
+                r"(?:\s+|\s*[:=]\s*)([^\s,;]+)",
+                lambda match: (
+                    match.group(1)
+                    + "=<redacted sha256="
+                    + hashlib.sha256(
+                        match.group(2).encode(
+                            "utf-8", errors="replace"
+                        )
+                    ).hexdigest()
+                    + ">"
+                ),
+                rendered,
             )
-        emergency["normalization"] = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "bounded-implementation-failure@1"
-            ),
-            "projection": "emergency",
-            "source_failure_id": source_failure_id,
-            "source_bytes": len(encoded),
-            "maximum_bytes": maximum_bytes,
+            return rendered.encode("utf-8", errors="replace")
+
+        def exact_text(
+            value: Any,
+            limit: int,
+            *,
+            command: bool = False,
+            private_prose: bool = False,
+        ) -> str:
+            if type(value) is not str:
+                return ""
+            raw = value.encode("utf-8", errors="replace")
+            if command:
+                for private in private_sources:
+                    if len(private) >= 8 and private in raw:
+                        digest = hashlib.sha256(private).hexdigest()
+                        raw = raw.replace(
+                            private,
+                            f"<private sha256={digest}>".encode(
+                                "ascii"
+                            ),
+                        )
+            elif private_prose and any(
+                private == raw
+                or (
+                    len(private) >= 8
+                    and (private in raw or raw in private)
+                )
+                for private in private_sources
+            ):
+                return remember(raw)
+            rendered = redact(raw)
+            if len(raw) <= limit and len(rendered) <= limit:
+                return rendered.decode("utf-8", errors="replace")
+            return remember(raw)
+
+        def exact_test_node(value: Any) -> str:
+            if type(value) is not str:
+                return ""
+            original = value
+
+            def replace_parameter(match: re.Match[str]) -> str:
+                parameter = match.group(1).encode(
+                    "utf-8", errors="replace"
+                )
+                return (
+                    "[param-sha256="
+                    + hashlib.sha256(parameter).hexdigest()
+                    + "]"
+                )
+
+            rendered = re.sub(
+                r"\[([^\]\r\n]*)\]", replace_parameter, original
+            )
+            if len(rendered.encode("utf-8")) <= 768:
+                return rendered
+            return remember(original.encode("utf-8"))
+
+        def exact_failure_head(value: Any) -> str:
+            if type(value) is not str or not value:
+                return ""
+            raw = value.encode("utf-8", errors="replace")
+            lines = [
+                "[failure-head-omitted "
+                f"original_bytes={len(raw)} "
+                f"sha256={hashlib.sha256(raw).hexdigest()}]"
+            ]
+            seen: set[str] = set()
+            for exception_type in re.findall(
+                r"\b[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)\b",
+                value,
+            ):
+                if exception_type not in seen and len(seen) < 3:
+                    seen.add(exception_type)
+                    lines.append(
+                        f"exception_type={exception_type}"
+                    )
+            remember(raw)
+            return "\n".join(lines)
+
+        def exact_json(value: Any, depth: int = 0) -> Any:
+            if depth > 8:
+                return "<unrenderable>"
+            if value is None or type(value) in (str, bool, int):
+                return value
+            if type(value) is float:
+                return value if math.isfinite(value) else "<unrenderable>"
+            if type(value) in (list, tuple):
+                return [exact_json(item, depth + 1) for item in value]
+            if type(value) is dict:
+                return {
+                    key: exact_json(get(value, key), depth + 1)
+                    for key in sorted(
+                        item_key
+                        for item_key in value
+                        if type(item_key) is str
+                    )
+                }
+            return "<unrenderable>"
+
+        def exact_list(
+            value: Any,
+            limit: int,
+            *,
+            test_nodes: bool = False,
+            commands: bool = False,
+        ) -> list[str]:
+            if type(value) not in (list, tuple):
+                return []
+            kept: list[str] = []
+            for item in value[:1]:
+                if test_nodes:
+                    rendered = exact_test_node(item)
+                else:
+                    rendered = exact_text(
+                        item,
+                        limit,
+                        command=commands,
+                    )
+                if rendered:
+                    kept.append(rendered)
+            if len(value) > 1:
+                tail = canonical_json(
+                    exact_json(list(value[1:]))
+                ).encode("utf-8")
+                kept.append(
+                    remember(tail, omitted_items=len(value) - 1)
+                )
+            return kept
+
+        source_returncode = get(source, "returncode")
+        if source_returncode is None:
+            source_returncode = get(validation, "returncode")
+        returncode = exact_int(source_returncode, 1)
+        safe_validation: dict[str, Any] = {
+            "returncode": exact_int(
+                get(validation, "returncode"), returncode
+            )
         }
-        return emergency
+        for key in ("attempted", "passed"):
+            value = get(validation, key)
+            if type(value) is bool:
+                safe_validation[key] = value
+        for key, limit in (
+            ("reason", 256),
+            ("failed_command", 512),
+            ("exception_message", 512),
+        ):
+            rendered = exact_text(
+                get(validation, key),
+                limit,
+                command=key == "failed_command",
+                private_prose=key == "exception_message",
+            )
+            if rendered:
+                safe_validation[key] = rendered
+        failure_head = get(validation, "failure_head")
+        rendered_head = exact_failure_head(failure_head)
+        if rendered_head:
+            safe_validation["failure_head"] = rendered_head
+        for key, limit in (
+            ("failed_commands", 384),
+            ("failed_tests", 192),
+            ("failed_test_paths", 256),
+            ("exception_types", 128),
+        ):
+            rendered = exact_list(
+                get(validation, key),
+                limit,
+                test_nodes=key == "failed_tests",
+                commands=key == "failed_commands",
+            )
+            if rendered:
+                safe_validation[key] = rendered
+        review = get(source, "failure_review")
+        if type(review) is not dict:
+            review = get(validation, "failure_review")
+        safe_review: dict[str, Any] = {}
+        if type(review) is dict:
+            for key in ("receipt_id", "decision"):
+                rendered = exact_text(get(review, key), 256)
+                if rendered:
+                    safe_review[key] = rendered
+            accepted = get(review, "accepted")
+            if type(accepted) is bool:
+                safe_review["accepted"] = accepted
+        if safe_review:
+            safe_validation["failure_review"] = dict(safe_review)
+        result: dict[str, Any] = {
+            "kind": "implementation_failure",
+            "returncode": returncode,
+            "validation": safe_validation,
+            "normalization_error": {
+                "exception_type": "normalization_error"
+            },
+        }
+        if safe_review:
+            result["failure_review"] = safe_review
+        pending_maps: dict[str, dict[str, Any]] = {}
+        for key, scalar_keys, list_keys in (
+            (
+                "proposal_gate",
+                (
+                    "accepted",
+                    "attempted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+                ("reason_codes", "changed_paths"),
+            ),
+            (
+                "scope_adjudication",
+                ("accepted", "receipt_id", "proposal_id"),
+                ("authorized_paths", "denied_paths"),
+            ),
+            (
+                "timeout_policy",
+                (
+                    "source",
+                    "configured_timeout_seconds",
+                    "progress_timeout_seconds",
+                    "max_timeout_seconds",
+                    "progress_aware",
+                ),
+                (),
+            ),
+            (
+                "checkpoint_manifest",
+                (
+                    "schema",
+                    "manifest_cid",
+                    "file_count",
+                    "total_size_bytes",
+                    "total_bytes",
+                ),
+                (),
+            ),
+        ):
+            map_value = get(source, key)
+            if type(map_value) is not dict:
+                map_value = get(validation, key)
+            if type(map_value) is dict:
+                compact: dict[str, Any] = {}
+                for field in scalar_keys:
+                    item = get(map_value, field)
+                    if type(item) is bool:
+                        compact[field] = item
+                    elif type(item) is int:
+                        compact[field] = exact_int(item, 0)
+                    elif type(item) is float and math.isfinite(item):
+                        compact[field] = item
+                    elif type(item) is str:
+                        rendered = exact_text(item, 256)
+                        if rendered:
+                            compact[field] = rendered
+                for field in list_keys:
+                    rendered_list = exact_list(
+                        get(map_value, field),
+                        192,
+                    )
+                    if rendered_list:
+                        compact[field] = rendered_list
+                if compact:
+                    pending_maps[key] = compact
+        if records:
+            record_values = list(records.values())
+            result["truncation"] = {"records": record_values}
+            occurrences = sum(
+                int(item.get("occurrence_count") or 0)
+                for item in record_values
+            )
+            result["deduplication"] = {
+                "unique_omission_count": len(record_values),
+                "occurrence_count": occurrences,
+                "deduplicated_occurrence_count": max(
+                    0, occurrences - len(record_values)
+                ),
+            }
+        for key, compact in pending_maps.items():
+            candidate_result = {**result, key: compact}
+            if len(canonical_json(candidate_result).encode("utf-8")) <= (
+                MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES
+            ):
+                result[key] = compact
+        encoded = canonical_json(result).encode("utf-8")
+        if len(encoded) <= MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES:
+            return result
+        # All lists/maps above are independently capped.  If the
+        # aggregate is unexpectedly large, keep the required core and
+        # every tail record; discard only non-tail omission records.
+        if records:
+            result["truncation"] = {
+                "records": [
+                    item
+                    for item in records.values()
+                    if int(item.get("omitted_item_count") or 0) > 0
+                ]
+            }
+        return result
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
@@ -64162,6 +63995,154 @@ class PortalImplementationDaemon:
             projections.append((name, payload))
         return tuple(projections)
 
+    def _world_implementation_references(
+        self, task: PortalTask, *, repository_id: str, tree_id: str,
+        semantic_references: tuple = (),
+    ) -> tuple:
+        """Consume a sealed world observation without conferring authority."""
+        artifact = str(self._task_metadata_value(task, "world context artifact") or "")
+        if not artifact:
+            return ()
+        from ..semantic_state.intent_world_snapshot import (
+            load_intent_world_context, minify_intent_world_worker_context,
+        )
+
+        relative = Path(artifact)
+        root = self.repo_root.resolve()
+        path = root / relative
+        if (relative.is_absolute() or ".." in relative.parts
+                or path.is_symlink() or not path.resolve().is_relative_to(root)):
+            raise ValueError("world context artifact escapes repository")
+        context = load_intent_world_context(
+            artifact=path,
+            expected_sha256=str(self._task_metadata_value(task, "world context sha256") or ""),
+            task_id=task.task_id,
+            repository_id=str(self._task_metadata_value(task, "world context repository") or ""),
+            intent=getattr(self, "_world_intent_repository", None),
+        )
+        if semantic_references:
+            semantic = json.loads("".join(
+                item.summary for item in sorted(
+                    semantic_references, key=lambda item: item.reference_id
+                )
+            ))
+            current_root = semantic["semantic_root_cid"]
+            captured_root = context.get("semantic_root_cid", "")
+            if captured_root and captured_root != current_root:
+                # Preserve the sealed capture as a historical observation.
+                # This derived consumer envelope is not the native snapshot
+                # and cannot claim its semantic components are still current.
+                captured_status = dict(context["component_status"])
+                status = dict(captured_status)
+                stale = []
+                for name in (
+                    "datasets_repository", "datasets_semantic_state_root",
+                    "symbol_root", "capsule_index", "environment_bindings",
+                ):
+                    if status.get(name) == "current":
+                        status[name] = "stale"
+                        stale.append(name)
+                context = {
+                    **context,
+                    "schema": "supervisor-intent-world-dispatch-observation@1",
+                    "captured_context_schema": context["schema"],
+                    "captured_component_status": captured_status,
+                    "component_status": status,
+                    "stale_components": stale,
+                    "semantic_coherence": {
+                        "status": "stale",
+                        "captured_semantic_root_cid": captured_root,
+                        "dispatch_semantic_root_cid": current_root,
+                    },
+                    "schedulable": False,
+                    "execution_authority": False,
+                    "completion_authority": False,
+                }
+            else:
+                context = {
+                    **context,
+                    "semantic_coherence": {
+                        "status": "current" if captured_root else "unbound",
+                        "captured_semantic_root_cid": captured_root,
+                        "dispatch_semantic_root_cid": current_root,
+                    },
+                }
+        return build_text_context_references(
+            canonical_json(minify_intent_world_worker_context(context)), reference_prefix="intent-world",
+            kind="intent-world-context", path=artifact,
+            repository_id=repository_id, tree_id=tree_id,
+            required=True, chunk_bytes=6_144,
+        )
+
+    def _code_retrieval_implementation_references(
+        self, task: PortalTask, *, repository_id: str, tree_id: str,
+    ) -> tuple:
+        artifact = self._task_metadata_value(task, "code retrieval artifact")
+        if not artifact:
+            return ()
+        from ..runtime.code_retrieval_context import load_code_retrieval_context
+
+        text = load_code_retrieval_context(
+            repository=self.repo_root, artifact=str(artifact), task_id=task.task_id,
+            expected_sha256=str(self._task_metadata_value(task, "code retrieval sha256") or ""),
+        )
+        return build_text_context_references(
+            text, reference_prefix="code-retrieval", kind="code-retrieval-context",
+            path=str(artifact), repository_id=repository_id, tree_id=tree_id,
+            required=True, chunk_bytes=6_144,
+        )
+
+    def _semantic_implementation_references(
+        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str
+    ) -> tuple:
+        """Resolve source-bound evidence on every dispatch, including retries."""
+        artifact = self._task_metadata_value(task, "semantic context artifact")
+        if not artifact:
+            return ()
+        from ..runtime.semantic_context_runtime import (
+            SemanticContextStale,
+            load_semantic_worker_context,
+            resolve_semantic_worker_context,
+            validate_semantic_worker_nomination,
+        )
+
+        digest = str(self._task_metadata_value(task, "semantic context sha256") or "")
+        request = dict(repository=self.repo_root, artifact=str(artifact),
+                       expected_sha256=digest, task_id=task.task_id)
+        refresh = str(self._task_metadata_value(task, "semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
+        cache_key = (str(self.repo_root), task.task_id, str(artifact), digest)
+        cache = getattr(self, "_semantic_context_resolutions", {})
+        resolved = cache.get(cache_key) if refresh else None
+        if resolved is not None:
+            validate_semantic_worker_nomination(**request)
+            # A cached nomination is useful only while its captured bytes are
+            # still current. The immutable metadata digest remains in the key.
+            request.update(artifact=resolved["artifact"], expected_sha256=resolved["sha256"])
+        try:
+            semantic_text = load_semantic_worker_context(**request)
+        except SemanticContextStale:
+            if not refresh:
+                raise
+            resolved = resolve_semantic_worker_context(
+                **request,
+                refresh_output=self.repo_root / ".runtime" / "semantic-refresh",
+                attempt_id=f"{task.task_id}:{attempt}",
+            )
+            semantic_text = resolved["text"]
+            cache[cache_key] = resolved
+            self._semantic_context_resolutions = cache
+        semantic_artifact = resolved["artifact"] if resolved is not None else artifact
+        return build_text_context_references(
+            semantic_text,
+            reference_prefix="semantic-context",
+            kind="semantic-context",
+            path=str(semantic_artifact),
+            repository_id=repository_id,
+            tree_id=tree_id,
+            required=True,
+            chunk_bytes=6_144,
+        )
+
     def _compile_implementation_retry_context(
         self,
         task: PortalTask,
@@ -64193,6 +64174,45 @@ class PortalImplementationDaemon:
             raise RuntimeError(
                 "implementation retry parent invalidated by changed repository tree"
             )
+        retry_evidence = parent_capsule.evidence
+        semantic_changed = False
+        semantic_references = ()
+        if self._task_metadata_value(task, "semantic context artifact"):
+            semantic_references = self._semantic_implementation_references(
+                task, attempt, repository_id=repository_id, tree_id=tree_id,
+            )
+            previous_semantic = tuple(item for item in retry_evidence if item.kind == "semantic-context")
+            if previous_semantic != tuple(semantic_references):
+                semantic_changed = True
+                retry_evidence = (
+                    *(item for item in retry_evidence if item.kind != "semantic-context"),
+                    *semantic_references,
+                )
+        if self._task_metadata_value(task, "world context artifact"):
+            # Compare world and source evidence from this same dispatch, after
+            # refresh; HEAD alone cannot detect dirty source changes.
+            current_world = self._world_implementation_references(
+                task, repository_id=repository_id, tree_id=tree_id,
+                semantic_references=semantic_references,
+            )
+            old_world = tuple(item for item in retry_evidence if item.kind == "intent-world-context")
+            if old_world != tuple(current_world):
+                semantic_changed = True
+                retry_evidence = (
+                    *(item for item in retry_evidence if item.kind != "intent-world-context"),
+                    *current_world,
+                )
+        if self._task_metadata_value(task, "code retrieval artifact"):
+            current_retrieval = self._code_retrieval_implementation_references(
+                task, repository_id=repository_id, tree_id=tree_id,
+            )
+            old_retrieval = tuple(item for item in retry_evidence if item.kind == "code-retrieval-context")
+            if old_retrieval != tuple(current_retrieval):
+                semantic_changed = True
+                retry_evidence = (
+                    *(item for item in retry_evidence if item.kind != "code-retrieval-context"),
+                    *current_retrieval,
+                )
         failure_text = canonical_json(diagnostic.to_record())
         failure_references = build_text_context_references(
             failure_text,
@@ -64276,6 +64296,11 @@ class PortalImplementationDaemon:
                 # changes the task's authority-bearing core.
                 rescue_projection_name = candidate_name
                 rescue_projection = diagnostic_projection
+                if semantic_changed:
+                    # A delta against the old source snapshot would retain
+                    # stale required capsules. Use the bounded fresh-context
+                    # path, preserving the failure receipt and immutable core.
+                    continue
                 failure_references = build_text_context_references(
                     canonical_json(diagnostic_projection),
                     reference_prefix=f"retry-failure-{repair_round}",
@@ -64606,7 +64631,7 @@ class PortalImplementationDaemon:
                         scope=parent_capsule.scope,
                         acceptance=parent_capsule.acceptance,
                         evidence=(
-                            *parent_capsule.evidence,
+                            *retry_evidence,
                             *candidate_references,
                         ),
                     )
@@ -64682,7 +64707,7 @@ class PortalImplementationDaemon:
             }
             parent_required_ids = {
                 item.reference_id
-                for item in parent_capsule.evidence
+                for item in retry_evidence
                 if item.required
             }
             if (
@@ -64693,7 +64718,7 @@ class PortalImplementationDaemon:
                     "fresh retry context lost required retry evidence"
                 )
             allowed_ids = {
-                item.reference_id for item in parent_capsule.evidence
+                item.reference_id for item in retry_evidence
             } | rescue_ids
             if not selected_ids.issubset(allowed_ids):
                 raise RuntimeError(
@@ -64736,7 +64761,10 @@ class PortalImplementationDaemon:
                     "rescue_binding_projection_attempts": (
                         attempted_rescue_bindings
                     ),
-                    "reason": "delta_full_reconstruction_budget",
+                    "reason": (
+                        "semantic_source_refresh" if semantic_changed
+                        else "delta_full_reconstruction_budget"
+                    ),
                 },
             )
             return fresh_result
@@ -65020,6 +65048,20 @@ class PortalImplementationDaemon:
                     )
                 ),
             )
+        semantic_references = self._semantic_implementation_references(
+            task, attempt, repository_id=repository_id, tree_id=tree_id,
+        )
+        evidence = (
+            *evidence,
+            *semantic_references,
+            *self._code_retrieval_implementation_references(
+                task, repository_id=repository_id, tree_id=tree_id,
+            ),
+            *self._world_implementation_references(
+                task, repository_id=repository_id, tree_id=tree_id,
+                semantic_references=semantic_references,
+            ),
+        )
         note_path = getattr(self, "operator_repair_note", None)
         if note_path is not None:
             from ..context.operator_repair_note import read_operator_repair_note
@@ -65340,6 +65382,17 @@ class PortalImplementationDaemon:
             f"{self._authoritative_validation_environment_guidance()}\n"
         )
 
+    def bind_database_attempt_feedback(self, feedback: Mapping[str, Any]) -> None:
+        """Bind diagnostic data only; never import retry or context authority."""
+        from .database_attempt_feedback import freeze_database_attempt_feedback
+
+        value = freeze_database_attempt_feedback(feedback)
+        previous = getattr(self, "_database_attempt_feedback", None)
+        if previous is not None and previous != value:
+            raise ValueError("database attempt diagnostic binding changed")
+        self._database_attempt_feedback = value
+
+
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
             raise ImplementationRetryDeferred("implementation dispatch cancelled")
@@ -65381,7 +65434,7 @@ class PortalImplementationDaemon:
                     rendered = render_context_capsule(result.capsule)
                 else:
                     repair_round = attempt - 1
-                    if self._fresh_retry_context_matches_diagnostic(
+                    if not any(self._task_metadata_value(task, key) for key in ("semantic context artifact", "world context artifact")) and self._fresh_retry_context_matches_diagnostic(
                         parent[0],
                         diagnostic,
                         repair_round=repair_round,
@@ -65446,10 +65499,33 @@ class PortalImplementationDaemon:
                             ContextCompileResult,
                         )
                         rendered = (
-                            render_retry_context(result.capsule)
+                            render_context_capsule(result.reconstructed_capsule)
                             if isinstance(result, RetryContextResult)
                             else render_context_capsule(result.capsule)
                         )
+                        if isinstance(result, RetryContextResult):
+                            # A local retained parent proves reconstruction,
+                            # not retention by a stateless router/provider.
+                            # Dispatch the verified full context until provider
+                            # retention is independently bound to the parent.
+                            rendered_tokens, token_limit = (
+                                self._implementation_prompt_token_usage(task, rendered)
+                            )
+                            self._decision_runtime_route(
+                                "implementation_context",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": int(attempt),
+                                    "mode": "stateless_retry_full_reconstruction",
+                                    "parent_capsule_id": result.delta_result.parent_capsule.capsule_id,
+                                    "delta_capsule_id": result.delta_result.delta_capsule.capsule_id,
+                                    "reconstructed_capsule_id": result.reconstructed_capsule.capsule_id,
+                                    "provider_input_bytes": len(rendered.encode("utf-8")),
+                                    "provider_input_tokens": rendered_tokens,
+                                    "provider_input_token_limit": token_limit,
+                                    "provider_retained_parent": False,
+                                },
+                            )
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
@@ -65527,6 +65603,47 @@ class PortalImplementationDaemon:
             # One-shot after the bounded prompt is accepted; failed budget
             # admission must retain the recovery guidance for diagnosis.
             self._implementation_seed_failure_guidance.pop(key, None)
+        if attempt == 1:
+            from .database_attempt_feedback import render_database_attempt_feedback
+
+            feedback = render_database_attempt_feedback(
+                getattr(self, "_database_attempt_feedback", None), task
+            )
+            if feedback:
+                candidate = rendered.rstrip() + feedback
+                byte_limit = self._task_llm_context_budget_bytes(task)
+                tokens, token_limit = self._implementation_prompt_token_usage(
+                    task, candidate
+                )
+                if (
+                    byte_limit is None or len(candidate.encode("utf-8")) <= byte_limit
+                ) and tokens <= token_limit:
+                    rendered = candidate
+                else:
+                    self._decision_runtime_route(
+                        "implementation_context",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": 1,
+                            "mode": "database_attempt_diagnostic_omitted",
+                            "reason": "provider_input_budget",
+                        },
+                    )
+
+        final_tokens, final_token_limit = self._implementation_prompt_token_usage(task, rendered)
+        self._decision_runtime_route(
+            "implementation_context",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "mode": "provider_prompt_ready",
+                "provider_input_bytes": len(rendered.encode("utf-8")),
+                "provider_input_tokens": final_tokens,
+                "provider_input_token_limit": final_token_limit,
+                "token_measurement": "configured_tokenizer_or_estimate",
+                "provider_usage_reported": False,
+            },
+        )
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
@@ -67255,6 +67372,7 @@ class PortalImplementationDaemon:
         return safe_result
 
 
+    @staticmethod
     def _sanitize_retry_test_node_id(node_id: Any) -> str:
         """Hash dynamic pytest parameter IDs while retaining test identity."""
 
@@ -67291,6 +67409,7 @@ class PortalImplementationDaemon:
         )
 
 
+    @classmethod
     def _sanitize_retry_failure_head(cls, failure_head: Any) -> str:
         """Content-address raw failure prose and retain structural handles."""
 
@@ -67333,6 +67452,7 @@ class PortalImplementationDaemon:
         return "\n".join(lines)
 
 
+    @staticmethod
     def _validation_command_declares_pythonpath(command: str) -> bool:
         """Return whether reviewed command text supplies its own PYTHONPATH."""
 
@@ -67355,6 +67475,7 @@ class PortalImplementationDaemon:
             return False
 
 
+    @staticmethod
     def _validation_command_uses_python(command: str) -> bool:
         """Return whether command text invokes a Python-family entry point."""
 
@@ -67686,6 +67807,7 @@ class PortalImplementationDaemon:
         return receipt_dir
 
 
+    @staticmethod
     def _normalize_implementation_failure_unchecked(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -69479,6 +69601,7 @@ class DatabaseImplementationDaemon:
         state_dir: Path | str | None = None,
         state_prefix: str = "",
         owner_session_id: str = "",
+        process_instance_id: str | None = None,
         authority_mode: str = "quack",
         task_source_kind: str = "duckdb",
         quack_uri: str = "",
@@ -69496,6 +69619,8 @@ class DatabaseImplementationDaemon:
         max_task_attempts: int = 0,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
+        close_task_source: bool = False,
+        state_owner_bootstrap_credentials: Any = None,
         coordinator: Any = None,
         install_schema: bool = True,
         task_prefix: str = "",
@@ -69640,7 +69765,41 @@ class DatabaseImplementationDaemon:
             "",
             str(task_prefix or ""),
         ).strip()
-        self.process_instance_id = _database_daemon_new_id("process")
+        if process_instance_id is not None and (
+            type(process_instance_id) is not str
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+-]*", process_instance_id)
+            or len(process_instance_id.encode("utf-8")) > 512
+        ):
+            raise DatabaseImplementationAuthorityError("invalid process_instance_id")
+        if type(close_task_source) is not bool:
+            raise DatabaseImplementationAuthorityError("close_task_source must be boolean")
+        self.process_instance_id = process_instance_id or _database_daemon_new_id("process")
+        self._typed_quack_authority_binding = None
+        from ..task_sources.typed_database_task_source import TypedDatabaseTaskSource
+
+        if state_owner_bootstrap_credentials is not None or type(task_source) is TypedDatabaseTaskSource:
+            from ..task_sources.state_owner_bootstrap import StateOwnerBootstrapCredentials
+
+            if (
+                normalized_authority_mode != "quack"
+                or type(task_source) is not TypedDatabaseTaskSource
+                or type(state_owner_bootstrap_credentials) is not StateOwnerBootstrapCredentials
+                or coordinator is not None
+            ):
+                raise DatabaseImplementationAuthorityError("typed owner requires its exact source and bootstrap credentials")
+            try:
+                self._typed_quack_authority_binding = dict(task_source.require_quack_authority_binding(
+                    expected_endpoint=self._quack_uri,
+                    expected_process_instance_id=self.process_instance_id,
+                    bootstrap_credentials=state_owner_bootstrap_credentials,
+                ))
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError("typed owner bootstrap binding mismatch") from exc
+            self.coordination_path, self.execution_path = _database_daemon_quack_sidecar_paths(
+                self.database_path, coordination_path=coordination_path,
+                execution_path=self.execution_path,
+            )
+            self._strict_lane_coordination_path = self.coordination_path
         self.owner_session_id = str(
             owner_session_id
             or _database_daemon_logical_owner_id(
@@ -69671,17 +69830,13 @@ class DatabaseImplementationDaemon:
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
         self.require_real_execution = bool(require_real_execution)
-        try:
-            attempts = int(max_task_attempts)
-        except (TypeError, ValueError):
-            attempts = 0
-        if isinstance(max_task_attempts, bool) or attempts < 0:
-            attempts = 0
-        self.max_task_attempts = attempts
+        if type(max_task_attempts) is not int or not 0 <= max_task_attempts <= 10000:
+            raise DatabaseImplementationAuthorityError("max_task_attempts must be an integer in [0, 10000]")
+        self.max_task_attempts = max_task_attempts
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
         self._connection: Any = None
-        self._owns_task_source = task_source is None
+        self._owns_task_source = task_source is None or close_task_source
         self._owns_coordinator = coordinator is None
         self._task_source = task_source
         self._coordinator = coordinator
@@ -69938,7 +70093,7 @@ class DatabaseImplementationDaemon:
                         # board, not the coordinator DDL surface.
                         coord_target = (
                             self._strict_lane_coordination_path
-                            if self.task_shard_count > 1
+                            if self.task_shard_count > 1 or self._typed_quack_authority_binding is not None
                             else (
                                 _checkout_sidecar_duckdb(
                                     self.database_path.with_name(
@@ -70512,6 +70667,7 @@ class DatabaseImplementationDaemon:
     ) -> Any:
         """Protect a write using a previously identity-checked task claim."""
 
+        self._require_live_typed_owner()
         protect = getattr(self.coordinator, "protect_task_claim", None)
         if not callable(protect):
             raise DatabaseImplementationAuthorityError(
@@ -70531,6 +70687,7 @@ class DatabaseImplementationDaemon:
     def _protect_new_claim(self, claim: Any) -> Any:
         """Protect the claim before its first task/execution-store writes."""
 
+        self._require_live_typed_owner()
         protect = getattr(self.coordinator, "protect_task_claim", None)
         if not callable(protect):
             raise DatabaseImplementationAuthorityError(
@@ -71883,9 +72040,87 @@ class DatabaseImplementationDaemon:
                 quarantined.add(task_cid)
         self._last_unsettled_quarantine_task_cids = tuple(sorted(quarantined))
         excluded.update(quarantined)
+        # An expired coordination lease is not evidence that a dispatched
+        # callback had no effects. Retain custody across process restarts too.
+        for row in self._require_connection().execute(
+            "SELECT task_cid, result_json FROM provider_invocations"
+        ).fetchall():
+            if _database_daemon_load_json(row[1]).get("callback_state") == "started_outcome_unknown":
+                excluded.add(str(row[0]))
         return excluded
 
     # -- claim / attempt ----------------------------------------------------
+
+    def _require_live_typed_owner(self) -> None:
+        expected = self._typed_quack_authority_binding
+        if expected is None:
+            return
+        observed = self.task_source.require_quack_authority_binding(
+            expected_endpoint=self._quack_uri,
+            expected_process_instance_id=self.process_instance_id,
+        )
+        if dict(observed) != expected:
+            raise DatabaseImplementationAuthorityError("typed owner binding changed; reopen with current credentials")
+
+    def _typed_claim_receipt(self, claim: Any, task: Any) -> dict[str, Any]:
+        receipt = self._database_claim_receipt(claim)
+        if self.max_task_attempts > 0 or self._typed_quack_authority_binding is not None:
+            receipt["claimed_from_revision"] = int(task.revision)
+        if self._typed_quack_authority_binding is not None:
+            from ..task_sources.typed_state_owner import TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+
+            self._require_live_typed_owner()
+            route = dict(self.task_source.execution_route_binding_for_task(task))
+            receipt.update(
+                task_prefix=self.task_prefix, task_shard_count=self.task_shard_count,
+                task_shard_index=self.task_shard_index, strict_task_sharding=self.strict_task_sharding,
+                idle_lane_work_stealing="",
+                claim_phase_schema=TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+                claim_process_attestation=dict(self.task_source.claim_process_attestation()),
+                execution_route_binding=route,
+                execution_route_policy_id=route["policy_id"],
+                execution_route_origin_revision=route["task_revision"],
+            )
+        return receipt
+
+    def _promote_typed_claim(self, attempt: DatabaseTaskAttempt, claim: Any) -> DatabaseTaskAttempt:
+        if self._typed_quack_authority_binding is None:
+            return attempt
+        from ..task_sources.typed_state_owner import (
+            TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA, TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        )
+
+        self._protect_attempt_write(attempt)
+        task = self.task_source.get(attempt.task_cid)
+        reservation = dict(getattr(task, "body", {}).get("completion_receipt") or {})
+        if (
+            task is None or task.status != "in_progress"
+            or reservation.get("claim_phase_schema") != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            or any(reservation.get(k) != v for k, v in self._database_claim_receipt(claim).items())
+            or reservation.get("claim_process_attestation") != dict(self.task_source.claim_process_attestation())
+            or attempt.committed_phase != ATTEMPT_PHASE_CLAIMED or attempt.revision != 1
+        ):
+            raise DatabaseImplementationAuthorityError("typed admission differs from exact local reservation")
+        admitted = {
+            **reservation, "operation": "database_attempt_admitted",
+            "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            "admitted_from_revision": int(task.revision),
+            "attempt_execution_phase": ATTEMPT_PHASE_CLAIMED, "attempt_execution_revision": 1,
+        }
+        result = self._cas_task_status_database(
+            attempt.task_cid, expected_revision=int(task.revision), new_status="in_progress", receipt=admitted,
+        )
+        self._protect_attempt_write(attempt)
+        binding = self._control_claim_binding(claim, result.task)
+        body = {**dict(attempt.body), "control_binding": binding}
+        self._require_connection().execute(
+            "UPDATE database_task_attempts SET body_json = ? WHERE attempt_id = ? AND revision = 1 AND status = 'running'",
+            [_database_daemon_json(body), attempt.attempt_id],
+        )
+        updated = self.get_attempt(attempt.attempt_id)
+        if updated is None or updated.body.get("control_binding") != binding:
+            raise DatabaseImplementationAuthorityError("typed admission local binding CAS failed")
+        return updated
 
     @staticmethod
     def _database_claim_receipt(claim: Any) -> dict[str, Any]:
@@ -71912,12 +72147,19 @@ class DatabaseImplementationDaemon:
         if not isinstance(body, Mapping):
             return False
         receipt = body.get("completion_receipt")
-        return isinstance(receipt, Mapping) and dict(receipt) == (
-            cls._database_claim_receipt(claim)
-        )
+        if not isinstance(receipt, Mapping):
+            return False
+        expected = cls._database_claim_receipt(claim)
+        if "claimed_from_revision" in receipt:
+            expected["claimed_from_revision"] = int(task.revision) - 1
+        return dict(receipt) == expected
 
     def _positive_claim_selection(self) -> dict[str, Any]:
         """Select the actual lane before the canonical readiness result limit."""
+        if self._typed_quack_authority_binding is not None:
+            # This native adapter has a bounded complete population snapshot,
+            # not the indexed filtering API. Lane checks still run after claim.
+            return {}
         filters: dict[str, Any] = {"automatic_only": True}
         if self.task_prefix:
             filters["task_prefix"] = self.task_prefix
@@ -71931,7 +72173,17 @@ class DatabaseImplementationDaemon:
         return filters
 
     def _task_goal_is_inconclusive(self, task: Any) -> bool:
-        goal = self.task_source.get_goal(str(getattr(task, "goal_cid", "") or ""))
+        goal_cid = str(getattr(task, "goal_cid", "") or "")
+        if self._typed_quack_authority_binding is not None:
+            self._require_live_typed_owner()
+            row, _records, _revision = self.task_source._snapshot_material()
+            goals = json.loads(row["goals_json"])
+            matching = [goal for goal in goals if goal.get("goal_cid") == goal_cid]
+            if len(matching) != 1:
+                raise DatabaseImplementationAuthorityError("typed claim has no unique canonical goal")
+            goal = matching[0]
+        else:
+            goal = self.task_source.get_goal(goal_cid)
         if not isinstance(goal, Mapping):
             raise DatabaseImplementationAuthorityError("claim candidate has no canonical owning goal")
         return str(goal.get("status") or "") == "analysis_inconclusive"
@@ -72228,6 +72480,7 @@ class DatabaseImplementationDaemon:
         self._last_orphan_claim_reconciliations = ()
         self._last_unsettled_quarantine_task_cids = ()
         self._last_native_dispatch_boundary = {}
+        self._reconcile_bounded_pre_effect_retries()
         dispatch_control = getattr(self, "_native_dispatch_control", None)
         if dispatch_control is not None:
             # This is solely the NEW claim boundary. Reconciliation and resume
@@ -72279,9 +72532,11 @@ class DatabaseImplementationDaemon:
                 accept_task_cid=accept_task_cid,
             )
         if claim is None:
-            parked_goals.update(self.task_source.parked_ready_task_cids(
-                limit=TASK_SOURCE_QUERY_LIMIT, **self._positive_claim_selection(),
-            ))
+            parked_reader = getattr(self.task_source, "parked_ready_task_cids", None)
+            if callable(parked_reader):
+                parked_goals.update(parked_reader(
+                    limit=TASK_SOURCE_QUERY_LIMIT, **self._positive_claim_selection(),
+                ))
             if parked_goals:
                 self._last_claim_withdrawal = {
                     "admitted": False,
@@ -72312,7 +72567,7 @@ class DatabaseImplementationDaemon:
             # the execution attempt before a provider can run.
             if task_status in _DATABASE_CONTROL_READY_STATUSES:
                 self._protect_new_claim(claim)
-                claim_receipt = self._database_claim_receipt(claim)
+                claim_receipt = self._typed_claim_receipt(claim, task)
                 try:
                     cas_result = self._cas_task_status_database(
                         task.task_cid,
@@ -72422,6 +72677,7 @@ class DatabaseImplementationDaemon:
                     reason="execution_attempt_admission_failed",
                 )
                 raise
+        attempt = self._promote_typed_claim(attempt, claim)
         self._record_event(
             "task_claimed",
             attempt_id=attempt.attempt_id,
@@ -73037,11 +73293,36 @@ class DatabaseImplementationDaemon:
         """
 
         self._protect_attempt_write(attempt)
+        if self._typed_quack_authority_binding is not None:
+            from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+
+            task = self.task_source.get(attempt.task_cid)
+            receipt = dict(getattr(task, "body", {}).get("completion_receipt") or {})
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            expected = {**self._database_claim_receipt(claim), "operation": "database_attempt_admitted"}
+            binding = attempt.body.get("control_binding") or {}
+            if (
+                task is None or task.status != "in_progress"
+                or any(type(receipt.get(k)) is not type(v) or receipt.get(k) != v for k, v in expected.items())
+                or receipt.get("claim_phase_schema") != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                or receipt.get("claim_process_attestation") != dict(self.task_source.claim_process_attestation())
+                or receipt.get("attempt_execution_phase") != ATTEMPT_PHASE_CLAIMED
+                or type(receipt.get("attempt_execution_revision")) is not int
+                or receipt["attempt_execution_revision"] != 1
+                or receipt.get("admitted_from_revision") != task.revision - 1
+                or receipt.get("claimed_from_revision") != task.revision - 2
+                or binding != self._control_claim_binding(claim, task)
+            ):
+                raise DatabaseImplementationAuthorityError("provider requires exact owner-admitted task and control binding")
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
         )
         if prior is not None:
+            if prior.get("callback_state") == "started_outcome_unknown":
+                from .database_portal_bridge import DatabasePortalBridgeDeferred
+
+                raise DatabasePortalBridgeDeferred("provider_callback_outcome_unknown")
             if _unapplied_router_proposal(prior) and key != f"provider:{attempt.attempt_id}":
                 raise DatabaseImplementationAuthorityError("router refusal requires the canonical provider key")
             if self.require_real_execution and not _unapplied_router_proposal(prior) and (
@@ -73084,6 +73365,29 @@ class DatabaseImplementationDaemon:
                 "task_cid": attempt.task_cid,
             }
         else:
+            from .database_portal_bridge import DatabasePortalExecutionBridge
+
+            if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
+                # Commit dispatch intent before entering the native bridge.
+                # A candidate refusal is diagnostic evidence, not proof that
+                # this callback's external effects have settled.
+                self._require_connection().execute(
+                    """INSERT INTO provider_invocations(
+                        invocation_id, attempt_id, task_cid, idempotency_key,
+                        owner_session_id, recorded_at_ms, result_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    [_database_daemon_new_id("provider"), attempt.attempt_id,
+                     attempt.task_cid, key, self.owner_session_id, self._now_ms(),
+                     _database_daemon_json({
+                         "schema": "database-portal-callback-intent@1",
+                         "callback_state": "started_outcome_unknown",
+                         "provider_effect_state": "unknown_may_have_started",
+                         "attempt_id": attempt.attempt_id, "task_cid": attempt.task_cid,
+                         "claim_id": attempt.claim_id, "lease_id": attempt.lease_id,
+                         "fencing_token": int(attempt.fencing_token),
+                         "fence_epoch": int(attempt.fence_epoch),
+                     })],
+                )
             result = dict(
                 self._run_with_attempt_heartbeat(
                     attempt,
@@ -73107,6 +73411,8 @@ class DatabaseImplementationDaemon:
                 invocation_id, attempt_id, task_cid, idempotency_key,
                 owner_session_id, recorded_at_ms, result_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (attempt_id, idempotency_key) DO UPDATE
+            SET result_json = excluded.result_json, recorded_at_ms = excluded.recorded_at_ms
             """,
             [
                 _database_daemon_new_id("provider"),
@@ -73269,6 +73575,7 @@ class DatabaseImplementationDaemon:
         expected_revision: int,
         new_status: str,
         receipt: Mapping[str, Any] | None = None,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> Any:
         # Never touch Markdown under database authority.
@@ -73287,6 +73594,7 @@ class DatabaseImplementationDaemon:
             expected_revision=int(expected_revision),
             status=new_status,
             receipt=receipt,
+            expected_control_receipt=expected_control_receipt,
             evidence_digests=evidence_digests,
         )
 
@@ -73353,6 +73661,12 @@ class DatabaseImplementationDaemon:
                 )
             control_completion_receipt: Mapping[str, Any] = task.to_dict()
         else:
+            admitted_control_receipt = task.body.get("completion_receipt")
+            if not isinstance(admitted_control_receipt, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "database completion requires the current admitted control receipt"
+                )
+            expected_control_receipt = dict(admitted_control_receipt)
             prepare_completion = getattr(
                 self.coordinator,
                 "prepare_task_completion",
@@ -73377,6 +73691,7 @@ class DatabaseImplementationDaemon:
             )
             self.task_source.record_validation_result(
                 task_cid=current.task_cid,
+                attempt_id=current.attempt_id,
                 outcome=str(validation_payload.get("outcome") or "passed"),
                 evidence_digest=digest,
                 argv=list(
@@ -73393,6 +73708,7 @@ class DatabaseImplementationDaemon:
                 current.task_cid,
                 expected_revision=int(task.revision),
                 new_status="completed",
+                expected_control_receipt=expected_control_receipt,
                 receipt={
                     "operation": "database_complete",
                     "attempt_id": current.attempt_id,
@@ -75146,6 +75462,192 @@ class DatabaseImplementationDaemon:
             reconciled.append(result)
         return reconciled
 
+    def _persist_bounded_portal_retry(
+        self, attempt: DatabaseTaskAttempt, *, failure: Any,
+    ) -> dict[str, Any]:
+        """Persist a closed pre-effect deferral or a diagnostic candidate miss.
+
+        Only the exact lifecycle-contention deferral releases custody. A
+        dispatched candidate keeps both its claim and its unknown callback.
+        Queue publication precedes the canonical revision CAS.
+        """
+        from .database_portal_bridge import DatabasePortalBridgeDeferred, DatabasePortalCandidateRetry
+        from .database_attempt_feedback import _diagnostics
+
+        pre_effect = (
+            type(failure) is DatabasePortalBridgeDeferred
+            and str(failure) == "worktree_lifecycle_claim_exists"
+            and failure.attempt_consumed is False
+            and failure.provider_dispatched is False
+        )
+        candidate = type(failure) is DatabasePortalCandidateRetry
+        if not (pre_effect or candidate):
+            raise DatabaseImplementationAuthorityError("retry has no closed Portal classification")
+        current = self.get_attempt(attempt.attempt_id)
+        if current is None:
+            raise DatabaseImplementationAuthorityError("retry attempt is unavailable")
+        self._protect_attempt_claim(current, self.coordinator.get_task_claim(current.claim_id))
+        if any(row["phase"] in {ATTEMPT_PHASE_PROVIDER, ATTEMPT_PHASE_EFFECT}
+               for row in self.phase_history(current.attempt_id)):
+            raise DatabaseImplementationAuthorityError("Portal retry cannot retire committed provider or effect work")
+        if self.effect_claim_recorded(current.attempt_id, idempotency_key=f"effect:{current.attempt_id}") is not None:
+            raise DatabaseImplementationAuthorityError("Portal retry has an effect receipt")
+        callback = self.provider_invocation_recorded(current.attempt_id, idempotency_key=f"provider:{current.attempt_id}")
+        if callback is not None and (
+            callback.get("schema") != "database-portal-callback-intent@1"
+            or callback.get("callback_state") not in {"started_outcome_unknown", "not_dispatched"}
+            or any(callback.get(name) != getattr(current, name) for name in (
+                "attempt_id", "claim_id", "lease_id", "fencing_token", "fence_epoch",
+            ))
+        ):
+            raise DatabaseImplementationAuthorityError("Portal retry has an accepted or foreign callback receipt")
+        delay = failure.backoff_seconds
+        if type(delay) is not int or not 0 <= delay <= 86400:
+            raise DatabaseImplementationAuthorityError("Portal retry backoff exceeds bound")
+        reason = str(failure)
+        diagnostics = {"reason": reason}
+        raw = getattr(failure, "result", {})
+        impl = raw.get("implementation", {}) if isinstance(raw, Mapping) else {}
+        validation = impl.get("validation_result", {}) if isinstance(impl, Mapping) else {}
+        gate = validation.get("proposal_gate", {}) if isinstance(validation, Mapping) else {}
+        if isinstance(gate, Mapping) and isinstance(gate.get("reason_codes"), list):
+            diagnostics["finding_codes"] = gate["reason_codes"]
+        diagnostics = _diagnostics(diagnostics)
+        exhausted = self.max_task_attempts <= 0 or current.attempt_number >= self.max_task_attempts
+        phase_body = {
+            "schema": "database-bounded-portal-retry@1",
+            "reason": reason, "pre_effect": pre_effect,
+            "attempt_consumed": not pre_effect, "provider_dispatched": not pre_effect,
+            "backoff_seconds": delay, "max_task_attempts": self.max_task_attempts,
+            "retry_budget_exhausted": exhausted,
+            "budget_kind": "coordination_attempt_safety_cap",
+            "candidate_failure_diagnostics": diagnostics,
+        }
+        if current.committed_phase != ATTEMPT_PHASE_FAILED:
+            current = self.commit_phase(current, ATTEMPT_PHASE_FAILED, body=phase_body)
+        else:
+            failed = [row for row in self.phase_history(current.attempt_id) if row["phase"] == ATTEMPT_PHASE_FAILED]
+            if len(failed) != 1 or failed[0]["body"] != phase_body:
+                raise DatabaseImplementationAuthorityError("durable retry phase differs")
+        task = self.task_source.get(current.task_cid)
+        identity = {
+            "attempt_id": current.attempt_id, "claim_id": current.claim_id,
+            "lease_id": current.lease_id, "owner_session_id": current.owner_session_id,
+            "attempt_number": int(current.attempt_number), "fencing_token": int(current.fencing_token),
+            "fence_epoch": int(current.fence_epoch),
+        }
+        if task is None:
+            raise DatabaseImplementationAuthorityError("retry has no canonical task")
+        prior_receipt = task.body.get("completion_receipt")
+        if not isinstance(prior_receipt, Mapping) or any(prior_receipt.get(k) != v for k, v in identity.items()):
+            raise DatabaseImplementationAuthorityError("retry does not own the current control receipt")
+        status = "blocked" if exhausted else "retrying"
+        queue_reason = f"database_portal_retry:{current.attempt_id}:{reason}"
+        receipt = {
+            "operation": "database_portal_retry_budget_exhausted" if exhausted else "database_portal_retry",
+            **identity, **diagnostics,
+            "execution_phase": current.committed_phase, "execution_revision": int(current.revision),
+            "execution_finished_at_ms": current.finished_at_ms,
+            "backoff_seconds": delay, "backoff_ms": delay * 1000,
+            "queue_reason": queue_reason, "max_task_attempts": self.max_task_attempts,
+            "budget_kind": "coordination_attempt_safety_cap",
+            "attempt_consumed": not pre_effect, "provider_dispatched": not pre_effect,
+            "control_expected_status": "in_progress",
+            "control_expected_revision": int(task.revision),
+        }
+        route_names = {"execution_route_binding", "execution_route_policy_id", "execution_route_origin_revision"}
+        present = route_names.intersection(prior_receipt)
+        if present and present != route_names:
+            raise DatabaseImplementationAuthorityError("retry has partial execution route lineage")
+        receipt.update({name: prior_receipt[name] for name in present})
+        if task.status == "in_progress":
+            if not exhausted:
+                self._protect_attempt_claim(current, self.coordinator.get_task_claim(current.claim_id))
+                typed_queue = getattr(self.task_source, "record_task_retry_cooldown", None)
+                existing_queue = self.task_source.get_queue_entry(current.task_cid)
+                exact_queue = existing_queue is not None and existing_queue.reason == queue_reason
+                if exact_queue and not callable(typed_queue):
+                    pass
+                elif callable(typed_queue):
+                    typed_queue(
+                        task_cid=current.task_cid, expected_task_revision=int(task.revision),
+                        expected_task_status="in_progress", **identity,
+                        delay_ms=delay * 1000, reason=queue_reason,
+                        now_ms=(int(existing_queue.retry_not_before_ms) - delay * 1000
+                                if exact_queue else self._now_ms()),
+                    )
+                else:
+                    self.task_source.record_queue_backoff(task_cid=current.task_cid, delay_ms=delay * 1000, reason=queue_reason)
+                queue = self.task_source.get_queue_entry(current.task_cid)
+                if queue is None or queue.reason != queue_reason:
+                    raise DatabaseImplementationAuthorityError("retry has no exact durable cooldown")
+                receipt["retry_not_before_ms"] = int(queue.retry_not_before_ms)
+            self._protect_attempt_claim(current, self.coordinator.get_task_claim(current.claim_id))
+            result = self._cas_task_status_database(
+                current.task_cid, expected_revision=int(task.revision), new_status=status, receipt=receipt,
+            )
+            if result.task.status != status or dict(result.task.body.get("completion_receipt") or {}) != receipt:
+                raise DatabaseImplementationAuthorityError("retry CAS returned different authority")
+        elif task.status == status and prior_receipt.get("operation") == receipt["operation"]:
+            # Exact immutable execution cursor is needed after a lost CAS
+            # response. A neighboring retry receipt never authorizes release.
+            if any(prior_receipt.get(k) != receipt[k] for k in (
+                "reason", "execution_phase", "execution_revision", "execution_finished_at_ms", "max_task_attempts",
+            )):
+                raise DatabaseImplementationAuthorityError("retry replay differs from durable receipt")
+        else:
+            raise DatabaseImplementationAuthorityError("retry control status changed")
+        if pre_effect:
+            self._protect_attempt_claim(current, self.coordinator.get_task_claim(current.claim_id))
+            self._require_connection().execute(
+                """UPDATE provider_invocations SET result_json = ?
+                   WHERE attempt_id = ? AND idempotency_key = ?""",
+                [_database_daemon_json({"schema": "database-portal-callback-intent@1",
+                    **identity, "callback_state": "not_dispatched", "provider_effect_state": "not_started",
+                    "reason": reason}), current.attempt_id, f"provider:{current.attempt_id}"],
+            )
+            claim = self.coordinator.get_task_claim(current.claim_id)
+            self._protect_attempt_claim(current, claim)
+            self.coordinator.release(
+                claim.as_fenced_lease(), reason=queue_reason,
+                expected_fencing_token=current.fencing_token, expected_fence_epoch=current.fence_epoch,
+                now_ms=self._now_ms(),
+            )
+        return {"resumed": True, "deferred": pre_effect, "portal_retryable_failure": True,
+                "reason": reason, "attempt_id": current.attempt_id, "task_alias": current.task_alias,
+                "status": status, "retry_budget_exhausted": exhausted}
+
+    def _reconcile_bounded_pre_effect_retries(self) -> None:
+        """Finish only our durable, closed pre-effect transition after a crash."""
+        from .database_portal_bridge import DatabasePortalBridgeDeferred
+
+        rows = self._require_connection().execute(
+            """SELECT a.attempt_id, p.body_json FROM database_task_attempts AS a
+               JOIN attempt_phases AS p ON a.attempt_id = p.attempt_id
+               WHERE a.owner_session_id = ? AND a.status = 'failed' AND p.phase = 'failed'
+               ORDER BY a.started_at_ms DESC LIMIT ?""",
+            [self.owner_session_id, TASK_SOURCE_QUERY_LIMIT],
+        ).fetchall()
+        for row in rows:
+            attempt_id, raw = row[0], row[1]
+            body = _database_daemon_load_json(raw)
+            if not (
+                body.get("schema") == "database-bounded-portal-retry@1"
+                and body.get("reason") == "worktree_lifecycle_claim_exists"
+                and body.get("pre_effect") is True
+                and body.get("attempt_consumed") is False
+                and body.get("provider_dispatched") is False
+            ):
+                continue
+            attempt = self.get_attempt(str(attempt_id))
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            if claim is None or claim.state.value != "accepted":
+                continue
+            self._protect_attempt_claim(attempt, claim)
+            self._persist_bounded_portal_retry(attempt, failure=DatabasePortalBridgeDeferred(
+                body["reason"], backoff_seconds=body["backoff_seconds"],
+            ))
+
     def _resume_attempt_without_process_crash(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -75164,7 +75666,16 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
+                DatabasePortalCandidateRetry,
             )
+
+            if (
+                type(exc) is DatabasePortalCandidateRetry
+                or (type(exc) is DatabasePortalBridgeDeferred
+                    and str(exc) == "worktree_lifecycle_claim_exists"
+                    and exc.attempt_consumed is False and exc.provider_dispatched is False)
+            ):
+                return self._persist_bounded_portal_retry(attempt, failure=exc)
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
@@ -75201,6 +75712,36 @@ class DatabaseImplementationDaemon:
                 exc = DatabasePortalBridgeError(reason)
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
+            callback = self.provider_invocation_recorded(
+                attempt.attempt_id, idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            if callback is not None and callback.get("callback_state") == "started_outcome_unknown":
+                # A bridge exception cannot settle a dispatch intent. Native
+                # callback/effect reconciliation must supply that evidence.
+                import traceback
+                diagnostics = []
+                observed_exception = exc
+                while observed_exception is not None and len(diagnostics) < 4:
+                    diagnostics.append({
+                        "exception_type": type(observed_exception).__name__,
+                        "message_sha256": hashlib.sha256(str(observed_exception).encode()).hexdigest(),
+                        "frames": [{"file": Path(frame.filename).name, "line": frame.lineno,
+                                    "function": frame.name}
+                                   for frame in traceback.extract_tb(observed_exception.__traceback__)[-8:]],
+                    })
+                    observed_exception = observed_exception.__cause__ or observed_exception.__context__
+                diagnostic = {"schema": "database-bridge-unknown-diagnostic@1",
+                              "exceptions": diagnostics, "settlement_authority": False}
+                self._record_event("provider_callback_outcome_unknown_diagnostic",
+                                   attempt_id=attempt.attempt_id, task_cid=attempt.task_cid,
+                                   body=diagnostic)
+                logger.error("Native bridge callback retains unresolved custody: %s", diagnostic)
+                return {
+                    "resumed": True, "deferred": True,
+                    "reason": "provider_callback_outcome_unknown",
+                    "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
+                    "status": "running",
+                }
             if operator_session_stop_failure(exc) or self._attempt_operator_stop_projection(
                 attempt
             ):
@@ -75732,6 +76273,12 @@ def open_database_implementation_daemon(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the portal implementation backlog daemon")
+    parser.add_argument("--state-owner-bootstrap-fd", type=int, default=-1,
+                        help="Inherited private listener for a native PID-bound owner grant")
+    parser.add_argument("--state-owner-client-id", default="",
+                        help="Exact native owner client scope for the inherited bootstrap")
+    parser.add_argument("--task-context-bundle-artifact", default="")
+    parser.add_argument("--task-context-bundle-sha256", default="")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
     parser.add_argument("--interval", type=float, default=300.0, help="Seconds between backlog passes")
     parser.add_argument(
@@ -76277,6 +76824,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if use_database_daemon:
+        from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+        owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
         authority_mode = (
             program.authority_mode
             if program is not None
@@ -76305,10 +76854,14 @@ def main(argv: list[str] | None = None) -> None:
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(args.implement),
+            max_task_attempts=int(args.max_task_attempts),
+            execution_slice_task_cids=tuple(args.execution_slice_task_cid),
+            execution_slice_task_ids=tuple(args.execution_slice_task_id),
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
             task_shard_count=args.task_shard_count,
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,
+            **owner_bootstrap,
         )
         from ..runtime.native_dispatch_drain import from_native_admission
         daemon._native_dispatch_control = from_native_admission(
@@ -76325,6 +76878,8 @@ def main(argv: list[str] | None = None) -> None:
             ),
         )
     else:
+        if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
+            raise ValueError("native owner bootstrap cannot enter the legacy daemon")
         daemon = PortalImplementationDaemon(
             todo_path=args.todo_path,
             task_source=(
@@ -76388,6 +76943,13 @@ def main(argv: list[str] | None = None) -> None:
             validation_resource_budget=args.validation_resource_budget,
             maintenance_interval_seconds=args.maintenance_interval_seconds,
         )
+    native_owner_heartbeat = None
+    if use_database_daemon and owner_bootstrap:
+        from .native_owner_bootstrap import NativeOwnerHeartbeat
+        native_owner_heartbeat = NativeOwnerHeartbeat(
+            credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
+            state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
+        ).start()
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
@@ -76447,7 +77009,11 @@ def main(argv: list[str] | None = None) -> None:
         while True:
             if shutdown is not None:
                 shutdown.checkpoint()
-            result = daemon.run_once()
+            if use_database_daemon and owner_bootstrap and not args.implement:
+                from .native_owner_bootstrap import observe_typed_database_without_dispatch
+                result = observe_typed_database_without_dispatch(daemon)
+            else:
+                result = daemon.run_once()
             if use_database_daemon:
                 database_pass_sequence += 1
                 publish_database_daemon_pass_heartbeat(
@@ -76500,6 +77066,8 @@ def main(argv: list[str] | None = None) -> None:
                 time.sleep(wait_timeout)
     finally:
         try:
+            if native_owner_heartbeat is not None:
+                native_owner_heartbeat.close()
             close_event_runtime = getattr(daemon, "close_event_runtime", None)
             if callable(close_event_runtime):
                 close_event_runtime()
@@ -76570,8 +77138,6 @@ except (OSError, ValueError, subprocess.SubprocessError):
 _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION: Any | None = None
 
 
-if __name__ == "__main__":
-    main()
 
 
 # --- merged from origin/main ---
@@ -76977,3 +77543,313 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
+
+
+POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-declared-output-repair@1"
+)
+
+
+DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery@1"
+)
+
+
+
+_TYPED_QUACK_STABLE_BINDING_CID_PATTERN = re.compile(
+    r"baguqeera[a-z2-7]{52}\Z", re.ASCII
+)
+
+
+def _open_or_create_database_lock_parent(path: Path) -> tuple[int, str]:
+    """Open/create a lock parent one no-follow directory component at a time."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow writer-lock directory access is unavailable")
+    unresolved = path.expanduser()
+    if any(component == ".." for component in unresolved.parts):
+        raise OSError("writer-lock path contains parent traversal")
+    candidate = unresolved if unresolved.is_absolute() else Path.cwd() / unresolved
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    if not lexical.name:
+        raise OSError("writer-lock path has no filename")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    parent_descriptor = os.open(lexical.anchor, directory_flags)
+    try:
+        for component in lexical.parts[1:-1]:
+            try:
+                child_descriptor = os.open(
+                    component,
+                    directory_flags,
+                    dir_fd=parent_descriptor,
+                )
+            except FileNotFoundError:
+                try:
+                    os.mkdir(component, 0o700, dir_fd=parent_descriptor)
+                except FileExistsError:
+                    pass
+                child_descriptor = os.open(
+                    component,
+                    directory_flags,
+                    dir_fd=parent_descriptor,
+                )
+            os.close(parent_descriptor)
+            parent_descriptor = child_descriptor
+    except BaseException:
+        os.close(parent_descriptor)
+        raise
+    return parent_descriptor, lexical.name
+
+
+def _write_database_writer_lock_binding(handle: Any, binding_id: str) -> None:
+    """Durably replace and verify one held writer-lock authority pin."""
+
+    if (
+        type(binding_id) is not str
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(binding_id) is None
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock target is malformed"
+        )
+    expected = (binding_id + "\n").encode("ascii")
+    handle.seek(0)
+    handle.write(expected)
+    handle.truncate()
+    handle.flush()
+    os.fsync(handle.fileno())
+    handle.seek(0)
+    if handle.read(len(expected) + 1) != expected:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock rotation did not persist"
+        )
+
+
+def _open_database_writer_lock(lock_path: Path) -> Any:
+    """Open and exclusively lock one owned, no-follow writer-lock inode."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise DatabaseImplementationAuthorityError(
+            "embedded writer lock requires no-follow file access"
+        )
+    try:
+        parent_descriptor, filename = _open_or_create_database_lock_parent(
+            lock_path
+        )
+    except OSError as exc:
+        raise DatabaseImplementationAuthorityError(
+            "embedded writer-lock parent cannot be opened safely"
+        ) from exc
+    descriptor = -1
+    locked = False
+    try:
+        parent_info = os.fstat(parent_descriptor)
+        if (
+            not stat_module.S_ISDIR(parent_info.st_mode)
+            or parent_info.st_uid != os.geteuid()
+            or stat_module.S_IMODE(parent_info.st_mode) & 0o022
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock parent must be owned and non-writable by peers"
+            )
+        try:
+            descriptor = os.open(
+                filename,
+                os.O_RDWR
+                | os.O_CREAT
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | nofollow,
+                0o600,
+                dir_fd=parent_descriptor,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer lock cannot be opened safely"
+            ) from exc
+        before = os.fstat(descriptor)
+        try:
+            named_before = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock pathname changed before admission"
+            ) from exc
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat_module.S_IMODE(before.st_mode) & 0o022
+            or (before.st_dev, before.st_ino)
+            != (named_before.st_dev, named_before.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer lock must be an owned single-link regular file"
+            )
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        locked = True
+        after = os.fstat(descriptor)
+        try:
+            named_after = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock pathname changed during admission"
+            ) from exc
+        if (
+            not stat_module.S_ISREG(after.st_mode)
+            or after.st_uid != os.geteuid()
+            or after.st_nlink != 1
+            or stat_module.S_IMODE(after.st_mode) != 0o600
+            or (after.st_dev, after.st_ino)
+            != (named_after.st_dev, named_after.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock identity changed during admission"
+            )
+        handle = os.fdopen(descriptor, "r+b", buffering=0)
+        descriptor = -1
+        return handle
+    except BaseException:
+        if descriptor >= 0:
+            try:
+                if locked:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+        raise
+    finally:
+        os.close(parent_descriptor)
+
+
+def _database_daemon_quack_sidecar_paths(
+    control_path: Path | str,
+    *,
+    coordination_path: Path | str | None = None,
+    execution_path: Path | str | None = None,
+) -> tuple[Path, Path]:
+    """Derive distinct lane-private sidecars without granting task authority."""
+
+    control = Path(control_path).expanduser().absolute()
+    if coordination_path is not None:
+        coordination = Path(coordination_path).expanduser().absolute()
+    elif control.suffix.lower() in {".duckdb", ".ddb"}:
+        coordination = control.with_name(f"{control.stem}.coordination.duckdb")
+    else:
+        coordination = control.with_name(
+            f"{control.name or 'control'}.coordination.duckdb"
+        )
+    if execution_path is not None:
+        execution = Path(execution_path).expanduser().absolute()
+    elif control.suffix.lower() in {".duckdb", ".ddb"}:
+        execution = control.with_name(f"{control.stem}.execution.duckdb")
+    else:
+        execution = control.with_name(
+            f"{control.name or 'control'}.execution.duckdb"
+        )
+
+    def storage_targets_alias(left: Path, right: Path) -> bool:
+        if left.resolve(strict=False) == right.resolve(strict=False):
+            return True
+        if not left.exists() or not right.exists():
+            return False
+        try:
+            return os.path.samefile(left, right)
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "quack sidecar inode separation could not be verified"
+            ) from exc
+
+    if storage_targets_alias(coordination, control):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination sidecar must not alias the canonical control database"
+        )
+    if storage_targets_alias(execution, control):
+        raise DatabaseImplementationAuthorityError(
+            "quack execution sidecar must not alias the canonical control database"
+        )
+    if storage_targets_alias(coordination, execution):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination and execution sidecars must be distinct"
+        )
+    coordination_lock = coordination.with_name(
+        f".{coordination.name}.writer.lock"
+    )
+    execution_lock = execution.with_name(f".{execution.name}.writer.lock")
+    storage_targets = (
+        ("control", control),
+        ("coordination", coordination),
+        ("execution", execution),
+    )
+    lock_targets = (
+        ("coordination writer lock", coordination_lock),
+        ("execution writer lock", execution_lock),
+    )
+    for lock_name, lock_target in lock_targets:
+        for storage_name, storage_target in storage_targets:
+            if storage_targets_alias(lock_target, storage_target):
+                raise DatabaseImplementationAuthorityError(
+                    f"quack {lock_name} must not alias the {storage_name} store"
+                )
+    if storage_targets_alias(coordination_lock, execution_lock):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination and execution writer locks must be distinct"
+        )
+    return coordination, execution
+
+
+
+from ..validation.validation_runtime import PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA
+
+from ..validation.validation_runtime import PROOF_REUSE_STATE_ROOT_ENV
+
+PROVIDER_ROUTE_RECEIPT_SCHEMA = "ipfs_accelerate_py/provider-route@1"
+
+
+MAX_PROVIDER_ROUTE_RECEIPT_BYTES = 16 * 1024
+
+
+MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES = 16 * 1024
+
+
+MAX_ACTIONABLE_RETRY_TEXT_BYTES = 2_048
+
+
+ACTIONABLE_RETRY_EVIDENCE_SCHEMA = "ptr/actionable-retry-evidence@1"
+
+
+RECONCILIATION_PROPOSAL_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-proposal-admission@1"
+)
+
+
+RECONCILIATION_LIFECYCLE_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "reconciliation-lifecycle-authority@1"
+)
+
+
+# Retained-callback recovery contracts restored from pinned history.
+DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2 = 'ipfs_accelerate_py/agent-supervisor/database-post-merge-completion-recovery-seed@2'
+
+_DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_RECEIPT_FIELDS = frozenset(['attempt_id', 'attempt_number', 'callback_reconciliation_evidence_id', 'callback_requalification_receipt_id', 'candidate_commit', 'claim_id', 'control_expected_revision', 'control_expected_status', 'coordination', 'execution_finished_at_ms', 'execution_phase', 'execution_revision', 'fence_epoch', 'fencing_token', 'lease_id', 'operation', 'owner_session_id', 'post_merge_completion_recovery_seed', 'qualified_target_commit', 'queue_reason', 'queue_receipt', 'request_id', 'source_binding_id', 'source_integration_commit', 'source_projection_immutable_digest', 'source_train_receipt_id'])
+
+
+if __name__ == "__main__":
+    main()

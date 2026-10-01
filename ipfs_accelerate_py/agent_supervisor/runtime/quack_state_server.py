@@ -4044,13 +4044,18 @@ class InProcessQuackTransport:
         token: str,
         identity: StateServerIdentity,
     ) -> Mapping[str, Any]:
+        # The locked owner connection disables extension autoload. Quack's
+        # request handler requires httpfs even though quack_serve itself can
+        # start without it. Load both installed dependencies explicitly; never
+        # install bytes or loosen the connection policy to make serving work.
         # Never log token.
-        try:
-            connection.execute("LOAD quack")
-        except Exception as exc:
-            raise QuackStateServerCapabilityError(
-                f"failed to LOAD quack for state-owner: {type(exc).__name__}"
-            ) from exc
+        for extension in ("httpfs", "quack"):
+            try:
+                connection.execute(f"LOAD {extension}")
+            except Exception as exc:
+                raise QuackStateServerCapabilityError(
+                    f"failed to LOAD {extension} for state-owner: {type(exc).__name__}"
+                ) from exc
 
         uri = listen_uri(host, port)
         # Quack beta surface: try function forms without embedding token in SQL

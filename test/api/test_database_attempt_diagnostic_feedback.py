@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -444,8 +445,9 @@ def test_typed_window_queries_only_bounded_recent_rows_and_denies_changed_genera
 
 
 @pytest.mark.parametrize("failure_kind", ["deferral", "candidate"])
+@pytest.mark.parametrize("board_namespace", ["", "feedback-board"])
 def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
-    tmp_path, monkeypatch, failure_kind
+    tmp_path, monkeypatch, failure_kind, board_namespace
 ):
     """Real DuckDB + authenticated typed socket; no external provider dispatch.
 
@@ -548,9 +550,19 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
         )
 
         def factory(paths, alias):
-            daemon = prompt_daemon(monkeypatch)
+            daemon = implementation.PortalImplementationDaemon(
+                todo_path=paths.task_projection,
+                state_path=paths.state,
+                strategy_path=paths.strategy,
+                events_path=paths.events,
+                repo_root=tmp_path, task_header_prefix=f"## {alias}",
+                max_task_attempts=1, worktree_pool_enabled=False,
+            )
+            # Preserve real projection loading and native attempt authority
+            # verification; only prompt compilation and external work are
+            # replaced by this test's deterministic observation callback.
+            daemon.__dict__.update(prompt_daemon(monkeypatch).__dict__)
             daemon.bind_launch_task_execution_route = lambda _: None
-            daemon.close_event_runtime = lambda: None
 
             def one_pass():
                 text = paths.task_projection.read_text()
@@ -563,8 +575,45 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
                     import json
 
                     current = source.get_task(observed[-1]["current"]["task_cid"])
-                    exact_attempt = SimpleNamespace(**observed[-1]["current"])
+                    native_attempt = outer.get_attempt(
+                        observed[-1]["current"]["attempt_id"]
+                    )
+                    exact_attempt = SimpleNamespace(
+                        **observed[-1]["current"], body=deepcopy(native_attempt.body)
+                    )
                     exact_binding = json.loads(paths.binding.read_text())
+                    assert feedback.read_database_attempt_feedback(
+                        source, exact_attempt, current,
+                        binding=exact_binding, portal_task=task,
+                        board_namespace=board_namespace,
+                    ) == observed[-1]
+                    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+                        _canonical_json, _sha256_bytes,
+                    )
+
+                    # Even self-hashed diagnostic inputs cannot replace the
+                    # sealed native task projection or claim control tuple.
+                    for fault in ("projection", "control_owner", "control_ordinal", "board_namespace"):
+                        changed_binding = deepcopy(exact_binding)
+                        changed_attempt = deepcopy(exact_attempt)
+                        if fault == "projection":
+                            changed_binding["projection_immutable_digest"] = "sha256:" + "0" * 64
+                        elif fault != "board_namespace":
+                            control = changed_attempt.body["control_binding"]
+                            if fault == "control_owner":
+                                control["owner_session_id"] = "session:foreign"
+                            else:
+                                control["attempt_number"] = True
+                            control.pop("binding_id")
+                            control["binding_id"] = content_identity(control)
+                            changed_binding["control_binding_id"] = control["binding_id"]
+                        changed_binding.pop("binding_id")
+                        changed_binding["binding_id"] = _sha256_bytes(_canonical_json(changed_binding))
+                        assert feedback.read_database_attempt_feedback(
+                            source, changed_attempt, current,
+                            binding=changed_binding, portal_task=task,
+                            board_namespace='foreign-board' if fault == 'board_namespace' else board_namespace,
+                        ) is None, fault
                     original_reader = source.task_revision_diagnostic_window
                     original_window = dict(
                         original_reader(
@@ -578,12 +627,7 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
                         "reservation_contract",
                     ):
                         altered = deepcopy(original_window)
-                        observed_record = SimpleNamespace(
-                            **{
-                                name: getattr(current, name)
-                                for name in current.__dataclass_fields__
-                            }
-                        )
+                        observed_record = replace(current)
                         if fault.startswith("admission"):
                             last = altered["revisions"][-1]
                             if fault == "admission_revision":
@@ -594,7 +638,7 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
                                 last["body"]["completion_receipt"][
                                     "claim_process_attestation"
                                 ]["start_time_ticks"] += 1
-                            observed_record.body = last["body"]
+                            observed_record = replace(current, body=last["body"])
                         elif fault == "reservation_link":
                             altered["revisions"][-2]["body"]["completion_receipt"][
                                 "claimed_from_revision"
@@ -617,6 +661,7 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
                                     observed_record,
                                     binding=exact_binding,
                                     portal_task=task,
+                                    board_namespace=board_namespace,
                                 )
                                 is None
                             ), fault
@@ -651,6 +696,7 @@ def test_actual_typed_owner_dispatch_carries_only_exact_previous_deferral(
             attempt_root=tmp_path / "attempts",
             portal_factory=factory,
             max_task_attempts=4,
+            board_namespace=board_namespace,
         )
         outer = implementation.DatabaseImplementationDaemon(
             database_path=database,

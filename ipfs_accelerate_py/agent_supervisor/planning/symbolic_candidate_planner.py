@@ -523,6 +523,17 @@ class SymbolicCandidateRecord:
             else EvidenceAwarePlanCandidate.from_dict(self.plan)
         )
         object.__setattr__(self, "plan", plan)
+        internal_dependencies = {
+            predecessor for predecessor, _ in self.schedule.dependency_edges
+        }
+        if set(plan.branch.dependencies) != internal_dependencies:
+            raise SymbolicCandidatePlanningError(
+                "branch dependencies must match the internal schedule edges"
+            )
+        if plan.dependencies or plan.critical_path:
+            raise SymbolicCandidatePlanningError(
+                "scheduled tasks may not become externally observed prerequisites"
+            )
         object.__setattr__(
             self,
             "expected_information_gain_millionths",
@@ -910,6 +921,21 @@ class SymbolicCandidatePortfolio:
             raise SymbolicCandidatePlanningError(
                 "candidate is detached from the frozen symbolic request"
             )
+        tasks_by_id = {
+            item.candidate_id: item
+            for item in self.request.obligation_graph.task_candidates
+        }
+        for item in snapshots:
+            record = item.symbolic_candidate
+            expected_schedule, _ = _schedule(
+                record.task_candidate_ids,
+                tasks_by_id,
+                max_tasks=self.request.bounds.max_tasks_per_candidate,
+            )
+            if record.schedule != expected_schedule:
+                raise SymbolicCandidatePlanningError(
+                    "schedule must preserve the frozen task dependency graph"
+                )
         selected = self.adaptive_selection.selected_candidate_id
         selected_snapshots = [
             item for item in snapshots if item.disposition == "selected"
@@ -1362,6 +1388,7 @@ def _make_symbolic_record(
         by_id,
         max_tasks=request.bounds.max_tasks_per_candidate,
     )
+    task_ids = schedule.task_ids
     covered = tuple(
         sorted(
             {
@@ -1531,8 +1558,7 @@ def _make_symbolic_record(
         or tuple(f"task:{item.candidate_id}" for item in tasks),
         dependencies=dependencies,
         validation_commands=validations,
-        validation_proof=proof_requirements
-        or ("proof:independent-admission-required",),
+        validation_proof=proof_requirements,
         estimated_cost=cost_millionths / 1_000_000,
         risk=risk / 1_000_000,
         expected_objective_delta=information_gain / 1_000_000,
@@ -1546,13 +1572,10 @@ def _make_symbolic_record(
         validated_assumptions=policy.trusted_assumptions,
         semantic_requirements=policy.supported_semantics,
         supported_semantics=policy.supported_semantics,
-        dependencies=dependencies,
-        critical_path=tuple(
-            dependency
-            for wave in schedule.waves[:-1]
-            for dependency in wave[:1]
-            if dependency in dependencies
-        ),
+        # TaskCandidate dependencies are planned internal work. _schedule
+        # checks every predecessor edge; they are not observed source facts.
+        dependencies=(),
+        critical_path=(),
         unresolved_conflicts=tuple(
             f"unsafe_task:{item}"
             for item in sorted(unsafe_tasks.intersection(selected_ids))

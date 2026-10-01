@@ -234,9 +234,11 @@ def test_merge_producer_records_exact_target_advanced_topology(
 
 
 @pytest.mark.parametrize("target_advanced", (False, True))
+@pytest.mark.parametrize("bridge_prefix", (None, "## LGSWF-", "## ", "## OTHER-"))
 def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     tmp_path: Path,
     target_advanced: bool,
+    bridge_prefix: str | None,
 ) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
@@ -414,7 +416,7 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
         board_namespace="test-board-v1",
         configured_board_admission_cid="baguqeera" + "b" * 48,
         merge_target_branch="main",
-        task_header_prefix="## LGSWF-",
+        **({"task_header_prefix": bridge_prefix} if bridge_prefix is not None else {}),
     )
     projection_seed = bridge._render_projection(_attempt(), _record())
     binding = bridge._binding(_attempt(), _record(), projection_seed)
