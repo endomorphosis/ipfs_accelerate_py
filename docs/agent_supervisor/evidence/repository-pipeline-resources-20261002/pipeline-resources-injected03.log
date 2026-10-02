@@ -1,0 +1,73 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 28 items / 1 deselected / 27 selected
+
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change0] [32mPASSED[0m[32m [  3%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change1] [32mPASSED[0m[32m [  7%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change2] [32mPASSED[0m[32m [ 11%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change3] [32mPASSED[0m[32m [ 14%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change4] [32mPASSED[0m[32m [ 18%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change5] [32mPASSED[0m[32m [ 22%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change6] [32mPASSED[0m[32m [ 25%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change7] [32mPASSED[0m[32m [ 29%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change8] [32mPASSED[0m[32m [ 33%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change9] [32mPASSED[0m[32m [ 37%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability [32mPASSED[0m[32m [ 40%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment [32mPASSED[0m[32m [ 44%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs [32mPASSED[0m[32m [ 48%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance [32mPASSED[0m[32m [ 51%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup [32mPASSED[0m[32m [ 55%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt [32mPASSED[0m[32m [ 59%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes [32mPASSED[0m[32m [ 62%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release [32mPASSED[0m[32m [ 66%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk [32mPASSED[0m[32m [ 70%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_history_exhaustion_preserves_cleanup [32mPASSED[0m[32m [ 74%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[cpu_slots-2] [32mPASSED[0m[32m [ 77%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[memory_mb-385] [32mPASSED[0m[32m [ 81%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[process_slots-2] [32mPASSED[0m[32m [ 85%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[disk_bytes-8388609] [32mPASSED[0m[32m [ 88%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cannot_escape_owner_thread_or_capture_bound [32mPASSED[0m[32m [ 92%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_actual_disk_overshoot_reaps_process_and_retains_claim [31mFAILED[0m[31m [ 96%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_cancelled_queue_releases_payload_references [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_____ test_injected_actual_disk_overshoot_reaps_process_and_retains_claim ______[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfc546125a090>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfc5461231580>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4797/test_injected_actual_disk_over0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_actual_disk_overshoot_reaps_process_and_retains_claim[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+        [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+            path = attempt(tmp_path, [33m'[39;49;00m[33movershoot[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises(daemon.DaemonResourceError, match=[33m'[39;49;00m[33mstorage byte limit[39;49;00m[33m'[39;49;00m):[90m[39;49;00m
+                [94mwith[39;49;00m parent.phase(demand([33m'[39;49;00m[33mtraining[39;49;00m[33m'[39;49;00m), attempt_directory=path) [94mas[39;49;00m phase:[90m[39;49;00m
+                    phase.run([[96mstr[39;49;00m(Path(sys.executable).resolve()), [33m'[39;49;00m[33m-I[39;49;00m[33m'[39;49;00m, [33m'[39;49;00m[33m-B[39;49;00m[33m'[39;49;00m, [33m'[39;49;00m[33m-c[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+                        [33m'[39;49;00m[33mimport pathlib,sys,time;p=pathlib.Path(sys.argv[1]);[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+                        [33m'[39;49;00m[33m(p/[39;49;00m[33m"[39;49;00m[33ma[39;49;00m[33m"[39;49;00m[33m).write_bytes(b[39;49;00m[33m"[39;49;00m[33mx[39;49;00m[33m"[39;49;00m[33m*600000);(p/[39;49;00m[33m"[39;49;00m[33mb[39;49;00m[33m"[39;49;00m[33m).write_bytes(b[39;49;00m[33m"[39;49;00m[33my[39;49;00m[33m"[39;49;00m[33m*600000);time.sleep(10)[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+                        [96mstr[39;49;00m(path)], timeout_seconds=[94m3[39;49;00m)[90m[39;49;00m
+>           [94massert[39;49;00m phase.last_process_result.cancelled [95mand[39;49;00m phase.last_process_result.process_tree_terminated[90m[39;49;00m
+[1m[31mE           assert (False)[0m
+[1m[31mE            +  where False = ToolRunResult(interface_version='bounded-tool-runner/v1', runtime=<ToolRuntime.NATIVE: 'native'>, command=('/usr/bin/python3.12', '-I', '-B', '-c', 'import pathlib,sys,time;p=pathlib.Path(sys.argv[1]);(p/"a").write_bytes(b"x"*600000);(p/"b").write_bytes(b"y"*600000);time.sleep(10)', '/tmp/pytest-of-barberb/pytest-4797/test_injected_actual_disk_over0/disk/overshoot'), returncode=None, stdout='', stderr='', elapsed_seconds=0.0, output_files=mappingproxy({}), pid=None, timed_out=False, cancelled=False, unavailable=False, output_truncated=False, workspace_limit_exceeded=False, process_tree_terminated=False, resource_exhausted=False, workspace_cleaned=True, termination_reason='error', error='executor failure: DaemonResourceError: attempt storage byte limit exceeded').cancelled[0m
+[1m[31mE            +    where ToolRunResult(interface_version='bounded-tool-runner/v1', runtime=<ToolRuntime.NATIVE: 'native'>, command=('/usr/bin/python3.12', '-I', '-B', '-c', 'import pathlib,sys,time;p=pathlib.Path(sys.argv[1]);(p/"a").write_bytes(b"x"*600000);(p/"b").write_bytes(b"y"*600000);time.sleep(10)', '/tmp/pytest-of-barberb/pytest-4797/test_injected_actual_disk_over0/disk/overshoot'), returncode=None, stdout='', stderr='', elapsed_seconds=0.0, output_files=mappingproxy({}), pid=None, timed_out=False, cancelled=False, unavailable=False, output_truncated=False, workspace_limit_exceeded=False, process_tree_terminated=False, resource_exhausted=False, workspace_cleaned=True, termination_reason='error', error='executor failure: DaemonResourceError: attempt storage byte limit exceeded') = <ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources.PipelinePhase object at 0xfc546125bb90>.last_process_result[0m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:333: AssertionError
+============================= slowest 10 durations =============================
+0.40s call     api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment
+0.40s call     api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs
+0.38s call     api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release
+0.38s call     api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk
+0.33s call     api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup
+0.25s call     api/test_repository_pipeline_resources.py::test_injected_ordinary_history_exhaustion_preserves_cleanup
+0.23s call     api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability
+0.20s call     api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes
+0.20s call     api/test_repository_pipeline_resources.py::test_injected_actual_disk_overshoot_reaps_process_and_retains_claim
+0.17s call     api/test_repository_pipeline_resources.py::test_injected_cancelled_queue_releases_payload_references
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_actual_disk_overshoot_reaps_process_and_retains_claim[0m - assert (False)
+[31m================== [31m[1m1 failed[0m, [32m26 passed[0m, [33m1 deselected[0m[31m in 4.69s[0m[31m ==================[0m

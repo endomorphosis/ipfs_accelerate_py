@@ -1,0 +1,59 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 20 items / 1 deselected / 19 selected
+
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change0] [32mPASSED[0m[32m [  5%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change1] [32mPASSED[0m[32m [ 10%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change2] [32mPASSED[0m[32m [ 15%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change3] [32mPASSED[0m[32m [ 21%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change4] [32mPASSED[0m[32m [ 26%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change5] [32mPASSED[0m[32m [ 31%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change6] [32mPASSED[0m[32m [ 36%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change7] [32mPASSED[0m[32m [ 42%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change8] [32mPASSED[0m[32m [ 47%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change9] [32mPASSED[0m[32m [ 52%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability [31mFAILED[0m[31m [ 57%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment [32mPASSED[0m[31m [ 63%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs [32mPASSED[0m[31m [ 68%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance [32mPASSED[0m[31m [ 73%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup [32mPASSED[0m[31m [ 78%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt [32mPASSED[0m[31m [ 84%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes [32mPASSED[0m[31m [ 89%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release [32mPASSED[0m[31m [ 94%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_________ test_injected_exact_nested_authority_and_explicit_durability _________[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfd22bfae3d70>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfd22bfb504d0>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4795/test_injected_exact_nested_aut0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_exact_nested_authority_and_explicit_durability[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, shared = injected_owners[90m[39;49;00m
+        [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+            [94mwith[39;49;00m parent.phase(demand([33m'[39;49;00m[33msql[39;49;00m[33m'[39;49;00m), payload=[33mb[39;49;00m[33m'[39;49;00m[33mbounded-input[39;49;00m[33m'[39;49;00m, attempt_directory=attempt(tmp_path, [33m'[39;49;00m[33msql[39;49;00m[33m'[39;49;00m)) [94mas[39;49;00m phase:[90m[39;49;00m
+                options = phase.native_options()[90m[39;49;00m
+>               [94mwith[39;49;00m options[[33m'[39;49;00m[33mparent_lease[39;49;00m[33m'[39;49;00m].acquire_child(ResourceLane.PERSISTENCE,[90m[39;49;00m
+                        cpu_slots=[94m1[39;49;00m, memory_mb=[94m64[39;49;00m, child_process_slots=[94m1[39;49;00m, timeout=[94m1[39;49;00m) [94mas[39;49;00m consumer:[90m[39;49;00m
+[1m[31mE                       TypeError: ResourceLease.acquire_child() takes 1 positional argument but 2 positional arguments (and 4 keyword-only arguments) were given[0m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:88: TypeError
+============================= slowest 10 durations =============================
+0.38s call     api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment
+0.37s call     api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs
+0.33s call     api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk
+0.31s call     api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release
+0.26s call     api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup
+0.18s call     api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes
+0.14s call     api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance
+0.11s call     api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability
+0.10s call     api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt
+0.02s teardown api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_exact_nested_authority_and_explicit_durability[0m - TypeError: ResourceLease.acquire_child() takes 1 positional argument but 2 ...
+[31m================== [31m[1m1 failed[0m, [32m18 passed[0m, [33m1 deselected[0m[31m in 3.18s[0m[31m ==================[0m

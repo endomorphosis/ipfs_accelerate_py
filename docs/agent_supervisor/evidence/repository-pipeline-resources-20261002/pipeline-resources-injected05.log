@@ -1,0 +1,151 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 32 items / 1 deselected / 31 selected
+
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change0] [32mPASSED[0m[32m [  3%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change1] [32mPASSED[0m[32m [  6%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change2] [32mPASSED[0m[32m [  9%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change3] [32mPASSED[0m[32m [ 12%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change4] [32mPASSED[0m[32m [ 16%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change5] [32mPASSED[0m[32m [ 19%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change6] [32mPASSED[0m[32m [ 22%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change7] [32mPASSED[0m[32m [ 25%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change8] [32mPASSED[0m[32m [ 29%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change9] [32mPASSED[0m[32m [ 32%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability [32mPASSED[0m[32m [ 35%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment [32mPASSED[0m[32m [ 38%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs [32mPASSED[0m[32m [ 41%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance [32mPASSED[0m[32m [ 45%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup [32mPASSED[0m[32m [ 48%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt [32mPASSED[0m[32m [ 51%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes [32mPASSED[0m[32m [ 54%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release [32mPASSED[0m[32m [ 58%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk [32mPASSED[0m[32m [ 61%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_history_exhaustion_preserves_cleanup [32mPASSED[0m[32m [ 64%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[cpu_slots-2] [32mPASSED[0m[32m [ 67%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[memory_mb-385] [32mPASSED[0m[32m [ 70%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[process_slots-2] [32mPASSED[0m[32m [ 74%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_ordinary_demand_cannot_borrow_protected_capacity[disk_bytes-8388609] [32mPASSED[0m[32m [ 77%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cannot_escape_owner_thread_or_capture_bound [32mPASSED[0m[32m [ 80%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_actual_disk_overshoot_reaps_process_and_retains_claim [32mPASSED[0m[32m [ 83%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_cancelled_queue_releases_payload_references [32mPASSED[0m[32m [ 87%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_live_registered_child_retains_bridge_until_reaped [32mPASSED[0m[32m [ 90%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_outstanding_native_consumer_cannot_release_parent [32mPASSED[0m[32m [ 93%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_validation_requires_explicit_compatible_memory_declaration [32mPASSED[0m[32m [ 96%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup [31mFAILED[0m[31m [100%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup [31mERROR[0m[31m [100%][0m
+
+==================================== ERRORS ====================================
+[31m[1m_ ERROR at teardown of test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup _[0m
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4810/test_injected_unsafe_outer_exi0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe8a380d50290>
+
+    [0m[37m@pytest[39;49;00m.fixture[90m[39;49;00m
+    [94mdef[39;49;00m [92minjected_owners[39;49;00m(tmp_path, monkeypatch):[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Real file-backed owners, explicitly injected host telemetry, not acceptance."""[39;49;00m[90m[39;49;00m
+        shared = GlobalResourceScheduler(ResourceSchedulerConfig.for_proof_host([90m[39;49;00m
+            state_path=tmp_path / [33m'[39;49;00m[33minjected-native.json[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+            proof_resource_sampler=[94mlambda[39;49;00m: ProofHostResources([94m8[39;49;00m, [94m8192[39;49;00m, [94m8192[39;49;00m),[90m[39;49;00m
+            poll_interval_seconds=[94m.005[39;49;00m, proof_backoff_seconds=[94m.02[39;49;00m))[90m[39;49;00m
+        monkeypatch.setattr(bridge, [33m'[39;49;00m[33mget_global_resource_scheduler[39;49;00m[33m'[39;49;00m, [94mlambda[39;49;00m: shared)[90m[39;49;00m
+        monkeypatch.setattr(daemon, [33m'[39;49;00m[33mget_global_resource_scheduler[39;49;00m[33m'[39;49;00m, [94mlambda[39;49;00m: shared)[90m[39;49;00m
+        supervisor = ResourceScheduler(ResourcePolicy(max_lanes=[94m8[39;49;00m), host_sampler=[94mlambda[39;49;00m *args, **kw:[90m[39;49;00m
+            HostResourceSnapshot(memory_total_bytes=[94m8[39;49;00m*[94m1024[39;49;00m**[94m3[39;49;00m, memory_available_bytes=[94m8[39;49;00m*[94m1024[39;49;00m**[94m3[39;49;00m,[90m[39;49;00m
+                disk_total_bytes=[94m16[39;49;00m*[94m1024[39;49;00m**[94m3[39;49;00m, disk_available_bytes=[94m16[39;49;00m*[94m1024[39;49;00m**[94m3[39;49;00m,[90m[39;49;00m
+                worker_limit=[94m8[39;49;00m, available_worker_capacity=[94m8[39;49;00m))[90m[39;49;00m
+        [94myield[39;49;00m supervisor, shared[90m[39;49;00m
+>       [94massert[39;49;00m [95mnot[39;49;00m supervisor.active_leases[90m[39;49;00m
+[1m[31mE       AssertionError: assert not (ResourceAdmissionLease(lease_id='resource-lease:626f473c5b1641f5add134b94abf65b7', requirement=LaneResourceRequirements(lane_id='repository:rpi022-pipeline:62c4b659a99746f381dd371aa327b5bc', stage='analysis', resource_class='cpu-medium', required_capabilities=('cpu',), provider_id='', requires_provider=False, context_tokens=0, token_budget=0, quota_units=1, memory_bytes=536870912, gpu_memory_bytes=0, disk_bytes=16777216, max_provider_latency_ms=0, process_slots=2, queue_age_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis'), decision=AdmissionDecision(lane_id='repository:rpi022-pipeline:62c4b659a99746f381dd371aa327b5bc', admitted=True, provider_id='', reasons=(), configured_max_lanes=8, host_available_slots=8, provider_available_slots=8, effective_slots=8, capability_fit_millionths=1000000, reserved_quota_units=0, reserved_tokens=0, resource_class='cpu-medium', resource_pool='cpu-proof', reserved_process_slots=2, reserved_memory_bytes=536870912, reserved_gpu_memory_bytes=0, reserved_disk_bytes=16777216, stage='analysis', pressure_percent=0, queue_depth=1, merge_age_ms=0, active_leases=0, critical_path_length=0, queue_age_ms=0, hysteresis_state='stable', fairness_key='analysis', admission_rank=0), budget=ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, max_processes=2, wall_time_ms=10000, cpu_time_ms=0, memory_bytes=536870912, gpu_memory_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0), acquired_at_ms=1790934053443),)[0m
+[1m[31mE        +  where (ResourceAdmissionLease(lease_id='resource-lease:626f473c5b1641f5add134b94abf65b7', requirement=LaneResourceRequirements(lane_id='repository:rpi022-pipeline:62c4b659a99746f381dd371aa327b5bc', stage='analysis', resource_class='cpu-medium', required_capabilities=('cpu',), provider_id='', requires_provider=False, context_tokens=0, token_budget=0, quota_units=1, memory_bytes=536870912, gpu_memory_bytes=0, disk_bytes=16777216, max_provider_latency_ms=0, process_slots=2, queue_age_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis'), decision=AdmissionDecision(lane_id='repository:rpi022-pipeline:62c4b659a99746f381dd371aa327b5bc', admitted=True, provider_id='', reasons=(), configured_max_lanes=8, host_available_slots=8, provider_available_slots=8, effective_slots=8, capability_fit_millionths=1000000, reserved_quota_units=0, reserved_tokens=0, resource_class='cpu-medium', resource_pool='cpu-proof', reserved_process_slots=2, reserved_memory_bytes=536870912, reserved_gpu_memory_bytes=0, reserved_disk_bytes=16777216, stage='analysis', pressure_percent=0, queue_depth=1, merge_age_ms=0, active_leases=0, critical_path_length=0, queue_age_ms=0, hysteresis_state='stable', fairness_key='analysis', admission_rank=0), budget=ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, max_processes=2, wall_time_ms=10000, cpu_time_ms=0, memory_bytes=536870912, gpu_memory_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0), acquired_at_ms=1790934053443),) = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xe8a380d8aff0>.active_leases[0m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:40: AssertionError
+=================================== FAILURES ===================================
+[31m[1m____ test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup ____[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xe8a380d8aff0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xe8a380d8a900>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4810/test_injected_unsafe_outer_exi0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, shared = injected_owners[90m[39;49;00m
+        child = [94mNone[39;49;00m[90m[39;49;00m
+        old = [94mNone[39;49;00m[90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises(bridge.RepositoryResourceError, match=[33m'[39;49;00m[33mactive phases did not drain[39;49;00m[33m'[39;49;00m):[90m[39;49;00m
+                [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m old:[90m[39;49;00m
+                    [94mwith[39;49;00m old.phase(demand([33m'[39;49;00m[33mtraining[39;49;00m[33m'[39;49;00m), attempt_directory=attempt(tmp_path, [33m'[39;49;00m[33munsafe[39;49;00m[33m'[39;49;00m)) [94mas[39;49;00m phase:[90m[39;49;00m
+                        child = subprocess.Popen([sys.executable, [33m'[39;49;00m[33m-I[39;49;00m[33m'[39;49;00m, [33m'[39;49;00m[33m-B[39;49;00m[33m'[39;49;00m, [33m'[39;49;00m[33m-c[39;49;00m[33m'[39;49;00m, [33m'[39;49;00m[33mimport time;time.sleep(30)[39;49;00m[33m'[39;49;00m],[90m[39;49;00m
+                                                 start_new_session=[94mTrue[39;49;00m)[90m[39;49;00m
+                        phase.daemon.check_usage(phase.attempt, child_pid=child.pid)[90m[39;49;00m
+            root_id = old.parent.native.lease_id[90m[39;49;00m
+            reference = weakref.ref(old)[90m[39;49;00m
+            [94mdel[39;49;00m old, phase[90m[39;49;00m
+            gc.collect()[90m[39;49;00m
+            [94massert[39;49;00m reference() [95min[39;49;00m pipeline.pending_pipeline_recoveries()[90m[39;49;00m
+            [94massert[39;49;00m root_id [95min[39;49;00m {row[[33m'[39;49;00m[33mlease_id[39;49;00m[33m'[39;49;00m] [94mfor[39;49;00m row [95min[39;49;00m shared.active_leases()}[90m[39;49;00m
+            child.terminate(); child.wait(timeout=[94m3[39;49;00m)[90m[39;49;00m
+            recovered = reference()[90m[39;49;00m
+            retained = recovered.receipt()[[33m'[39;49;00m[33mretained_disk_reservations[39;49;00m[33m'[39;49;00m][[94m0[39;49;00m][90m[39;49;00m
+>           [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m replacement:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:452: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:58: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:446: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:303: in reserve
+    [0m_require(local [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m decision.admitted, [33m"[39;49;00m[33msupervisor lane policy refused repository envelope: [39;49;00m[33m"[39;49;00m + decision.reason)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'supervisor lane policy refused repository envelope: lease_process_capacity'
+
+    [0m[94mdef[39;49;00m [92m_require[39;49;00m(value, message):[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m value:[90m[39;49;00m
+>           [94mraise[39;49;00m RepositoryResourceError(message)[90m[39;49;00m
+[1m[31mE           ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: lease_process_capacity[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:56: RepositoryResourceError
+============================= slowest 10 durations =============================
+5.28s call     api/test_repository_pipeline_resources.py::test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup
+0.46s call     api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment
+0.42s call     api/test_repository_pipeline_resources.py::test_injected_live_registered_child_retains_bridge_until_reaped
+0.42s call     api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs
+0.38s call     api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release
+0.36s call     api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk
+0.30s call     api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup
+0.29s call     api/test_repository_pipeline_resources.py::test_injected_outstanding_native_consumer_cannot_release_parent
+0.29s call     api/test_repository_pipeline_resources.py::test_injected_actual_disk_overshoot_reaps_process_and_retains_claim
+0.27s call     api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup[0m - ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.Repo...
+[31mERROR[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup[0m - AssertionError: assert not (ResourceAdmissionLease(lease_id='resource-lease...
+[31m============= [31m[1m1 failed[0m, [32m30 passed[0m, [33m1 deselected[0m, [31m[1m1 error[0m[31m in 11.16s[0m[31m =============[0m
+Exception ignored in: <generator object RepositoryHostReservation.phase at 0xe8a380f03ca0>
+Traceback (most recent call last):
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py", line 221, in phase
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 740, in release
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 1563, in release
+  File "/usr/lib/python3.12/contextlib.py", line 144, in __exit__
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 856, in _locked_state
+  File "/usr/lib/python3.12/pathlib.py", line 635, in with_name
+  File "/usr/lib/python3.12/pathlib.py", line 422, in _from_parsed_parts
+  File "/usr/lib/python3.12/pathlib.py", line 385, in with_segments
+  File "/usr/lib/python3.12/pathlib.py", line 1164, in __init__
+  File "/usr/lib/python3.12/pathlib.py", line 358, in __init__
+ImportError: sys.meta_path is None, Python is likely shutting down

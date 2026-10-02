@@ -1,0 +1,110 @@
+{
+  "actual_host_attempt": {
+    "failed": 1,
+    "log": "pipeline-resources-native01.log",
+    "native_scheduler_or_model_calls_started": false,
+    "passed": 0,
+    "policy_modified": false,
+    "reason": "host_disk_high_watermark",
+    "revision_note": "Attempt preceded final unsafe-scope GC recovery addition; refusal came from unchanged canonical bridge admission. It does not qualify final pipeline execution.",
+    "seconds": 0.6,
+    "work_started": false
+  },
+  "authority": {
+    "model_promotion": false,
+    "proof": false,
+    "task_completion": false
+  },
+  "controls": [
+    "exact single-root phase/daemon/consumer ancestry",
+    "ordinary CPU RAM process disk partition cannot borrow protected capacity",
+    "full ordinary training overlaps protected validation and cleanup",
+    "actual immutable queued input lengths and retained input/capture allowance",
+    "queue cancellation clears retained input references",
+    "protected history survives ordinary exhaustion",
+    "explicit durability and retained failed disk claims",
+    "named-root precharge identity/idempotency/overflow",
+    "actual bounded process stdin stdout cancellation and disk overshoot with reap",
+    "live registered child retains bridge phase and disk claim",
+    "outstanding native consumer lease prevents finalize and owner release",
+    "unsafe outer exit survives garbage collection until a separately admitted cleanup owner reaps it"
+  ],
+  "final_controlled_result": {
+    "failed": 0,
+    "host_telemetry": "injected",
+    "native_case_deselected": 1,
+    "owners": "actual file-backed native scheduler and durable disk ledger",
+    "passed": 31,
+    "seconds": 10.81,
+    "subprocesses": "actual Linux isolated process groups"
+  },
+  "limits": [
+    "CPU sampled/cooperative profile only; GPU/device-unknown/hard mode unsupported",
+    "per-parent disk compartment does not reserve against unrelated global writers or repositories",
+    "payload bytes exclude caller copies Python object overhead tensors and caller-retained output",
+    "native APIs must finish/reap synchronously and honor thread/cancellation contracts",
+    "validation and cleanup share their protected compartment",
+    "local supervisor with retained entire process budget refuses replacement root; replacement cleanup uses a fresh local bookkeeping owner and same host authority",
+    "gradual recovery and full benchmark integration remain unqualified"
+  ],
+  "profile": "cpu-protected-payload-durable-disk@1",
+  "runs": [
+    {
+      "errors": 0,
+      "failed": 9,
+      "final_source": false,
+      "log": "pipeline-resources-injected01.log",
+      "passed": 10,
+      "seconds": 1.66,
+      "telemetry": "injected"
+    },
+    {
+      "errors": 0,
+      "failed": 1,
+      "final_source": false,
+      "log": "pipeline-resources-injected02.log",
+      "passed": 18,
+      "seconds": 3.18,
+      "telemetry": "injected"
+    },
+    {
+      "errors": 0,
+      "failed": 1,
+      "final_source": false,
+      "log": "pipeline-resources-injected03.log",
+      "passed": 26,
+      "seconds": 4.69,
+      "telemetry": "injected"
+    },
+    {
+      "errors": 0,
+      "failed": 0,
+      "final_source": false,
+      "log": "pipeline-resources-injected04.log",
+      "passed": 29,
+      "seconds": 5.46,
+      "telemetry": "injected"
+    },
+    {
+      "errors": 1,
+      "failed": 1,
+      "final_source": false,
+      "log": "pipeline-resources-injected05.log",
+      "passed": 30,
+      "seconds": 11.16,
+      "telemetry": "injected"
+    },
+    {
+      "errors": 0,
+      "failed": 0,
+      "final_source": true,
+      "log": "pipeline-resources-injected06.log",
+      "passed": 31,
+      "seconds": 10.81,
+      "telemetry": "injected"
+    }
+  ],
+  "schema": "repository-pipeline-resource-qualification@1",
+  "source_inventory": "producer-sources.json",
+  "status": "controlled_profile_qualified_actual_host_acceptance_pending"
+}

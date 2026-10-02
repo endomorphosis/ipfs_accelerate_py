@@ -1,0 +1,55 @@
+{
+  "files": [
+    {
+      "bytes": 840,
+      "path": "README.md",
+      "sha256": "33b52442665dfd8bed821993574af0954f100d5c6b0d569769618649c5ff3492"
+    },
+    {
+      "bytes": 73856,
+      "path": "pipeline-resources-injected01.log",
+      "sha256": "4e9a4ffe2412c4008fc6b16c08d55d4af2d17b61957fc73ce4c20e78c7c7c45e"
+    },
+    {
+      "bytes": 7109,
+      "path": "pipeline-resources-injected02.log",
+      "sha256": "c8a9db05d951836c859c30122b4c3a7d2f37512397d20842f389585bdffb5daf"
+    },
+    {
+      "bytes": 10675,
+      "path": "pipeline-resources-injected03.log",
+      "sha256": "b440129df83ac961981c7fba2dcb41db130e948432468f17ffd9fb11edfbb5be"
+    },
+    {
+      "bytes": 6429,
+      "path": "pipeline-resources-injected04.log",
+      "sha256": "f5dd9e66051278eedec4dd9399e8d226b6435015d03ffd2fa2252e014ddaa1ad"
+    },
+    {
+      "bytes": 19735,
+      "path": "pipeline-resources-injected05.log",
+      "sha256": "8e55691ee2ef72dfe08d8bef9cd2d826a5b6b7f524d152f516c24a98668ceee6"
+    },
+    {
+      "bytes": 6736,
+      "path": "pipeline-resources-injected06.log",
+      "sha256": "276c94d0d81539234b4086b406b74cbca98572c2a5a11ff83f0f12f7d37a7bf5"
+    },
+    {
+      "bytes": 4818,
+      "path": "pipeline-resources-native01.log",
+      "sha256": "a72e0fe8cef4f9a1d7a1a510761949e2355b15d0a68e3f006e3e61b8764ddbf4"
+    },
+    {
+      "bytes": 2408,
+      "path": "producer-sources.json",
+      "sha256": "b80b784c7c76459a116b53a2bd6b07bceb96586ab65e023488c17db9f076c46f"
+    },
+    {
+      "bytes": 3910,
+      "path": "qualification.json",
+      "sha256": "549552a5b77f6435274d0c00581cc336465d5d504a2cd5cd610c5cb67e5116a7"
+    }
+  ],
+  "schema": "repository-pipeline-evidence-manifest@1"
+}

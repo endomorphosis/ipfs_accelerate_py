@@ -1,0 +1,827 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 20 items / 1 deselected / 19 selected
+
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change0] [32mPASSED[0m[32m [  5%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change1] [32mPASSED[0m[32m [ 10%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change2] [32mPASSED[0m[32m [ 15%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change3] [32mPASSED[0m[32m [ 21%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change4] [32mPASSED[0m[32m [ 26%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change5] [32mPASSED[0m[32m [ 31%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change6] [32mPASSED[0m[32m [ 36%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change7] [32mPASSED[0m[32m [ 42%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change8] [32mPASSED[0m[32m [ 47%][0m
+test/api/test_repository_pipeline_resources.py::test_policy_refuses_unbounded_or_empty_partitions[change9] [32mPASSED[0m[32m [ 52%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability [31mFAILED[0m[31m [ 57%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment [31mFAILED[0m[31m [ 63%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs [31mFAILED[0m[31m [ 68%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance [31mFAILED[0m[31m [ 73%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup [31mFAILED[0m[31m [ 78%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt [31mFAILED[0m[31m [ 84%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes [31mFAILED[0m[31m [ 89%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release [31mFAILED[0m[31m [ 94%][0m
+test/api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk [31mFAILED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_________ test_injected_exact_nested_authority_and_explicit_durability _________[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f092aab0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea5f06da750>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_exact_nested_aut0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_exact_nested_authority_and_explicit_durability[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, shared = injected_owners[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:85: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f092aab0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:c9d7841e334b43a9ba19396945876a8f', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_exact_nested_aut0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m__ test_injected_full_training_cannot_take_validation_or_cleanup_compartment ___[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f071c5f0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea5f06da300>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_full_training_ca0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_full_training_cannot_take_validation_or_cleanup_compartment[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, shared = injected_owners[90m[39;49;00m
+        entered, finish, errors = threading.Event(), threading.Event(), [][90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f071c5f0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:8da9d7c3d4424d4bb184965d4bdf7e1f', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_full_training_ca0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m_______ test_injected_payload_queue_bytes_count_actual_immutable_inputs ________[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f06da7e0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea5f06da600>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_payload_queue_by0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_payload_queue_bytes_count_actual_immutable_inputs[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+        policy = pipeline.PipelineResourcePolicy(maximum_queued_payload_bytes=[94m16[39;49;00m,[90m[39;49;00m
+            protected_queued_payload_bytes=[94m4[39;49;00m)[90m[39;49;00m
+        errors = [][90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor, policy=policy) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:142: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f06da7e0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:4bffa7c4831f4f27b8bea9979a28d14b', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_payload_queue_by0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m__ test_injected_retained_payload_covers_active_inputs_and_capture_allowance ___[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840c3e0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea5f06da5a0>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_retained_payload0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_retained_payload_covers_active_inputs_and_capture_allowance[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+        policy = pipeline.PipelineResourcePolicy(maximum_queued_payload_bytes=[94m1024[39;49;00m,[90m[39;49;00m
+            protected_queued_payload_bytes=[94m128[39;49;00m, maximum_retained_payload_bytes=[94m300000[39;49;00m,[90m[39;49;00m
+            protected_retained_payload_bytes=[94m140000[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor, policy=policy) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:172: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840c3e0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:368953bb6ec34c91a3d595006dddfa7b', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_retained_payload0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m____ test_injected_failed_disk_claim_stays_charged_until_protected_cleanup _____[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f06da8a0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea5f06da450>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_failed_disk_clai0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_failed_disk_claim_stays_charged_until_protected_cleanup[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea5f06da8a0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:f09311c6bcfa42eab30db27dc328878e', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_failed_disk_clai0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m___ test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt ____[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840e870>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea8387efef0>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_missing_finalize0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_missing_finalize_retains_claim_and_refuses_reused_attempt[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:201: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840e870>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:ea13c63357014dbbb2ac9f38be5afa6b', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_missing_finalize0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m__________ test_injected_precharge_bounds_paths_and_final_disk_bytes ___________[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840c2f0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea83840d640>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_precharge_bounds0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_precharge_bounds_paths_and_final_disk_bytes[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:214: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83840c2f0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:46eb953bd3ad47faad6cc223139752e9', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_precharge_bounds0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m__ test_injected_bounded_process_uses_actual_payload_and_reaps_before_release __[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83842d250>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea83840c050>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_bounded_process_0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_bounded_process_uses_actual_payload_and_reaps_before_release[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, _ = injected_owners[90m[39;49;00m
+>       [94mwith[39;49;00m reserve(tmp_path, supervisor) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:232: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea83842d250>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:b2018cb883b84ddcad361b2dd4249379', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_bounded_process_0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+[31m[1m__________ test_injected_process_cancellation_reaps_and_retains_disk ___________[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea8384511c0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfea83842cb90>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_process_cancella0')
+
+    [0m[94mdef[39;49;00m [92mtest_injected_process_cancellation_reaps_and_retains_disk[39;49;00m(injected_owners, tmp_path):[90m[39;49;00m
+        supervisor, shared = injected_owners[90m[39;49;00m
+        signal = threading.Event()[90m[39;49;00m
+        timer = [94mNone[39;49;00m[90m[39;49;00m
+        [94mwith[39;49;00m pytest.raises(bridge.LeaseCancelledError):[90m[39;49;00m
+>           [94mwith[39;49;00m reserve(tmp_path, supervisor, cancel=signal) [94mas[39;49;00m parent:[90m[39;49;00m
+
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:249: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/api/test_repository_pipeline_resources.py[0m:55: in reserve
+    [0m[94mwith[39;49;00m pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id=[33m'[39;49;00m[33mrpi022-pipeline[39;49;00m[33m'[39;49;00m,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:369: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:302: in reserve
+    [0mdecision, local = [96mself[39;49;00m.supervisor.acquire(requirement, budget=local_budget, path=workspace)[90m[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xfea8384511c0>
+requirement = LaneResourceRequirements(lane_id='repository:rpi022-pipeline:b8c15c2cd5014460993e78cbd17328a5', stage='analysis', reso...e_ms=0, merge_age_ms=0, critical_path_length=0, downstream_unlock_value=0, enqueue_sequence=0, fairness_key='analysis')
+budget = ResourceLeaseBudget(max_parallel=2, max_cpu_proof_concurrency=2, max_model_concurrency=1, max_artifact_concurrency=1, ...y_bytes=0, disk_bytes=16777216, model_token_limit=0, provider_quota=0, context_tokens=0, maximum_provider_latency_ms=0)
+host = None, providers = None
+path = PosixPath('/tmp/pytest-of-barberb/pytest-4794/test_injected_process_cancella0')
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        requirement: LaneResourceRequirements | Mapping[[96mstr[39;49;00m, Any],[90m[39;49;00m
+        *,[90m[39;49;00m
+        budget: ResourceLeaseBudget | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        host: HostResourceSnapshot | Mapping[[96mstr[39;49;00m, Any] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        providers: Mapping[[96mstr[39;49;00m, Any] | Iterable[ProviderCapacity | Mapping[[96mstr[39;49;00m, Any]] | [94mNone[39;49;00m = [94mNone[39;49;00m,[90m[39;49;00m
+        path: Path | [96mstr[39;49;00m = [33m"[39;49;00m[33m.[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+    ) -> [96mtuple[39;49;00m[AdmissionDecision, ResourceAdmissionLease | [94mNone[39;49;00m]:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Atomically reserve a reclaimable local supervisor lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Live host/provider telemetry remains authoritative on every attempt.[39;49;00m
+    [33m    Released leases disappear from all pool and provider reservations, so[39;49;00m
+    [33m    capacity can immediately be reused without waiting for a new sample.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        req = ([90m[39;49;00m
+            requirement[90m[39;49;00m
+            [94mif[39;49;00m [96misinstance[39;49;00m(requirement, LaneResourceRequirements)[90m[39;49;00m
+            [94melse[39;49;00m LaneResourceRequirements.from_mapping(requirement)[90m[39;49;00m
+        )[90m[39;49;00m
+        lease_budget = budget [95mor[39;49;00m ResourceLeaseBudget.from_resource_budget([90m[39;49;00m
+            {},[90m[39;49;00m
+            max_parallel=[96mmax[39;49;00m([94m1[39;49;00m, [96mself[39;49;00m.policy.max_lanes),[90m[39;49;00m
+            max_cpu_proof_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mcpu-proof[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_model_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33mmodel[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            max_artifact_concurrency=[96mself[39;49;00m._pool_limit([33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+            maximum_provider_latency_ms=[96mself[39;49;00m.policy.maximum_provider_latency_ms,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mif[39;49;00m lease_budget.maximum_provider_latency_ms:[90m[39;49;00m
+            effective_latency = ([90m[39;49;00m
+                [96mmin[39;49;00m([90m[39;49;00m
+                    lease_budget.maximum_provider_latency_ms,[90m[39;49;00m
+                    req.max_provider_latency_ms,[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m req.max_provider_latency_ms[90m[39;49;00m
+                [94melse[39;49;00m lease_budget.maximum_provider_latency_ms[90m[39;49;00m
+            )[90m[39;49;00m
+            req = replace(req, max_provider_latency_ms=effective_latency)[90m[39;49;00m
+        [94mwith[39;49;00m [96mself[39;49;00m._lease_lock:[90m[39;49;00m
+            active = [96mtuple[39;49;00m(item.requirement [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m._leases.values())[90m[39;49;00m
+            [94mif[39;49;00m host [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+>               host_snapshot = [96mself[39;49;00m.host_sampler([90m[39;49;00m
+                    path,[90m[39;49;00m
+                    active_workers=[94m0[39;49;00m,[90m[39;49;00m
+                    worker_limit=[96mmin[39;49;00m([96mself[39;49;00m.policy.max_lanes, lease_budget.max_processes),[90m[39;49;00m
+                    active_phase=[33m"[39;49;00m[33mproof_scheduler[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31mE                   TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments but 1 was given[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py[0m:3305: TypeError
+============================= slowest 10 durations =============================
+0.02s teardown api/test_repository_pipeline_resources.py::test_injected_process_cancellation_reaps_and_retains_disk
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_full_training_cannot_take_validation_or_cleanup_compartment
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_bounded_process_uses_actual_payload_and_reaps_before_release
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_payload_queue_bytes_count_actual_immutable_inputs
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_retained_payload_covers_active_inputs_and_capture_allowance
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_failed_disk_claim_stays_charged_until_protected_cleanup
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability
+0.01s teardown api/test_repository_pipeline_resources.py::test_injected_precharge_bounds_paths_and_final_disk_bytes
+0.01s setup    api/test_repository_pipeline_resources.py::test_injected_exact_nested_authority_and_explicit_durability
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_exact_nested_authority_and_explicit_durability[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_full_training_cannot_take_validation_or_cleanup_compartment[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_payload_queue_bytes_count_actual_immutable_inputs[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_retained_payload_covers_active_inputs_and_capture_allowance[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_failed_disk_claim_stays_charged_until_protected_cleanup[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_missing_finalize_retains_claim_and_refuses_reused_attempt[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_precharge_bounds_paths_and_final_disk_bytes[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_bounded_process_uses_actual_payload_and_reaps_before_release[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31mFAILED[0m test/api/test_repository_pipeline_resources.py::[1mtest_injected_process_cancellation_reaps_and_retains_disk[0m - TypeError: injected_owners.<locals>.<lambda>() takes 0 positional arguments...
+[31m================== [31m[1m9 failed[0m, [32m10 passed[0m, [33m1 deselected[0m[31m in 1.66s[0m[31m ==================[0m

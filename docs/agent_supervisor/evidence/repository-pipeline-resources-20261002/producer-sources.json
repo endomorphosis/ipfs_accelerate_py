@@ -1,0 +1,61 @@
+{
+  "schema": "repository-pipeline-producer-sources@1",
+  "sources": [
+    {
+      "bytes": 24065,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "e07cb3e23dc608626e82ba926b946415fcd2eb94b542aee516cf612d30383e81"
+    },
+    {
+      "bytes": 26110,
+      "path": "test/api/test_repository_pipeline_resources.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "6cbf839695fcd5c3683eeee2010f09ee55906614601c42a6aaaeb0d25b522196"
+    },
+    {
+      "bytes": 5645,
+      "path": "docs/agent_supervisor/REPOSITORY_PIPELINE_RESOURCES.md",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "6b584e2706956eb156316023a508d4d53ca86ff0ba7f069df7ce332d52d5091d"
+    }
+  ],
+  "unchanged_existing_dependencies": [
+    {
+      "bytes": 16608,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    {
+      "bytes": 258517,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c"
+    },
+    {
+      "bytes": 39480,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b"
+    },
+    {
+      "bytes": 82754,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+    },
+    {
+      "bytes": 4534,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+    },
+    {
+      "bytes": 54671,
+      "path": "ipfs_datasets_py/logic/backends/codebase_process.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+    }
+  ]
+}
