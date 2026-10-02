@@ -1,0 +1,45 @@
+{
+  "benchmark_advantage_claimed": false,
+  "native_preflight": {
+    "cli_version": "0.158.0",
+    "harbor_version": "0.23.0",
+    "prepared": true,
+    "provider_calls": 0
+  },
+  "new_benchmark_score": false,
+  "producer_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "4dbbf7779be7fd9f574bcb466c83c42d581bc2488c90813b59afaf74ba51f0c6",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "e0513eab7a067177d685bf66f52600ce6230bccd00fe485d64ca10c4b6d076bd",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "6d10a0a3f9abb52e782c1c014504be690baec862da401a11b2868570609be151",
+    "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": "04cfb4673e680d441b5c4a2db98553178f6c628a85cbc6d13fb49be1b14ea0f8",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "31b0cfb895143d16f8e5bbc42c2c1565704b6962c1cb7fda7628a3ff2b8dbfb5",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "87ff2074b4313801448c95ed70119d11cdf2c5af8f68a13320a75fe4978ff0d7",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "43220680bc409c8efb394d5fd440c4d92adf1a907db7594b760147d97364d008",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py": "16e2b0e15ed1ddfae4060015df94549a4836eb7c56967079a63be95a907d4e7d"
+  },
+  "recovery": {
+    "exact_historical_source_matches": [
+      "benchmark_controls.py",
+      "native_codex_baseline.py",
+      "benchmark_comparison.py"
+    ],
+    "historical_logs_rewritten": false,
+    "reconstructed_tests": [
+      "test_native_codex_baseline.py inventory cases"
+    ]
+  },
+  "retained_declared_control_matches": [
+    null,
+    null,
+    null
+  ],
+  "retained_trials": 3,
+  "runtime_control_enforcement_verified": false,
+  "schema": "benchmark-declared-controls-recovery@1",
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 92
+  }
+}

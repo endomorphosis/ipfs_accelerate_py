@@ -1,0 +1,112 @@
+{
+  "agent_timeout_seconds": 300,
+  "attempts": 1,
+  "auth": {
+    "credential_contents_recorded": false,
+    "existing_file_found": true,
+    "mechanism": "CODEX_AUTH_JSON_PATH"
+  },
+  "benchmark_advantage_claimed": false,
+  "cli_version": "0.158.0",
+  "collector_source_sha256": "04cfb4673e680d441b5c4a2db98553178f6c628a85cbc6d13fb49be1b14ea0f8",
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/harbor",
+    "run",
+    "--config",
+    "/home/barberb/lift_coding/artifacts/reboot-recovery-20261002/native-pinned-preflight/config.json",
+    "--yes"
+  ],
+  "comparison_controls": {
+    "agent_controls_sha256": {
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "configuration_sha256": "536ccd5ae86d24b5676c3bc914287298a0a9589668faac3776408ce6455947a2",
+    "identity": {
+      "cli_version": "0.158.0",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "task": "fix-code-vulnerability"
+    },
+    "job_controls_sha256": {
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "environment": "3993304550936a3d038ff4b2c32e72792486a0df71c1dedf7a71aab67d246002",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "42babd90e308c089095b8f21b67c298c0d74f199f03046bde96259616d18c0ac",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "schema": "terminal-benchmark-declared-controls@1",
+    "sha256": "86e9d03fd3fed871d5d24ba71e9498e122fa03491cc02d4776e02ace06dd38ae",
+    "task_input_sha256": {
+      "environment/Dockerfile": "0917470986224df4daf4854a71302ae81c73ba5dd6e25be1232d29b758a5b3ab",
+      "instruction.md": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+      "task.toml": "9aa2bd14ce9408289d199d0608bc3fa65b8b5e23374c9641020de62197dbf1e2",
+      "tests/test.sh": "f1611da693cb4cfc5e8482698c6a1858a5c67220ae9db89b50aed66584e9b17f",
+      "tests/test_outputs.py": "c006a5de95b69bd78055aa26cc055734dbd50718ede25d331f767bfee4ef7f26"
+    }
+  },
+  "concurrency": 1,
+  "config_sha256": "3ce06e7b21bd8122f82e09ca0e0c96839fea2c0a8b7871190c1f80d51667e819",
+  "container_cli_version_verified": false,
+  "controls_source_sha256": "e0513eab7a067177d685bf66f52600ce6230bccd00fe485d64ca10c4b6d076bd",
+  "dataset": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+  "harbor_version": "0.23.0",
+  "host_codex_version": "codex-cli 0.158.0",
+  "max_retries": 0,
+  "model": "gpt-5.6-sol",
+  "native_adapter": "harbor.agents.installed.codex:Codex",
+  "native_adapter_source_sha256": {
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/agents/factory.py": "de65a45ba2d030e250c6351f4d0103de0752ad157ceed69c0219f631d5255ef0",
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/agents/installed/codex.py": "ee0ca8ec43617f3909d2195afe8f9e7cbd7313a8b3b558b01fde388f65b7c39c",
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/models/job/config.py": "195cbc3491efa2bc9947b90d6d390370dd601ade658e13daeafaf2665eb8f638",
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/models/task/task.py": "de88877f90e09949c02c6764876ca53fc795be617f95c03c48e4b6e1e5885322"
+  },
+  "native_cli_flags": "-c model_reasoning_effort=high",
+  "native_dry_run_returncode": 0,
+  "notes": [
+    "300 seconds bounds the native agent execution phase; environment build, CLI install, and original verifier are measured separately.",
+    "Container installation uses Harbor's native version pin and is not exercised by dry-run.",
+    "This is one selected task and one trial, not a Terminal-Bench score or an advantage measurement."
+  ],
+  "official_codex_config_reference": "https://learn.chatgpt.com/docs/config-file/config-reference",
+  "original_verifier_executed": false,
+  "original_verifier_timeout_seconds": 900.0,
+  "prepared": true,
+  "provider_calls": 0,
+  "reasoning_effort": "high",
+  "schema": "native-codex-harbor-baseline-preparation@1",
+  "task": "fix-code-vulnerability",
+  "task_input_sha256": {
+    "environment/Dockerfile": "0917470986224df4daf4854a71302ae81c73ba5dd6e25be1232d29b758a5b3ab",
+    "instruction.md": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "task.toml": "9aa2bd14ce9408289d199d0608bc3fa65b8b5e23374c9641020de62197dbf1e2",
+    "tests/test.sh": "f1611da693cb4cfc5e8482698c6a1858a5c67220ae9db89b50aed66584e9b17f",
+    "tests/test_outputs.py": "c006a5de95b69bd78055aa26cc055734dbd50718ede25d331f767bfee4ef7f26"
+  },
+  "usage": {
+    "cache_write_input_tokens": null,
+    "cached_input_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "reasoning_output_tokens": null,
+    "total_tokens": null
+  }
+}

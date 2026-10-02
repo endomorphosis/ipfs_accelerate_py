@@ -1,0 +1,97 @@
+{
+  "agent_setup_timeout_multiplier": null,
+  "agent_timeout_multiplier": null,
+  "agents": [
+    {
+      "concurrency_group": null,
+      "env": {
+        "CODEX_AUTH_JSON_PATH": "/home/barberb/.codex/auth.json"
+      },
+      "extra_allowed_hosts": [],
+      "import_path": null,
+      "kwargs": {
+        "reasoning_effort": "high",
+        "version": "0.158.0"
+      },
+      "load_trajectory": null,
+      "max_timeout_sec": 300.0,
+      "mcp_servers": [],
+      "model_name": "gpt-5.6-sol",
+      "n_concurrent": null,
+      "name": "codex",
+      "override_setup_timeout_sec": 1800.0,
+      "override_timeout_sec": 300.0,
+      "resume_trajectory": false,
+      "skills": []
+    }
+  ],
+  "artifacts": [],
+  "datasets": [],
+  "debug": false,
+  "environment": {
+    "cpu_enforcement_policy": "auto",
+    "delete": true,
+    "extra_allowed_hosts": [],
+    "extra_docker_compose": [],
+    "force_build": true,
+    "import_path": null,
+    "kwargs": {},
+    "memory_enforcement_policy": "auto",
+    "mounts": null,
+    "override_cpus": null,
+    "override_gpus": null,
+    "override_memory_mb": null,
+    "override_storage_mb": null,
+    "override_tpu": null,
+    "type": "docker"
+  },
+  "environment_build_timeout_multiplier": null,
+  "extra_instruction_paths": [],
+  "extra_instructions": [],
+  "install_only": false,
+  "job_name": "native-codex-fix-code-vulnerability",
+  "jobs_dir": "/home/barberb/lift_coding/artifacts/reboot-recovery-20261002/native-pinned-preflight/jobs",
+  "metrics": [],
+  "n_attempts": 1,
+  "n_concurrent_trials": 1,
+  "quiet": false,
+  "retry": {
+    "exclude_exceptions": [
+      "AgentTimeoutError",
+      "RewardFileEmptyError",
+      "VerifierTimeoutError",
+      "RewardFileNotFoundError",
+      "AgentAuthenticationError",
+      "VerifierOutputParseError",
+      "ApiUsageLimitError",
+      "ModelNotFoundError",
+      "AgentSafetyRefusalError"
+    ],
+    "include_exceptions": null,
+    "max_retries": 0,
+    "max_wait_sec": 60.0,
+    "min_wait_sec": 1.0,
+    "wait_multiplier": 1.0
+  },
+  "source_jobs": [],
+  "tasks": [
+    {
+      "download_dir": null,
+      "git_commit_id": null,
+      "git_url": null,
+      "name": null,
+      "overwrite": false,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/fix-code-vulnerability",
+      "ref": null,
+      "source": null
+    }
+  ],
+  "timeout_multiplier": 1.0,
+  "user_agent": null,
+  "verifier": {
+    "disable": false,
+    "max_timeout_sec": null,
+    "override_timeout_sec": null
+  },
+  "verifier_timeout_multiplier": null
+}

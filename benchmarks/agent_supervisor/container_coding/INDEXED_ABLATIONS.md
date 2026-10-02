@@ -11,7 +11,7 @@ eligibility check currently abstains on this task, so no automatic proof-backed
 repair should be inferred from the arm's name. Build-only, warm-index, separate
 proof-coordination, and cooperative multi-worker comparisons remain unmeasured.
 
-The latest matched-source v8 pilot on `fix-code-vulnerability` measured:
+The retained v8 pilot on `fix-code-vulnerability` measured:
 
 | Arm | Official reward | Native completion | Agent seconds | Observed total tokens |
 | --- | ---: | --- | ---: | ---: |
@@ -29,6 +29,10 @@ its coding call timed out at its remaining 56-second allowance. The full token
 count includes observed interrupted-session usage, not verified final billing.
 Both planner and coding calls are included. Setup is measured separately.
 
+Those legacy runs have no pre-execution frozen comparison controls, so their
+control match remains unknown. The collector preserves their measured results
+without retrospectively certifying equivalent configurations.
+
 The two trial 06 task containers overlapped during setup, as recorded in the
 schedule receipt; this is independent task concurrency, not cooperative agent
 parallelism. The workspace artifact
@@ -40,6 +44,20 @@ The older two-task Grok pilot is a legacy Markdown worker pilot. Its results
 must remain separate from the indexed native-supervisor comparison.
 
 ## Planned comparison matrix
+
+New preparations freeze hashes of the validated Harbor configuration, common
+resource/time/retry/concurrency settings, model identity, and complete task
+inputs. Collection rechecks the original declaration. Changed or malformed
+controls fail comparison; missing legacy declarations remain unknown. Task
+inventories reject linked directories, broken links, and special files. Verifier
+bytes are hashed only for integrity and are never supplied to the model.
+
+Native and supervisor setup allowances are explicitly 1,800 seconds; the agent
+execution limit remains 300 seconds. Arm-specific configuration and paths are
+bound within each preparation, while only common controls are compared across
+arms. A configuration match does not establish runtime enforcement or benchmark
+advantage. The recovered implementation passed 92 controls after the restart;
+the new native preflight is a dry run with no model calls.
 
 Use identical pinned task versions, initial container files, model, reasoning
 effort, available implementation tools, concurrency, attempt count, and total

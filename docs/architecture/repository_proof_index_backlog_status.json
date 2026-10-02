@@ -380,6 +380,11 @@
       "path": "docs/agent_supervisor/evidence/intent-population-final-owners-20261002/manifest.json",
       "sha256": "ea1b13f5f8d2b74d316b7054a1c4c650bc00caa41877cf1f4cd3ea54605f98ae",
       "retention": "repository_evidence"
+    },
+    "benchmark-declared-controls": {
+      "path": "docs/agent_supervisor/evidence/benchmark-declared-controls-recovery-20261002/manifest.json",
+      "sha256": "0507453b659da825edb98fcb17f0cb4f4478e6bc100579febfb6af38aa60eb05",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -826,10 +831,11 @@
         "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress.",
         "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
         "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
-        "All33managed-preparation/delegation/driver controls also pass under the revised bounded-lifecycle adapter; historical evidence remains pinned to its original producer. Full native pipeline execution remains pending disk admission."
+        "All33managed-preparation/delegation/driver controls also pass under the revised bounded-lifecycle adapter; historical evidence remains pinned to its original producer. Full native pipeline execution remains pending disk admission.",
+        "The previously pending model-off full managed native run completed after exact archive compaction and canonical cache-path repair:178.179s, real START/repair/validation/publication/STOP, matching cold successor semantics,0provider calls and no owned leaks. Its existing evidence is linked here; selected-checkpoint whole-pipeline qualification remains separate."
       ],
       "remaining_work": [
-        "Complete whole-trial phase/deadline and resource-bridge qualification, including worker delegation, remains pending."
+        "Complete selected-checkpoint whole-trial phase/deadline and independent-selection qualification. The model-off managed pipeline is qualified; broader resource criterionRPI-022 remains open."
       ],
       "evidence": [
         "finite-native-summary",
@@ -841,7 +847,9 @@
         "behavioral-native-supervision",
         "resource-worker-delegation",
         "managed-preparation-worker-integration",
-        "pipeline-lifecycle-cap"
+        "pipeline-lifecycle-cap",
+        "formal-cache-exact-path",
+        "managed-native-full-pipeline"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -867,12 +875,16 @@
       "criterion": "Predeclare correctness and cost gates; run matched direct, administrative-symbolic, repository-facts, checked-proof and learned-repository arms plus the native Codex comparator. Fix reasoning/tools/attempts/concurrency and disclose independent contract/review costs. Compare frozen shared, fresh repository and immutable shared-to-repository children; measure raw versus constrained decoding and mask contribution. Retain model controls, eligible cold/warm distinctions, failed trials, all costs and official outcomes without solution/hidden-test/reward leakage into adaptation or warm artifacts.",
       "source_line": 294,
       "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
-      "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Native and supervisor preparations now freeze validated Harbor configuration, complete task hashes, common resource/time/retry/concurrency controls and model identity before execution. Collection rechecks declarations; legacy preparations remain unknown. Fresh recovery qualification passes92 controls and actual pinnedHarbor preflight/dry-run with0model calls. Replaying three retained receipts preserves their original results and unknown declaration match."
       ],
-      "evidence": [],
+      "remaining_work": [
+        "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage."
+      ],
+      "evidence": [
+        "benchmark-declared-controls"
+      ],
       "criterion_acceptance": "not_yet_qualified"
     },
     {

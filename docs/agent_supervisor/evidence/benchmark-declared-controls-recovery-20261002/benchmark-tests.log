@@ -1,0 +1,113 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 92 items
+
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_existing_native_and_both_supervisor_configs_have_equal_common_controls [32mPASSED[0m[32m [  1%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_actual_harbor_normalized_configs_preserve_equal_controls [32mPASSED[0m[32m [  2%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[n_concurrent_trials-4-job_controls_sha256-n_concurrent_trials] [32mPASSED[0m[32m [  3%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[n_attempts-2-job_controls_sha256-n_attempts] [32mPASSED[0m[32m [  4%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[retry-value2-job_controls_sha256-retry] [32mPASSED[0m[32m [  5%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[environment-value3-job_controls_sha256-environment] [32mPASSED[0m[32m [  6%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[verifier-value4-job_controls_sha256-verifier] [32mPASSED[0m[32m [  7%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[extra_instructions-value5-job_controls_sha256-extra_instructions] [32mPASSED[0m[32m [  8%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[override_timeout_sec-600-agent_controls_sha256-override_timeout_sec] [32mPASSED[0m[32m [  9%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[override_setup_timeout_sec-None-agent_controls_sha256-override_setup_timeout_sec] [32mPASSED[0m[32m [ 10%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[mcp_servers-value8-agent_controls_sha256-mcp_servers] [32mPASSED[0m[32m [ 11%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_changed_oracle_hash_is_compared_without_exporting_oracle_content [32mPASSED[0m[32m [ 13%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_post_preparation_change_cannot_reseal_the_declaration [32mPASSED[0m[32m [ 14%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[model] [32mPASSED[0m[32m [ 15%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[agent_count] [32mPASSED[0m[32m [ 16%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[cli] [32mPASSED[0m[32m [ 17%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[inputs] [32mPASSED[0m[32m [ 18%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_arm_or_task_path_drift_is_refused_even_though_unequal_between_arms [32mPASSED[0m[32m [ 19%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_legacy_preparation_and_missing_observation_remain_unknown [32mPASSED[0m[32m [ 20%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[digest] [32mPASSED[0m[32m [ 21%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[missing] [32mPASSED[0m[32m [ 22%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[extra] [32mPASSED[0m[32m [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[wrong_type] [32mPASSED[0m[32m [ 25%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_no_config_secret_or_prompt_text_exported [32mPASSED[0m[32m [ 26%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[user_agent] [32mPASSED[0m[32m [ 27%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[extra_instruction_paths] [32mPASSED[0m[32m [ 28%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[mounts] [32mPASSED[0m[32m [ 29%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[extra_docker_compose] [32mPASSED[0m[32m [ 30%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[env] [32mPASSED[0m[32m [ 31%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_native_kwargs_cannot_contradict_declared_identity[version-other-cli] [32mPASSED[0m[32m [ 32%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_native_kwargs_cannot_contradict_declared_identity[reasoning_effort-low] [32mPASSED[0m[32m [ 33%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_supervisor_identity_must_match_source_bound_profile [32mPASSED[0m[32m [ 34%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_report_keeps_legacy_trials_without_claiming_matched_controls [32mPASSED[0m[32m [ 35%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_report_rejects_changed_baseline_even_when_candidate_declaration_matches [32mPASSED[0m[32m [ 36%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof [32mPASSED[0m[32m [ 38%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_retains_failed_planning_and_setup_without_cache_double_count [32mPASSED[0m[32m [ 39%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_missing_invocation_preserves_known_cost_but_not_complete_total [32mPASSED[0m[32m [ 40%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_interrupted_or_legacy_usage_is_only_an_observed_subtotal[False] [32mPASSED[0m[32m [ 41%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_interrupted_or_legacy_usage_is_only_an_observed_subtotal[None] [32mPASSED[0m[32m [ 42%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_legacy_baseline_without_session_completion_keeps_only_observed_usage [32mPASSED[0m[32m [ 43%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_completed_native_session_can_retain_failed_postprocessing_cost [32mPASSED[0m[32m [ 44%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_conflicting_same_invocation_is_rejected [32mPASSED[0m[32m [ 45%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_duplicate_retained_trial_counted_once_and_empty_receipt_preserved [32mPASSED[0m[32m [ 46%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_context_preparation_is_not_worker_consumption_or_repair_evidence [32mPASSED[0m[32m [ 47%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_full_lifecycle_costs_and_actual_input_observations_are_separate [32mPASSED[0m[32m [ 48%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_failed_cold_stage_is_retained_without_preparation_or_dispatch_claim [32mPASSED[0m[32m [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_doctor_selection_is_distinct_from_matching_worker_materialization [32mPASSED[0m[32m [ 51%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh0] [32mPASSED[0m[32m [ 52%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh1] [32mPASSED[0m[32m [ 53%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh2] [32mPASSED[0m[32m [ 54%][0m
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_reported_wire_measurements_do_not_imply_successful_input_audit [32mPASSED[0m[32m [ 55%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_directory] [32mPASSED[0m[32m [ 56%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[broken_link] [32mPASSED[0m[32m [ 57%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[fifo] [32mPASSED[0m[32m [ 58%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_root] [32mPASSED[0m[32m [ 59%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_profile_uses_native_agent_and_exact_independent_bounds [32mPASSED[0m[32m [ 60%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_no_native_transcript_means_unknown_tokens_not_zero [32mPASSED[0m[32m [ 61%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_cumulative_updates_not_summed_and_explicit_zero_preserved [32mPASSED[0m[32m [ 63%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_exact_native_completion_marks_last_counters_without_billing_claim [32mPASSED[0m[32m [ 64%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_model_text_reward_and_exit_are_not_completion_events [32mPASSED[0m[32m [ 65%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{"type":] [32mPASSED[0m[32m [ 66%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-[]] [32mPASSED[0m[32m [ 67%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-null] [32mPASSED[0m[32m [ 68%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{"type":"event_msg","payload":null}] [32mPASSED[0m[32m [ 69%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{"type":] [32mPASSED[0m[32m [ 70%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-[]] [32mPASSED[0m[32m [ 71%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-null] [32mPASSED[0m[32m [ 72%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{"type":"event_msg","payload":null}] [32mPASSED[0m[32m [ 73%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event0] [32mPASSED[0m[32m [ 75%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event1] [32mPASSED[0m[32m [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event2] [32mPASSED[0m[32m [ 77%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event3] [32mPASSED[0m[32m [ 78%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event4] [32mPASSED[0m[32m [ 79%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event5] [32mPASSED[0m[32m [ 80%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event6] [32mPASSED[0m[32m [ 81%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_every_identified_session_must_complete [32mPASSED[0m[32m [ 82%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_synthesized_native_completion_flows_into_comparison [32mPASSED[0m[32m [ 83%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_multi_session_partial_field_remains_unknown [32mPASSED[0m[32m [ 84%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_identical_copied_session_is_counted_once [32mPASSED[0m[32m [ 85%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_conflicting_session_identity_is_not_silently_double_counted [32mPASSED[0m[32m [ 86%][0m
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_known_nonsecret_flag_recovery_preserves_raw_files [32mPASSED[0m[32m [ 88%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_absent_or_partial_usage_stays_unknown [32mPASSED[0m[32m [ 89%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_all_arms_keep_original_task_resources_verifier_and_agent_budget [32mPASSED[0m[32m [ 90%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_conflicting_duplicate_rejected [32mPASSED[0m[32m [ 91%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_failed_and_successful_calls_both_count_cached_input_once [32mPASSED[0m[32m [ 92%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_nonportable_asset_binding_is_rejected_before_run [32mPASSED[0m[32m [ 93%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_only_full_arm_receives_explicit_portable_training_assets [32mPASSED[0m[32m [ 94%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_only_full_arm_receives_frozen_model_and_pinned_hub_provenance [32mPASSED[0m[32m [ 95%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_asset_flags_reach_full_execution_and_are_absent_from_no_index [32mPASSED[0m[32m [ 96%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_driver_failure_still_exports_outputs_and_capture_failure_does_not_mask_it [32mPASSED[0m[32m [ 97%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_failed_run_preserves_admission_without_exporting_owner_state [32mPASSED[0m[32m [ 98%][0m
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 23:44:36 [[33m WARNING[0m] Executing <Task finished name='Task-17' coro=<ExportTests.test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity() done, defined at /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py:113> result=None created at /usr/lib/python3.12/asyncio/runners.py:100> took 1.123 seconds (base_events.py:1982)
+[32mPASSED[0m[32m                                                                   [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/reboot-recovery-20261002/benchmark-tests.xml -
+============================= slowest 10 durations =============================
+1.12s call     benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity
+0.02s call     benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_actual_harbor_normalized_configs_preserve_equal_controls
+0.01s call     benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_asset_flags_reach_full_execution_and_are_absent_from_no_index
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m92 passed[0m[32m in 23.37s[0m[32m ==============================[0m

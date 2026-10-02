@@ -1,0 +1,100 @@
+{
+  "files": [
+    {
+      "bytes": 696,
+      "path": "README.md",
+      "sha256": "869c99c9ceaec9c1a79ef8e47e7f9fbb5d7665762d9729a7384d05551e3aa73d"
+    },
+    {
+      "bytes": 18839,
+      "path": "benchmark-tests.log",
+      "sha256": "97b4232c0e4accadea135ebfe072dd50108a6e833a14406efbbdddefa8ca40e5"
+    },
+    {
+      "bytes": 17606,
+      "path": "benchmark-tests.xml",
+      "sha256": "9017f4868e1f2754dbf524b55e5dfeef66e6a3295da82c41742539219d7ff28d"
+    },
+    {
+      "bytes": 6729,
+      "path": "native-pinned-preflight.log",
+      "sha256": "d8998160dfba1eab0acbf1650525e2f33ec4aa17fb770d7611746a7724059ff9"
+    },
+    {
+      "bytes": 2533,
+      "path": "preflight/config.json",
+      "sha256": "3ce06e7b21bd8122f82e09ca0e0c96839fea2c0a8b7871190c1f80d51667e819"
+    },
+    {
+      "bytes": 0,
+      "path": "preflight/native-dry-run.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 44,
+      "path": "preflight/native-dry-run.stdout",
+      "sha256": "6e929b76f9ee4d916ea2ab5a89aff303adf465f1de36ffb732e02c25454c59c3"
+    },
+    {
+      "bytes": 6729,
+      "path": "preflight/preparation.json",
+      "sha256": "d8998160dfba1eab0acbf1650525e2f33ec4aa17fb770d7611746a7724059ff9"
+    },
+    {
+      "bytes": 2007,
+      "path": "qualification.json",
+      "sha256": "ef7208605b65f8e4bb572a38d9b732b675181371ed547496e8cff952d7070971"
+    },
+    {
+      "bytes": 25419,
+      "path": "retained-pilot-comparison.json",
+      "sha256": "2320a3ebe7b61d9f9ff1ddc624d0c0b73e30e982f1790e2be56afbaabda6bb68"
+    },
+    {
+      "bytes": 6194,
+      "path": "retained-pilot-comparison.md",
+      "sha256": "34d39b87b69e6492a7035faec4f0dc468df267f7054ee92f05dd89f88bf9f266"
+    },
+    {
+      "bytes": 38391,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "4dbbf7779be7fd9f574bcb466c83c42d581bc2488c90813b59afaf74ba51f0c6"
+    },
+    {
+      "bytes": 8623,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "e0513eab7a067177d685bf66f52600ce6230bccd00fe485d64ca10c4b6d076bd"
+    },
+    {
+      "bytes": 14301,
+      "path": "source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "6d10a0a3f9abb52e782c1c014504be690baec862da401a11b2868570609be151"
+    },
+    {
+      "bytes": 21857,
+      "path": "source/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "sha256": "04cfb4673e680d441b5c4a2db98553178f6c628a85cbc6d13fb49be1b14ea0f8"
+    },
+    {
+      "bytes": 22591,
+      "path": "source/benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+      "sha256": "31b0cfb895143d16f8e5bbc42c2c1565704b6962c1cb7fda7628a3ff2b8dbfb5"
+    },
+    {
+      "bytes": 10279,
+      "path": "source/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+      "sha256": "87ff2074b4313801448c95ed70119d11cdf2c5af8f68a13320a75fe4978ff0d7"
+    },
+    {
+      "bytes": 15277,
+      "path": "source/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+      "sha256": "43220680bc409c8efb394d5fd440c4d92adf1a907db7594b760147d97364d008"
+    },
+    {
+      "bytes": 11191,
+      "path": "source/benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+      "sha256": "16e2b0e15ed1ddfae4060015df94549a4836eb7c56967079a63be95a907d4e7d"
+    }
+  ],
+  "schema": "benchmark-declared-controls-evidence@1"
+}
