@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="10" time="43.838" timestamp="2026-10-02T10:09:56.773305+00:00" hostname="spark-b271"><testcase classname="integration.test_intent_population_admission" name="test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives" time="2.486"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_choice_cannot_accu0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_choice_cannot_accu0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb07a5b8f20&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb05b73c9b0&gt;, ...}
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xedb05baf5a30&gt;
+
+    def test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives(profile,finite_tools,owners,monkeypatch):
+        args,_=declaration(profile,finite_tools)
+        args['allowed_task_sets']=[['calc'],['other']]
+        policy=population.author_population_policy(**args)
+&gt;       result=prepare(owners,policy,['calc'])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:191: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_lost_publication_reply_recovers_exact_native_population_and_decision" time="2.443"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_lost_publication_r0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_lost_publication_r0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb079413710&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb0794f50a0&gt;, ...}
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xedb0789504a0&gt;
+
+    def test_actual_lost_publication_reply_recovers_exact_native_population_and_decision(profile,finite_tools,owners,monkeypatch):
+        _,policy=declaration(profile,finite_tools)
+        with monkeypatch.context() as control:
+            control.setattr(population.finite,'_public_artifact',lambda *a,**k:(_ for _ in ()).throw(RuntimeError('lost publication reply')))
+&gt;           with pytest.raises(RuntimeError,match='lost publication reply'):prepare(owners,policy,['calc'])
+                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:209: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions" time="2.608"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_fresh_process_repl0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_fresh_process_repl0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb078951af0&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb07898cef0&gt;, ...}
+
+    def test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions(profile,finite_tools,owners):
+&gt;       _,policy=declaration(profile,finite_tools);before=prepare(owners,policy,['calc'])
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:220: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails" time="3.423"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_choice_transaction0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_choice_transaction0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb07a6718e0&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb05bac4380&gt;, ...}
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xedb2c4385e50&gt;
+
+    def test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails(profile,finite_tools,owners,monkeypatch):
+        _,policy=declaration(profile,finite_tools)
+        actual=population.IntentRepository.upsert_plan
+        def failed(owner,**kw):
+            if kw['body'].get('schema')=='reviewed-task-population-choice-record@1':
+                raise RuntimeError('choice record failure')
+            return actual(owner,**kw)
+        with monkeypatch.context() as control:
+            control.setattr(population.IntentRepository,'upsert_plan',failed)
+            with pytest.raises(RuntimeError,match='choice record failure'):prepare(owners,policy,['calc'])
+        with owners['intent']._connection(write=False) as cx:
+            assert cx.execute('SELECT count(*) FROM tasks').fetchone()[0]==0
+            assert cx.execute('SELECT count(*) FROM plans').fetchone()[0]==0
+            assert cx.execute('SELECT count(*) FROM goals').fetchone()[0]==0
+&gt;       assert prepare(owners,policy,['calc'])['status']=='population_admitted'
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:260: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[task]" time="2.503"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb2c455d6a0&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb0587d0920&gt;, ...}
+mutation = 'task'
+
+    @pytest.mark.parametrize('mutation',['task','choice_goal','choice_plan','choice_body'])
+    def test_actual_changed_native_choice_or_selected_population_refuses_replay(profile,finite_tools,owners,mutation):
+&gt;       _,policy=declaration(profile,finite_tools);result=prepare(owners,policy,['calc'])
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]" time="2.567"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho1'), PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho1/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb0587d1100&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb07a26da90&gt;, ...}
+mutation = 'choice_goal'
+
+    @pytest.mark.parametrize('mutation',['task','choice_goal','choice_plan','choice_body'])
+    def test_actual_changed_native_choice_or_selected_population_refuses_replay(profile,finite_tools,owners,mutation):
+&gt;       _,policy=declaration(profile,finite_tools);result=prepare(owners,policy,['calc'])
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]" time="2.428"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho2'), PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho2/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb07946d7f0&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb07a26cbc0&gt;, ...}
+mutation = 'choice_plan'
+
+    @pytest.mark.parametrize('mutation',['task','choice_goal','choice_plan','choice_body'])
+    def test_actual_changed_native_choice_or_selected_population_refuses_replay(profile,finite_tools,owners,mutation):
+&gt;       _,policy=declaration(profile,finite_tools);result=prepare(owners,policy,['calc'])
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]" time="2.562"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho3'), PosixPath('/tmp/rpi021-controlled-first/test_actual_changed_native_cho3/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb05ba68440&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb07a6dda60&gt;, ...}
+mutation = 'choice_body'
+
+    @pytest.mark.parametrize('mutation',['task','choice_goal','choice_plan','choice_body'])
+    def test_actual_changed_native_choice_or_selected_population_refuses_replay(profile,finite_tools,owners,mutation):
+&gt;       _,policy=declaration(profile,finite_tools);result=prepare(owners,policy,['calc'])
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_native_proof_zero_edit_and_retry_keep_full_universe" time="5.223"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_native_proof_zero_0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_native_proof_zero_0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb07891c170&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb0587a3cb0&gt;, ...}
+
+    def test_actual_native_proof_zero_edit_and_retry_keep_full_universe(profile,finite_tools,owners):
+        _,policy=declaration(profile,finite_tools,proofs=True)
+&gt;       result=prepare(owners,policy,[])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:276: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_native_proof_elision_cannot_authorize_overwriting_its_source" time="8.906"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract">profile = (PosixPath('/tmp/rpi021-controlled-first/test_actual_native_proof_elisi0'), PosixPath('/tmp/rpi021-controlled-first/test_actual_native_proof_elisi0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xedb07a26f980&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xedb0789ad0a0&gt;, ...}
+
+    def test_actual_native_proof_elision_cannot_authorize_overwriting_its_source(profile,finite_tools,owners):
+        _,policy=declaration(profile,finite_tools,proofs=True)
+        with pytest.raises(ValueError,match='proof-elided'):prepare(owners,policy,['calc'])
+        with owners['intent']._connection(write=False) as cx:assert cx.execute('SELECT count(*) FROM tasks').fetchone()[0]==0
+&gt;       safe=prepare(owners,policy,['other'],state='preserved-property-state')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:294: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:390: in _prepare_population_admission
+    _choice_record(owner,choice,verified,selected)
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:262: in _choice_record
+    profile=local._manifest(verified['manifest'],initial=True)[1]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:441: in _manifest
+    outputs = _validate_local_manifest_declarations(payload)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+payload = {}
+
+    def _validate_local_manifest_declarations(payload: Mapping) -&gt; set[str]:
+        """Check public signed declarations without observing files or owner state.
+    
+        Both owner admission and public worker replay use these declaration rules.
+        This validation grants no dispatch permission; the owner still verifies its
+        active profile, repository, source observations and native persisted tasks.
+        """
+        if not isinstance(payload, Mapping):
+            raise LocalPlanningError("unsupported manifest contract")
+        expected = {
+            "schema",
+            "repository",
+            "repository_cid",
+            "baseline_commit",
+            "profile_content_id",
+            "profile_dir",
+            "lifecycle_dir",
+            "sources",
+            "policy",
+            "planning_roots",
+            "tasks",
+        }
+        if payload.get("schema") == PLANNER_MANIFEST_SCHEMA:
+            expected.add("planning_inputs")
+        if payload.get("schema") == CREATE_MANIFEST_SCHEMA:
+            expected.add("created_outputs")
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if payload.get("schema") == INTENT_MANIFEST_SCHEMA:
+            expected.update({"created_outputs", "intent_requirements"})
+            if "planning_inputs" in payload:
+                expected.add("planning_inputs")
+        if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
+&gt;           raise LocalPlanningError("unsupported manifest contract")
+E           ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: unsupported manifest contract
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:318: LocalPlanningError</failure></testcase></testsuite></testsuites>

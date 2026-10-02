@@ -1,0 +1,362 @@
+[
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.planning.behavioral_codebase_match",
+    "path": "ipfs_accelerate_py/agent_supervisor/planning/behavioral_codebase_match.py",
+    "repository": "accelerate",
+    "sha256": "54134ae64d284b1df92063ff9e261b3b047211f8d4fce2eee9d3585b0f119fcf"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.planning.behavioral_repository_plan",
+    "path": "ipfs_accelerate_py/agent_supervisor/planning/behavioral_repository_plan.py",
+    "repository": "accelerate",
+    "sha256": "5982636bbe4ffa3589d46bd6e25cb763e8d47dd1f1cf320d504d49a490dbd1d0"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_cache_key_bridge.py",
+    "repository": "accelerate",
+    "sha256": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+    "repository": "accelerate",
+    "sha256": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+    "repository": "accelerate",
+    "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+    "repository": "accelerate",
+    "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+    "repository": "accelerate",
+    "sha256": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.proof_attestation",
+    "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+    "repository": "accelerate",
+    "sha256": "14070ff04a71dd0eaee00f26e769043dcb0e88e8ef88cca9776983ae1bc8539f"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.intent_population_admission",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py",
+    "repository": "accelerate",
+    "sha256": "78858f9807862a80710cbfbfc2156c261eae0820eda4e864fdcf8059c3e3d12b"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+    "repository": "accelerate",
+    "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_behavioral_admission",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py",
+    "repository": "accelerate",
+    "sha256": "2d0dc212657d50cc22b6d2f5b29d840f7316dedbe0fc66b4c42dbd3dea27c4ab"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_behavioral_runner",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_runner.py",
+    "repository": "accelerate",
+    "sha256": "f015c771a6196cd260bf1890069b70591a72a7d344d323b9ec7eebee60364ab3"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_handoff",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py",
+    "repository": "accelerate",
+    "sha256": "4ba2ed025b0449b5e7ed01051a01815dd135840ee064b1acdbee1cebac351eb5"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_public_context",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_public_context.py",
+    "repository": "accelerate",
+    "sha256": "7b7e980cadb1ed7f000381103470b9f04d67715c0b067d03bde8ab06e7b5134c"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_runner",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_runner.py",
+    "repository": "accelerate",
+    "sha256": "f2184097707f77eece598b78e96683239b777907db3f6b4a6c78dd73fae02689"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.runtime.repository_successor_context",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+    "repository": "accelerate",
+    "sha256": "f861778baaeef73fbebf23adfc395e5bf2951d02209f4ce0dd68331a89324700"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "repository": "accelerate",
+    "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+  },
+  {
+    "module": "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+    "repository": "accelerate",
+    "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf"
+  },
+  {
+    "module": "ipfs_datasets_py.duckdb_control.codebase_catalog",
+    "path": "ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+    "repository": "datasets",
+    "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+  },
+  {
+    "module": "ipfs_datasets_py.duckdb_control.intent_codebase_catalog",
+    "path": "ipfs_datasets_py/duckdb_control/intent_codebase_catalog.py",
+    "repository": "datasets",
+    "sha256": "12a95d9d73b6156497ff5860bfb720bb89ae6e499b6c38f8250a3ec266edca39"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.backends.codebase_process",
+    "path": "ipfs_datasets_py/logic/backends/codebase_process.py",
+    "repository": "datasets",
+    "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.backends.smt.compiler",
+    "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+    "repository": "datasets",
+    "sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.backends.smt.differential",
+    "path": "ipfs_datasets_py/logic/backends/smt/differential.py",
+    "repository": "datasets",
+    "sha256": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.common.canonical_cache_key",
+    "path": "ipfs_datasets_py/logic/common/canonical_cache_key.py",
+    "repository": "datasets",
+    "sha256": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.families.models",
+    "path": "ipfs_datasets_py/logic/families/models.py",
+    "repository": "datasets",
+    "sha256": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar",
+    "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+    "repository": "datasets",
+    "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.artifacts",
+    "path": "ipfs_datasets_py/logic/ir_core/artifacts.py",
+    "repository": "datasets",
+    "sha256": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.axes",
+    "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+    "repository": "datasets",
+    "sha256": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.canonical",
+    "path": "ipfs_datasets_py/logic/ir_core/canonical.py",
+    "repository": "datasets",
+    "sha256": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.claims",
+    "path": "ipfs_datasets_py/logic/ir_core/claims.py",
+    "repository": "datasets",
+    "sha256": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.diagnostics",
+    "path": "ipfs_datasets_py/logic/ir_core/diagnostics.py",
+    "repository": "datasets",
+    "sha256": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.identity",
+    "path": "ipfs_datasets_py/logic/ir_core/identity.py",
+    "repository": "datasets",
+    "sha256": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.protocols",
+    "path": "ipfs_datasets_py/logic/ir_core/protocols.py",
+    "repository": "datasets",
+    "sha256": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.ir_core.provenance",
+    "path": "ipfs_datasets_py/logic/ir_core/provenance.py",
+    "repository": "datasets",
+    "sha256": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.ast_ir",
+    "path": "ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+    "repository": "datasets",
+    "sha256": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.cache",
+    "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+    "repository": "datasets",
+    "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation",
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py",
+    "repository": "datasets",
+    "sha256": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile",
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+    "repository": "datasets",
+    "sha256": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.codebase_ir",
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "repository": "datasets",
+    "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.codebase_resources",
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+    "repository": "datasets",
+    "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.content",
+    "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+    "repository": "datasets",
+    "sha256": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store",
+    "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+    "repository": "datasets",
+    "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.duckdb_ingest",
+    "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py",
+    "repository": "datasets",
+    "sha256": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.python_frontend",
+    "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+    "repository": "datasets",
+    "sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+    "repository": "datasets",
+    "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.codebase_pipeline",
+    "path": "ipfs_datasets_py/logic/software_verification/codebase_pipeline.py",
+    "repository": "datasets",
+    "sha256": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.codebase_source_adapters",
+    "path": "ipfs_datasets_py/logic/software_verification/codebase_source_adapters.py",
+    "repository": "datasets",
+    "sha256": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.contracts",
+    "path": "ipfs_datasets_py/logic/software_verification/contracts.py",
+    "repository": "datasets",
+    "sha256": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.ir",
+    "path": "ipfs_datasets_py/logic/software_verification/ir.py",
+    "repository": "datasets",
+    "sha256": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.program",
+    "path": "ipfs_datasets_py/logic/software_verification/program.py",
+    "repository": "datasets",
+    "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.properties",
+    "path": "ipfs_datasets_py/logic/software_verification/properties.py",
+    "repository": "datasets",
+    "sha256": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.receipts",
+    "path": "ipfs_datasets_py/logic/software_verification/receipts.py",
+    "repository": "datasets",
+    "sha256": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.translations",
+    "path": "ipfs_datasets_py/logic/software_verification/translations.py",
+    "repository": "datasets",
+    "sha256": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda"
+  },
+  {
+    "module": "ipfs_datasets_py.logic.software_verification.vc",
+    "path": "ipfs_datasets_py/logic/software_verification/vc.py",
+    "repository": "datasets",
+    "sha256": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+  },
+  {
+    "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+    "repository": "datasets",
+    "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+  },
+  {
+    "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+    "repository": "datasets",
+    "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+  },
+  {
+    "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.runtime_telemetry",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py",
+    "repository": "datasets",
+    "sha256": "542f705867b93fcb138a117e1f5c97a144ad6635dc92c37bc5034eee5065ef63"
+  },
+  {
+    "path": "test/integration/test_intent_population_admission.py",
+    "repository": "accelerate",
+    "scope": "test_or_documentation",
+    "sha256": "fad6905f852c0ecb9e21259a286a2bd196c4a207d2d8daa79676141014fb37ed"
+  },
+  {
+    "path": "test/api/test_finite_integer_codebase.py",
+    "repository": "accelerate",
+    "scope": "test_or_documentation",
+    "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+  },
+  {
+    "path": "docs/agent_supervisor/intent_population_admission.md",
+    "repository": "accelerate",
+    "scope": "test_or_documentation",
+    "sha256": "220442dd6a93326b03880fa75beedf7ab2fc264ba7ac991aa022b8020de3b60b"
+  }
+]

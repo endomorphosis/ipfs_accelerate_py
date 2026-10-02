@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="10" time="56.799" timestamp="2026-10-02T10:12:07.424298+00:00" hostname="spark-b271"><testcase classname="integration.test_intent_population_admission" name="test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives" time="3.545" /><testcase classname="integration.test_intent_population_admission" name="test_actual_lost_publication_reply_recovers_exact_native_population_and_decision" time="4.864"><failure message="FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_lost_publication_r0/repository/.runtime/repository-finite-handoffs/121b0c41f3e2cd33583eab70042ac4d545278cb27eb54e2eac41390939992449.json'">profile = (PosixPath('/tmp/rpi021-controlled-second/test_actual_lost_publication_r0'), PosixPath('/tmp/rpi021-controlled-second/test_actual_lost_publication_r0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xec7d0698b4a0&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xec7d068f1100&gt;, ...}
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xec7d0781db50&gt;
+
+    def test_actual_lost_publication_reply_recovers_exact_native_population_and_decision(profile,finite_tools,owners,monkeypatch):
+        _,policy=declaration(profile,finite_tools)
+        with monkeypatch.context() as control:
+            control.setattr(population.finite,'_public_artifact',lambda *a,**k:(_ for _ in ()).throw(RuntimeError('lost publication reply')))
+            with pytest.raises(RuntimeError,match='lost publication reply'):prepare(owners,policy,['calc'])
+        result=prepare(owners,policy,['calc'])
+        assert result['decision_replayed'] and not result['saved_observations_used_as_proof']
+        before={cid:dict(owners['intent'].get_task(cid)) for cid in result['materialized']['task_cids']}
+&gt;       again=prepare(owners,policy,['calc'],state='new-retry-state')
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:392: in _prepare_population_admission
+    path,digest=finite._public_artifact(repository,signed)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py:87: in _public_artifact
+    _persist(artifact, raw)
+ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py:51: in _persist
+    with path.open('xb') as stream:
+         ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/rpi021-controlled-second/test_actual_lost_publication_r0/repository/.runtime/repository-finite-handoffs/121b0c41f3e2cd33583eab70042ac4d545278cb27eb54e2eac41390939992449.json')
+mode = 'xb', buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+&gt;       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_lost_publication_r0/repository/.runtime/repository-finite-handoffs/121b0c41f3e2cd33583eab70042ac4d545278cb27eb54e2eac41390939992449.json'
+
+/usr/lib/python3.12/pathlib.py:1015: FileExistsError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions" time="5.260"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 11, in &lt;module&gt;&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py&quot;, line 300, in prepare_population_admission&#10;      return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py&quot;, line 392, in _prepare_population_admission&#10;      path,digest=finite._public_artifact(repository,signed)&#10;                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py&quot;, line 87, in _public_artifact&#10;      _persist(artifact, raw)&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py&quot;, line 51, in _persist&#10;      with path.open('xb') as stream:&#10;           ^^^^^^^^^^^^^^^&#10;    File &quot;/usr/lib/python3.12/pathlib.py&quot;, line 1015, in open&#10;      return io.open(self, mode, buffering, encoding, errors, newline)&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;  FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0/repository/.runtime/repository-finite-handoffs/d3b442c06a55254b672eb5ab12cfba92aa709a629f5b9306bc3c2a9ac669f5ef.json'&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-I', '-c', &quot;import json,sys\nsys.path[:0]=json.loads(sys.argv[1])\nfrom pathlib import Path\nfrom ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead\nfrom ipfs_accelerate_py.agent_supervisor.runtime import intent_population_admission as owner\nfrom ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository\nfrom test.integration.test_intent_population_admission import host_scheduler\nr=json.loads(sys.argv[2]);root=Path(r['root'])\nwith IntentRepository(r['intent_database']) as intent:\n with owner.evidence_owner._owners(r['roots']) as (catalog,cache):\n  result=owner.prepare_population_admission(policy=r['policy'],selected_task_keys=['calc'],catalog=catalog,checked_cache=cache,\n   expected_head=CodebaseHead.from_dict(r['source_head']),intent=intent,state=root/'population-state',scheduler=host_scheduler(root))\n  assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])\n  print('POPULATION_REPLAY='+json.dumps(dict(decision_sha256=result['decision_sha256'],materialized=result['materialized'],replayed=result['decision_replayed'])))\n&quot;, '..._keys,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py&quot;, line 392, in _prepare_population_admission\n    path,digest=finite._public_artifact(repository,signed)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py&quot;, line 87, in _public_artifact\n    _persist(artifact, raw)\n  File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py&quot;, line 51, in _persist\n    with path.open(\'xb\') as stream:\n         ^^^^^^^^^^^^^^^\n  File &quot;/usr/lib/python3.12/pathlib.py&quot;, line 1015, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileExistsError: [Errno 17] File exists: \'/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0/repository/.runtime/repository-finite-handoffs/d3b442c06a55254b672eb5ab12cfba92aa709a629f5b9306bc3c2a9ac669f5ef.json\'\n').returncode">profile = (PosixPath('/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0'), PosixPath('/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xec7d0d5d6840&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xec7d080a1070&gt;, ...}
+
+    def test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions(profile,finite_tools,owners):
+        _,policy=declaration(profile,finite_tools);before=prepare(owners,policy,['calc'])
+        data=dict(policy=policy,roots=population.evidence_owner._roots(owners['catalog'],owners['checked_cache']),
+            source_head=owners['expected_head'].to_dict(),intent_database=str(owners['intent'].database_path),root=str(owners['root']))
+        owners['intent'].close();owners['catalog'].catalog.store._connection.close()
+        script='''import json,sys
+    sys.path[:0]=json.loads(sys.argv[1])
+    from pathlib import Path
+    from ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead
+    from ipfs_accelerate_py.agent_supervisor.runtime import intent_population_admission as owner
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+    from test.integration.test_intent_population_admission import host_scheduler
+    r=json.loads(sys.argv[2]);root=Path(r['root'])
+    with IntentRepository(r['intent_database']) as intent:
+     with owner.evidence_owner._owners(r['roots']) as (catalog,cache):
+      result=owner.prepare_population_admission(policy=r['policy'],selected_task_keys=['calc'],catalog=catalog,checked_cache=cache,
+       expected_head=CodebaseHead.from_dict(r['source_head']),intent=intent,state=root/'population-state',scheduler=host_scheduler(root))
+      assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])
+      print('POPULATION_REPLAY='+json.dumps(dict(decision_sha256=result['decision_sha256'],materialized=result['materialized'],replayed=result['decision_replayed'])))
+    '''
+        roots=[str(Path(population.__file__).parents[3]),'/tmp/ir-release-datasets-20261001',site.getusersitepackages()]
+        child=subprocess.run([sys.executable,'-I','-c',script,json.dumps(roots),json.dumps(data)],capture_output=True,text=True,timeout=90)
+&gt;       assert child.returncode==0,child.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 11, in &lt;module&gt;
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py", line 300, in prepare_population_admission
+E             return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py", line 392, in _prepare_population_admission
+E             path,digest=finite._public_artifact(repository,signed)
+E                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py", line 87, in _public_artifact
+E             _persist(artifact, raw)
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py", line 51, in _persist
+E             with path.open('xb') as stream:
+E                  ^^^^^^^^^^^^^^^
+E           File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+E             return io.open(self, mode, buffering, encoding, errors, newline)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0/repository/.runtime/repository-finite-handoffs/d3b442c06a55254b672eb5ab12cfba92aa709a629f5b9306bc3c2a9ac669f5ef.json'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-I', '-c', "import json,sys\nsys.path[:0]=json.loads(sys.argv[1])\nfrom pathlib import Path\nfrom ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead\nfrom ipfs_accelerate_py.agent_supervisor.runtime import intent_population_admission as owner\nfrom ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository\nfrom test.integration.test_intent_population_admission import host_scheduler\nr=json.loads(sys.argv[2]);root=Path(r['root'])\nwith IntentRepository(r['intent_database']) as intent:\n with owner.evidence_owner._owners(r['roots']) as (catalog,cache):\n  result=owner.prepare_population_admission(policy=r['policy'],selected_task_keys=['calc'],catalog=catalog,checked_cache=cache,\n   expected_head=CodebaseHead.from_dict(r['source_head']),intent=intent,state=root/'population-state',scheduler=host_scheduler(root))\n  assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])\n  print('POPULATION_REPLAY='+json.dumps(dict(decision_sha256=result['decision_sha256'],materialized=result['materialized'],replayed=result['decision_replayed'])))\n", '..._keys,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py", line 392, in _prepare_population_admission\n    path,digest=finite._public_artifact(repository,signed)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py", line 87, in _public_artifact\n    _persist(artifact, raw)\n  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py", line 51, in _persist\n    with path.open(\'xb\') as stream:\n         ^^^^^^^^^^^^^^^\n  File "/usr/lib/python3.12/pathlib.py", line 1015, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileExistsError: [Errno 17] File exists: \'/tmp/rpi021-controlled-second/test_actual_fresh_process_repl0/repository/.runtime/repository-finite-handoffs/d3b442c06a55254b672eb5ab12cfba92aa709a629f5b9306bc3c2a9ac669f5ef.json\'\n').returncode
+
+test/integration/test_intent_population_admission.py:241: AssertionError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails" time="3.782" /><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[task]" time="3.714" /><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]" time="3.071" /><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]" time="3.029" /><testcase classname="integration.test_intent_population_admission" name="test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]" time="2.910" /><testcase classname="integration.test_intent_population_admission" name="test_actual_native_proof_zero_edit_and_retry_keep_full_universe" time="9.260"><failure message="FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_native_proof_zero_0/repository/.runtime/repository-finite-handoffs/8ca93eb921681cca9cd9ce84b43a9d0c1c407dda91305c785ff116f1568358e2.json'">profile = (PosixPath('/tmp/rpi021-controlled-second/test_actual_native_proof_zero_0'), PosixPath('/tmp/rpi021-controlled-second/test_actual_native_proof_zero_0/repository'))
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+owners = {'catalog': &lt;ipfs_datasets_py.duckdb_control.intent_codebase_catalog.IntentCodebaseCatalog object at 0xec7d06abfa70&gt;, ...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xec7d068f3d10&gt;, ...}
+
+    def test_actual_native_proof_zero_edit_and_retry_keep_full_universe(profile,finite_tools,owners):
+        _,policy=declaration(profile,finite_tools,proofs=True)
+        result=prepare(owners,policy,[])
+&gt;       again=prepare(owners,policy,[])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_intent_population_admission.py:277: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_intent_population_admission.py:182: in prepare
+    return population.prepare_population_admission(policy=policy,selected_task_keys=selected,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:300: in prepare_population_admission
+    return _prepare_population_admission(policy=policy,selected_task_keys=selected_task_keys,
+ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py:392: in _prepare_population_admission
+    path,digest=finite._public_artifact(repository,signed)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py:87: in _public_artifact
+    _persist(artifact, raw)
+ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py:51: in _persist
+    with path.open('xb') as stream:
+         ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/tmp/rpi021-controlled-second/test_actual_native_proof_zero_0/repository/.runtime/repository-finite-handoffs/8ca93eb921681cca9cd9ce84b43a9d0c1c407dda91305c785ff116f1568358e2.json')
+mode = 'xb', buffering = -1, encoding = None, errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+&gt;       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileExistsError: [Errno 17] File exists: '/tmp/rpi021-controlled-second/test_actual_native_proof_zero_0/repository/.runtime/repository-finite-handoffs/8ca93eb921681cca9cd9ce84b43a9d0c1c407dda91305c785ff116f1568358e2.json'
+
+/usr/lib/python3.12/pathlib.py:1015: FileExistsError</failure></testcase><testcase classname="integration.test_intent_population_admission" name="test_actual_native_proof_elision_cannot_authorize_overwriting_its_source" time="9.196" /></testsuite></testsuites>
