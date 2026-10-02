@@ -146,7 +146,7 @@ def _cache_binding(result):
 def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = False,
         semantic_manifest: bool = False, checked_cache: bool = False,
         behavioral_evidence: bool = False, budgeted_preparation: bool = False,
-        full_trial_resources: bool = False):
+        full_trial_resources: bool = False, pipeline_resources: bool = False):
     import duckdb
     from ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation import seal_finite_integer_tools
     from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import get_global_resource_scheduler
@@ -166,6 +166,8 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
     if output.exists() or output.resolve() != output:
         raise ValueError("fresh exact qualification directory required")
     output.mkdir(parents=True)
+    if pipeline_resources:
+        full_trial_resources = True
     if full_trial_resources:
         behavioral_evidence = budgeted_preparation = True
     if behavioral_evidence:
@@ -174,6 +176,11 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         raise ValueError("budgeted preparation requires an explicitly selected semantic manifest")
     started = time.monotonic()
     resources_stack, trial_envelope = ExitStack(), None
+    trial_pipeline = managed_phase = managed_context = None
+    managed_before = None
+    primary_error = None
+    write_ceiling = 128 * 1024**2
+    preparation_write_ceiling = 16 * 1024**2
     report = dict(schema="native-repository-finite-qualification@1", qualified=False,
         provider_calls=0, provider_tokens=0, training_steps=0, benchmark_result=False,
         intent_origin="complete explicitly scoped controlled-language IntentIR",
@@ -182,11 +189,49 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         behavioral_evidence_selected=behavioral_evidence,
         budgeted_preparation_selected=budgeted_preparation,
         full_trial_resources_selected=full_trial_resources,
+        pipeline_resources_selected=pipeline_resources,
         preparation_reports=[],
         observations=[], trial_phases=[])
+    if pipeline_resources:
+        report["managed_profile"] = dict(cpu_slots=3, memory_mb=3072, process_slots=3,
+            disk_bytes=1536*1024**2, protected_memory_mb=1024, protected_disk_bytes=640*1024**2,
+            high_level_write_ceiling_bytes=write_ceiling,
+            preparation_write_ceiling_bytes=preparation_write_ceiling,
+            expected_ordinary_high_level_phases=5, expected_protected_high_level_phases=4,
+            expected_ordinary_preparation_phases=12, expected_protected_preparation_phases=3,
+            maximum_declared_ordinary_disk_bytes=832*1024**2,
+            maximum_declared_protected_disk_bytes=560*1024**2,
+            external_supervisor_and_worker_rss_captured=False,
+            ambient_semantic_temporary_files_in_named_roots=False)
     phase_name, phase_started = "setup", started
+    def cleanup_failure(error):
+        value = dict(type=type(error).__name__, message=str(error)[:4096])
+        report.setdefault("cleanup_errors", []).append(value)
+        report.setdefault("error", value)
+        report["qualified"] = False
+    def finish_managed(error=None):
+        nonlocal managed_phase, managed_context, managed_before
+        if managed_phase is None:
+            return
+        phase, context, before = managed_phase, managed_context, managed_before
+        managed_phase = managed_context = managed_before = None
+        if error is None:
+            try:
+                growth = max(0, phase.check_usage()["observed_apparent_bytes"]-before)
+                if growth > write_ceiling:
+                    raise RuntimeError("trial phase exceeds sampled named-root write ceiling")
+                phase.finalize(artifacts_durable=True)
+            except BaseException as failure:
+                context.__exit__(type(failure), failure, failure.__traceback__)
+                raise
+            context.__exit__(None, None, None)
+        else:
+            context.__exit__(type(error), error, error.__traceback__)
+
     def advance_phase(name, *, status="completed"):
         nonlocal phase_name, phase_started
+        nonlocal managed_phase, managed_context, managed_before
+        finish_managed()
         now = time.monotonic()
         report["trial_phases"].append(dict(phase=phase_name, status=status,
             elapsed_seconds=now-phase_started, start_seconds=phase_started-started,
@@ -194,6 +239,18 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         phase_name, phase_started = name, now
         if trial_envelope is not None:
             trial_envelope.remaining()
+        if trial_pipeline is not None:
+            from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge import RepositoryPhaseDemand
+            protected = name in {"initial_public_validation", "native_supervision_and_stop", "publication_verification"}
+            kind = "cleanup" if name == "resource_cleanup" else "validation" if protected else "proof"
+            attempt = output / "managed-attempts" / (str(len(report["trial_phases"])) + "-" + name)
+            attempt.mkdir(mode=0o700)
+            payload = json.dumps(dict(phase=name, instruction=INSTRUCTION), sort_keys=True).encode()
+            managed_context = trial_pipeline.phase(RepositoryPhaseDemand(kind, memory_mb=1024,
+                disk_bytes=write_ceiling), payload=payload, attempt_directory=attempt)
+            managed_phase = managed_context.__enter__()
+            managed_before = managed_phase.check_usage()["observed_apparent_bytes"]
+            managed_phase.charge_external(output, write_ceiling)
     try:
         repository = output / "repository"; repository.mkdir()
         for name, body in {"calc.py": SOURCE, "instruction.txt": INSTRUCTION,
@@ -214,10 +271,11 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         (repository / ".runtime").mkdir(mode=0o755)
         baseline = _git(repository, "rev-parse", "HEAD")
         check = ["python3", "-B", "public_check.py"]
-        report["initial_public_check_exit_code"] = subprocess.run(check, cwd=repository,
-            capture_output=True, timeout=10).returncode
-        if not report["initial_public_check_exit_code"]:
-            raise RuntimeError("independent public acceptance must initially fail")
+        if not pipeline_resources:
+            report["initial_public_check_exit_code"] = subprocess.run(check, cwd=repository,
+                capture_output=True, timeout=10).returncode
+            if not report["initial_public_check_exit_code"]:
+                raise RuntimeError("independent public acceptance must initially fail")
         tools = seal_finite_integer_tools(python_executable=python, lean_executable=lean)
         scheduler = get_global_resource_scheduler()
         advance_phase("host_admission")
@@ -229,16 +287,47 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             # Preparation, proof work and delegated worker all consume children
             # of this sole host reservation. Setup time consumes its deadline.
             remaining_ms = 600000 - int((time.monotonic()-started)*1000)
-            trial_envelope = resources_stack.enter_context(RepositoryResourceBridge(
-                ResourceScheduler(ResourcePolicy(max_lanes=8))).reserve(
-                    repository_id="repository:finite-native-qualification", workspace=output,
-                    budget=RepositoryResourceBudget(cpu_slots=2, memory_mb=3072, process_slots=2,
-                        wall_time_ms=remaining_ms)))
+            if pipeline_resources:
+                from ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources import (
+                    RepositoryPipelineResources, PipelineResourcePolicy,
+                )
+                (output / "managed-attempts").mkdir(mode=0o700)
+                trial_pipeline = resources_stack.enter_context(RepositoryPipelineResources(
+                    ResourceScheduler(ResourcePolicy(max_lanes=8))).reserve(
+                        repository_id="repository:finite-native-qualification", workspace=output,
+                        budget=RepositoryResourceBudget(cpu_slots=3, memory_mb=3072, process_slots=3,
+                            disk_bytes=1536*1024**2, wall_time_ms=remaining_ms),
+                        policy=PipelineResourcePolicy(protected_memory_mb=1024,
+                            protected_disk_bytes=640*1024**2),
+                        ledger_path=output / "pipeline-disk-ledger.json", roots=[output]))
+                trial_envelope = trial_pipeline.parent
+                advance_phase("initial_public_validation")
+                report["initial_public_check_exit_code"] = managed_phase.run(
+                    [str(python), "-B", str(repository / "public_check.py")], timeout_seconds=10).returncode
+                if not report["initial_public_check_exit_code"]:
+                    raise RuntimeError("independent public acceptance must initially fail")
+            else:
+                trial_envelope = resources_stack.enter_context(RepositoryResourceBridge(
+                    ResourceScheduler(ResourcePolicy(max_lanes=8))).reserve(
+                        repository_id="repository:finite-native-qualification", workspace=output,
+                        budget=RepositoryResourceBudget(cpu_slots=2, memory_mb=3072, process_slots=2,
+                            wall_time_ms=remaining_ms)))
         def native_resources():
             if trial_envelope is None:
                 return dict(scheduler=scheduler)
             trial_envelope.remaining()
+            if trial_pipeline is not None:
+                if managed_phase is None:
+                    raise RuntimeError("managed native work requires an active admitted phase")
+                options = managed_phase.native_options()
+                return {key: options[key] for key in ("parent_lease", "cancel_event")}
             return dict(parent_lease=trial_envelope.native, cancel_event=trial_envelope.cancellation)
+        def fresh_cache(value):
+            if value is None:
+                return None
+            inputs = {key: item for key, item in value["inputs"].items()
+                      if key not in {"scheduler", "parent_lease", "cancel_event"}}
+            return {**value, "inputs": {**inputs, **native_resources()}}
         def prepare_source(index, *, repository_id, operation_id, expected_head):
             if not semantic_manifest:
                 return index.prepare_current(repository, repository_id=repository_id,
@@ -269,7 +358,9 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                         selection=RepositoryPreparationSelection(CodebaseScanPolicy(),
                             proof_contracts=(contract,), proof_inputs=(tuple(INPUTS),)),
                         envelope=envelope, budget=PreparationBudget(memory_mb=1024),
-                        checked_cache=proof_owner, tool_policy=tools)
+                        checked_cache=proof_owner, tool_policy=tools,
+                        **(dict(pipeline=trial_pipeline, pipeline_attempt_root=output / "managed-attempts",
+                            pipeline_write_budget_bytes=preparation_write_ceiling) if trial_pipeline is not None else {}))
                 report["preparation_reports"].append(dict(result=prepared,
                     resource_receipt_after_preparation=envelope.receipt(),
                     full_trial_parent_retained=trial_envelope is not None))
@@ -317,11 +408,12 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                     scope_paths=["calc.py", "instruction.txt", "public_check.py"], output_path="calc.py",
                     validation_argv=check, objective=INSTRUCTION.replace("\n", " "))
                 cid = declared["task_cid"]
+                planning_resources = native_resources()
                 options = prepare_request(index=index, head=head, repository=repository, intent=intent,
-                    declared=declared, tools=tools, scheduler=scheduler if trial_envelope is None else None,
-                    parent_lease=None if trial_envelope is None else trial_envelope.native,
-                    cancel_event=None if trial_envelope is None else trial_envelope.cancellation,
-                    semantic_index=semantic_index, checked_cache=cached)
+                    declared=declared, tools=tools, scheduler=planning_resources.get("scheduler"),
+                    parent_lease=planning_resources.get("parent_lease"),
+                    cancel_event=planning_resources.get("cancel_event"),
+                    semantic_index=semantic_index, checked_cache=fresh_cache(cached))
                 if behavioral_evidence:
                     from ipfs_datasets_py.duckdb_control.intent_codebase_catalog import IntentCodebaseCatalog
                     from ipfs_accelerate_py.agent_supervisor.runtime.repository_behavioral_admission import prepare_behavioral_repository_handoff
@@ -371,10 +463,16 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             runner_module = "repository_behavioral_runner"
         grant = None
         if full_trial_resources:
-            from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_handoff import write_repository_resource_grant
+            from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_handoff import (
+                write_repository_resource_grant, write_pipeline_resource_grant,
+            )
             private = output / "private-resources"; private.mkdir(mode=0o700)
-            grant = write_repository_resource_grant(envelope=trial_envelope, directory=private,
-                task_cid=cid, demand=RepositoryPhaseDemand("validation", memory_mb=1024))
+            if trial_pipeline is not None:
+                advance_phase("native_supervision_and_stop")
+                grant = write_pipeline_resource_grant(phase=managed_phase, directory=private, task_cid=cid)
+            else:
+                grant = write_repository_resource_grant(envelope=trial_envelope, directory=private,
+                    task_cid=cid, demand=RepositoryPhaseDemand("validation", memory_mb=1024))
             runner_module = "repository_budgeted_behavioral_runner"
         command_args = [sys.executable, "-B", "-P", "-m",
             "ipfs_accelerate_py.agent_supervisor.runtime." + runner_module,
@@ -390,7 +488,8 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 "--repository-id", head.repository_id]
         command = shlex.join(command_args)
         worktrees = output / "worktrees"; worktrees.mkdir(mode=0o750)
-        advance_phase("native_supervision_and_stop")
+        if trial_pipeline is None:
+            advance_phase("native_supervision_and_stop")
         with open_existing_native_owner(database=output / "intent.duckdb", checkout=repository,
                 state_dir=output / "owner", repository_id=declared["manifest"]["payload"]["repository_cid"],
                 execution_routes={declared["task_id"]: GROK_CODEX_EXECUTION_MODE}) as owner:
@@ -459,13 +558,19 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 report["behavioral_worker_fence_replayed"] = True
             if full_trial_resources:
                 resource_receipt = receipts[0].get("delegated_resource_phase", {})
-                if (resource_receipt.get("parent_lease_id") != trial_envelope.native.lease_id
+                expected_parent = grant["parent_lease_id"] if trial_pipeline is not None else trial_envelope.native.lease_id
+                if (resource_receipt.get("parent_lease_id") != expected_parent
                         or resource_receipt.get("lease", {}).get("released") is not True
                         or resource_receipt.get("private_token_disclosed") is not False):
                     raise RuntimeError("worker did not close its delegated native parent lease")
+                if trial_pipeline is not None and any(resource_receipt.get(key) != grant[key]
+                        for key in ("root_lease_id", "bridge_phase_lease_id", "daemon_reservation_id")):
+                    raise RuntimeError("worker did not retain its exact managed resource ancestry")
                 report["delegated_worker_resources_verified"] = True
-        report["final_public_check_exit_code"] = subprocess.run(check, cwd=repository,
-            capture_output=True, timeout=10).returncode
+        report["final_public_check_exit_code"] = (managed_phase.run(
+            [str(python), "-B", str(repository / "public_check.py")], timeout_seconds=10).returncode
+            if trial_pipeline is not None else subprocess.run(check, cwd=repository,
+                capture_output=True, timeout=10).returncode)
         report["published_commit"] = _git(repository, "rev-parse", "HEAD")
         report["published_source_matches_checked_candidate"] = hashlib.sha256((repository / "calc.py").read_bytes()).hexdigest() == candidate["signed_evidence"]["payload"]["edit"]["after_sha256"]
         from ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_runner import materialize_finite_candidate
@@ -554,8 +659,11 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             _write(output / "cold-match.json", cold_match)
         advance_phase("resource_cleanup")
         if trial_envelope is not None:
+            finish_managed()
             resources_stack.close()
             report["full_trial_resource_receipt"] = trial_envelope.receipt()
+        if trial_pipeline is not None:
+            report["pipeline_resource_receipt"] = trial_pipeline.receipt()
         report["resource_state"] = scheduler.snapshot()
         report["owned_remaining_leases"] = [row for row in scheduler.active_leases()
                                              if row["owner_pid"] == os.getpid()]
@@ -570,18 +678,37 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                                       and report.get("stale_checked_cache_refused") is True))
             and (not behavioral_evidence or report.get("behavioral_worker_fence_replayed") is True)
             and (not full_trial_resources or report.get("delegated_worker_resources_verified") is True)
+            and (not pipeline_resources or (report["pipeline_resource_receipt"]["closed"]
+                and not report["pipeline_resource_receipt"]["retained_disk_reservations"]
+                and not report["pipeline_resource_receipt"]["retained_host_phase_count"]))
             and not report["successor"]["residuals"]
             and not report["owned_remaining_leases"])
     except Exception as error:
+        primary_error = error
         report["error"] = dict(type=type(error).__name__, message=str(error)[:4096])
         if "scheduler" in locals():
-            report["resource_state"] = scheduler.snapshot()
+            try:
+                report["resource_state"] = scheduler.snapshot()
+            except Exception as observation_error:
+                report["resource_observation_error"] = type(observation_error).__name__
         report["host_pressure"] = {kind: Path("/proc/pressure", kind).read_text()
             for kind in ("cpu", "memory", "io") if Path("/proc/pressure", kind).is_file()}
     finally:
-        resources_stack.close()
+        for cleanup in (lambda: finish_managed(primary_error), resources_stack.close):
+            try:
+                cleanup()
+            except Exception as error:
+                cleanup_failure(error)
         if trial_envelope is not None:
-            report["full_trial_resource_receipt"] = trial_envelope.receipt()
+            try:
+                report["full_trial_resource_receipt"] = trial_envelope.receipt()
+            except Exception as error:
+                cleanup_failure(error)
+        if trial_pipeline is not None:
+            try:
+                report["pipeline_resource_receipt"] = trial_pipeline.receipt()
+            except Exception as error:
+                cleanup_failure(error)
         finished = time.monotonic()
         report["trial_phases"].append(dict(phase=phase_name,
             status="failed" if "error" in report else "completed",
@@ -609,6 +736,7 @@ def main():
     parser.add_argument("--behavioral-evidence", action="store_true")
     parser.add_argument("--budgeted-preparation", action="store_true")
     parser.add_argument("--full-trial-resources", action="store_true")
+    parser.add_argument("--pipeline-resources", action="store_true")
     result = qualify(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("qualified", "seconds", "provider_calls")}))
     return 0 if result["qualified"] else 1

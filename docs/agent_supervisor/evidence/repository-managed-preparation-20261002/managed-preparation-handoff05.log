@@ -1,0 +1,64 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 33 items
+
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_runs_actual_scan_catalog_and_validation [32mPASSED[0m[32m [  3%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[wrong_owner] [32mPASSED[0m[32m [  6%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[outside_attempt] [32mPASSED[0m[32m [  9%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[outside_cas] [32mPASSED[0m[32m [ 12%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[zero_write] [32mPASSED[0m[32m [ 15%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[boolean_write] [32mPASSED[0m[32m [ 18%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[unselected_model] [32mPASSED[0m[32m [ 21%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[unselected_proof] [32mPASSED[0m[32m [ 24%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_failure_retains_precharged_native_disk_claim [32mPASSED[0m[32m [ 27%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors [32mPASSED[0m[32m [ 30%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[root] [32mPASSED[0m[32m [ 33%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[bridge] [32mPASSED[0m[32m [ 36%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[daemon_id] [32mPASSED[0m[32m [ 39%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[token] [32mPASSED[0m[32m [ 42%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[phase] [32mPASSED[0m[32m [ 45%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[capacity] [32mPASSED[0m[32m [ 48%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[task] [32mPASSED[0m[32m [ 51%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[repository] [32mPASSED[0m[32m [ 54%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[owner] [32mPASSED[0m[32m [ 57%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[expires] [32mPASSED[0m[32m [ 60%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[version] [32mPASSED[0m[32m [ 63%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[unknown] [32mPASSED[0m[32m [ 66%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[mode] [32mPASSED[0m[32m [ 69%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[hardlink] [32mPASSED[0m[32m [ 72%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[directory] [32mPASSED[0m[32m [ 75%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_cancellation_and_released_phase_refuse_delegation [32mPASSED[0m[32m [ 78%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v1_dispatch_retains_legacy_exact_root_behavior [32mPASSED[0m[32m [ 81%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_sampled_growth_over_ceiling_retains_failed_claim [32mPASSED[0m[32m [ 84%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_cross_process_child_joins_same_controlled_native_owner [32mPASSED[0m[32m [ 87%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_ancestor_cancel_propagates_to_actual_consumer [32mPASSED[0m[32m [ 90%][0m
+test/api/test_native_repository_managed_driver.py::test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 10:15:48 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-02 10:15:48 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-02 10:15:48 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-02 10:15:48 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-02 10:15:48 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-02 10:15:48 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-02 10:15:48 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+[32mPASSED[0m[32m                                                                   [ 93%][0m
+test/api/test_native_repository_managed_driver.py::test_pipeline_cli_is_explicit_and_legacy_full_flag_is_distinct [32mPASSED[0m[32m [ 96%][0m
+test/api/test_native_repository_managed_driver.py::test_managed_driver_retains_primary_error_when_both_receipt_observers_fail [32mPASSED[0m[32m [100%][0m
+
+============================= slowest 10 durations =============================
+2.71s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_runs_actual_scan_catalog_and_validation
+1.15s call     api/test_native_repository_managed_driver.py::test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact
+1.08s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_sampled_growth_over_ceiling_retains_failed_claim
+0.35s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_cross_process_child_joins_same_controlled_native_owner
+0.28s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_failure_retains_precharged_native_disk_claim
+0.24s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors
+0.21s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[token]
+0.20s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[daemon_id]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[phase]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[directory]
+[32m============================= [32m[1m33 passed[0m[32m in 11.77s[0m[32m ==============================[0m

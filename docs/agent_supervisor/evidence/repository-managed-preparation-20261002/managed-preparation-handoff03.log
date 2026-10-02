@@ -1,0 +1,33 @@
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/_pytest/main.py", line 326, in wrap_session
+INTERNALERROR>     config._do_configure()
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/_pytest/config/__init__.py", line 1205, in _do_configure
+INTERNALERROR>     self.hook.pytest_configure.call_historic(kwargs=dict(config=self))
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/pluggy/_hooks.py", line 534, in call_historic
+INTERNALERROR>     res = self._hookexec(self.name, self._hookimpls.copy(), kwargs, False)
+INTERNALERROR>           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/pluggy/_manager.py", line 120, in _hookexec
+INTERNALERROR>     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+INTERNALERROR>            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/pluggy/_callers.py", line 167, in _multicall
+INTERNALERROR>     raise exception
+INTERNALERROR>   File "/home/barberb/.local/lib/python3.12/site-packages/pluggy/_callers.py", line 121, in _multicall
+INTERNALERROR>     res = hook_impl.function(*args)
+INTERNALERROR>           ^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/test/conftest.py", line 77, in pytest_configure
+INTERNALERROR>     _pytest_ast_seal.pytest_configure(config)
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/testing/pytest_ast_seal.py", line 440, in pytest_configure
+INTERNALERROR>     oracle = _oracle_for(config)
+INTERNALERROR>              ^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/testing/pytest_ast_seal.py", line 405, in _oracle_for
+INTERNALERROR>     return DuckDbQuackSealOracle(path)
+INTERNALERROR>            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/testing/pytest_ast_seal.py", line 304, in __init__
+INTERNALERROR>     self._open()
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/testing/pytest_ast_seal.py", line 315, in _open
+INTERNALERROR>     connection = self._connect()
+INTERNALERROR>                  ^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/testing/pytest_ast_seal.py", line 310, in _connect
+INTERNALERROR>     connection = duckdb.connect(str(self.path), config={"threads": 1})
+INTERNALERROR>                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR> _duckdb.IOException: IO Error: Could not set lock on file "/tmp/ir-release-accelerate-20261001/test/.pytest_cache/pytest_ast_seal.duckdb": Conflicting lock is held in /usr/bin/python3.12 (PID 1625906) by user barberb. See also https://duckdb.org/docs/stable/connect/concurrency

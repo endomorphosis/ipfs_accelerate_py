@@ -9,12 +9,12 @@ import sys
 
 from .repository_behavioral_admission import verify_behavioral_repository_handoff
 from .repository_finite_public_context import materialize_with_public_context
-from .repository_resource_handoff import delegated_repository_phase
+from .repository_resource_handoff import delegated_supported_repository_phase
 
 
 def materialize_budgeted_behavioral_candidate(*, resource_grant, resource_grant_sha256,
         repository_id, repository_admission, repository_admission_sha256, **options):
-    with delegated_repository_phase(artifact=resource_grant, expected_sha256=resource_grant_sha256,
+    with delegated_supported_repository_phase(artifact=resource_grant, expected_sha256=resource_grant_sha256,
             repository_id=repository_id, task_cid=options['task_cid']) as phase:
         count = str(phase.demand.threads_per_process)
         if any(os.environ.get(name) != count for name in

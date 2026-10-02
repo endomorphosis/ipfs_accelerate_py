@@ -1,0 +1,95 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 25 items
+
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_runs_actual_scan_catalog_and_validation [32mPASSED[0m[32m [  4%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[wrong_owner] [32mPASSED[0m[32m [  8%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[outside_attempt] [32mPASSED[0m[32m [ 12%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[outside_cas] [31mFAILED[0m[31m [ 16%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[zero_write] [32mPASSED[0m[31m [ 20%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[boolean_write] [32mPASSED[0m[31m [ 24%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_managed_failure_retains_precharged_native_disk_claim [32mPASSED[0m[31m [ 28%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors [32mPASSED[0m[31m [ 32%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[root] [32mPASSED[0m[31m [ 36%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[bridge] [32mPASSED[0m[31m [ 40%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[daemon_id] [32mPASSED[0m[31m [ 44%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[token] [32mPASSED[0m[31m [ 48%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[phase] [32mPASSED[0m[31m [ 52%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[capacity] [32mPASSED[0m[31m [ 56%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[task] [32mPASSED[0m[31m [ 60%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[repository] [32mPASSED[0m[31m [ 64%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[owner] [32mPASSED[0m[31m [ 68%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[expires] [32mPASSED[0m[31m [ 72%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[version] [32mPASSED[0m[31m [ 76%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[unknown] [32mPASSED[0m[31m [ 80%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[mode] [32mPASSED[0m[31m [ 84%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[hardlink] [32mPASSED[0m[31m [ 88%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[directory] [32mPASSED[0m[31m [ 92%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v2_cancellation_and_released_phase_refuse_delegation [32mPASSED[0m[31m [ 96%][0m
+test/integration/test_repository_managed_preparation_and_handoff.py::test_v1_dispatch_retains_legacy_exact_root_behavior [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_managed_preparation_refuses_scope_before_source_publication[outside_cas] _[0m
+
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xed15844d57f0>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xed15844e4b00>)
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4817/test_managed_preparation_refus2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xed15844e4d70>
+damage = 'outside_cas'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m'[39;49;00m[33mdamage[39;49;00m[33m'[39;49;00m,[[33m'[39;49;00m[33mwrong_owner[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33moutside_attempt[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33moutside_cas[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mzero_write[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mboolean_write[39;49;00m[33m'[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_managed_preparation_refuses_scope_before_source_publication[39;49;00m(injected_owners,tmp_path,monkeypatch,damage):[90m[39;49;00m
+        [94mwith[39;49;00m managed(tmp_path,injected_owners,monkeypatch) [94mas[39;49;00m (owner,attempts):[90m[39;49;00m
+            index, repository, cx=native_index(tmp_path)[90m[39;49;00m
+            [94mtry[39;49;00m:[90m[39;49;00m
+                values=arguments(index,repository,owner,attempts)[90m[39;49;00m
+                [94mif[39;49;00m damage==[33m'[39;49;00m[33mwrong_owner[39;49;00m[33m'[39;49;00m:values[[33m'[39;49;00m[33mpipeline[39;49;00m[33m'[39;49;00m]=[96mobject[39;49;00m()[90m[39;49;00m
+                [94melif[39;49;00m damage==[33m'[39;49;00m[33moutside_attempt[39;49;00m[33m'[39;49;00m:values[[33m'[39;49;00m[33mpipeline_attempt_root[39;49;00m[33m'[39;49;00m]=repository[90m[39;49;00m
+                [94melif[39;49;00m damage==[33m'[39;49;00m[33moutside_cas[39;49;00m[33m'[39;49;00m:index.artifacts.root=repository[90m[39;49;00m
+                [94melif[39;49;00m damage==[33m'[39;49;00m[33mzero_write[39;49;00m[33m'[39;49;00m:values[[33m'[39;49;00m[33mpipeline_write_budget_bytes[39;49;00m[33m'[39;49;00m]=[94m0[39;49;00m[90m[39;49;00m
+                [94melse[39;49;00m:values[[33m'[39;49;00m[33mpipeline_write_budget_bytes[39;49;00m[33m'[39;49;00m]=[94mTrue[39;49;00m[90m[39;49;00m
+                [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):prep.prepare_repository_benchmark(**values)[90m[39;49;00m
+>               [94massert[39;49;00m index.current(owner.parent.repository_id) [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_managed_preparation_and_handoff.py[0m:100: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py[0m:420: in current
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m.catalog.current(repository_id)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/duckdb_control/codebase_catalog.py[0m:333: in current
+    [0m[96mself[39;49;00m._ensure_owner()[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_datasets_py.duckdb_control.codebase_catalog.CodebaseCatalog object at 0xed15844e6ba0>
+
+    [0m[94mdef[39;49;00m [92m_ensure_owner[39;49;00m([96mself[39;49;00m) -> [94mNone[39;49;00m:[90m[39;49;00m
+        [94mif[39;49;00m os.getpid() != [96mself[39;49;00m._pid:[90m[39;49;00m
+            [94mraise[39;49;00m CodebaseCatalogError([33m"[39;49;00m[33minherited catalog connection cannot be used in another process[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96mself[39;49;00m.store._connection [95mis[39;49;00m [95mnot[39;49;00m [96mself[39;49;00m._cx:[90m[39;49;00m
+            [94mraise[39;49;00m CodebaseCatalogError([33m"[39;49;00m[33mcatalog AST connection identity changed[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([96mself[39;49;00m._identity([96mself[39;49;00m._database_path) != [96mself[39;49;00m._database_identity[90m[39;49;00m
+                [95mor[39;49;00m [96mself[39;49;00m.artifacts.root.resolve() != [96mself[39;49;00m._artifact_root[90m[39;49;00m
+                [95mor[39;49;00m [96mself[39;49;00m._identity([96mself[39;49;00m._artifact_root) != [96mself[39;49;00m._artifact_identity):[90m[39;49;00m
+>           [94mraise[39;49;00m CodebaseCatalogError([33m"[39;49;00m[33mcatalog database or artifact root identity changed[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.duckdb_control.codebase_catalog.CodebaseCatalogError: catalog database or artifact root identity changed[0m
+
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/duckdb_control/codebase_catalog.py[0m:255: CodebaseCatalogError
+============================= slowest 10 durations =============================
+2.73s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_runs_actual_scan_catalog_and_validation
+0.28s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_failure_retains_precharged_native_disk_claim
+0.25s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors
+0.20s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_cancellation_and_released_phase_refuse_delegation
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[token]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[hardlink]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[bridge]
+0.18s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[version]
+0.18s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[root]
+0.18s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[capacity]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_managed_preparation_and_handoff.py::[1mtest_managed_preparation_refuses_scope_before_source_publication[outside_cas][0m - ipfs_datasets_py.duckdb_control.codebase_catalog.CodebaseCatalogError: cata...
+[31m========================= [31m[1m1 failed[0m, [32m24 passed[0m[31m in 8.34s[0m[31m =========================[0m

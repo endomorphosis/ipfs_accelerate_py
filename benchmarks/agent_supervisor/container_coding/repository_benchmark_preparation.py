@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+from pathlib import Path
 import time
 
 from ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead
@@ -128,7 +129,8 @@ def _retained(evaluation):
 
 def prepare_repository_benchmark(*, index, repository, repository_id, expected_head,
         operation_id, selection, envelope, budget=PreparationBudget(), checked_cache=None,
-        tool_policy=None, model=None):
+        tool_policy=None, model=None, pipeline=None, pipeline_attempt_root=None,
+        pipeline_write_budget_bytes=16 * 1024 * 1024):
     """Run selected native stages under the actual shared host parent.
 
     No fit occurs for model_off/pinned_parent. Required-training failure has no
@@ -147,6 +149,29 @@ def prepare_repository_benchmark(*, index, repository, repository_id, expected_h
             and type(tool_policy) is dict, "proof arm requires exact native cache and tool policy")
     else:
         _require(checked_cache is None and tool_policy is None, "unselected proof resources must be absent")
+    if pipeline is None:
+        _require(pipeline_attempt_root is None, "pipeline attempt root requires an explicit managed pipeline")
+    else:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources import RepositoryPipelineReservation
+        _require(type(pipeline) is RepositoryPipelineReservation and pipeline.parent is envelope,
+                 "pipeline must own this exact admitted host envelope")
+        _require(type(pipeline_write_budget_bytes) is int and 0 < pipeline_write_budget_bytes <= 1024**3,
+                 "bounded exact managed write ceiling required")
+        _require(pipeline_attempt_root is not None, "managed preparation needs an explicit attempt root")
+        pipeline_attempt_root = Path(pipeline_attempt_root).absolute()
+        _require(pipeline_attempt_root.is_dir(), "existing managed attempt root required")
+        outputs = [pipeline_attempt_root, index.artifacts.root,
+                   getattr(index.catalog, "_database_path", None)]
+        if checked_cache is not None:
+            outputs.append(checked_cache.cache.path)
+        if model is not None:
+            outputs.extend((model.registry.database_path, model.registry.artifact_root))
+        for output in outputs:
+            _require(output is not None, "managed preparation needs durable native output owners")
+            output = Path(output).absolute()
+            _require(not any(part.is_symlink() for part in (output, *output.parents))
+                and any(output == root or root in output.parents for root in pipeline.roots),
+                "preparation output owner is outside the exact named disk roots")
     declared = selection.to_dict()
     frozen_model_head = None if model is None else deepcopy(model.expected_head)
     started = time.monotonic()
@@ -159,6 +184,11 @@ def prepare_repository_benchmark(*, index, repository, repository_id, expected_h
             holdout_used_for_runtime_selection=selection.model_policy in {"optional_training", "required_training"},
             untouched_final_benchmark_test=False),
         benchmark_score=False, deadline_enforcement="cooperative_parent_and_native_subprocess_limits")
+    if pipeline is not None:
+        report["managed_pipeline"] = dict(schema="repository-managed-preparation@1",
+            external_write_ceiling_bytes_per_phase=pipeline_write_budget_bytes,
+            disk_enforcement="precharged_ceiling_plus_sampled_final_named_root_growth",
+            external_process_rss_captured=False, hard_disk_quota=False)
 
     @contextmanager
     def phase(name):
@@ -166,15 +196,43 @@ def prepare_repository_benchmark(*, index, repository, repository_id, expected_h
         start = time.monotonic()
         stage = dict(phase=name, status="failed", elapsed_seconds=None)
         report["stages"].append(stage)
-        with envelope.phase(RepositoryPhaseDemand(name, memory_mb=budget.memory_mb)) as lease:
+        if pipeline is None:
+            context = envelope.phase(RepositoryPhaseDemand(name, memory_mb=budget.memory_mb))
+        else:
+            request = json.dumps(dict(schema="repository-preparation-phase-request@1",
+                repository_id=repository_id, operation_id=operation_id, phase=name,
+                selection=declared), sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+            attempt = pipeline_attempt_root / (hashlib.sha256(operation_id.encode()).hexdigest()[:24]
+                + "-" + str(len(report["stages"])) + "-" + name)
+            attempt.mkdir(mode=0o700)
+            context = pipeline.phase(RepositoryPhaseDemand(name, memory_mb=budget.memory_mb,
+                disk_bytes=pipeline_write_budget_bytes), payload=request, attempt_directory=attempt)
+        with context as lease:
             controls = lease.native_options()
             phase_left = budget.phase_seconds - (time.monotonic() - start)
             _require(phase_left > 0, "phase queue exhausted its declared deadline")
             controls["timeout_seconds"] = min(controls["timeout_seconds"], phase_left)
+            before = None
+            if pipeline is not None:
+                before = lease.check_usage()["observed_apparent_bytes"]
+                # Shared CAS/SQL output owners remain in their native locations.
+                # Retain this conservative full precharge, even when actual
+                # final growth is smaller; do not invent per-phase byte savings.
+                lease.charge_external(pipeline.roots[0], pipeline_write_budget_bytes)
             try:
                 yield controls
                 envelope.remaining()
                 _require(time.monotonic()-start <= budget.phase_seconds, "phase exceeded its declared deadline")
+                if pipeline is not None:
+                    after = lease.check_usage()["observed_apparent_bytes"]
+                    growth = max(0, after-before)
+                    _require(growth <= pipeline_write_budget_bytes,
+                             "sampled named-root growth exceeds managed write ceiling")
+                    lease.finalize(artifacts_durable=True)
+                    stage["managed_resources"] = dict(payload_bytes=len(request),
+                        external_write_ceiling_bytes=pipeline_write_budget_bytes,
+                        sampled_named_root_growth_bytes=growth, named_roots_only=True,
+                        disk_reservation_id=lease.daemon.reservation_id)
                 stage["status"] = "completed"
             finally:
                 stage["elapsed_seconds"] = time.monotonic()-start
@@ -251,6 +309,8 @@ def prepare_repository_benchmark(*, index, repository, repository_id, expected_h
                 model.registry.resolve_head(frozen_model_head["variant_id"],model.branch) == frozen_model_head,
                      "selected model head changed during preparation")
     report.update(qualified=True, elapsed_seconds=time.monotonic()-started, resource_receipt=envelope.receipt())
+    if pipeline is not None:
+        report["managed_pipeline"]["resource_receipt"] = pipeline.receipt()
     # Native scheduler timestamps are measured floats. Commit their exact
     # bounded JSON bytes instead of coercing them into semantic DAG-JSON values.
     raw = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()

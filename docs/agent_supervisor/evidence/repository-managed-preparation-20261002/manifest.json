@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "bytes": 1322,
+      "path": "README.md",
+      "sha256": "c6c8fdbe8a79680c8a4b391ce266f9eff1ca9d17f29a411237bfb3960f564c66"
+    },
+    {
+      "bytes": 2158,
+      "path": "managed-native-01-summary.json",
+      "sha256": "17090d2e39562bfb321eaf10c74b6d8553d7287fb834fb6ce62ab5e6f67adcbb"
+    },
+    {
+      "bytes": 527,
+      "path": "managed-native-01.log",
+      "sha256": "f49989cb70dbf88af5d3b6bc72f224120307df277bd5f365ca9862422299ec1b"
+    },
+    {
+      "bytes": 12327,
+      "path": "managed-preparation-handoff01.log",
+      "sha256": "b31e2c2db9a04be199be94a5c4edb4dc16893d76c03751e38b265f3636f2807a"
+    },
+    {
+      "bytes": 7162,
+      "path": "managed-preparation-handoff02.log",
+      "sha256": "0740e9152bf67e9bc9033a0de714478f7222905f0d74e8006020c856a286cc1e"
+    },
+    {
+      "bytes": 3008,
+      "path": "managed-preparation-handoff03.log",
+      "sha256": "72b4177955e310e47ce2ce176c7f2dc2baae467ba3cbea0358f07e4bae486fd9"
+    },
+    {
+      "bytes": 8570,
+      "path": "managed-preparation-handoff04.log",
+      "sha256": "32aea58ce637efab4aebb7fcfafea6c9a2d74b1e504c7310ee586e3ae37b7992"
+    },
+    {
+      "bytes": 8965,
+      "path": "managed-preparation-handoff05.log",
+      "sha256": "4970d043d15fb0f3bd7b3bb9800504bc6aa3671ffdbf3b8742ff6c79878e1382"
+    },
+    {
+      "bytes": 2215,
+      "path": "managed-preparation-legacy-pure01.log",
+      "sha256": "48f01e90057afb535db3ea58c52cf5b944ae3cd46fbde9f9eab7652b9e197801"
+    },
+    {
+      "bytes": 4741,
+      "path": "producer-sources.json",
+      "sha256": "8a4f95ad1a09c7557a78635b0f45029765a9acbe09a28e87b12c0b4cd585cb80"
+    },
+    {
+      "bytes": 3220,
+      "path": "qualification.json",
+      "sha256": "016604d82905939cb12389fada7943e7c07920684ef3cb45f0e9eb598631882a"
+    }
+  ],
+  "schema": "repository-managed-preparation-evidence@1"
+}

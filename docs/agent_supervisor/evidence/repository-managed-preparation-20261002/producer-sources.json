@@ -1,0 +1,115 @@
+{
+  "existing_dependencies": [
+    {
+      "bytes": 24065,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "e07cb3e23dc608626e82ba926b946415fcd2eb94b542aee516cf612d30383e81"
+    },
+    {
+      "bytes": 16608,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    {
+      "bytes": 258517,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c"
+    },
+    {
+      "bytes": 39480,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b"
+    },
+    {
+      "bytes": 82754,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+    },
+    {
+      "bytes": 23161,
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "7037fca4046b357ef941cd511b20da55979a8055056ebc755bcb65c0026cb55b"
+    },
+    {
+      "bytes": 3085,
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "8c43bc1b97a94c5100815447130a549266b9ccdc266574e2b8b224a3ea82aef5"
+    },
+    {
+      "bytes": 14621,
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "79a8e1b92365264bfafb511f1689a321d7d742046101199aca253da97726aec2"
+    },
+    {
+      "bytes": 29575,
+      "path": "ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+    },
+    {
+      "bytes": 35314,
+      "path": "ipfs_datasets_py/duckdb_control/intent_codebase_catalog.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "12a95d9d73b6156497ff5860bfb720bb89ae6e499b6c38f8250a3ec266edca39"
+    },
+    {
+      "bytes": 61149,
+      "path": "ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "repo": "/tmp/ir-release-datasets-20261001",
+      "sha256": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838"
+    }
+  ],
+  "owned_sources": [
+    {
+      "bytes": 19981,
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "b8ea36fd5d5c1b887d40bf62e6ad018bba4b297810483b7429103aa6b1d1ad21"
+    },
+    {
+      "bytes": 50696,
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "b2a94ee2acd608fa8389549460149d053cab01d4d22a0fe56f1b466b48df0da3"
+    },
+    {
+      "bytes": 17150,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_handoff.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "1de0d302ca96eb4dfe876de5faeaa9a7b7acaa6fba91e670cbdde1be3911d430"
+    },
+    {
+      "bytes": 3522,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_budgeted_behavioral_runner.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "cddd3e018b2146d470cef2416e0d59872cad03c0c78658f96a578bd267fb303d"
+    },
+    {
+      "bytes": 16195,
+      "path": "test/integration/test_repository_managed_preparation_and_handoff.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "9b752aec539228ec22175a0ef84445c9692d79bc357d571f2b0ba50ce0a5559e"
+    },
+    {
+      "bytes": 4925,
+      "path": "test/api/test_native_repository_managed_driver.py",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "4ddc60a9b0fc34068b436a5a11f74424ca906080e0e150053751bc2654384046"
+    },
+    {
+      "bytes": 5218,
+      "path": "docs/agent_supervisor/REPOSITORY_MANAGED_BENCHMARK_PREPARATION.md",
+      "repo": "/tmp/ir-release-accelerate-20261001",
+      "sha256": "9bba546390a5675061c516d44c8cb4fa20a1399307433202f34453c64574ce16"
+    }
+  ],
+  "schema": "managed-preparation-source-inventory@1"
+}

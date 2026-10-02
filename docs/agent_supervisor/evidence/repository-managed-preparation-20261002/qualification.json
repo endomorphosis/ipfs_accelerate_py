@@ -1,0 +1,84 @@
+{
+  "benchmark_score": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "final_tests": {
+    "driver_controls": "explicit failure doubles; no success/admission claim",
+    "driver_failure_cli_controls": 3,
+    "failed": 0,
+    "helper_controls": 30,
+    "host_telemetry": "injected",
+    "log": "managed-preparation-handoff05.log",
+    "passed": 33,
+    "real_components": [
+      "file-backed source/CAS/catalog/semantic manifest",
+      "daemon/native nested leases",
+      "actual cross-process v2 consumer"
+    ],
+    "seconds": 11.77
+  },
+  "historical_attempts": [
+    {
+      "failed": 1,
+      "log": "managed-preparation-handoff01.log",
+      "passed": 24,
+      "reason": "test retained modified CAS path while checking source head; restored fixture before assertion"
+    },
+    {
+      "failed": 0,
+      "log": "managed-preparation-handoff02.log",
+      "passed": 28
+    },
+    {
+      "log": "managed-preparation-handoff03.log",
+      "reason": "shared pytest AST-seal catalog held by another process; rerun used separate enabled seal database",
+      "status": "internal_error_before_collection"
+    },
+    {
+      "failed": 0,
+      "log": "managed-preparation-handoff04.log",
+      "passed": 31,
+      "seconds": 12.15
+    }
+  ],
+  "legacy_pure_tests": {
+    "deselected": 6,
+    "log": "managed-preparation-legacy-pure01.log",
+    "passed": 8,
+    "scope": "closed arm selection, phase limits and unchanged retention predicate",
+    "seconds": 9.08
+  },
+  "limits": [
+    "cooperative sampled CPU profile, not external supervisor/worker RSS enforcement",
+    "final named-root growth sampling excludes transient peaks and ambient semantic temporary snapshots",
+    "full conservative precharges retained; no fabricated byte savings",
+    "pending-reap handles require explicit draining; long-lived forgotten-handle accumulation unqualified",
+    "GPU/per-device/hard limits/gradual recovery remain open"
+  ],
+  "native_attempt": {
+    "log": "managed-native-01.log",
+    "output": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-01",
+    "profile": "3CPU/3GiB/3process;1536MiB disk;1GiB+640MiB protected",
+    "provider_calls": 0,
+    "qualified": false,
+    "reason": "host_disk_high_watermark",
+    "summary": "managed-native-01-summary.json",
+    "training_steps": 0,
+    "work_started": false
+  },
+  "pending_native_checks": [
+    "old nine actual default-host v1 handoff controls",
+    "legacy native model-off and optional/required actual-model preparation checks",
+    "new actual default-host managed helper case",
+    "complete pipeline native START/worker/publication/reproof/STOP",
+    "12 final actual federation tests"
+  ],
+  "retained_compatibility": [
+    "v1 writer/loader definitions unchanged; valid v1 dispatcher path exercised with actual controlled native owner",
+    "legacy non-pipeline preparation keeps exact host envelope and nonmanaged phases",
+    "legacy full-trial CLI remains distinct from opt-in pipeline CLI"
+  ],
+  "schema": "repository-managed-preparation-qualification@1",
+  "source_inventory": "producer-sources.json",
+  "status": "controlled_helpers_qualified_full_native_admission_refused"
+}
