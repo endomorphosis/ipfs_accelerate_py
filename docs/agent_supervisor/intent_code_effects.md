@@ -39,6 +39,12 @@ Security source prediction are otherwise usable. Intent advice validation
 replays its existing numerical owner. Security advice supplies inference identity;
 this extra consumer does not independently repeat Security embedding/inference.
 
+The separate [384D action advice adapter](intent_384_action_advice.md) also feeds
+this consumer when an explicitly selected action-contract checkpoint produces
+a source-supported native document. It preserves the raw learned candidate
+separately and replays the shared numerical owner before forwarding that
+document. It does not change the historical atom-only model or its scope.
+
 With Lake selected, the consumer verifies the live issued execution handle
 before serializing evidence. `effect_status` distinguishes `satisfied`, `refuted`,
 and `no_enabled_cases`. A checked counterexample or a checked all-disabled

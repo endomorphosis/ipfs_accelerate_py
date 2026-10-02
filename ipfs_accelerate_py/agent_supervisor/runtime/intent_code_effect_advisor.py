@@ -85,6 +85,18 @@ def _selection(config):
 
 
 def _intent(instruction, advice):
+    if type(advice) is dict and advice.get("schema") == "supervisor-intent-action-384-advice/v1":
+        from .intent_384_advisor import validate_intent_384_advice
+        checked = validate_intent_384_advice(advice, instruction=instruction)
+        _require(checked["status"] == "semantic_candidate_advice" and checked["numerical_replay_verified"] is True
+            and type(checked["candidate_intent_ir"]) is dict, "source-supported decoded Intent384 candidate required")
+        binding = checked["report"].get("binding")
+        candidate = binding.get("bound_candidate") if type(binding) is dict else None
+        _require(type(candidate) is dict and set(candidate) == {"kind", "document"}
+            and candidate["kind"] == "document"
+            and _wire(candidate["document"]) == _wire(checked["candidate_intent_ir"]),
+            "exact replayed source-bound Intent384 envelope required")
+        return deepcopy(candidate), checked["checkpoint_sha256"]
     from .intent_autoencoder_advisor import validate_intent_advice, SEMANTIC_REPORT_SCHEMAS
     _require(type(instruction) is str and 0 < len(instruction.encode()) <= 65536,
         "exact original instruction required")
