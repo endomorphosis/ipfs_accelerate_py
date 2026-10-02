@@ -1,8 +1,8 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Thirteen exits are closed for their declared
-profiles; 19 remain open.** Sixteen individual criteria have passed qualification,
+every original acceptance criterion. **Fifteen exits are closed for their declared
+profiles; 17 remain open.** Eighteen individual criteria have passed qualification,
 including three still blocked by prerequisites. These results do not establish
 default production activation or a Terminal Bench advantage.
 
@@ -171,3 +171,15 @@ operation and complete planning-material prerequisites. Behavioral matching012
 is closed for the exact finite controlled-language profile. The new28-control
 typed code-evidence facade remains a partial023/032 qualification until the
 remaining source/model and admission-race matrix is complete.
+
+The separate parent-centered384D recipe now passes30 native controls. Two real
+updates preserve3/3 fixed development canaries and promote only their new
+variant. The second round reuses6 unchanged feature rows and embeds3 changed
+training sources. These canaries are model-selection data, not unseen tests;
+the earlier unanchored0/3 child remains unpromoted.
+
+The new signed behavioral admission profile passes10 controls and an actual
+full-daemon repair in203.410 seconds with zero LLM calls. The worker reopens the
+native evidence owners and checks source state before and after materialization.
+Both successor finite behavior and complete semantic rows match a cold rebuild.
+This is an authored model-off integration fixture, not an official benchmark.

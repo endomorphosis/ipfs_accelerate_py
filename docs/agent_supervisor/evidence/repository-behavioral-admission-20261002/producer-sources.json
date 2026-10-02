@@ -1,0 +1,21 @@
+{
+  "schema": "repository-behavioral-admission-sources@1",
+  "repository": "accelerate",
+  "sources": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py",
+      "sha256": "2d0dc212657d50cc22b6d2f5b29d840f7316dedbe0fc66b4c42dbd3dea27c4ab",
+      "size_bytes": 25953
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_runner.py",
+      "sha256": "f015c771a6196cd260bf1890069b70591a72a7d344d323b9ec7eebee60364ab3",
+      "size_bytes": 2382
+    },
+    {
+      "path": "test/integration/test_repository_behavioral_admission.py",
+      "sha256": "c383f0122142656d45941b9ec5ece9e2ecfb8020f5dd4fd90e9ecf9a7a0e1ec1",
+      "size_bytes": 9792
+    }
+  ]
+}

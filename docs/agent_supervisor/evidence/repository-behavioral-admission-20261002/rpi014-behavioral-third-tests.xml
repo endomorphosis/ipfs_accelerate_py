@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="56.156" timestamp="2026-10-02T08:05:01.293811+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_behavioral_admission" name="test_actual_v2_gate_reopens_native_owners_and_worker_without_private_keys" time="41.802"><error message="failed on setup with &quot;ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats&quot;">tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=&lt;pluggy._tracing.TagTracerSub object at 0xf5800c832420&gt;, _basetemp=PosixPath('/tmp/pytest-of-barberb/pytest-4716'), _retention_count=3, _retention_policy='all')
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+
+    @pytest.fixture(scope='module')
+    def admitted(tmp_path_factory,finite_tools):
+        root=tmp_path_factory.mktemp('actual-behavioral-admission')
+        generator=prepared.__wrapped__(root)
+        index,repository,head,descriptor=next(generator)
+        index.artifacts.root.chmod(0o700)
+        catalog=IntentCodebaseCatalog(index)
+        catalog.publish(repository,expected_head=head,manifest_cid=descriptor['manifest_cid'],operation_id='behavioral-admission')
+        cache=FiniteCheckedCache(FormalVerificationCache(root/'proof'),index.artifacts)
+        Path(catalog.catalog._database_path).chmod(0o600)
+        cache.cache.path.chmod(0o600)
+        options=preview_arguments(dict(index=index,expected_head=head,repository=repository,scheduler=None,output=root/'unused'),finite_tools)
+        options.pop('output')
+        (repository/'.runtime').mkdir(mode=0o755)
+        with IntentRepository(root/'intent.duckdb') as intent:
+            declared=prepare_local_task(repository=repository,state=root/'policy',intent=intent,
+                scope_paths=['calc.py','unsupported.py','README.md','.gitignore'],output_path='calc.py',
+                objective=options['source_text'],validation_argv=['python3','-B','-c','from calc import increment; assert increment(0)==2'])
+&gt;           result=gate.prepare_behavioral_repository_handoff(catalog=catalog,checked_cache=cache,
+                semantic_manifest_cid=descriptor['manifest_cid'],**options,admission=declared['admission'],
+                intent=intent,task_cid=declared['task_cid'],state=root/'preparation')
+
+test/integration/test_repository_behavioral_admission.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py:173: in prepare_behavioral_repository_handoff
+    payload["artifact_cid"] = content_identity(payload)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:333: in content_identity
+    digest = hashlib.sha256(canonical_json_bytes(value)).digest()
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:281: in _canonical_value
+    return [_canonical_value(item) for item in value]
+            ^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 1.0
+
+    def _canonical_value(value: Any) -&gt; Any:
+        """Return a canonical JSON-compatible value or fail closed."""
+    
+        if value is None or isinstance(value, (str, bool, int)):
+            return value
+        if isinstance(value, float):
+&gt;           raise ContractValidationError("canonical proof contracts cannot contain floats")
+E           ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats
+
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: ContractValidationError</error></testcase></testsuite></testsuites>

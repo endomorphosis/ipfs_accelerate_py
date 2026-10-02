@@ -1,0 +1,500 @@
+{
+  "closed": {
+    "active_phase_count": 0,
+    "budget": {
+      "cpu_slots": 1,
+      "device": "cpu",
+      "disk_bytes": 67108864,
+      "enforcement": "sampled",
+      "maximum_phases": 128,
+      "maximum_queued_metadata_bytes": 65536,
+      "maximum_queued_phases": 8,
+      "memory_mb": 4096,
+      "process_slots": 1,
+      "threads_per_process": 1,
+      "wall_time_ms": 180000
+    },
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "child_lease_id": "95cc58ee837a4cf7bbfc321fc0ffec5b",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "scan",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 1277,
+        "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "queue_time_ms": 11,
+        "request_id": "a6f58859d3814c4fa79a03a1e236b9ec",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "ee6b31a4d5164623a49d11122231c2e9",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "semantic_index",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 221,
+        "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "queue_time_ms": 8,
+        "request_id": "72969be62d184dab911949ce9f77a3ff",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "7c6176701c444861a6e741bca3c8907e",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "sql",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 1210,
+        "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "queue_time_ms": 8,
+        "request_id": "b02a04ab1bc14d84ad0da416159d9d8a",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "0408e40cf9814e54b57754ef538955e2",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "proof",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 2670,
+        "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "queue_time_ms": 8,
+        "request_id": "a49cf30731724c6cb652895d699052f7",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "414d28e121654e98b46c708586545dad",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "validation",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 444,
+        "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "queue_time_ms": 9,
+        "request_id": "1d8f906d893742668a8c22a9eccbda80",
+        "status": "completed"
+      }
+    ],
+    "hard_enforcement": false,
+    "host_authority": {
+      "owner": "datasets.GlobalResourceScheduler",
+      "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+      "root_lease_id": "6a29172fcaf543dfa672da55c131d772",
+      "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+    },
+    "limitations": [
+      "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+      "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+      "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+      "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+      "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+      "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+      "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+    ],
+    "native_parent": {
+      "acquired_at": 1790928843.3853452,
+      "cancelled": true,
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "6a29172fcaf543dfa672da55c131d772",
+      "memory_mb": 4096,
+      "owner_pid": 3448234,
+      "parent_lease_id": null,
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 21.434744071913883
+    },
+    "owned_active_root_count": 0,
+    "profile": "cpu-shared-native-sampled@1",
+    "queued_metadata_bytes": 0,
+    "queued_phase_count": 0,
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "repository-shared-host-envelope@1",
+    "shared_active_root_count": 1,
+    "supervisor_lease_id": "resource-lease:62ae52d60e7c4e6eae85c3e262f5ad8f",
+    "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+    "task_execution_authority": false,
+    "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+    "validation_reserve": {
+      "cpu_slots": 2,
+      "memory_mb": 0
+    }
+  },
+  "result": {
+    "benchmark_score": false,
+    "checked_proofs": [
+      {
+        "positive_reuse_eligible": false,
+        "record_cid": "baguqeeragrer3eez7oemjnmd2l642pgs3c6gwvmccyfs76k3ljx33th55fia",
+        "request_key": "proof-cache-key:sha256:8a5520d5609f5393472a16d0e4a6b2724e14f7028853b8785c37d34dd915feca",
+        "scope": "exact_generated_finite_integer_table_theorems_only",
+        "status": "refuted"
+      }
+    ],
+    "complete_inventory": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "completion_authority": false,
+    "deadline_enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "discovery": {
+      "proof_authority": false,
+      "record_cid": "baguqeeranu4raew2c2br6raydqvsswrq2lenszl72wbtfjytyw2dyfyyyhwq",
+      "source_head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+        "generation": 1,
+        "manifest_cid": "baguqeeramfh3p2y4g2x2bpc6mivqiaeikmk4rtxf2wcxdyd44j2w3ykcb7fa",
+        "receipt_cid": "baguqeera3xmqlxflw6dr3er25xvdlb5jb3du44tajeajqnkwlyaxth4r4bpq",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+      },
+      "source_observed_live": true,
+      "training_authority": false
+    },
+    "elapsed_seconds": 5.9126923880539834,
+    "evaluation_population_use": {
+      "holdout_used_for_runtime_selection": false,
+      "training_holdout": "development_retention_gate",
+      "untouched_final_benchmark_test": false
+    },
+    "execution_authority": false,
+    "inference": null,
+    "model": {
+      "enabled": false,
+      "identity": "explicit-model-off@1"
+    },
+    "model_promotion_performed": false,
+    "model_provider_calls": 0,
+    "model_provider_tokens": 0,
+    "policy_receipt_cid": "baguqeeraooktkpvku4ce5xvh5nda54ye67nxwuej24gc24j7gx6rdciz4pia",
+    "preparation_cid": "baguqeerab3aq723ifqtxtemqbfo4fe3lwednay77flq4vr5hrz6inrlf4wxq",
+    "qualified": true,
+    "resource_receipt": {
+      "active_phase_count": 0,
+      "budget": {
+        "cpu_slots": 1,
+        "device": "cpu",
+        "disk_bytes": 67108864,
+        "enforcement": "sampled",
+        "maximum_phases": 128,
+        "maximum_queued_metadata_bytes": 65536,
+        "maximum_queued_phases": 8,
+        "memory_mb": 4096,
+        "process_slots": 1,
+        "threads_per_process": 1,
+        "wall_time_ms": 180000
+      },
+      "closed": false,
+      "completion_authority": false,
+      "events": [
+        {
+          "child_lease_id": "95cc58ee837a4cf7bbfc321fc0ffec5b",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "scan",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 1277,
+          "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+          "queue_time_ms": 11,
+          "request_id": "a6f58859d3814c4fa79a03a1e236b9ec",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "ee6b31a4d5164623a49d11122231c2e9",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "semantic_index",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 221,
+          "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+          "queue_time_ms": 8,
+          "request_id": "72969be62d184dab911949ce9f77a3ff",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "7c6176701c444861a6e741bca3c8907e",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "sql",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 1210,
+          "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+          "queue_time_ms": 8,
+          "request_id": "b02a04ab1bc14d84ad0da416159d9d8a",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "0408e40cf9814e54b57754ef538955e2",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "proof",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 2670,
+          "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+          "queue_time_ms": 8,
+          "request_id": "a49cf30731724c6cb652895d699052f7",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "414d28e121654e98b46c708586545dad",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "validation",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 444,
+          "parent_lease_id": "6a29172fcaf543dfa672da55c131d772",
+          "queue_time_ms": 9,
+          "request_id": "1d8f906d893742668a8c22a9eccbda80",
+          "status": "completed"
+        }
+      ],
+      "hard_enforcement": false,
+      "host_authority": {
+        "owner": "datasets.GlobalResourceScheduler",
+        "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+        "root_lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+      },
+      "limitations": [
+        "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+        "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+        "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+        "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+        "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+        "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+        "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+      ],
+      "native_parent": {
+        "acquired_at": 1790928843.3853452,
+        "cancelled": false,
+        "child_process_slots": 1,
+        "cpu_slots": 1,
+        "gpu_memory_mb": 0,
+        "lane": "orchestration",
+        "lease_id": "6a29172fcaf543dfa672da55c131d772",
+        "memory_mb": 4096,
+        "owner_pid": 3448234,
+        "parent_lease_id": null,
+        "released": false,
+        "requires_gpu": false,
+        "unified_memory_mb": 0,
+        "wait_seconds": 21.434744071913883
+      },
+      "owned_active_root_count": 1,
+      "profile": "cpu-shared-native-sampled@1",
+      "queued_metadata_bytes": 0,
+      "queued_phase_count": 0,
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "repository-shared-host-envelope@1",
+      "shared_active_root_count": 2,
+      "supervisor_lease_id": "resource-lease:62ae52d60e7c4e6eae85c3e262f5ad8f",
+      "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+      "task_execution_authority": false,
+      "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+      "validation_reserve": {
+        "cpu_slots": 2,
+        "memory_mb": 0
+      }
+    },
+    "schema": "repository-benchmark-preparation@1",
+    "selection": {
+      "inference_paths": [],
+      "inventory_policy": {
+        "admitted_modes": [
+          "git-clean",
+          "git-working"
+        ],
+        "capabilities": {
+          "opaque_entries": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "selection_eligible": false,
+            "structural_ast": false
+          },
+          "other_utf8_files": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "artifact_metadata_only",
+            "structural_ast": false,
+            "target_execution": false
+          },
+          "proof": "selection_references_only_no_obligation_or_evidence_admission",
+          "python_pytest": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "conservative_static_observations",
+            "structural_ast": true,
+            "target_execution": false
+          },
+          "submodules_and_nested_repositories": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "disposition": "opaque_nonregular_boundary",
+            "recursive_analysis": false
+          },
+          "training": "selection_references_only_no_label_or_sample_admission"
+        },
+        "custom_exclusions": [],
+        "dirty_overlay": "exact_head_index_disposition_and_captured_source_identity",
+        "effective_exclusions": [
+          ".eggs",
+          ".git",
+          ".hg",
+          ".mypy_cache",
+          ".nox",
+          ".pytest_cache",
+          ".ruff_cache",
+          ".semantic-index",
+          ".semantic_index",
+          ".svn",
+          ".tox",
+          ".venv",
+          "__pycache__",
+          "build",
+          "coverage",
+          "dist",
+          "env",
+          "external",
+          "htmlcov",
+          "node_modules",
+          "semantic-index-state",
+          "site-packages",
+          "third-party",
+          "third_party",
+          "vendor",
+          "venv"
+        ],
+        "exclusion_matching": "raw_path_component_or_repository_relative_subtree",
+        "external_ignore_policy": "reject_active_patterns_and_fence_configuration_and_exact_bytes",
+        "inventory": "all_nonexcluded_entries_no_training_or_proof_filter",
+        "max_entries": 256,
+        "max_file_bytes": 65536,
+        "profile": "codebase-single-root-python-structural@1",
+        "schema": "codebase-scan-policy@1",
+        "source_forest": "one_committed_git_root_with_opaque_nested_boundaries",
+        "untracked_population": "git_standard_untracked_with_captured_repository_ignore_files"
+      },
+      "model_policy": "model_off",
+      "proof_contracts": [
+        {
+          "function_name": "increment",
+          "offset": 2,
+          "parameter": "n",
+          "path": "calc.py",
+          "profile": "python-integer-offset@1",
+          "schema": "codebase-integer-offset-contract@1"
+        }
+      ],
+      "proof_inputs": [
+        [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ]
+      ],
+      "training_selections": []
+    },
+    "semantic_manifest_cid": "baguqeeramwflsxwsl4uh2lit7chue45avdpwng3whbv7z7ydxljtqegmhq4a",
+    "source_head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+      "generation": 1,
+      "manifest_cid": "baguqeeramfh3p2y4g2x2bpc6mivqiaeikmk4rtxf2wcxdyd44j2w3ykcb7fa",
+      "receipt_cid": "baguqeera3xmqlxflw6dr3er25xvdlb5jb3du44tajeajqnkwlyaxth4r4bpq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+    },
+    "stages": [
+      {
+        "elapsed_seconds": 1.2905971161089838,
+        "phase": "scan",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.2293842858634889,
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 1.2194929248653352,
+        "phase": "sql",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 2.6794555261731148,
+        "phase": "proof",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.4543422919232398,
+        "phase": "validation",
+        "status": "completed"
+      }
+    ],
+    "training": null
+  }
+}

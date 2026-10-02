@@ -1,0 +1,3499 @@
+{
+  "completion_authority": false,
+  "duplicate_publication": false,
+  "evidence": {
+    "bundle_cid": "baguqeeragccell3w4wuhsf75hdk46l5dugul6cgrasyagjhfhk7o3pfqnj4a",
+    "correspondence": {
+      "bridged_key": {
+        "candidate_tree": {
+          "code_dependencies": {
+            "annotation_and_runtime_assumptions": [
+              "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+              "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+              "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+            ],
+            "dependency_cids": [],
+            "scope": "guarded_single_function_no_imports_calls_or_global_value_reads"
+          },
+          "head": {
+            "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "generation": 1,
+            "manifest_cid": "baguqeeramfh3p2y4g2x2bpc6mivqiaeikmk4rtxf2wcxdyd44j2w3ykcb7fa",
+            "receipt_cid": "baguqeera3xmqlxflw6dr3er25xvdlb5jb3du44tajeajqnkwlyaxth4r4bpq",
+            "repository_id": "repository:finite-native-qualification",
+            "schema": "codebase-head@1",
+            "snapshot_cid": "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+          },
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "path": "calc.py",
+          "source_bytes": 47,
+          "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+          "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac"
+        },
+        "kernel": {
+          "checker_id": "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+          "lean": {
+            "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "role": "declared_recorded_table_checker"
+        },
+        "obligation": {
+          "canonical_key": {
+            "assumptions": "sha256:fd1f787c8f115702f74c7fda69db1c4c11f8c3305e10b73786a9bcec2a659f95",
+            "authority_ceiling": "none",
+            "bounds": "sha256:f241df5aaa62342297ce6689625d031e758ab33f521d9f6d8df456e6eded3625",
+            "checker": "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "environment": "sha256:d2d9a24c5036c271fddbe0e870da76321c7111a13ebcc822ba0c85355ea643fa",
+            "evidence_kind": "declaration",
+            "expression": "sha256:d47ea5e179f487da22060147f4e299d1a64637a379486a64a75ad5af37b1e03e",
+            "formalization": "sha256:839524a4bf74eb52c8a3d1bad340117b4fe84115c1f637264148067062435685",
+            "interface": "CanonicalProofCacheKey@1",
+            "network_policy": "sha256:f1ce4593785a3117471e18cd88c3596ae113604d50c8ecab4ee7bdf6b5a848b3",
+            "obligation": "sha256:3598599dcc76462c41634404c306ae7b3269f091aff621d659fc9ebe3bd68070",
+            "policy": "sha256:0b77db2b86c2581393929c4060fbfb56acb7b6275ebab9d7fa560c868f14016f",
+            "provider": "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "schema": "sha256:9bb25cbb37c57f53ec97c02e39caac300958a041f8a65bae11dd5b68c18c0525",
+            "schema_version": "canonical-proof-cache-key/v1",
+            "slice": "sha256:e1be56ff508ef3d563e0015018a89366d4333d43accfbba15a887ff170b03c95",
+            "source": "sha256:4141f45551b27ad7676354ed075e243af0414795ce1243605d280977c6c7e860",
+            "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+            "translation": "sha256:c99082b871d4c1a4cd24c17089b2e62e701e2725aacce2078286a5e725af17fb"
+          },
+          "canonical_key_id": "canonical-proof-cache-key:sha256:26aefb8c274d1392beb9525acd0b6bca820cfb227503c19a9f0b0f03214716ff",
+          "execution_key_id": "proof-cache-key:sha256:cbb19723658f782432e97a8296d8fe6ada9f2134eed27362d248b4b235ced4f2",
+          "execution_obligation": {
+            "finite_domain": {
+              "inputs": [
+                -2,
+                -1,
+                0,
+                1,
+                2
+              ],
+              "profile": "python-integer-offset-finite@1",
+              "schema": "codebase-finite-integer-domain@1"
+            },
+            "formalization": {
+              "compiled": {
+                "assumptions": [
+                  "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+                  "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+                  "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+                ],
+                "behavior_authority": false,
+                "body_offset": 1,
+                "compilation": {
+                  "capabilities": [
+                    {
+                      "description": "arithmetic lowers to deterministic SMT-LIB",
+                      "feature": "arithmetic",
+                      "kind": "native"
+                    },
+                    {
+                      "description": "equality lowers to deterministic SMT-LIB",
+                      "feature": "equality",
+                      "kind": "native"
+                    },
+                    {
+                      "description": "verification_conditions lowers to deterministic SMT-LIB",
+                      "feature": "verification_conditions",
+                      "kind": "native"
+                    }
+                  ],
+                  "compilation_id": "bafkreic54fmsso3d7nhoia4iwlljc2xkyof6uzutwdnqdkrc77hpab5any",
+                  "compiler_version": "1.0.0",
+                  "features": [
+                    "arithmetic",
+                    "equality",
+                    "verification_conditions"
+                  ],
+                  "interface": "SoftwareVerificationSMTCompiler@1",
+                  "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                  "query_mode": "theorem_by_negation",
+                  "receipt": {
+                    "assumptions": [
+                      "named:body_return_0"
+                    ],
+                    "authority_ceiling": "independently_checkable",
+                    "bounds": [],
+                    "compilers": [
+                      {
+                        "compiler_id": "compiler:software-verification-smt",
+                        "compiler_version": "1.0.0",
+                        "configuration_identity": "sha256:101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                        "implementation_identity": "sha256:d584627eccc37b9dd9fb02273a7f72c9455b309d71da0ea394ac875e8e8e974b",
+                        "schema_version": "logic-translation-compiler/v1",
+                        "stage": "lower"
+                      }
+                    ],
+                    "interface": "LogicTranslationReceipt@1",
+                    "metadata": {
+                      "logic": "QF_UFLIA",
+                      "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                      "query_mode": "theorem_by_negation",
+                      "request_model": true,
+                      "request_unsat_core": true,
+                      "theories": [
+                        "arithmetic",
+                        "core",
+                        "equality"
+                      ]
+                    },
+                    "preservation_claim": {
+                      "approximation_direction": "none",
+                      "conditions": [],
+                      "description": "Goal is checked by negation: unsat of the negated goal is equisatisfiable with theorem validity under the assumptions.",
+                      "kind": "equisatisfiable",
+                      "permitted_result_classes": [
+                        "disproved",
+                        "proved",
+                        "unknown"
+                      ],
+                      "preserved_property_ids": [
+                        "property:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                      ],
+                      "schema_version": "logic-preservation-claim/v1"
+                    },
+                    "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+                    "schema_version": "logic-translation-receipt/v1",
+                    "semantic_mutations": [
+                      {
+                        "assumption_ids": [],
+                        "bound_ids": [],
+                        "description": "Goal is asserted under negation so that unsat witnesses the theorem.",
+                        "kind": "polarity_changed",
+                        "mutation_id": "mutation:theorem-by-negation",
+                        "schema_version": "logic-semantic-mutation/v1",
+                        "source_construct_ids": [
+                          "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                        ],
+                        "target_construct_ids": [
+                          "assert-not-goal"
+                        ]
+                      }
+                    ],
+                    "source_family_id": "software_verification",
+                    "source_family_version": "1.0.0",
+                    "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+                    "target_family_id": "smt",
+                    "target_family_version": "2.6",
+                    "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy",
+                    "unsupported_constructs": [],
+                    "witnesses": []
+                  },
+                  "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+                  "schema_version": "software-verification-smt-compilation/v1",
+                  "script": {
+                    "digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                    "lines": [
+                      "; software-verification semantic SMT compiler 1.0.0",
+                      "; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"",
+                      "; query_mode: theorem_by_negation",
+                      "; features: arithmetic,equality,verification_conditions",
+                      "(set-info :smt-lib-version 2.6)",
+                      "(set-info :source \"SoftwareVerificationSMTCompiler@1\")",
+                      "(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")",
+                      "(set-logic QF_UFLIA)",
+                      "(set-option :produce-models true)",
+                      "(set-option :produce-unsat-cores true)",
+                      "(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)",
+                      "(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)",
+                      "(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))",
+                      "(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))",
+                      "(check-sat)",
+                      "(get-model)",
+                      "(get-unsat-core)"
+                    ],
+                    "logic": "QF_UFLIA",
+                    "query_mode": "theorem_by_negation",
+                    "request_model": true,
+                    "request_unsat_core": true,
+                    "schema_version": "software-verification-smt-script/v1",
+                    "source": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+                    "theories": [
+                      "arithmetic",
+                      "core",
+                      "equality"
+                    ]
+                  },
+                  "script_digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                  "smtlib": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+                  "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+                  "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy"
+                },
+                "contract": {
+                  "function_name": "increment",
+                  "offset": 2,
+                  "parameter": "n",
+                  "path": "calc.py",
+                  "profile": "python-integer-offset@1",
+                  "schema": "codebase-integer-offset-contract@1"
+                },
+                "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+                "kernel_checked": false,
+                "parser": "cpython-312",
+                "profile": "python-integer-offset@1",
+                "revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+                "schema": "codebase-integer-offset-compilation@1",
+                "source_binding": {
+                  "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+                  "language": "python",
+                  "path": "calc.py",
+                  "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+                  "span_ids": [
+                    "span:function.increment.1",
+                    "span:increment.expr.4",
+                    "span:increment.expr.5",
+                    "span:increment.expr.7",
+                    "span:increment.param.n.2",
+                    "span:increment.stmt.3"
+                  ]
+                },
+                "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq"
+              },
+              "scope": "conditional_integer_model_restricted_to_declared_finite_domain",
+              "vc": {
+                "assumption_expression_ids": [],
+                "attributes": {},
+                "function_id": "function:increment",
+                "generated_symbol_ids": [],
+                "goal_expression_ids": [
+                  "expr:pipeline:cmp:5:increment"
+                ],
+                "obligation_id": "vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                "parent_contract_id": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+                "path_condition_expression_ids": [],
+                "rule": "postcondition_normal",
+                "source_construct_id": "block:entry",
+                "source_construct_kind": "block",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "statement": "Normal exit block block:entry must establish postconditions of baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla."
+              }
+            },
+            "native_request": {
+              "clauses": [
+                "exact_builtin_int_result",
+                "result_equals_parameter_plus_contract_offset"
+              ],
+              "contract": {
+                "function_name": "increment",
+                "offset": 2,
+                "parameter": "n",
+                "path": "calc.py",
+                "profile": "python-integer-offset@1",
+                "schema": "codebase-integer-offset-contract@1"
+              },
+              "finite_domain": {
+                "inputs": [
+                  -2,
+                  -1,
+                  0,
+                  1,
+                  2
+                ],
+                "profile": "python-integer-offset-finite@1",
+                "schema": "codebase-finite-integer-domain@1"
+              },
+              "profile": "python-integer-offset-finite@1"
+            },
+            "program": {
+              "commands": [
+                {
+                  "attributes": {},
+                  "command_id": "command:10",
+                  "effects": {
+                    "allocates": [],
+                    "deallocates": [],
+                    "nondeterministic": false,
+                    "performs_io": false,
+                    "raises": [],
+                    "reads": [],
+                    "synchronizes": false,
+                    "writes": []
+                  },
+                  "evaluation_order": [
+                    "expr:9"
+                  ],
+                  "expression_ids": [
+                    "expr:9"
+                  ],
+                  "kind": "return",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:increment.stmt.3"
+                  ],
+                  "target_symbol_ids": [],
+                  "undefined_behavior": []
+                }
+              ],
+              "expressions": [
+                {
+                  "attributes": {},
+                  "evaluation_order": [],
+                  "expression_id": "expr:6",
+                  "kind": "symbol",
+                  "operand_ids": [],
+                  "operator": "",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:increment.expr.5"
+                  ],
+                  "symbol_ids": [
+                    "symbol:increment.n.parameter"
+                  ],
+                  "type_ref": "any"
+                },
+                {
+                  "attributes": {
+                    "value": 1
+                  },
+                  "evaluation_order": [],
+                  "expression_id": "expr:8",
+                  "kind": "literal",
+                  "operand_ids": [],
+                  "operator": "",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:increment.expr.7"
+                  ],
+                  "symbol_ids": [],
+                  "type_ref": "int"
+                },
+                {
+                  "attributes": {},
+                  "evaluation_order": [
+                    "expr:6",
+                    "expr:8"
+                  ],
+                  "expression_id": "expr:9",
+                  "kind": "binary",
+                  "operand_ids": [
+                    "expr:6",
+                    "expr:8"
+                  ],
+                  "operator": "add",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:increment.expr.4"
+                  ],
+                  "symbol_ids": [],
+                  "type_ref": "any"
+                },
+                {
+                  "attributes": {},
+                  "evaluation_order": [
+                    "expr:pipeline:name:2:increment",
+                    "expr:pipeline:lit:3:increment"
+                  ],
+                  "expression_id": "expr:pipeline:bin:4:increment",
+                  "kind": "binary",
+                  "operand_ids": [
+                    "expr:pipeline:name:2:increment",
+                    "expr:pipeline:lit:3:increment"
+                  ],
+                  "operator": "add",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_ids": [],
+                  "type_ref": "integer"
+                },
+                {
+                  "attributes": {},
+                  "evaluation_order": [
+                    "expr:pipeline:name:1:increment",
+                    "expr:pipeline:bin:4:increment"
+                  ],
+                  "expression_id": "expr:pipeline:cmp:5:increment",
+                  "kind": "binary",
+                  "operand_ids": [
+                    "expr:pipeline:name:1:increment",
+                    "expr:pipeline:bin:4:increment"
+                  ],
+                  "operator": "eq",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_ids": [],
+                  "type_ref": "boolean"
+                },
+                {
+                  "attributes": {
+                    "value": 2
+                  },
+                  "evaluation_order": [],
+                  "expression_id": "expr:pipeline:lit:3:increment",
+                  "kind": "literal",
+                  "operand_ids": [],
+                  "operator": "",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_ids": [],
+                  "type_ref": "integer"
+                },
+                {
+                  "attributes": {},
+                  "evaluation_order": [],
+                  "expression_id": "expr:pipeline:name:1:increment",
+                  "kind": "result",
+                  "operand_ids": [],
+                  "operator": "",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_ids": [
+                    "symbol:increment.result.result"
+                  ],
+                  "type_ref": "int"
+                },
+                {
+                  "attributes": {},
+                  "evaluation_order": [],
+                  "expression_id": "expr:pipeline:name:2:increment",
+                  "kind": "symbol",
+                  "operand_ids": [],
+                  "operator": "",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_ids": [
+                    "symbol:increment.n.parameter"
+                  ],
+                  "type_ref": "int"
+                }
+              ],
+              "functions": [
+                {
+                  "cfg": {
+                    "blocks": [
+                      {
+                        "block_id": "block:entry",
+                        "command_ids": [
+                          "command:10"
+                        ],
+                        "source_ref_ids": [
+                          "source:calc.py"
+                        ],
+                        "span_ids": [
+                          "span:function.increment.1"
+                        ]
+                      }
+                    ],
+                    "edges": [],
+                    "entry_block_id": "block:entry",
+                    "exceptional_exit_block_ids": [],
+                    "graph_id": "cfg:increment",
+                    "normal_exit_block_ids": [
+                      "block:entry"
+                    ]
+                  },
+                  "declared_exceptions": [],
+                  "effects": {
+                    "allocates": [],
+                    "deallocates": [],
+                    "nondeterministic": false,
+                    "performs_io": false,
+                    "raises": [],
+                    "reads": [
+                      "symbol:increment.n.parameter"
+                    ],
+                    "synchronizes": false,
+                    "writes": []
+                  },
+                  "exception_symbol_ids": [],
+                  "function_id": "function:increment",
+                  "local_symbol_ids": [],
+                  "name": "increment",
+                  "parameter_symbol_ids": [
+                    "symbol:increment.n.parameter"
+                  ],
+                  "purity": "pure",
+                  "result_symbol_id": "symbol:increment.result.result",
+                  "return_type": "int",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ]
+                }
+              ],
+              "global_symbol_ids": [],
+              "metadata": {
+                "adapter": "SourceSoftwareVerificationAdapter@1",
+                "language": "python",
+                "path": "calc.py"
+              },
+              "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+              "schema_version": "program-ir/v1",
+              "sources": [
+                {
+                  "container_sha256": "",
+                  "container_uri": "",
+                  "content_cid": "",
+                  "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+                  "license_expression": "",
+                  "metadata": {
+                    "byte_length": 47,
+                    "language": "python",
+                    "path": "calc.py"
+                  },
+                  "ref_id": "source:calc.py",
+                  "review_status": "unreviewed",
+                  "source_id": "calc.py",
+                  "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+                  "source_uri": "file:///calc.py"
+                }
+              ],
+              "spans": [
+                {
+                  "end_byte": 46,
+                  "end_char": null,
+                  "end_column": 16,
+                  "end_line": 2,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:function.increment.1",
+                  "start_byte": 0,
+                  "start_char": null,
+                  "start_column": 1,
+                  "start_line": 1
+                },
+                {
+                  "end_byte": 46,
+                  "end_char": null,
+                  "end_column": 16,
+                  "end_line": 2,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:increment.expr.4",
+                  "start_byte": 41,
+                  "start_char": null,
+                  "start_column": 12,
+                  "start_line": 2
+                },
+                {
+                  "end_byte": 42,
+                  "end_char": null,
+                  "end_column": 12,
+                  "end_line": 2,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:increment.expr.5",
+                  "start_byte": 41,
+                  "start_char": null,
+                  "start_column": 12,
+                  "start_line": 2
+                },
+                {
+                  "end_byte": 46,
+                  "end_char": null,
+                  "end_column": 16,
+                  "end_line": 2,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:increment.expr.7",
+                  "start_byte": 45,
+                  "start_char": null,
+                  "start_column": 16,
+                  "start_line": 2
+                },
+                {
+                  "end_byte": 20,
+                  "end_char": null,
+                  "end_column": 20,
+                  "end_line": 1,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:increment.param.n.2",
+                  "start_byte": 14,
+                  "start_char": null,
+                  "start_column": 15,
+                  "start_line": 1
+                },
+                {
+                  "end_byte": 46,
+                  "end_char": null,
+                  "end_column": 16,
+                  "end_line": 2,
+                  "metadata": {},
+                  "source_ref_id": "source:calc.py",
+                  "span_id": "span:increment.stmt.3",
+                  "start_byte": 34,
+                  "start_char": null,
+                  "start_column": 5,
+                  "start_line": 2
+                }
+              ],
+              "symbols": [
+                {
+                  "attributes": {},
+                  "kind": "parameter",
+                  "name": "n",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:increment.param.n.2"
+                  ],
+                  "symbol_id": "symbol:increment.n.parameter",
+                  "type_ref": "int"
+                },
+                {
+                  "attributes": {},
+                  "kind": "result",
+                  "name": "result",
+                  "source_ref_ids": [
+                    "source:calc.py"
+                  ],
+                  "span_ids": [
+                    "span:function.increment.1"
+                  ],
+                  "symbol_id": "symbol:increment.result.result",
+                  "type_ref": "int"
+                }
+              ]
+            },
+            "schema": "finite-integer-key-obligation/v1",
+            "slice": {
+              "function": "increment",
+              "parameter": "n",
+              "path": "calc.py"
+            }
+          },
+          "field_correspondence": [
+            {
+              "datasets_field": "source",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.source"
+            },
+            {
+              "datasets_field": "expression",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.expression"
+            },
+            {
+              "datasets_field": "formalization",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.formalization"
+            },
+            {
+              "datasets_field": "slice",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.slice"
+            },
+            {
+              "datasets_field": "obligation",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.obligation"
+            },
+            {
+              "datasets_field": "assumptions",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.assumptions"
+            },
+            {
+              "datasets_field": "bounds",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.bounds"
+            },
+            {
+              "datasets_field": "translation",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.translation"
+            },
+            {
+              "datasets_field": "provider",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.provider"
+            },
+            {
+              "datasets_field": "environment",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.environment"
+            },
+            {
+              "datasets_field": "policy",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.policy"
+            },
+            {
+              "datasets_field": "schema",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.schema"
+            },
+            {
+              "datasets_field": "checker",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.checker"
+            },
+            {
+              "datasets_field": "network_policy",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.network_policy"
+            },
+            {
+              "datasets_field": "evidence_kind",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.evidence_kind"
+            },
+            {
+              "datasets_field": "authority_ceiling",
+              "relation": "exact_identity_retention",
+              "supervisor_field": "obligation.canonical_key.authority_ceiling"
+            }
+          ],
+          "schema": "canonical-proof-cache-identity-bridge/v1",
+          "scope": {
+            "completion_authority": false,
+            "identity_only": true,
+            "proof_authority": false,
+            "receipt_admission_supported": false,
+            "semantic_equivalence_checked": false
+          }
+        },
+        "policy": {
+          "authority_ceiling": "none",
+          "evidence_kind": "declaration",
+          "native_policy": {
+            "model": {
+              "mode": "off",
+              "model_dependencies": [],
+              "reason": "deterministic_native_integer_profile"
+            },
+            "native_tools": {
+              "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+              "environment": {
+                "LANG": "C",
+                "LC_ALL": "C",
+                "LEAN_NUM_THREADS": "1",
+                "LEAN_STACK_SIZE_KB": "8192",
+                "PATH": "/usr/bin:/bin"
+              },
+              "lean": {
+                "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+                "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+                "size_bytes": 13824
+              },
+              "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+              "process_limits": {
+                "lean": {
+                  "address_space_bytes": 4294967296,
+                  "resident_memory_bytes": 536870912
+                },
+                "lean_arguments": [
+                  "-j",
+                  "1",
+                  "-o",
+                  "FiniteInteger.olean",
+                  "FiniteInteger.lean"
+                ],
+                "max_input_bytes": 262144,
+                "max_output_bytes": 262144,
+                "max_output_files": 8,
+                "max_workspace_bytes": 4194304,
+                "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+                "python": {
+                  "address_space_bytes": 536870912,
+                  "resident_memory_bytes": 536870912
+                }
+              },
+              "profile": "python-integer-offset-finite@1",
+              "python": {
+                "path": "/usr/bin/python3.12",
+                "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+                "size_bytes": 7845032
+              },
+              "schema": "codebase-finite-integer-tools@1"
+            },
+            "operation_ceiling": {
+              "memory_mb": 1024,
+              "timeout_seconds": 60
+            },
+            "trust_scope": "selected_first_party_producer_files_and_native_binary_bytes; external_runtime_scope_is_assumed"
+          },
+          "network_policy": {
+            "future_observer_network": "no_requested_network; isolation_not_attested",
+            "native_tool_environment": {
+              "LANG": "C",
+              "LC_ALL": "C",
+              "LEAN_NUM_THREADS": "1",
+              "LEAN_STACK_SIZE_KB": "8192",
+              "PATH": "/usr/bin:/bin"
+            },
+            "operation": "preparation_only_no_target_or_checker_execution"
+          }
+        },
+        "premises": [
+          {
+            "assertion": {
+              "formula": {
+                "arguments": [
+                  {
+                    "arguments": [],
+                    "binders": [],
+                    "kind": "symbol",
+                    "value": "result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2"
+                  },
+                  {
+                    "arguments": [
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "symbol",
+                        "value": "n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185"
+                      },
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "int",
+                        "value": "1"
+                      }
+                    ],
+                    "binders": [],
+                    "kind": "add",
+                    "value": ""
+                  }
+                ],
+                "binders": [],
+                "kind": "eq",
+                "value": ""
+              },
+              "name": "body_return_0"
+            },
+            "kind": "native_source_model_equation"
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+          }
+        ],
+        "resource_budget": {
+          "native_process_limits": {
+            "lean": {
+              "address_space_bytes": 4294967296,
+              "resident_memory_bytes": 536870912
+            },
+            "lean_arguments": [
+              "-j",
+              "1",
+              "-o",
+              "FiniteInteger.olean",
+              "FiniteInteger.lean"
+            ],
+            "max_input_bytes": 262144,
+            "max_output_bytes": 262144,
+            "max_output_files": 8,
+            "max_workspace_bytes": 4194304,
+            "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+            "python": {
+              "address_space_bytes": 536870912,
+              "resident_memory_bytes": 536870912
+            }
+          },
+          "operation_ceiling": {
+            "memory_mb": 1024,
+            "timeout_seconds": 60
+          },
+          "scope": "declared_execution_limits; not_semantic_input_bounds_or_measured_usage"
+        },
+        "schema_version": "ipfs_accelerate_py/agent-supervisor/formal-verification-cache-key@1",
+        "solver": {
+          "provider_id": "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+          "python": {
+            "path": "/usr/bin/python3.12",
+            "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "size_bytes": 7845032
+          },
+          "role": "declared_finite_observer"
+        },
+        "theorem_registry": {
+          "registered_proofs": [],
+          "schema_inventory": {
+            "compiler": "codebase-integer-offset-compilation@1",
+            "contract": "codebase-integer-offset-contract@1",
+            "correspondence": "finite-integer-cache-correspondence/v1",
+            "domain": "codebase-finite-integer-domain@1",
+            "model": {
+              "mode": "off",
+              "model_dependencies": [],
+              "reason": "deterministic_native_integer_profile"
+            },
+            "profile": "python-integer-offset-finite@1"
+          }
+        },
+        "toolchain": {
+          "compiler_python": {
+            "binary": {
+              "path": "/usr/bin/python3.12",
+              "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+              "size_bytes": 7845032
+            },
+            "cache_tag": "cpython-312",
+            "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+          },
+          "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+          "host_platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+          "lean": {
+            "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "native_environment": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LEAN_NUM_THREADS": "1",
+            "LEAN_STACK_SIZE_KB": "8192",
+            "PATH": "/usr/bin:/bin"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "python": {
+            "path": "/usr/bin/python3.12",
+            "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "size_bytes": 7845032
+          }
+        },
+        "translator": {
+          "compiled_cid": "baguqeeracnllmv5cehrqf7fbqmq3w4x2adinzdap3jovfl4i2apoum7c2vfa",
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "profile": "python-integer-offset@1",
+          "scope": "native_source_to_ProgramIR_VC_SMT_correspondence; no solver result",
+          "source_binding": {
+            "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+            "language": "python",
+            "path": "calc.py",
+            "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+            "source_ref_ids": [
+              "source:calc.py"
+            ],
+            "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "span_ids": [
+              "span:function.increment.1",
+              "span:increment.expr.4",
+              "span:increment.expr.5",
+              "span:increment.expr.7",
+              "span:increment.param.n.2",
+              "span:increment.stmt.3"
+            ]
+          }
+        }
+      },
+      "bridged_key_id": "proof-cache-key:sha256:8a5520d5609f5393472a16d0e4a6b2724e14f7028853b8785c37d34dd915feca",
+      "canonical_key": {
+        "assumptions": "sha256:fd1f787c8f115702f74c7fda69db1c4c11f8c3305e10b73786a9bcec2a659f95",
+        "authority_ceiling": "none",
+        "bounds": "sha256:f241df5aaa62342297ce6689625d031e758ab33f521d9f6d8df456e6eded3625",
+        "checker": "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "environment": "sha256:d2d9a24c5036c271fddbe0e870da76321c7111a13ebcc822ba0c85355ea643fa",
+        "evidence_kind": "declaration",
+        "expression": "sha256:d47ea5e179f487da22060147f4e299d1a64637a379486a64a75ad5af37b1e03e",
+        "formalization": "sha256:839524a4bf74eb52c8a3d1bad340117b4fe84115c1f637264148067062435685",
+        "interface": "CanonicalProofCacheKey@1",
+        "network_policy": "sha256:f1ce4593785a3117471e18cd88c3596ae113604d50c8ecab4ee7bdf6b5a848b3",
+        "obligation": "sha256:3598599dcc76462c41634404c306ae7b3269f091aff621d659fc9ebe3bd68070",
+        "policy": "sha256:0b77db2b86c2581393929c4060fbfb56acb7b6275ebab9d7fa560c868f14016f",
+        "provider": "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+        "schema": "sha256:9bb25cbb37c57f53ec97c02e39caac300958a041f8a65bae11dd5b68c18c0525",
+        "schema_version": "canonical-proof-cache-key/v1",
+        "slice": "sha256:e1be56ff508ef3d563e0015018a89366d4333d43accfbba15a887ff170b03c95",
+        "source": "sha256:4141f45551b27ad7676354ed075e243af0414795ce1243605d280977c6c7e860",
+        "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+        "translation": "sha256:c99082b871d4c1a4cd24c17089b2e62e701e2725aacce2078286a5e725af17fb"
+      },
+      "canonical_key_id": "canonical-proof-cache-key:sha256:26aefb8c274d1392beb9525acd0b6bca820cfb227503c19a9f0b0f03214716ff",
+      "checker_execution_performed": false,
+      "completion_authority": false,
+      "contract_satisfaction_checked": false,
+      "execution_authority": false,
+      "execution_key": {
+        "candidate_tree": {
+          "code_dependencies": {
+            "annotation_and_runtime_assumptions": [
+              "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+              "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+              "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+            ],
+            "dependency_cids": [],
+            "scope": "guarded_single_function_no_imports_calls_or_global_value_reads"
+          },
+          "head": {
+            "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "generation": 1,
+            "manifest_cid": "baguqeeramfh3p2y4g2x2bpc6mivqiaeikmk4rtxf2wcxdyd44j2w3ykcb7fa",
+            "receipt_cid": "baguqeera3xmqlxflw6dr3er25xvdlb5jb3du44tajeajqnkwlyaxth4r4bpq",
+            "repository_id": "repository:finite-native-qualification",
+            "schema": "codebase-head@1",
+            "snapshot_cid": "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+          },
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "path": "calc.py",
+          "source_bytes": 47,
+          "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+          "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac"
+        },
+        "kernel": {
+          "checker_id": "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+          "lean": {
+            "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "role": "declared_recorded_table_checker"
+        },
+        "obligation": {
+          "finite_domain": {
+            "inputs": [
+              -2,
+              -1,
+              0,
+              1,
+              2
+            ],
+            "profile": "python-integer-offset-finite@1",
+            "schema": "codebase-finite-integer-domain@1"
+          },
+          "formalization": {
+            "compiled": {
+              "assumptions": [
+                "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+                "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+                "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+              ],
+              "behavior_authority": false,
+              "body_offset": 1,
+              "compilation": {
+                "capabilities": [
+                  {
+                    "description": "arithmetic lowers to deterministic SMT-LIB",
+                    "feature": "arithmetic",
+                    "kind": "native"
+                  },
+                  {
+                    "description": "equality lowers to deterministic SMT-LIB",
+                    "feature": "equality",
+                    "kind": "native"
+                  },
+                  {
+                    "description": "verification_conditions lowers to deterministic SMT-LIB",
+                    "feature": "verification_conditions",
+                    "kind": "native"
+                  }
+                ],
+                "compilation_id": "bafkreic54fmsso3d7nhoia4iwlljc2xkyof6uzutwdnqdkrc77hpab5any",
+                "compiler_version": "1.0.0",
+                "features": [
+                  "arithmetic",
+                  "equality",
+                  "verification_conditions"
+                ],
+                "interface": "SoftwareVerificationSMTCompiler@1",
+                "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                "query_mode": "theorem_by_negation",
+                "receipt": {
+                  "assumptions": [
+                    "named:body_return_0"
+                  ],
+                  "authority_ceiling": "independently_checkable",
+                  "bounds": [],
+                  "compilers": [
+                    {
+                      "compiler_id": "compiler:software-verification-smt",
+                      "compiler_version": "1.0.0",
+                      "configuration_identity": "sha256:101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                      "implementation_identity": "sha256:d584627eccc37b9dd9fb02273a7f72c9455b309d71da0ea394ac875e8e8e974b",
+                      "schema_version": "logic-translation-compiler/v1",
+                      "stage": "lower"
+                    }
+                  ],
+                  "interface": "LogicTranslationReceipt@1",
+                  "metadata": {
+                    "logic": "QF_UFLIA",
+                    "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                    "query_mode": "theorem_by_negation",
+                    "request_model": true,
+                    "request_unsat_core": true,
+                    "theories": [
+                      "arithmetic",
+                      "core",
+                      "equality"
+                    ]
+                  },
+                  "preservation_claim": {
+                    "approximation_direction": "none",
+                    "conditions": [],
+                    "description": "Goal is checked by negation: unsat of the negated goal is equisatisfiable with theorem validity under the assumptions.",
+                    "kind": "equisatisfiable",
+                    "permitted_result_classes": [
+                      "disproved",
+                      "proved",
+                      "unknown"
+                    ],
+                    "preserved_property_ids": [
+                      "property:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                    ],
+                    "schema_version": "logic-preservation-claim/v1"
+                  },
+                  "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+                  "schema_version": "logic-translation-receipt/v1",
+                  "semantic_mutations": [
+                    {
+                      "assumption_ids": [],
+                      "bound_ids": [],
+                      "description": "Goal is asserted under negation so that unsat witnesses the theorem.",
+                      "kind": "polarity_changed",
+                      "mutation_id": "mutation:theorem-by-negation",
+                      "schema_version": "logic-semantic-mutation/v1",
+                      "source_construct_ids": [
+                        "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                      ],
+                      "target_construct_ids": [
+                        "assert-not-goal"
+                      ]
+                    }
+                  ],
+                  "source_family_id": "software_verification",
+                  "source_family_version": "1.0.0",
+                  "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+                  "target_family_id": "smt",
+                  "target_family_version": "2.6",
+                  "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy",
+                  "unsupported_constructs": [],
+                  "witnesses": []
+                },
+                "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+                "schema_version": "software-verification-smt-compilation/v1",
+                "script": {
+                  "digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                  "lines": [
+                    "; software-verification semantic SMT compiler 1.0.0",
+                    "; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"",
+                    "; query_mode: theorem_by_negation",
+                    "; features: arithmetic,equality,verification_conditions",
+                    "(set-info :smt-lib-version 2.6)",
+                    "(set-info :source \"SoftwareVerificationSMTCompiler@1\")",
+                    "(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")",
+                    "(set-logic QF_UFLIA)",
+                    "(set-option :produce-models true)",
+                    "(set-option :produce-unsat-cores true)",
+                    "(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)",
+                    "(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)",
+                    "(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))",
+                    "(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))",
+                    "(check-sat)",
+                    "(get-model)",
+                    "(get-unsat-core)"
+                  ],
+                  "logic": "QF_UFLIA",
+                  "query_mode": "theorem_by_negation",
+                  "request_model": true,
+                  "request_unsat_core": true,
+                  "schema_version": "software-verification-smt-script/v1",
+                  "source": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+                  "theories": [
+                    "arithmetic",
+                    "core",
+                    "equality"
+                  ]
+                },
+                "script_digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                "smtlib": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+                "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+                "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy"
+              },
+              "contract": {
+                "function_name": "increment",
+                "offset": 2,
+                "parameter": "n",
+                "path": "calc.py",
+                "profile": "python-integer-offset@1",
+                "schema": "codebase-integer-offset-contract@1"
+              },
+              "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+              "kernel_checked": false,
+              "parser": "cpython-312",
+              "profile": "python-integer-offset@1",
+              "revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+              "schema": "codebase-integer-offset-compilation@1",
+              "source_binding": {
+                "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+                "language": "python",
+                "path": "calc.py",
+                "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+                "span_ids": [
+                  "span:function.increment.1",
+                  "span:increment.expr.4",
+                  "span:increment.expr.5",
+                  "span:increment.expr.7",
+                  "span:increment.param.n.2",
+                  "span:increment.stmt.3"
+                ]
+              },
+              "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq"
+            },
+            "scope": "conditional_integer_model_restricted_to_declared_finite_domain",
+            "vc": {
+              "assumption_expression_ids": [],
+              "attributes": {},
+              "function_id": "function:increment",
+              "generated_symbol_ids": [],
+              "goal_expression_ids": [
+                "expr:pipeline:cmp:5:increment"
+              ],
+              "obligation_id": "vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+              "parent_contract_id": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+              "path_condition_expression_ids": [],
+              "rule": "postcondition_normal",
+              "source_construct_id": "block:entry",
+              "source_construct_kind": "block",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "statement": "Normal exit block block:entry must establish postconditions of baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla."
+            }
+          },
+          "native_request": {
+            "clauses": [
+              "exact_builtin_int_result",
+              "result_equals_parameter_plus_contract_offset"
+            ],
+            "contract": {
+              "function_name": "increment",
+              "offset": 2,
+              "parameter": "n",
+              "path": "calc.py",
+              "profile": "python-integer-offset@1",
+              "schema": "codebase-integer-offset-contract@1"
+            },
+            "finite_domain": {
+              "inputs": [
+                -2,
+                -1,
+                0,
+                1,
+                2
+              ],
+              "profile": "python-integer-offset-finite@1",
+              "schema": "codebase-finite-integer-domain@1"
+            },
+            "profile": "python-integer-offset-finite@1"
+          },
+          "program": {
+            "commands": [
+              {
+                "attributes": {},
+                "command_id": "command:10",
+                "effects": {
+                  "allocates": [],
+                  "deallocates": [],
+                  "nondeterministic": false,
+                  "performs_io": false,
+                  "raises": [],
+                  "reads": [],
+                  "synchronizes": false,
+                  "writes": []
+                },
+                "evaluation_order": [
+                  "expr:9"
+                ],
+                "expression_ids": [
+                  "expr:9"
+                ],
+                "kind": "return",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:increment.stmt.3"
+                ],
+                "target_symbol_ids": [],
+                "undefined_behavior": []
+              }
+            ],
+            "expressions": [
+              {
+                "attributes": {},
+                "evaluation_order": [],
+                "expression_id": "expr:6",
+                "kind": "symbol",
+                "operand_ids": [],
+                "operator": "",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:increment.expr.5"
+                ],
+                "symbol_ids": [
+                  "symbol:increment.n.parameter"
+                ],
+                "type_ref": "any"
+              },
+              {
+                "attributes": {
+                  "value": 1
+                },
+                "evaluation_order": [],
+                "expression_id": "expr:8",
+                "kind": "literal",
+                "operand_ids": [],
+                "operator": "",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:increment.expr.7"
+                ],
+                "symbol_ids": [],
+                "type_ref": "int"
+              },
+              {
+                "attributes": {},
+                "evaluation_order": [
+                  "expr:6",
+                  "expr:8"
+                ],
+                "expression_id": "expr:9",
+                "kind": "binary",
+                "operand_ids": [
+                  "expr:6",
+                  "expr:8"
+                ],
+                "operator": "add",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:increment.expr.4"
+                ],
+                "symbol_ids": [],
+                "type_ref": "any"
+              },
+              {
+                "attributes": {},
+                "evaluation_order": [
+                  "expr:pipeline:name:2:increment",
+                  "expr:pipeline:lit:3:increment"
+                ],
+                "expression_id": "expr:pipeline:bin:4:increment",
+                "kind": "binary",
+                "operand_ids": [
+                  "expr:pipeline:name:2:increment",
+                  "expr:pipeline:lit:3:increment"
+                ],
+                "operator": "add",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_ids": [],
+                "type_ref": "integer"
+              },
+              {
+                "attributes": {},
+                "evaluation_order": [
+                  "expr:pipeline:name:1:increment",
+                  "expr:pipeline:bin:4:increment"
+                ],
+                "expression_id": "expr:pipeline:cmp:5:increment",
+                "kind": "binary",
+                "operand_ids": [
+                  "expr:pipeline:name:1:increment",
+                  "expr:pipeline:bin:4:increment"
+                ],
+                "operator": "eq",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_ids": [],
+                "type_ref": "boolean"
+              },
+              {
+                "attributes": {
+                  "value": 2
+                },
+                "evaluation_order": [],
+                "expression_id": "expr:pipeline:lit:3:increment",
+                "kind": "literal",
+                "operand_ids": [],
+                "operator": "",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_ids": [],
+                "type_ref": "integer"
+              },
+              {
+                "attributes": {},
+                "evaluation_order": [],
+                "expression_id": "expr:pipeline:name:1:increment",
+                "kind": "result",
+                "operand_ids": [],
+                "operator": "",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_ids": [
+                  "symbol:increment.result.result"
+                ],
+                "type_ref": "int"
+              },
+              {
+                "attributes": {},
+                "evaluation_order": [],
+                "expression_id": "expr:pipeline:name:2:increment",
+                "kind": "symbol",
+                "operand_ids": [],
+                "operator": "",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_ids": [
+                  "symbol:increment.n.parameter"
+                ],
+                "type_ref": "int"
+              }
+            ],
+            "functions": [
+              {
+                "cfg": {
+                  "blocks": [
+                    {
+                      "block_id": "block:entry",
+                      "command_ids": [
+                        "command:10"
+                      ],
+                      "source_ref_ids": [
+                        "source:calc.py"
+                      ],
+                      "span_ids": [
+                        "span:function.increment.1"
+                      ]
+                    }
+                  ],
+                  "edges": [],
+                  "entry_block_id": "block:entry",
+                  "exceptional_exit_block_ids": [],
+                  "graph_id": "cfg:increment",
+                  "normal_exit_block_ids": [
+                    "block:entry"
+                  ]
+                },
+                "declared_exceptions": [],
+                "effects": {
+                  "allocates": [],
+                  "deallocates": [],
+                  "nondeterministic": false,
+                  "performs_io": false,
+                  "raises": [],
+                  "reads": [
+                    "symbol:increment.n.parameter"
+                  ],
+                  "synchronizes": false,
+                  "writes": []
+                },
+                "exception_symbol_ids": [],
+                "function_id": "function:increment",
+                "local_symbol_ids": [],
+                "name": "increment",
+                "parameter_symbol_ids": [
+                  "symbol:increment.n.parameter"
+                ],
+                "purity": "pure",
+                "result_symbol_id": "symbol:increment.result.result",
+                "return_type": "int",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ]
+              }
+            ],
+            "global_symbol_ids": [],
+            "metadata": {
+              "adapter": "SourceSoftwareVerificationAdapter@1",
+              "language": "python",
+              "path": "calc.py"
+            },
+            "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+            "schema_version": "program-ir/v1",
+            "sources": [
+              {
+                "container_sha256": "",
+                "container_uri": "",
+                "content_cid": "",
+                "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+                "license_expression": "",
+                "metadata": {
+                  "byte_length": 47,
+                  "language": "python",
+                  "path": "calc.py"
+                },
+                "ref_id": "source:calc.py",
+                "review_status": "unreviewed",
+                "source_id": "calc.py",
+                "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+                "source_uri": "file:///calc.py"
+              }
+            ],
+            "spans": [
+              {
+                "end_byte": 46,
+                "end_char": null,
+                "end_column": 16,
+                "end_line": 2,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:function.increment.1",
+                "start_byte": 0,
+                "start_char": null,
+                "start_column": 1,
+                "start_line": 1
+              },
+              {
+                "end_byte": 46,
+                "end_char": null,
+                "end_column": 16,
+                "end_line": 2,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:increment.expr.4",
+                "start_byte": 41,
+                "start_char": null,
+                "start_column": 12,
+                "start_line": 2
+              },
+              {
+                "end_byte": 42,
+                "end_char": null,
+                "end_column": 12,
+                "end_line": 2,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:increment.expr.5",
+                "start_byte": 41,
+                "start_char": null,
+                "start_column": 12,
+                "start_line": 2
+              },
+              {
+                "end_byte": 46,
+                "end_char": null,
+                "end_column": 16,
+                "end_line": 2,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:increment.expr.7",
+                "start_byte": 45,
+                "start_char": null,
+                "start_column": 16,
+                "start_line": 2
+              },
+              {
+                "end_byte": 20,
+                "end_char": null,
+                "end_column": 20,
+                "end_line": 1,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:increment.param.n.2",
+                "start_byte": 14,
+                "start_char": null,
+                "start_column": 15,
+                "start_line": 1
+              },
+              {
+                "end_byte": 46,
+                "end_char": null,
+                "end_column": 16,
+                "end_line": 2,
+                "metadata": {},
+                "source_ref_id": "source:calc.py",
+                "span_id": "span:increment.stmt.3",
+                "start_byte": 34,
+                "start_char": null,
+                "start_column": 5,
+                "start_line": 2
+              }
+            ],
+            "symbols": [
+              {
+                "attributes": {},
+                "kind": "parameter",
+                "name": "n",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:increment.param.n.2"
+                ],
+                "symbol_id": "symbol:increment.n.parameter",
+                "type_ref": "int"
+              },
+              {
+                "attributes": {},
+                "kind": "result",
+                "name": "result",
+                "source_ref_ids": [
+                  "source:calc.py"
+                ],
+                "span_ids": [
+                  "span:function.increment.1"
+                ],
+                "symbol_id": "symbol:increment.result.result",
+                "type_ref": "int"
+              }
+            ]
+          },
+          "schema": "finite-integer-key-obligation/v1",
+          "slice": {
+            "function": "increment",
+            "parameter": "n",
+            "path": "calc.py"
+          }
+        },
+        "policy": {
+          "authority_ceiling": "none",
+          "evidence_kind": "declaration",
+          "native_policy": {
+            "model": {
+              "mode": "off",
+              "model_dependencies": [],
+              "reason": "deterministic_native_integer_profile"
+            },
+            "native_tools": {
+              "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+              "environment": {
+                "LANG": "C",
+                "LC_ALL": "C",
+                "LEAN_NUM_THREADS": "1",
+                "LEAN_STACK_SIZE_KB": "8192",
+                "PATH": "/usr/bin:/bin"
+              },
+              "lean": {
+                "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+                "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+                "size_bytes": 13824
+              },
+              "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+              "process_limits": {
+                "lean": {
+                  "address_space_bytes": 4294967296,
+                  "resident_memory_bytes": 536870912
+                },
+                "lean_arguments": [
+                  "-j",
+                  "1",
+                  "-o",
+                  "FiniteInteger.olean",
+                  "FiniteInteger.lean"
+                ],
+                "max_input_bytes": 262144,
+                "max_output_bytes": 262144,
+                "max_output_files": 8,
+                "max_workspace_bytes": 4194304,
+                "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+                "python": {
+                  "address_space_bytes": 536870912,
+                  "resident_memory_bytes": 536870912
+                }
+              },
+              "profile": "python-integer-offset-finite@1",
+              "python": {
+                "path": "/usr/bin/python3.12",
+                "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+                "size_bytes": 7845032
+              },
+              "schema": "codebase-finite-integer-tools@1"
+            },
+            "operation_ceiling": {
+              "memory_mb": 1024,
+              "timeout_seconds": 60
+            },
+            "trust_scope": "selected_first_party_producer_files_and_native_binary_bytes; external_runtime_scope_is_assumed"
+          },
+          "network_policy": {
+            "future_observer_network": "no_requested_network; isolation_not_attested",
+            "native_tool_environment": {
+              "LANG": "C",
+              "LC_ALL": "C",
+              "LEAN_NUM_THREADS": "1",
+              "LEAN_STACK_SIZE_KB": "8192",
+              "PATH": "/usr/bin:/bin"
+            },
+            "operation": "preparation_only_no_target_or_checker_execution"
+          }
+        },
+        "premises": [
+          {
+            "assertion": {
+              "formula": {
+                "arguments": [
+                  {
+                    "arguments": [],
+                    "binders": [],
+                    "kind": "symbol",
+                    "value": "result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2"
+                  },
+                  {
+                    "arguments": [
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "symbol",
+                        "value": "n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185"
+                      },
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "int",
+                        "value": "1"
+                      }
+                    ],
+                    "binders": [],
+                    "kind": "add",
+                    "value": ""
+                  }
+                ],
+                "binders": [],
+                "kind": "eq",
+                "value": ""
+              },
+              "name": "body_return_0"
+            },
+            "kind": "native_source_model_equation"
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+          }
+        ],
+        "resource_budget": {
+          "native_process_limits": {
+            "lean": {
+              "address_space_bytes": 4294967296,
+              "resident_memory_bytes": 536870912
+            },
+            "lean_arguments": [
+              "-j",
+              "1",
+              "-o",
+              "FiniteInteger.olean",
+              "FiniteInteger.lean"
+            ],
+            "max_input_bytes": 262144,
+            "max_output_bytes": 262144,
+            "max_output_files": 8,
+            "max_workspace_bytes": 4194304,
+            "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+            "python": {
+              "address_space_bytes": 536870912,
+              "resident_memory_bytes": 536870912
+            }
+          },
+          "operation_ceiling": {
+            "memory_mb": 1024,
+            "timeout_seconds": 60
+          },
+          "scope": "declared_execution_limits; not_semantic_input_bounds_or_measured_usage"
+        },
+        "schema_version": "ipfs_accelerate_py/agent-supervisor/formal-verification-cache-key@1",
+        "solver": {
+          "provider_id": "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+          "python": {
+            "path": "/usr/bin/python3.12",
+            "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "size_bytes": 7845032
+          },
+          "role": "declared_finite_observer"
+        },
+        "theorem_registry": {
+          "registered_proofs": [],
+          "schema_inventory": {
+            "compiler": "codebase-integer-offset-compilation@1",
+            "contract": "codebase-integer-offset-contract@1",
+            "correspondence": "finite-integer-cache-correspondence/v1",
+            "domain": "codebase-finite-integer-domain@1",
+            "model": {
+              "mode": "off",
+              "model_dependencies": [],
+              "reason": "deterministic_native_integer_profile"
+            },
+            "profile": "python-integer-offset-finite@1"
+          }
+        },
+        "toolchain": {
+          "compiler_python": {
+            "binary": {
+              "path": "/usr/bin/python3.12",
+              "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+              "size_bytes": 7845032
+            },
+            "cache_tag": "cpython-312",
+            "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+          },
+          "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+          "host_platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+          "lean": {
+            "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "native_environment": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LEAN_NUM_THREADS": "1",
+            "LEAN_STACK_SIZE_KB": "8192",
+            "PATH": "/usr/bin:/bin"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "python": {
+            "path": "/usr/bin/python3.12",
+            "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "size_bytes": 7845032
+          }
+        },
+        "translator": {
+          "compiled_cid": "baguqeeracnllmv5cehrqf7fbqmq3w4x2adinzdap3jovfl4i2apoum7c2vfa",
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "profile": "python-integer-offset@1",
+          "scope": "native_source_to_ProgramIR_VC_SMT_correspondence; no solver result",
+          "source_binding": {
+            "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+            "language": "python",
+            "path": "calc.py",
+            "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+            "source_ref_ids": [
+              "source:calc.py"
+            ],
+            "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "span_ids": [
+              "span:function.increment.1",
+              "span:increment.expr.4",
+              "span:increment.expr.5",
+              "span:increment.expr.7",
+              "span:increment.param.n.2",
+              "span:increment.stmt.3"
+            ]
+          }
+        }
+      },
+      "execution_key_id": "proof-cache-key:sha256:cbb19723658f782432e97a8296d8fe6ada9f2134eed27362d248b4b235ced4f2",
+      "field_correspondence": [
+        {
+          "canonical_dimension": "source",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "candidate_tree"
+          ],
+          "material": "source"
+        },
+        {
+          "canonical_dimension": "expression",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "obligation.program"
+          ],
+          "material": "expression"
+        },
+        {
+          "canonical_dimension": "formalization",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "obligation.formalization"
+          ],
+          "material": "formalization"
+        },
+        {
+          "canonical_dimension": "slice",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "obligation.slice"
+          ],
+          "material": "slice"
+        },
+        {
+          "canonical_dimension": "obligation",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "obligation.native_request"
+          ],
+          "material": "obligation"
+        },
+        {
+          "canonical_dimension": "assumptions",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "premises"
+          ],
+          "material": "assumptions"
+        },
+        {
+          "canonical_dimension": "bounds",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "obligation.finite_domain"
+          ],
+          "material": "bounds"
+        },
+        {
+          "canonical_dimension": "translation",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "translator"
+          ],
+          "material": "translation"
+        },
+        {
+          "canonical_dimension": "provider",
+          "encoding": "literal",
+          "execution_fields": [
+            "solver.provider_id"
+          ],
+          "material": "provider"
+        },
+        {
+          "canonical_dimension": "environment",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "toolchain"
+          ],
+          "material": "environment"
+        },
+        {
+          "canonical_dimension": "policy",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "policy.native_policy"
+          ],
+          "material": "policy"
+        },
+        {
+          "canonical_dimension": "schema",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "theorem_registry.schema_inventory"
+          ],
+          "material": "schema"
+        },
+        {
+          "canonical_dimension": "checker",
+          "encoding": "literal",
+          "execution_fields": [
+            "kernel.checker_id"
+          ],
+          "material": "checker"
+        },
+        {
+          "canonical_dimension": "network_policy",
+          "encoding": "canonical_JSON_sha256",
+          "execution_fields": [
+            "policy.network_policy"
+          ],
+          "material": "network_policy"
+        },
+        {
+          "canonical_dimension": "evidence_kind",
+          "encoding": "literal",
+          "execution_fields": [
+            "policy.evidence_kind"
+          ],
+          "material": "evidence_kind"
+        },
+        {
+          "canonical_dimension": "authority_ceiling",
+          "encoding": "literal",
+          "execution_fields": [
+            "policy.authority_ceiling"
+          ],
+          "material": "authority_ceiling"
+        }
+      ],
+      "inference_executed": false,
+      "materials": {
+        "assumptions": [
+          {
+            "assertion": {
+              "formula": {
+                "arguments": [
+                  {
+                    "arguments": [],
+                    "binders": [],
+                    "kind": "symbol",
+                    "value": "result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2"
+                  },
+                  {
+                    "arguments": [
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "symbol",
+                        "value": "n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185"
+                      },
+                      {
+                        "arguments": [],
+                        "binders": [],
+                        "kind": "int",
+                        "value": "1"
+                      }
+                    ],
+                    "binders": [],
+                    "kind": "add",
+                    "value": ""
+                  }
+                ],
+                "binders": [],
+                "kind": "eq",
+                "value": ""
+              },
+              "name": "body_return_0"
+            },
+            "kind": "native_source_model_equation"
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this."
+          },
+          {
+            "kind": "declared_runtime_assumption",
+            "text": "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+          }
+        ],
+        "authority_ceiling": "none",
+        "bounds": {
+          "inputs": [
+            -2,
+            -1,
+            0,
+            1,
+            2
+          ],
+          "profile": "python-integer-offset-finite@1",
+          "schema": "codebase-finite-integer-domain@1"
+        },
+        "checker": "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "environment": {
+          "compiler_python": {
+            "binary": {
+              "path": "/usr/bin/python3.12",
+              "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+              "size_bytes": 7845032
+            },
+            "cache_tag": "cpython-312",
+            "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+          },
+          "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+          "host_platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+          "lean": {
+            "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "native_environment": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LEAN_NUM_THREADS": "1",
+            "LEAN_STACK_SIZE_KB": "8192",
+            "PATH": "/usr/bin:/bin"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "python": {
+            "path": "/usr/bin/python3.12",
+            "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "size_bytes": 7845032
+          }
+        },
+        "evidence_kind": "declaration",
+        "expression": {
+          "commands": [
+            {
+              "attributes": {},
+              "command_id": "command:10",
+              "effects": {
+                "allocates": [],
+                "deallocates": [],
+                "nondeterministic": false,
+                "performs_io": false,
+                "raises": [],
+                "reads": [],
+                "synchronizes": false,
+                "writes": []
+              },
+              "evaluation_order": [
+                "expr:9"
+              ],
+              "expression_ids": [
+                "expr:9"
+              ],
+              "kind": "return",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:increment.stmt.3"
+              ],
+              "target_symbol_ids": [],
+              "undefined_behavior": []
+            }
+          ],
+          "expressions": [
+            {
+              "attributes": {},
+              "evaluation_order": [],
+              "expression_id": "expr:6",
+              "kind": "symbol",
+              "operand_ids": [],
+              "operator": "",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:increment.expr.5"
+              ],
+              "symbol_ids": [
+                "symbol:increment.n.parameter"
+              ],
+              "type_ref": "any"
+            },
+            {
+              "attributes": {
+                "value": 1
+              },
+              "evaluation_order": [],
+              "expression_id": "expr:8",
+              "kind": "literal",
+              "operand_ids": [],
+              "operator": "",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:increment.expr.7"
+              ],
+              "symbol_ids": [],
+              "type_ref": "int"
+            },
+            {
+              "attributes": {},
+              "evaluation_order": [
+                "expr:6",
+                "expr:8"
+              ],
+              "expression_id": "expr:9",
+              "kind": "binary",
+              "operand_ids": [
+                "expr:6",
+                "expr:8"
+              ],
+              "operator": "add",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:increment.expr.4"
+              ],
+              "symbol_ids": [],
+              "type_ref": "any"
+            },
+            {
+              "attributes": {},
+              "evaluation_order": [
+                "expr:pipeline:name:2:increment",
+                "expr:pipeline:lit:3:increment"
+              ],
+              "expression_id": "expr:pipeline:bin:4:increment",
+              "kind": "binary",
+              "operand_ids": [
+                "expr:pipeline:name:2:increment",
+                "expr:pipeline:lit:3:increment"
+              ],
+              "operator": "add",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_ids": [],
+              "type_ref": "integer"
+            },
+            {
+              "attributes": {},
+              "evaluation_order": [
+                "expr:pipeline:name:1:increment",
+                "expr:pipeline:bin:4:increment"
+              ],
+              "expression_id": "expr:pipeline:cmp:5:increment",
+              "kind": "binary",
+              "operand_ids": [
+                "expr:pipeline:name:1:increment",
+                "expr:pipeline:bin:4:increment"
+              ],
+              "operator": "eq",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_ids": [],
+              "type_ref": "boolean"
+            },
+            {
+              "attributes": {
+                "value": 2
+              },
+              "evaluation_order": [],
+              "expression_id": "expr:pipeline:lit:3:increment",
+              "kind": "literal",
+              "operand_ids": [],
+              "operator": "",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_ids": [],
+              "type_ref": "integer"
+            },
+            {
+              "attributes": {},
+              "evaluation_order": [],
+              "expression_id": "expr:pipeline:name:1:increment",
+              "kind": "result",
+              "operand_ids": [],
+              "operator": "",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_ids": [
+                "symbol:increment.result.result"
+              ],
+              "type_ref": "int"
+            },
+            {
+              "attributes": {},
+              "evaluation_order": [],
+              "expression_id": "expr:pipeline:name:2:increment",
+              "kind": "symbol",
+              "operand_ids": [],
+              "operator": "",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_ids": [
+                "symbol:increment.n.parameter"
+              ],
+              "type_ref": "int"
+            }
+          ],
+          "functions": [
+            {
+              "cfg": {
+                "blocks": [
+                  {
+                    "block_id": "block:entry",
+                    "command_ids": [
+                      "command:10"
+                    ],
+                    "source_ref_ids": [
+                      "source:calc.py"
+                    ],
+                    "span_ids": [
+                      "span:function.increment.1"
+                    ]
+                  }
+                ],
+                "edges": [],
+                "entry_block_id": "block:entry",
+                "exceptional_exit_block_ids": [],
+                "graph_id": "cfg:increment",
+                "normal_exit_block_ids": [
+                  "block:entry"
+                ]
+              },
+              "declared_exceptions": [],
+              "effects": {
+                "allocates": [],
+                "deallocates": [],
+                "nondeterministic": false,
+                "performs_io": false,
+                "raises": [],
+                "reads": [
+                  "symbol:increment.n.parameter"
+                ],
+                "synchronizes": false,
+                "writes": []
+              },
+              "exception_symbol_ids": [],
+              "function_id": "function:increment",
+              "local_symbol_ids": [],
+              "name": "increment",
+              "parameter_symbol_ids": [
+                "symbol:increment.n.parameter"
+              ],
+              "purity": "pure",
+              "result_symbol_id": "symbol:increment.result.result",
+              "return_type": "int",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ]
+            }
+          ],
+          "global_symbol_ids": [],
+          "metadata": {
+            "adapter": "SourceSoftwareVerificationAdapter@1",
+            "language": "python",
+            "path": "calc.py"
+          },
+          "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+          "schema_version": "program-ir/v1",
+          "sources": [
+            {
+              "container_sha256": "",
+              "container_uri": "",
+              "content_cid": "",
+              "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+              "license_expression": "",
+              "metadata": {
+                "byte_length": 47,
+                "language": "python",
+                "path": "calc.py"
+              },
+              "ref_id": "source:calc.py",
+              "review_status": "unreviewed",
+              "source_id": "calc.py",
+              "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+              "source_uri": "file:///calc.py"
+            }
+          ],
+          "spans": [
+            {
+              "end_byte": 46,
+              "end_char": null,
+              "end_column": 16,
+              "end_line": 2,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:function.increment.1",
+              "start_byte": 0,
+              "start_char": null,
+              "start_column": 1,
+              "start_line": 1
+            },
+            {
+              "end_byte": 46,
+              "end_char": null,
+              "end_column": 16,
+              "end_line": 2,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:increment.expr.4",
+              "start_byte": 41,
+              "start_char": null,
+              "start_column": 12,
+              "start_line": 2
+            },
+            {
+              "end_byte": 42,
+              "end_char": null,
+              "end_column": 12,
+              "end_line": 2,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:increment.expr.5",
+              "start_byte": 41,
+              "start_char": null,
+              "start_column": 12,
+              "start_line": 2
+            },
+            {
+              "end_byte": 46,
+              "end_char": null,
+              "end_column": 16,
+              "end_line": 2,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:increment.expr.7",
+              "start_byte": 45,
+              "start_char": null,
+              "start_column": 16,
+              "start_line": 2
+            },
+            {
+              "end_byte": 20,
+              "end_char": null,
+              "end_column": 20,
+              "end_line": 1,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:increment.param.n.2",
+              "start_byte": 14,
+              "start_char": null,
+              "start_column": 15,
+              "start_line": 1
+            },
+            {
+              "end_byte": 46,
+              "end_char": null,
+              "end_column": 16,
+              "end_line": 2,
+              "metadata": {},
+              "source_ref_id": "source:calc.py",
+              "span_id": "span:increment.stmt.3",
+              "start_byte": 34,
+              "start_char": null,
+              "start_column": 5,
+              "start_line": 2
+            }
+          ],
+          "symbols": [
+            {
+              "attributes": {},
+              "kind": "parameter",
+              "name": "n",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:increment.param.n.2"
+              ],
+              "symbol_id": "symbol:increment.n.parameter",
+              "type_ref": "int"
+            },
+            {
+              "attributes": {},
+              "kind": "result",
+              "name": "result",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ],
+              "symbol_id": "symbol:increment.result.result",
+              "type_ref": "int"
+            }
+          ]
+        },
+        "formalization": {
+          "compiled": {
+            "assumptions": [
+              "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+              "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+              "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+            ],
+            "behavior_authority": false,
+            "body_offset": 1,
+            "compilation": {
+              "capabilities": [
+                {
+                  "description": "arithmetic lowers to deterministic SMT-LIB",
+                  "feature": "arithmetic",
+                  "kind": "native"
+                },
+                {
+                  "description": "equality lowers to deterministic SMT-LIB",
+                  "feature": "equality",
+                  "kind": "native"
+                },
+                {
+                  "description": "verification_conditions lowers to deterministic SMT-LIB",
+                  "feature": "verification_conditions",
+                  "kind": "native"
+                }
+              ],
+              "compilation_id": "bafkreic54fmsso3d7nhoia4iwlljc2xkyof6uzutwdnqdkrc77hpab5any",
+              "compiler_version": "1.0.0",
+              "features": [
+                "arithmetic",
+                "equality",
+                "verification_conditions"
+              ],
+              "interface": "SoftwareVerificationSMTCompiler@1",
+              "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+              "query_mode": "theorem_by_negation",
+              "receipt": {
+                "assumptions": [
+                  "named:body_return_0"
+                ],
+                "authority_ceiling": "independently_checkable",
+                "bounds": [],
+                "compilers": [
+                  {
+                    "compiler_id": "compiler:software-verification-smt",
+                    "compiler_version": "1.0.0",
+                    "configuration_identity": "sha256:101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                    "implementation_identity": "sha256:d584627eccc37b9dd9fb02273a7f72c9455b309d71da0ea394ac875e8e8e974b",
+                    "schema_version": "logic-translation-compiler/v1",
+                    "stage": "lower"
+                  }
+                ],
+                "interface": "LogicTranslationReceipt@1",
+                "metadata": {
+                  "logic": "QF_UFLIA",
+                  "obligation_id": "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+                  "query_mode": "theorem_by_negation",
+                  "request_model": true,
+                  "request_unsat_core": true,
+                  "theories": [
+                    "arithmetic",
+                    "core",
+                    "equality"
+                  ]
+                },
+                "preservation_claim": {
+                  "approximation_direction": "none",
+                  "conditions": [],
+                  "description": "Goal is checked by negation: unsat of the negated goal is equisatisfiable with theorem validity under the assumptions.",
+                  "kind": "equisatisfiable",
+                  "permitted_result_classes": [
+                    "disproved",
+                    "proved",
+                    "unknown"
+                  ],
+                  "preserved_property_ids": [
+                    "property:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                  ],
+                  "schema_version": "logic-preservation-claim/v1"
+                },
+                "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+                "schema_version": "logic-translation-receipt/v1",
+                "semantic_mutations": [
+                  {
+                    "assumption_ids": [],
+                    "bound_ids": [],
+                    "description": "Goal is asserted under negation so that unsat witnesses the theorem.",
+                    "kind": "polarity_changed",
+                    "mutation_id": "mutation:theorem-by-negation",
+                    "schema_version": "logic-semantic-mutation/v1",
+                    "source_construct_ids": [
+                      "smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal"
+                    ],
+                    "target_construct_ids": [
+                      "assert-not-goal"
+                    ]
+                  }
+                ],
+                "source_family_id": "software_verification",
+                "source_family_version": "1.0.0",
+                "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+                "target_family_id": "smt",
+                "target_family_version": "2.6",
+                "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy",
+                "unsupported_constructs": [],
+                "witnesses": []
+              },
+              "receipt_id": "bafkreih7sod25vojnrzr63es4bqy63t3p4hdlgczai5zr4bzeknqyb75qe",
+              "schema_version": "software-verification-smt-compilation/v1",
+              "script": {
+                "digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+                "lines": [
+                  "; software-verification semantic SMT compiler 1.0.0",
+                  "; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"",
+                  "; query_mode: theorem_by_negation",
+                  "; features: arithmetic,equality,verification_conditions",
+                  "(set-info :smt-lib-version 2.6)",
+                  "(set-info :source \"SoftwareVerificationSMTCompiler@1\")",
+                  "(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")",
+                  "(set-logic QF_UFLIA)",
+                  "(set-option :produce-models true)",
+                  "(set-option :produce-unsat-cores true)",
+                  "(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)",
+                  "(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)",
+                  "(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))",
+                  "(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))",
+                  "(check-sat)",
+                  "(get-model)",
+                  "(get-unsat-core)"
+                ],
+                "logic": "QF_UFLIA",
+                "query_mode": "theorem_by_negation",
+                "request_model": true,
+                "request_unsat_core": true,
+                "schema_version": "software-verification-smt-script/v1",
+                "source": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+                "theories": [
+                  "arithmetic",
+                  "core",
+                  "equality"
+                ]
+              },
+              "script_digest": "101295237f0039487134055c75ec788c18a7ba9ee40baa8be86d93c65381ec26",
+              "smtlib": "; software-verification semantic SMT compiler 1.0.0\n; obligation_id: \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\"\n; query_mode: theorem_by_negation\n; features: arithmetic,equality,verification_conditions\n(set-info :smt-lib-version 2.6)\n(set-info :source \"SoftwareVerificationSMTCompiler@1\")\n(set-info :obligation \"smt:vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal\")\n(set-logic QF_UFLIA)\n(set-option :produce-models true)\n(set-option :produce-unsat-cores true)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (! (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)) :named body_return_0))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n(get-model)\n(get-unsat-core)\n",
+              "source_identity": "bafkreihtvg3i2zs3ucjuxxf5oech7dpnyidrbgxncc5d76mgngpqlbrao4",
+              "target_identity": "bafkreihihuua2smxmzwreedzfsyuoesvthl65z3tjmqruo723vbdabkpsy"
+            },
+            "contract": {
+              "function_name": "increment",
+              "offset": 2,
+              "parameter": "n",
+              "path": "calc.py",
+              "profile": "python-integer-offset@1",
+              "schema": "codebase-integer-offset-contract@1"
+            },
+            "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+            "kernel_checked": false,
+            "parser": "cpython-312",
+            "profile": "python-integer-offset@1",
+            "revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "schema": "codebase-integer-offset-compilation@1",
+            "source_binding": {
+              "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+              "language": "python",
+              "path": "calc.py",
+              "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+              "span_ids": [
+                "span:function.increment.1",
+                "span:increment.expr.4",
+                "span:increment.expr.5",
+                "span:increment.expr.7",
+                "span:increment.param.n.2",
+                "span:increment.stmt.3"
+              ]
+            },
+            "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq"
+          },
+          "scope": "conditional_integer_model_restricted_to_declared_finite_domain",
+          "vc": {
+            "assumption_expression_ids": [],
+            "attributes": {},
+            "function_id": "function:increment",
+            "generated_symbol_ids": [],
+            "goal_expression_ids": [
+              "expr:pipeline:cmp:5:increment"
+            ],
+            "obligation_id": "vc:postcondition_normal:block:block:entry:baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla:normal",
+            "parent_contract_id": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+            "path_condition_expression_ids": [],
+            "rule": "postcondition_normal",
+            "source_construct_id": "block:entry",
+            "source_construct_kind": "block",
+            "source_ref_ids": [
+              "source:calc.py"
+            ],
+            "span_ids": [
+              "span:function.increment.1"
+            ],
+            "statement": "Normal exit block block:entry must establish postconditions of baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla."
+          }
+        },
+        "network_policy": {
+          "future_observer_network": "no_requested_network; isolation_not_attested",
+          "native_tool_environment": {
+            "LANG": "C",
+            "LC_ALL": "C",
+            "LEAN_NUM_THREADS": "1",
+            "LEAN_STACK_SIZE_KB": "8192",
+            "PATH": "/usr/bin:/bin"
+          },
+          "operation": "preparation_only_no_target_or_checker_execution"
+        },
+        "obligation": {
+          "clauses": [
+            "exact_builtin_int_result",
+            "result_equals_parameter_plus_contract_offset"
+          ],
+          "contract": {
+            "function_name": "increment",
+            "offset": 2,
+            "parameter": "n",
+            "path": "calc.py",
+            "profile": "python-integer-offset@1",
+            "schema": "codebase-integer-offset-contract@1"
+          },
+          "finite_domain": {
+            "inputs": [
+              -2,
+              -1,
+              0,
+              1,
+              2
+            ],
+            "profile": "python-integer-offset-finite@1",
+            "schema": "codebase-finite-integer-domain@1"
+          },
+          "profile": "python-integer-offset-finite@1"
+        },
+        "policy": {
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "native_tools": {
+            "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+            "environment": {
+              "LANG": "C",
+              "LC_ALL": "C",
+              "LEAN_NUM_THREADS": "1",
+              "LEAN_STACK_SIZE_KB": "8192",
+              "PATH": "/usr/bin:/bin"
+            },
+            "lean": {
+              "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+              "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+              "size_bytes": 13824
+            },
+            "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+            "process_limits": {
+              "lean": {
+                "address_space_bytes": 4294967296,
+                "resident_memory_bytes": 536870912
+              },
+              "lean_arguments": [
+                "-j",
+                "1",
+                "-o",
+                "FiniteInteger.olean",
+                "FiniteInteger.lean"
+              ],
+              "max_input_bytes": 262144,
+              "max_output_bytes": 262144,
+              "max_output_files": 8,
+              "max_workspace_bytes": 4194304,
+              "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+              "python": {
+                "address_space_bytes": 536870912,
+                "resident_memory_bytes": 536870912
+              }
+            },
+            "profile": "python-integer-offset-finite@1",
+            "python": {
+              "path": "/usr/bin/python3.12",
+              "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+              "size_bytes": 7845032
+            },
+            "schema": "codebase-finite-integer-tools@1"
+          },
+          "operation_ceiling": {
+            "memory_mb": 1024,
+            "timeout_seconds": 60
+          },
+          "trust_scope": "selected_first_party_producer_files_and_native_binary_bytes; external_runtime_scope_is_assumed"
+        },
+        "provider": "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+        "schema": {
+          "compiler": "codebase-integer-offset-compilation@1",
+          "contract": "codebase-integer-offset-contract@1",
+          "correspondence": "finite-integer-cache-correspondence/v1",
+          "domain": "codebase-finite-integer-domain@1",
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "profile": "python-integer-offset-finite@1"
+        },
+        "slice": {
+          "function": "increment",
+          "parameter": "n",
+          "path": "calc.py"
+        },
+        "source": {
+          "code_dependencies": {
+            "annotation_and_runtime_assumptions": [
+              "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+              "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+              "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+            ],
+            "dependency_cids": [],
+            "scope": "guarded_single_function_no_imports_calls_or_global_value_reads"
+          },
+          "head": {
+            "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "generation": 1,
+            "manifest_cid": "baguqeeramfh3p2y4g2x2bpc6mivqiaeikmk4rtxf2wcxdyd44j2w3ykcb7fa",
+            "receipt_cid": "baguqeera3xmqlxflw6dr3er25xvdlb5jb3du44tajeajqnkwlyaxth4r4bpq",
+            "repository_id": "repository:finite-native-qualification",
+            "schema": "codebase-head@1",
+            "snapshot_cid": "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+          },
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "path": "calc.py",
+          "source_bytes": 47,
+          "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+          "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac"
+        },
+        "translation": {
+          "compiled_cid": "baguqeeracnllmv5cehrqf7fbqmq3w4x2adinzdap3jovfl4i2apoum7c2vfa",
+          "model": {
+            "mode": "off",
+            "model_dependencies": [],
+            "reason": "deterministic_native_integer_profile"
+          },
+          "producers": {
+            "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+            "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+            "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+            "ipfs_datasets_py.duckdb_control.codebase_catalog": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+            "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+            "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+            "ipfs_datasets_py.logic.common.canonical_cache_key": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+            "ipfs_datasets_py.logic.families.models": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+            "ipfs_datasets_py.logic.ir_core.artifacts": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+            "ipfs_datasets_py.logic.ir_core.axes": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.diagnostics": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.protocols": "b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.software_contracts.ast_ir": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+            "ipfs_datasets_py.logic.software_contracts.cache": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+            "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883",
+            "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+            "ipfs_datasets_py.logic.software_contracts.codebase_ir": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+            "ipfs_datasets_py.logic.software_contracts.codebase_resources": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700",
+            "ipfs_datasets_py.logic.software_contracts.content": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+            "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+            "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+            "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+            "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+            "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+            "ipfs_datasets_py.logic.software_verification.contracts": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+            "ipfs_datasets_py.logic.software_verification.ir": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.software_verification.properties": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+            "ipfs_datasets_py.logic.software_verification.receipts": "4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea",
+            "ipfs_datasets_py.logic.software_verification.translations": "c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda",
+            "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+          },
+          "profile": "python-integer-offset@1",
+          "scope": "native_source_to_ProgramIR_VC_SMT_correspondence; no solver result",
+          "source_binding": {
+            "content_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+            "language": "python",
+            "path": "calc.py",
+            "program_id": "bafkreiblyawo4ilamphwj5hg3og2p36eq2ye7kx2zuq4ifmi6kje7n27zy",
+            "source_ref_ids": [
+              "source:calc.py"
+            ],
+            "source_revision": "snapshot:baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia",
+            "span_ids": [
+              "span:function.increment.1",
+              "span:increment.expr.4",
+              "span:increment.expr.5",
+              "span:increment.expr.7",
+              "span:increment.param.n.2",
+              "span:increment.stmt.3"
+            ]
+          }
+        }
+      },
+      "model_mode": "off",
+      "profile": "python-integer-offset-finite@1",
+      "proof_authority": false,
+      "receipt_admission_supported": false,
+      "report_sha256": "sha256:0697947635e68807e9d58a05958376b28962e386ef409bdcef250666e910e015",
+      "schema": "finite-integer-cache-correspondence/v1",
+      "source_execution_performed": false,
+      "source_observed_before_and_after": true,
+      "training_executed": false
+    },
+    "dependencies": [
+      [
+        "canonical:assumptions",
+        "sha256:fd1f787c8f115702f74c7fda69db1c4c11f8c3305e10b73786a9bcec2a659f95"
+      ],
+      [
+        "canonical:authority_ceiling",
+        "none"
+      ],
+      [
+        "canonical:bounds",
+        "sha256:f241df5aaa62342297ce6689625d031e758ab33f521d9f6d8df456e6eded3625"
+      ],
+      [
+        "canonical:checker",
+        "lean-binary:sha256:79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085"
+      ],
+      [
+        "canonical:environment",
+        "sha256:d2d9a24c5036c271fddbe0e870da76321c7111a13ebcc822ba0c85355ea643fa"
+      ],
+      [
+        "canonical:evidence_kind",
+        "declaration"
+      ],
+      [
+        "canonical:expression",
+        "sha256:d47ea5e179f487da22060147f4e299d1a64637a379486a64a75ad5af37b1e03e"
+      ],
+      [
+        "canonical:formalization",
+        "sha256:839524a4bf74eb52c8a3d1bad340117b4fe84115c1f637264148067062435685"
+      ],
+      [
+        "canonical:network_policy",
+        "sha256:f1ce4593785a3117471e18cd88c3596ae113604d50c8ecab4ee7bdf6b5a848b3"
+      ],
+      [
+        "canonical:obligation",
+        "sha256:3598599dcc76462c41634404c306ae7b3269f091aff621d659fc9ebe3bd68070"
+      ],
+      [
+        "canonical:policy",
+        "sha256:0b77db2b86c2581393929c4060fbfb56acb7b6275ebab9d7fa560c868f14016f"
+      ],
+      [
+        "canonical:provider",
+        "finite-observer:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883"
+      ],
+      [
+        "canonical:schema",
+        "sha256:9bb25cbb37c57f53ec97c02e39caac300958a041f8a65bae11dd5b68c18c0525"
+      ],
+      [
+        "canonical:slice",
+        "sha256:e1be56ff508ef3d563e0015018a89366d4333d43accfbba15a887ff170b03c95"
+      ],
+      [
+        "canonical:source",
+        "sha256:4141f45551b27ad7676354ed075e243af0414795ce1243605d280977c6c7e860"
+      ],
+      [
+        "canonical:translation",
+        "sha256:c99082b871d4c1a4cd24c17089b2e62e701e2725aacce2078286a5e725af17fb"
+      ],
+      [
+        "contract",
+        "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla"
+      ],
+      [
+        "model",
+        "baguqeeraamfmhrlu4pmnukqftuinzif5rl3hbk75bglznqyuwu5wryv7bp7a"
+      ],
+      [
+        "premise",
+        "baguqeera43hbnp432c4fyttdpm54jd5tcjja7rcuqp2j66vrgkp2tegzzcla"
+      ],
+      [
+        "premise",
+        "baguqeerah2vuzqfiwm45wl6x23tz63ykg7gg7iiht3tlh5y2qm7xkxoyyg4a"
+      ],
+      [
+        "premise",
+        "baguqeeraw3jxlygsvbwolcjcp653ml4eggtupfqqlxvjatekhgsnm7omu6ka"
+      ],
+      [
+        "premise",
+        "baguqeerayemq6x6qqh7uttqvdqc32gguojt4oz43xc45pvcodmcq2ysctuga"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.canonical_cache_key_bridge:sha256:76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.finite_cache_correspondence:sha256:479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache:sha256:4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache:sha256:c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts:sha256:06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.proof.proof_attestation:sha256:14070ff04a71dd0eaee00f26e769043dcb0e88e8ef88cca9776983ae1bc8539f"
+      ],
+      [
+        "producer",
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:sha256:9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.duckdb_control.codebase_catalog:sha256:e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.backends.codebase_process:sha256:5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.backends.smt.compiler:sha256:9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.backends.smt.differential:sha256:a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.common.canonical_cache_key:sha256:6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.families.models:sha256:1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.artifacts:sha256:63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.axes:sha256:4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.canonical:sha256:339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.claims:sha256:282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.diagnostics:sha256:508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.identity:sha256:606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.protocols:sha256:b452a7095a2524f0ea3f4e4f3a395643d3257cd6f42e3c77f8e1817df62f6fed"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.ir_core.provenance:sha256:16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.ast_ir:sha256:1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.cache:sha256:d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation:sha256:cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile:sha256:361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.codebase_ir:sha256:0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.codebase_resources:sha256:207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.content:sha256:c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store:sha256:34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.duckdb_ingest:sha256:cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.python_frontend:sha256:baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot:sha256:5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.codebase_pipeline:sha256:9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.codebase_source_adapters:sha256:f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.contracts:sha256:0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.ir:sha256:40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.program:sha256:f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.properties:sha256:0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.receipts:sha256:4065833e8fa766e587035c456b381fead715f39c1e4e4619ea0d0bb969a609ea"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.translations:sha256:c418cf45efd69dd01ced3eb2e05f9bc411ab12855fa408401d1ba74839df6dda"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.logic.software_verification.vc:sha256:bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety:sha256:23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler:sha256:a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+      ],
+      [
+        "producer",
+        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.runtime_telemetry:sha256:542f705867b93fcb138a117e1f5c97a144ad6635dc92c37bc5034eee5065ef63"
+      ],
+      [
+        "snapshot",
+        "baguqeerajqqkasxyizjdyv5hxy2bmvkeusaxbqitctwefl6woiemvf3g37ia"
+      ],
+      [
+        "source",
+        "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq"
+      ]
+    ],
+    "execution_producers": {
+      "ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb",
+      "ipfs_accelerate_py.agent_supervisor.proof.proof_attestation": "14070ff04a71dd0eaee00f26e769043dcb0e88e8ef88cca9776983ae1bc8539f",
+      "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983",
+      "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5",
+      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4",
+      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.runtime_telemetry": "542f705867b93fcb138a117e1f5c97a144ad6635dc92c37bc5034eee5065ef63"
+    },
+    "formal_key": null,
+    "producer": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb",
+    "receipt": null,
+    "request_key": "proof-cache-key:sha256:8a5520d5609f5393472a16d0e4a6b2724e14f7028853b8785c37d34dd915feca",
+    "schema": "finite-checked-cache-record@1",
+    "scope": "exact_generated_finite_integer_table_theorems_only",
+    "status": "refuted"
+  },
+  "execution_authority": false,
+  "fresh_native_observation": true,
+  "historical_record_is_not_live_authority": true,
+  "positive_reuse_eligible": false,
+  "record_cid": "baguqeeraa6higxy4j3pdl7h2wj44vzo74ym4psvsf5g5nmdrlknpld3ewy2q",
+  "request_key": "proof-cache-key:sha256:8a5520d5609f5393472a16d0e4a6b2724e14f7028853b8785c37d34dd915feca",
+  "schema": "finite-checked-cache-lookup@1",
+  "scope": "exact_generated_finite_integer_table_theorems_only",
+  "source_runtime_semantics_verified": false,
+  "status": "refuted"
+}

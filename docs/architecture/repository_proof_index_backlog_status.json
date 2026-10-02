@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T08:08:03.817375+00:00",
+  "updated_at_utc": "2026-10-02T08:44:24.452681+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -11,9 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 13,
-    "production_open": 19,
-    "criteria_qualified_for_declared_profile": 16
+    "production_closed": 15,
+    "production_open": 17,
+    "criteria_qualified_for_declared_profile": 18
   },
   "evidence": {
     "foundation-tests-log": {
@@ -222,6 +222,36 @@
     "typed-code-evidence": {
       "path": "docs/agent_supervisor/evidence/repository-code-evidence-20261002/manifest.json",
       "sha256": "024273e3f26bf49d9d5ae1bef4ca2e0a463ec05caec5a8b0cb0141547a812d7a",
+      "retention": "repository_evidence"
+    },
+    "prior-centered-continuation": {
+      "path": "docs/autoencoders/evidence/codebase-prior384-20261002/manifest.json",
+      "sha256": "f77ae2411bf34929ec08c61168448058f2558d909904fd7a3e56c221640b635f",
+      "retention": "datasets_repository_evidence"
+    },
+    "pinned-parent-runtime": {
+      "path": "docs/autoencoders/evidence/codebase-runtime384-20261002/manifest.json",
+      "sha256": "5c007b624834c84a5b0dc17bb63725b9d4042478ca282bacd63817d78c138f62",
+      "retention": "datasets_repository_evidence"
+    },
+    "behavioral-repository-admission": {
+      "path": "docs/agent_supervisor/evidence/repository-behavioral-admission-20261002/manifest.json",
+      "sha256": "9151ec79695314f5b7ad6ae0c1717c699b02dd05d58fc95748dd78bbb7c515ef",
+      "retention": "repository_evidence"
+    },
+    "behavioral-native-supervision": {
+      "path": "docs/agent_supervisor/evidence/repository-behavioral-supervision-20261002/manifest.json",
+      "sha256": "bba7a60f78b6ecd3d170821161ff0689b37dc6a6791cc8734789e46b7d9efcd3",
+      "retention": "repository_evidence"
+    },
+    "budgeted-repository-preparation": {
+      "path": "docs/agent_supervisor/evidence/repository-benchmark-preparation-20261002/manifest.json",
+      "sha256": "8e66896db8f0916a37e4a3248d25c34f24011c8b852573dff00732df645247d8",
+      "retention": "repository_evidence"
+    },
+    "joined-source-evidence-matrix": {
+      "path": "docs/agent_supervisor/evidence/repository-code-evidence-source-matrix-20261002/manifest.json",
+      "sha256": "14026df5fbab05936cc42d9b70cb879cb3833dc52bfa5ced8d0405f820469c9a",
       "retention": "repository_evidence"
     }
   },
@@ -469,24 +499,22 @@
       "dependencies": "RPI-006, RPI-009, RPI-010, RPI-027",
       "criterion": "Join actual pinned decoder inference to typed formalization and independent source alignment. Extend the current v1/v2 boundary explicitly. Retain unsupported candidates and exact model dependencies. Qualify wrong-source/codebook checks, teacher-substitution controls, model-off/zero-head controls and narrow semantic checking.",
       "source_line": 285,
-      "production_acceptance": "open",
+      "production_acceptance": "closed",
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Actual pinned384D child inference emits unchanged typed candidates from target-free GTE source embeddings. Three arithmetic examples align with source and compile with Lake; zero-head controls yield three rejected source mismatches.",
         "Fourteen additional actual checkpoint/GTE/Lake controls passed: wrong-source and changed-codebook refusal, six teacher/target/source-contract injection boundaries, actual zero-head mismatches, unsupported candidate retention and explicit deterministic model-off comparison. Sixty archived source/model files remained unchanged; no fit or promotion occurred."
       ],
-      "remaining_work": [
-        "The selected scalar inference criterion is qualified. Production closure depends on the listed corpus, generation, lifecycle and modality prerequisites; this is not held-out reconstruction improvement."
-      ],
+      "remaining_work": [],
       "evidence": [
         "source384-qualified-02",
-        "source384-acceptance"
+        "source384-acceptance",
+        "pinned-parent-runtime",
+        "prior-centered-continuation"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "codebase_ir/source_conditioned_384_v1",
-      "blocking_dependencies": [
-        "RPI-027"
-      ]
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-012",
@@ -557,20 +585,26 @@
       "criterion": "Add a new repository-evidence admission profile across preview, signed admission, native storage and launch; the current administrative gate cannot accept it unchanged. Replay frozen exact facts, receipts, source/model/index roots and root correspondences without fitting or reinterpretation. Preserve required frozen inference in the current validators; qualify authenticated receipt-only numerical replay separately before optimizing it away. Require live observation and reject static shadowing. Initially preserve the complete signed task population. Qualify source/model changes between stages and wrong or omitted material bindings.",
       "source_line": 288,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
-        "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused."
+        "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused.",
+        "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START\u2192worker\u2192public validation\u2192publication\u2192successor/cold agreement\u2192STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
       ],
       "remaining_work": [
-        "This evidence handoff preserves the existing independent administrative admission and full signed population; it does not implement the general new behavioral repository-evidence admission profile. Frozen learned inference/receipt-only replay and model-change admission controls remain open."
+        "Production closure depends on RPI-013 source/evidence prerequisite closure. Model-selected admission is outside the qualified model-off profile."
       ],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
-        "finite-native-owned-file-scope"
+        "finite-native-owned-file-scope",
+        "behavioral-repository-admission",
+        "behavioral-native-supervision"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [
+        "RPI-013"
+      ]
     },
     {
       "id": "RPI-015",
@@ -653,17 +687,20 @@
       "production_acceptance": "open",
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
-        "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero."
+        "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero.",
+        "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress."
       ],
       "remaining_work": [
-        "Public benchmark scan/index/proof/training selection matrix, one overarching trial deadline with complete phase accounting, optional-parent/required-adaptation policies and cancellation are still open. This opt-in fixture does not join the separate Codebase384 training run."
+        "Complete whole-trial phase/deadline and resource-bridge qualification, including worker delegation, remains pending."
       ],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
-        "semantic-supervision"
+        "semantic-supervision",
+        "budgeted-repository-preparation",
+        "behavioral-native-supervision"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -767,7 +804,8 @@
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
         "proof-cache-checksums-json",
-        "typed-code-evidence"
+        "typed-code-evidence",
+        "joined-source-evidence-matrix"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -829,18 +867,20 @@
       "dependencies": "RPI-008, RPI-009, RPI-010",
       "criterion": "Register versioned `codebase_ir` source/target/decoder/validator/resume contracts with separate feature, structured and property objectives. Compose existing RepositoryState/SemanticStateBundle/ProgramIR artifacts. Declare partial inheritance, full-parent weight initialization/new optimizer, or exact optimizer resume independently. Reuse immutable microbatches and durable progress for changed symbols plus replay; require complete ancestral split roles and fixed canaries. Use ordered continuation per child or independently qualified lane heads; bind topology and reject implicit merges. Compare children before atomic promotion; rejected/cancelled children cannot change checked semantics. Qualify actual continuation, literal/guard feature-collision controls, forgetting and exact model-dependent index rebuilds.",
       "source_line": 301,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Additive codebase_ir/source_conditioned_384_v1 envelope reuses the unchanged shared SecurityIR structured runtime and sufficient-statistics ridge head fit. Exact original weights, fixed cohort roles, numerical parent relationships and source-target manifest joins are retained;8D and384D protocols stay separate."
+        "Additive codebase_ir/source_conditioned_384_v1 envelope reuses the unchanged shared SecurityIR structured runtime and sufficient-statistics ridge head fit. Exact original weights, fixed cohort roles, numerical parent relationships and source-target manifest joins are retained;8D and384D protocols stay separate.",
+        "Thirty final native controls qualify separate registered parent-centered384D head-refit lineage, two real nonzero updates with ordered CAS generations1\u21922\u21923, fixed development canaries3/3 in both rounds, full ancestral split/floor bindings, actual cancellation/restart and literal/guard feature collision refusal. Changed-source round2 embeds3 and reuses6 immutable feature rows. Changed-model projections rebuild exactly; replay cannot relabel old model artifacts. Full-head refit is not optimizer resume; fixed canaries are deployment-selection data, not unseen tests."
       ],
-      "remaining_work": [
-        "Full modality/runtime registration, microbatch continuation/replay objectives, independent canary promotion and forgetting mitigation remain open. Current384profile refits a frozen-vocabulary head; it does not resume an optimizer or recover parent training data from weights."
-      ],
+      "remaining_work": [],
       "evidence": [
-        "source384-qualified-02"
+        "source384-qualified-02",
+        "prior-centered-continuation",
+        "pinned-parent-runtime"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-028",
@@ -942,7 +982,8 @@
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
         "proof-cache-checksums-json",
-        "typed-code-evidence"
+        "typed-code-evidence",
+        "joined-source-evidence-matrix"
       ],
       "criterion_acceptance": "not_yet_qualified"
     }

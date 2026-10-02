@@ -1,0 +1,121 @@
+{
+  "schema": "repository-behavioral-admission-qualification@1",
+  "scope": "explicit finite Python integer-offset, model-off, local independently signed task profile",
+  "distinct_tests": 10,
+  "final_passed": 10,
+  "final_skipped": 0,
+  "tests": [
+    {
+      "log": "rpi014-behavioral-first-tests.log",
+      "xml": "rpi014-behavioral-first-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "18.045"
+    },
+    {
+      "log": "rpi014-behavioral-second-tests.log",
+      "xml": "rpi014-behavioral-second-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "43.995"
+    },
+    {
+      "log": "rpi014-behavioral-third-tests.log",
+      "xml": "rpi014-behavioral-third-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "56.156"
+    },
+    {
+      "log": "rpi014-behavioral-fourth-tests.log",
+      "xml": "rpi014-behavioral-fourth-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "48.233"
+    },
+    {
+      "log": "rpi014-behavioral-fifth-tests.log",
+      "xml": "rpi014-behavioral-fifth-tests.xml",
+      "tests": "1",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "143.104"
+    },
+    {
+      "log": "rpi014-behavioral-sixth-tests.log",
+      "xml": "rpi014-behavioral-sixth-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "70.816"
+    },
+    {
+      "log": "rpi014032-joined-tests.log",
+      "xml": "rpi014032-joined-tests.xml",
+      "tests": "4",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "95.348"
+    },
+    {
+      "log": "rpi014-final-08-tests.log",
+      "xml": "rpi014-final-08-tests.xml",
+      "tests": "1",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "44.796"
+    },
+    {
+      "log": "rpi014-final09-tests.log",
+      "xml": "rpi014-final09-tests.xml",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "89.979"
+    }
+  ],
+  "authority": {
+    "proof": false,
+    "execution": false,
+    "completion": false,
+    "omission": false
+  },
+  "live_checks": [
+    "actual v2 planning and original candidate observation",
+    "cold native source/discovery/proof owner reopen",
+    "complete retained source/fact/snapshot reconstruction",
+    "allocated worker without owner private keys",
+    "current source before and after actual private write",
+    "dirty dependency refusal and no native task completion"
+  ],
+  "artifact_integrity_controls": {
+    "count": 6,
+    "fresh_checker_per_control": false,
+    "description": "Inject actual fixture-produced match at matcher boundary to isolate re-signed artifact corruption; genuine fresh worker/fence cases separate."
+  },
+  "diagnostics": {
+    "first": "fixture group-writable source/proof databases refused; explicit private fixture files corrected",
+    "third_fourth": "native finite confidence floats preserved as canonical JSON and decoded by native owners",
+    "second_fifth_sixth_joined_eighth": "real global resource admission refusals; safety/backoff unchanged"
+  },
+  "full_daemon_evidence": "../repository-behavioral-supervision-20261002",
+  "limitations": [
+    "before/after fences are not atomic filesystem/database transactions",
+    "native task population retained; no omission authority",
+    "source/runtime equivalence not claimed",
+    "broader grammars/model-dependent interpretation and generic transport remain separate"
+  ]
+}

@@ -1,0 +1,1043 @@
+{
+  "alignment_scope": "finite-integer-intent-sentences@1",
+  "behavior_authority": false,
+  "clause_results": [
+    {
+      "predicate_id": "finite-requirement:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+      "reasons": [],
+      "scope": "explicit_finite_domain_only",
+      "statement_id": "finite-integer-offset-goal",
+      "status": "bounded_observed_satisfied"
+    },
+    {
+      "predicate_id": "finite-requirement:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+      "reasons": [],
+      "scope": "explicit_finite_domain_only",
+      "statement_id": "finite-integer-type-goal",
+      "status": "bounded_observed_satisfied"
+    }
+  ],
+  "completion_authority": false,
+  "current_facts": [
+    {
+      "authority": "bounded_observation",
+      "current_root_id": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+      "fact_id": "finite-observation:baguqeeraaso5t4lf6t3bmtkjnoggceemgaewdu7pqxn6p6puojh3qjuflyza",
+      "invalidation_selectors": [
+        {
+          "kind": "policy",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "domain:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+          "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        },
+        {
+          "kind": "path",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "path:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+          "value_ref": "calc.py"
+        },
+        {
+          "kind": "root",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "root:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+          "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+        },
+        {
+          "kind": "evidence",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "source:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+          "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+        }
+      ],
+      "predicate": {
+        "assumption_refs": [],
+        "invalidation_selectors": [
+          {
+            "kind": "policy",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "domain:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          },
+          {
+            "kind": "path",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "path:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "calc.py"
+          },
+          {
+            "kind": "root",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "root:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+          },
+          {
+            "kind": "evidence",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "source:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+          }
+        ],
+        "object_ref": "baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+        "polarity": "positive",
+        "predicate_id": "finite-requirement:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+        "predicate_type": "finite_integer_offset_under_python_integer_offset_finite_v1",
+        "proof_requirement_refs": [],
+        "property_id": "finite_integer_offset",
+        "provenance_refs": [
+          "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+          "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+          "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+          "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+          "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        ],
+        "schema": "ipfs_accelerate_py/agent-supervisor/obligation-predicate@1",
+        "subject_ref": "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "support": "reviewed",
+        "validation_requirement_refs": []
+      },
+      "provenance_refs": [
+        "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+        "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+        "baguqeeraegvwsyuqvrv4lkud3iuqirn6cpbstg44njip2qhrpatn7v7wzsdq",
+        "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+        "baguqeeraicd2ea7erkggkovpvca5r3rzxsb4knjiaifjsassukienrasarqa",
+        "baguqeerakjfhtrexdrz3nmg2v44gvwv5vlk663xbis256uemlxcpox2db5na",
+        "baguqeeraswe2uhbsjggkgsrzd5lvzkwugrnzdcartocag3lgaltyrplcb5bq",
+        "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+        "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/observed-obligation-fact@1",
+      "truth": "true"
+    },
+    {
+      "authority": "bounded_observation",
+      "current_root_id": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+      "fact_id": "finite-observation:baguqeerajjilzcvt6kaluoxinmlnf7tahjwkcviuuldexggqb6igmzrw6qja",
+      "invalidation_selectors": [
+        {
+          "kind": "policy",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "domain:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+          "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        },
+        {
+          "kind": "path",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "path:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+          "value_ref": "calc.py"
+        },
+        {
+          "kind": "root",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "root:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+          "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+        },
+        {
+          "kind": "evidence",
+          "provenance_refs": [
+            "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+            "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+            "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+            "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          ],
+          "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+          "selector_id": "source:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+          "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+        }
+      ],
+      "predicate": {
+        "assumption_refs": [],
+        "invalidation_selectors": [
+          {
+            "kind": "policy",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "domain:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          },
+          {
+            "kind": "path",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "path:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "calc.py"
+          },
+          {
+            "kind": "root",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "root:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+          },
+          {
+            "kind": "evidence",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "source:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+          }
+        ],
+        "object_ref": "baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+        "polarity": "positive",
+        "predicate_id": "finite-requirement:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+        "predicate_type": "finite_integer_exact_type_under_python_integer_offset_finite_v1",
+        "proof_requirement_refs": [],
+        "property_id": "finite_integer_exact_type",
+        "provenance_refs": [
+          "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+          "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+          "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+          "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+          "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        ],
+        "schema": "ipfs_accelerate_py/agent-supervisor/obligation-predicate@1",
+        "subject_ref": "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "support": "reviewed",
+        "validation_requirement_refs": []
+      },
+      "provenance_refs": [
+        "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+        "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+        "baguqeeraegvwsyuqvrv4lkud3iuqirn6cpbstg44njip2qhrpatn7v7wzsdq",
+        "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+        "baguqeeraicd2ea7erkggkovpvca5r3rzxsb4knjiaifjsassukienrasarqa",
+        "baguqeerakjfhtrexdrz3nmg2v44gvwv5vlk663xbis256uemlxcpox2db5na",
+        "baguqeeraswe2uhbsjggkgsrzd5lvzkwugrnzdcartocag3lgaltyrplcb5bq",
+        "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+        "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/observed-obligation-fact@1",
+      "truth": "true"
+    }
+  ],
+  "current_root_id": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+  "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+  "domain_inputs": [
+    -2,
+    -1,
+    0,
+    1,
+    2
+  ],
+  "eligible_clause_ids": [
+    "finite-integer-offset-goal",
+    "finite-integer-type-goal"
+  ],
+  "eligible_requirements": [
+    "finite-integer-offset-goal",
+    "finite-integer-type-goal"
+  ],
+  "execution_authority": false,
+  "finite_counterexamples": [],
+  "head": {
+    "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+    "generation": 1,
+    "manifest_cid": "baguqeerahm3ly5jjft5h44cux4ovjgu4lejlo6a475qdukw7onyq4y43qvga",
+    "receipt_cid": "baguqeera2kmfcny46egjyli6mkzp4ceeplpojhgvcdphgy6p7gkgj6o5oqzq",
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+  },
+  "match_cid": "baguqeera3n6bdg4aoo6daahasw7k3czn6ted3joqx2kjilvhqgjnfvclpunq",
+  "mutation_authority": false,
+  "observation": {
+    "artifacts": {
+      "compiled": {
+        "cid": "bafkreibbvnuwfefmnpc2va62fecelpqtymuzxhdkkd6ub4lye3p5p5wmq4",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/compiled.json",
+        "sha256": "21ab696290ac6bc5aa83da290445be13c3299b9c6a50fd40f17826dfd7f6cc87",
+        "size_bytes": 8827
+      },
+      "driver": {
+        "cid": "bafkreigi4pzfm6krdkddsnruuzrfk2viw42q2rqec3pbokgwo6j22eg6eq",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/driver.py",
+        "sha256": "c8e3f25679511a86393634a662556aa8b7350d460416de1728d67793ad10de24",
+        "size_bytes": 1591
+      },
+      "lean_certificate": {
+        "cid": "bafkreicaq6rahzekrrstvl5iqhmo4on4qpctkkacbkmqeuvcsbdmieqema",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/lean_certificate.json",
+        "sha256": "4087a203e48a8c653aafa881d8ee39bc83c53528020a990252a29046c4120460",
+        "size_bytes": 2296
+      },
+      "lean_olean": {
+        "cid": "bafkreic4wyqera7zejf3zdibqqwmtsmqd2uqutxmimrxn23uh7sncv4v44",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/FiniteInteger.olean",
+        "sha256": "5cb6204883f9224bbc8d01842cc9c9901ea90a4eec432376eb743fe4d15795e7",
+        "size_bytes": 46960
+      },
+      "lean_process": {
+        "cid": "bafkreie5opwtn2wcptwkeabub5ujaf2jsw2qtk6hafyycvouf6nbllkdpe",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/lean_process.json",
+        "sha256": "9d73ed36eac27ceca200340f6890174995b509abc701718155d42f9a15ad4379",
+        "size_bytes": 1495
+      },
+      "lean_source": {
+        "cid": "bafkreibsxjznifx6pd5bisdm7z4vi4l2j73ehb6mgcyu2akf67w73vyvma",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/FiniteInteger.lean",
+        "sha256": "32ba72d416fe78fa14486cfe7954717a4ff64387cc30b14d0145f7edfdd71560",
+        "size_bytes": 980
+      },
+      "python_process": {
+        "cid": "bafkreifvyfrgcccwf47lfriddtuxkjnyl57cpulmimpudn3bmywqvuvqqi",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/python_process.json",
+        "sha256": "b5c1626108562f3eb2c5031ce97525b85f7e27d16c431f41b761662d0ad2b082",
+        "size_bytes": 1556
+      },
+      "request": {
+        "cid": "bafkreiasdslvnuocc5ekhpv72udwockdshxqh6ix3xn5riqvdgts2aqny4",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/request.json",
+        "sha256": "121c9756d1c21748a3bebfd50767094391ef03f917dddbd8a21519a72d020dc7",
+        "size_bytes": 287
+      },
+      "source": {
+        "cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/captured_source.py",
+        "sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+        "size_bytes": 47
+      },
+      "tool_policy": {
+        "cid": "bafkreicmmw5nvahd67smfzrahn5qq77nihryniaovojeqy7zrht6kqpir4",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/tool_policy.json",
+        "sha256": "4c65bada80e3f7e4c2e6203b7b087fed41e386a00eab924863f989e7e541e88f",
+        "size_bytes": 1291
+      },
+      "trace": {
+        "cid": "bafkreievrgvbymsjrsruuoi7k5okvvbuloiyqem3qqbw2zqc46el2yqpim",
+        "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation/observations.json",
+        "sha256": "9589aa1c32498ca34a391f575caad4345b9188119b84036d6602e788bd620f43",
+        "size_bytes": 834
+      }
+    },
+    "behavior_authority": false,
+    "compiled_cid": "baguqeeraegvwsyuqvrv4lkud3iuqirn6cpbstg44njip2qhrpatn7v7wzsdq",
+    "completion_authority": false,
+    "contract": {
+      "function_name": "increment",
+      "offset": 2,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+    "counterexample": null,
+    "diagnostics": [],
+    "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+    "domain_inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "execution_authority": false,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+      "generation": 1,
+      "manifest_cid": "baguqeerahm3ly5jjft5h44cux4ovjgu4lejlo6a475qdukw7onyq4y43qvga",
+      "receipt_cid": "baguqeera2kmfcny46egjyli6mkzp4ceeplpojhgvcdphgy6p7gkgj6o5oqzq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+    },
+    "kernel_checked_model_table": true,
+    "lean_certificate": {
+      "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+      "olean_cid": "bafkreic4wyqera7zejf3zdibqqwmtsmqd2uqutxmimrxn23uh7sncv4v44",
+      "process": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+          "-j",
+          "1",
+          "-o",
+          "FiniteInteger.olean",
+          "FiniteInteger.lean"
+        ],
+        "elapsed_ms": 201,
+        "error": "",
+        "interface_version": "bounded-tool-runner/v1",
+        "limits": {
+          "address_space_bytes": 4294967296,
+          "cpu_seconds": 120,
+          "max_input_bytes": 262144,
+          "max_output_bytes": 262144,
+          "max_output_files": 8,
+          "max_workspace_bytes": 4194304,
+          "resident_memory_bytes": 536870912,
+          "timeout_ms": 119473
+        },
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      },
+      "schema": "codebase-finite-integer-table-certificate@1",
+      "scope": "Kernel-checked recorded finite table arithmetic under standard trusted compiled Init imports; observation origin and CPython semantics are not Lean theorems.",
+      "source_cid": "bafkreibsxjznifx6pd5bisdm7z4vi4l2j73ehb6mgcyu2akf67w73vyvma",
+      "theorems": [
+        "domain_coverage",
+        "recorded_integer_types",
+        "observed_body_offset",
+        "offset_clause"
+      ],
+      "tool": {
+        "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+        "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "size_bytes": 13824
+      },
+      "trace_cid": "baguqeeraswe2uhbsjggkgsrzd5lvzkwugrnzdcartocag3lgaltyrplcb5bq",
+      "version_process": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+          "--version"
+        ],
+        "elapsed_ms": 52,
+        "error": "",
+        "interface_version": "bounded-tool-runner/v1",
+        "limits": {
+          "address_space_bytes": 4294967296,
+          "cpu_seconds": 120,
+          "max_input_bytes": 262144,
+          "max_output_bytes": 262144,
+          "max_output_files": 8,
+          "max_workspace_bytes": 4194304,
+          "resident_memory_bytes": 536870912,
+          "timeout_ms": 119543
+        },
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "Lean (version 4.34.1, aarch64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      }
+    },
+    "mutation_authority": false,
+    "observations": [
+      {
+        "input": -2,
+        "input_type": "int",
+        "output": 0,
+        "output_type": "int"
+      },
+      {
+        "input": -1,
+        "input_type": "int",
+        "output": 1,
+        "output_type": "int"
+      },
+      {
+        "input": 0,
+        "input_type": "int",
+        "output": 2,
+        "output_type": "int"
+      },
+      {
+        "input": 1,
+        "input_type": "int",
+        "output": 3,
+        "output_type": "int"
+      },
+      {
+        "input": 2,
+        "input_type": "int",
+        "output": 4,
+        "output_type": "int"
+      }
+    ],
+    "offset_clause_satisfied": true,
+    "output": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/native-01/cold-observation",
+    "profile": "python-integer-offset-finite@1",
+    "proof_authority": false,
+    "python_process": {
+      "cancelled": false,
+      "command": [
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "driver.py"
+      ],
+      "elapsed_ms": 41,
+      "error": "",
+      "interface_version": "bounded-tool-runner/v1",
+      "limits": {
+        "address_space_bytes": 536870912,
+        "cpu_seconds": 120,
+        "max_input_bytes": 262144,
+        "max_output_bytes": 262144,
+        "max_output_files": 8,
+        "max_workspace_bytes": 4194304,
+        "resident_memory_bytes": 536870912,
+        "timeout_ms": 119619
+      },
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\"domain_cid\":\"baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq\",\"exception_type\":null,\"inputs\":[-2,-1,0,1,2],\"observations\":[{\"input\":-2,\"input_type\":\"int\",\"output\":0,\"output_type\":\"int\"},{\"input\":-1,\"input_type\":\"int\",\"output\":1,\"output_type\":\"int\"},{\"input\":0,\"input_type\":\"int\",\"output\":2,\"output_type\":\"int\"},{\"input\":1,\"input_type\":\"int\",\"output\":3,\"output_type\":\"int\"},{\"input\":2,\"input_type\":\"int\",\"output\":4,\"output_type\":\"int\"}],\"python\":{\"cache_tag\":\"cpython-312\",\"executable\":\"/usr/bin/python3.12\",\"implementation\":\"cpython\",\"version\":\"3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]\"},\"schema\":\"codebase-finite-integer-trace@1\",\"source_cid\":\"bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu\",\"source_sha256\":\"1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d\",\"status\":\"complete\"}\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true,
+      "workspace_limit_exceeded": false
+    },
+    "result_cid": "baguqeerakjfhtrexdrz3nmg2v44gvwv5vlk663xbis256uemlxcpox2db5na",
+    "runtime_behavior_verified": false,
+    "runtime_observation_coverage_complete": true,
+    "schema": "codebase-finite-integer-observation@1",
+    "scope": "Exhaustive observations over the exact declared finite integer inputs only; Lean certifies recorded table arithmetic, not CPython observation origin, universal source semantics, module loading, resource failures or worker admission.",
+    "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+    "source_path": "calc.py",
+    "source_semantics_verified": false,
+    "source_sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+    "status": "observed",
+    "tool_policy": {
+      "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+      "environment": {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "LEAN_NUM_THREADS": "1",
+        "LEAN_STACK_SIZE_KB": "8192",
+        "PATH": "/usr/bin:/bin"
+      },
+      "lean": {
+        "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+        "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "size_bytes": 13824
+      },
+      "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+      "process_limits": {
+        "lean": {
+          "address_space_bytes": 4294967296,
+          "resident_memory_bytes": 536870912
+        },
+        "lean_arguments": [
+          "-j",
+          "1",
+          "-o",
+          "FiniteInteger.olean",
+          "FiniteInteger.lean"
+        ],
+        "max_input_bytes": 262144,
+        "max_output_bytes": 262144,
+        "max_output_files": 8,
+        "max_workspace_bytes": 4194304,
+        "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+        "python": {
+          "address_space_bytes": 536870912,
+          "resident_memory_bytes": 536870912
+        }
+      },
+      "profile": "python-integer-offset-finite@1",
+      "python": {
+        "path": "/usr/bin/python3.12",
+        "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+        "size_bytes": 7845032
+      },
+      "schema": "codebase-finite-integer-tools@1"
+    },
+    "tool_policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+    "trace": {
+      "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+      "exception_type": null,
+      "inputs": [
+        -2,
+        -1,
+        0,
+        1,
+        2
+      ],
+      "observations": [
+        {
+          "input": -2,
+          "input_type": "int",
+          "output": 0,
+          "output_type": "int"
+        },
+        {
+          "input": -1,
+          "input_type": "int",
+          "output": 1,
+          "output_type": "int"
+        },
+        {
+          "input": 0,
+          "input_type": "int",
+          "output": 2,
+          "output_type": "int"
+        },
+        {
+          "input": 1,
+          "input_type": "int",
+          "output": 3,
+          "output_type": "int"
+        },
+        {
+          "input": 2,
+          "input_type": "int",
+          "output": 4,
+          "output_type": "int"
+        }
+      ],
+      "python": {
+        "cache_tag": "cpython-312",
+        "executable": "/usr/bin/python3.12",
+        "implementation": "cpython",
+        "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+      },
+      "schema": "codebase-finite-integer-trace@1",
+      "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+      "source_sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+      "status": "complete"
+    },
+    "trace_cid": "baguqeeraswe2uhbsjggkgsrzd5lvzkwugrnzdcartocag3lgaltyrplcb5bq",
+    "type_clause_satisfied": true
+  },
+  "observation_cid": "baguqeerakjfhtrexdrz3nmg2v44gvwv5vlk663xbis256uemlxcpox2db5na",
+  "profile": "python-integer-offset-finite@1",
+  "proof_authority": false,
+  "query": {
+    "alignment_scope": "finite-integer-intent-sentences@1",
+    "behavior_authority": false,
+    "cnl_profile": "finite-integer-intent-sentences@1",
+    "completion_authority": false,
+    "contract": {
+      "function_name": "increment",
+      "offset": 2,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+    "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+    "domain_inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "execution_authority": false,
+    "intent_source_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+    "intent_sources": [
+      {
+        "container_sha256": "",
+        "container_uri": "",
+        "content_cid": "",
+        "content_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+        "license_expression": "",
+        "ref_id": "source:finite-integer-offset",
+        "review_status": "unreviewed",
+        "source_id": "finite-integer:request",
+        "source_revision": "authored:1",
+        "source_uri": "intent:finite-integer",
+        "span": {
+          "end_char": 214,
+          "start_char": 111
+        }
+      },
+      {
+        "container_sha256": "",
+        "container_uri": "",
+        "content_cid": "",
+        "content_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+        "license_expression": "",
+        "ref_id": "source:finite-integer-type",
+        "review_status": "unreviewed",
+        "source_id": "finite-integer:request",
+        "source_revision": "authored:1",
+        "source_uri": "intent:finite-integer",
+        "span": {
+          "end_char": 110,
+          "start_char": 0
+        }
+      }
+    ],
+    "mutation_authority": false,
+    "native_document_sha256": "5886e5806aa5d3f3d0a0a5720d98db2cd205beaad6321af90a53ee677cf6e8ab",
+    "profile": "python-integer-offset-finite@1",
+    "proof_authority": false,
+    "query_cid": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+    "reasons": [],
+    "requirement_ids": [
+      "finite-integer-offset-goal",
+      "finite-integer-type-goal"
+    ],
+    "runtime_behavior_verified": false,
+    "schema": "supervisor-finite-integer-query@1",
+    "semantic_alignment_verified": true,
+    "source_semantics_verified": false,
+    "statements": [
+      {
+        "arguments": [
+          "calc.py",
+          "increment",
+          "n",
+          "[-2,-1,0,1,2]",
+          "python-integer-offset-finite@1",
+          "2"
+        ],
+        "kind": "goal",
+        "modality": "required",
+        "normalized_text": "Under python-integer-offset-finite@1, calc.py::increment(n) must return n + 2 for inputs [-2,-1,0,1,2].",
+        "predicate": "finite_integer_offset",
+        "source_ref_ids": [
+          "source:finite-integer-offset"
+        ],
+        "statement_id": "finite-integer-offset-goal"
+      },
+      {
+        "arguments": [
+          "calc.py",
+          "increment",
+          "n",
+          "[-2,-1,0,1,2]",
+          "python-integer-offset-finite@1",
+          "exact_int"
+        ],
+        "kind": "goal",
+        "modality": "required",
+        "normalized_text": "Under python-integer-offset-finite@1, calc.py::increment(n) must return an exact int for inputs [-2,-1,0,1,2].",
+        "predicate": "finite_integer_exact_type",
+        "source_ref_ids": [
+          "source:finite-integer-type"
+        ],
+        "statement_id": "finite-integer-type-goal"
+      }
+    ],
+    "supported": true
+  },
+  "removed_task_ids": [],
+  "residual_clause_ids": [],
+  "residual_requirements": [],
+  "runtime_behavior_verified": false,
+  "schema": "supervisor-finite-integer-intent@1",
+  "scope": "explicit_finite_domain_only",
+  "semantic_alignment_verified": true,
+  "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+  "source_semantics_verified": false,
+  "status": "bounded_observed_satisfied",
+  "structural_context": {
+    "authority": "structural_only",
+    "completion_authority": false,
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_properties": 0,
+      "formalized_properties": 0,
+      "inventory_entries": 6,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "unindexed_entries": 2
+    },
+    "execution_authority": false,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+      "generation": 1,
+      "manifest_cid": "baguqeerahm3ly5jjft5h44cux4ovjgu4lejlo6a475qdukw7onyq4y43qvga",
+      "receipt_cid": "baguqeera2kmfcny46egjyli6mkzp4ceeplpojhgvcdphgy6p7gkgj6o5oqzq",
+      "repository_id": "repository:finite-native-qualification",
+      "snapshot_cid": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+    },
+    "proof_authority": false,
+    "schema": "supervisor-structural-codebase-context@1",
+    "semantic_state_cid": "baguqeeram5zrithdpzpqu6tiktz5igfuipyuqao6r5eyummsqasvst4fmo3q",
+    "source_semantics_verified": false
+  },
+  "typed_intent": {
+    "current_root_id": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+    "desired_predicates": [
+      {
+        "assumption_refs": [],
+        "invalidation_selectors": [
+          {
+            "kind": "policy",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "domain:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          },
+          {
+            "kind": "path",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "path:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "calc.py"
+          },
+          {
+            "kind": "root",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "root:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+          },
+          {
+            "kind": "evidence",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "source:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+            "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+          }
+        ],
+        "object_ref": "baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+        "polarity": "positive",
+        "predicate_id": "finite-requirement:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq",
+        "predicate_type": "finite_integer_exact_type_under_python_integer_offset_finite_v1",
+        "proof_requirement_refs": [],
+        "property_id": "finite_integer_exact_type",
+        "provenance_refs": [
+          "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+          "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+          "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+          "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+          "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        ],
+        "schema": "ipfs_accelerate_py/agent-supervisor/obligation-predicate@1",
+        "subject_ref": "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "support": "reviewed",
+        "validation_requirement_refs": []
+      },
+      {
+        "assumption_refs": [],
+        "invalidation_selectors": [
+          {
+            "kind": "policy",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "domain:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+          },
+          {
+            "kind": "path",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "path:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "calc.py"
+          },
+          {
+            "kind": "root",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "root:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+          },
+          {
+            "kind": "evidence",
+            "provenance_refs": [
+              "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+              "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+              "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+              "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+            ],
+            "schema": "ipfs_accelerate_py/agent-supervisor/obligation-invalidation-selector@1",
+            "selector_id": "source:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+            "value_ref": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu"
+          }
+        ],
+        "object_ref": "baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+        "polarity": "positive",
+        "predicate_id": "finite-requirement:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+        "predicate_type": "finite_integer_offset_under_python_integer_offset_finite_v1",
+        "proof_requirement_refs": [],
+        "property_id": "finite_integer_offset",
+        "provenance_refs": [
+          "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+          "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+          "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+          "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+          "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+        ],
+        "schema": "ipfs_accelerate_py/agent-supervisor/obligation-predicate@1",
+        "subject_ref": "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+        "support": "reviewed",
+        "validation_requirement_refs": []
+      }
+    ],
+    "intent_id": "finite-intent:baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+    "metadata": {
+      "behavior_authority": false,
+      "completion_authority": false,
+      "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+      "domain_inputs": [
+        -2,
+        -1,
+        0,
+        1,
+        2
+      ],
+      "execution_authority": false,
+      "head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+        "generation": 1,
+        "manifest_cid": "baguqeerahm3ly5jjft5h44cux4ovjgu4lejlo6a475qdukw7onyq4y43qvga",
+        "receipt_cid": "baguqeera2kmfcny46egjyli6mkzp4ceeplpojhgvcdphgy6p7gkgj6o5oqzq",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza"
+      },
+      "mutation_authority": false,
+      "profile": "python-integer-offset-finite@1",
+      "proof_authority": false,
+      "query_cid": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+      "requirement_predicate_ids": {
+        "finite-integer-offset-goal": "finite-requirement:baguqeerarppzimuffcfjte2nxvx4m3jenwargxlmsjidkatg7oq6lke46dba",
+        "finite-integer-type-goal": "finite-requirement:baguqeeraextqvx6pyybtluhofim6rwdcx7balgs3pfaln7atimtyq5qhfqeq"
+      },
+      "runtime_behavior_verified": false,
+      "schema": "supervisor-finite-integer-intent-binding@1",
+      "scope": "explicit_finite_domain_only",
+      "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+      "source_semantics_verified": false
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/typed-obligation-intent@1",
+    "source_refs": [
+      "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+      "baguqeera235b26vrukfqoqfyhwpaw64nkmq6sxa35vulld23rzaqyjb57yxa",
+      "baguqeeratfbynqb7cs7yoapnu6yyrzzurtoeovnozz3g46chawltwe2a6nza",
+      "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa"
+    ]
+  },
+  "unbounded_behavior_status": "unresolved"
+}

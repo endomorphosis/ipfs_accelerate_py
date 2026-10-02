@@ -1,0 +1,33 @@
+{
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "78e36aa29bc4bb18d878be58f62d41035ced9a597c6927b0a6deafd8275e1b22"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "47a393010cb5f51bdefd405eee57773b35b084d55c006d00f3d697565715c956"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py",
+      "sha256": "2d0dc212657d50cc22b6d2f5b29d840f7316dedbe0fc66b4c42dbd3dea27c4ab"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_runner.py",
+      "sha256": "f015c771a6196cd260bf1890069b70591a72a7d344d323b9ec7eebee60364ab3"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/behavioral_codebase_match.py",
+      "sha256": "54134ae64d284b1df92063ff9e261b3b047211f8d4fce2eee9d3585b0f119fcf"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/behavioral_repository_plan.py",
+      "sha256": "5982636bbe4ffa3589d46bd6e25cb763e8d47dd1f1cf320d504d49a490dbd1d0"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+      "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+    }
+  ],
+  "schema": "qualified-source-inventory@1"
+}

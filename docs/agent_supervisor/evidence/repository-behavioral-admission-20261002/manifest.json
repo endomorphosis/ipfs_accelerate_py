@@ -1,0 +1,110 @@
+{
+  "schema": "closed-local-evidence-manifest@1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "8f96927685a1968936d3880f332f17069aa1baca0c336d7200f2d4b344d30d13",
+      "size_bytes": 958
+    },
+    {
+      "path": "producer-sources.json",
+      "sha256": "8c94715a17468898fb5bea8f4155865e8669df8f2168f281acc2dac01d083ed6",
+      "size_bytes": 739
+    },
+    {
+      "path": "qualification.json",
+      "sha256": "497f7258c9a5376af4a878aa6f646f7d6f515e4a3feeefa40855242412fa9967",
+      "size_bytes": 3686
+    },
+    {
+      "path": "rpi014-behavioral-fifth-tests.log",
+      "sha256": "76cd8438e3998d21f9b574ce79763d2edb1ae58722308e34f963f95533ec0967",
+      "size_bytes": 58556
+    },
+    {
+      "path": "rpi014-behavioral-fifth-tests.xml",
+      "sha256": "8d805fd64a7c90d4774970e36010e624b81762e8f3b162d9c08ff156fcfbaa8c",
+      "size_bytes": 17147
+    },
+    {
+      "path": "rpi014-behavioral-first-tests.log",
+      "sha256": "51f0dbe9d454d50f6211beefceaf0438c9294c1d17c024fe74699eae09f6800b",
+      "size_bytes": 10065
+    },
+    {
+      "path": "rpi014-behavioral-first-tests.xml",
+      "sha256": "2b4de29a389d91f337c720b6ad1258f966a90b8098efea8d9fa68ed3c886b098",
+      "size_bytes": 3779
+    },
+    {
+      "path": "rpi014-behavioral-fourth-tests.log",
+      "sha256": "5f2c8928930ef9ce0fc7742c456eaee973a36184a0cd81c0054ca5301b818716",
+      "size_bytes": 29879
+    },
+    {
+      "path": "rpi014-behavioral-fourth-tests.xml",
+      "sha256": "a9e663c5685b8ce5e1547d93a35374c299c0ea1380162936260e65b62c410fd0",
+      "size_bytes": 5008
+    },
+    {
+      "path": "rpi014-behavioral-second-tests.log",
+      "sha256": "e97a8f76d02e31043432914d24eeee87115807c247d686e64c1ceb2c1528bf5b",
+      "size_bytes": 31674
+    },
+    {
+      "path": "rpi014-behavioral-second-tests.xml",
+      "sha256": "9bb005c64b926363b1c0dc62d96b1d707baa68836da6c7aab5d59b6f9c277a8b",
+      "size_bytes": 16278
+    },
+    {
+      "path": "rpi014-behavioral-sixth-tests.log",
+      "sha256": "b03a3c32f816e19d67985ec7f4224f6e7da3a9044d256c5d0517caa9f890b743",
+      "size_bytes": 50246
+    },
+    {
+      "path": "rpi014-behavioral-sixth-tests.xml",
+      "sha256": "0bfb16a6e128f72bf11bd6e0ff9f9d058c7d8cb5a1e42cac8bd4fe87e4e6280f",
+      "size_bytes": 18782
+    },
+    {
+      "path": "rpi014-behavioral-third-tests.log",
+      "sha256": "63a18129ab88ad80fe6a15cf88934e0bab7e4ac789663db584e457d862e15dc8",
+      "size_bytes": 29879
+    },
+    {
+      "path": "rpi014-behavioral-third-tests.xml",
+      "sha256": "40535f3cc2dc53ed7575b7bc04b9cbe2151a3dc521d0ed9187ebc4d89c84edf2",
+      "size_bytes": 5008
+    },
+    {
+      "path": "rpi014-final-08-tests.log",
+      "sha256": "ea9b8198db43ee5b4ec3880930903720494c4fc2b70da32c83be6136cb1e8d4b",
+      "size_bytes": 31674
+    },
+    {
+      "path": "rpi014-final-08-tests.xml",
+      "sha256": "4f35789776b07cf0b6b1d9717d44ff580653ec4a33dedb0183d9a8834cb58395",
+      "size_bytes": 16278
+    },
+    {
+      "path": "rpi014-final09-tests.log",
+      "sha256": "c480464eaa9272736de1d0f8ae72e8ed79eca135c71803cf4de1f5d9b58d3c5d",
+      "size_bytes": 2705
+    },
+    {
+      "path": "rpi014-final09-tests.xml",
+      "sha256": "e517049ff81d6c2df601cdd185ac8c0ed6d308758004d43f0187bb4aef14e9ab",
+      "size_bytes": 1961
+    },
+    {
+      "path": "rpi014032-joined-tests.log",
+      "sha256": "b82f9b92b0d54a6b9b505a8affb8694c0a0b99596ec43029b1b9f7f9f0e3be26",
+      "size_bytes": 39467
+    },
+    {
+      "path": "rpi014032-joined-tests.xml",
+      "sha256": "48273a553cf813e6c388528f6b8f4e9fe17a4f15b7cf06d4735f6a78e3cc035d",
+      "size_bytes": 18954
+    }
+  ]
+}
