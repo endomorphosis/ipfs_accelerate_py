@@ -2,7 +2,8 @@
 
 Advice retains predictions and abstentions. It never trains, downloads,
 changes task authority, executes source Python, or replaces the Doctor's
-independent repair contracts. Optional Lake builds check syntax/types only.
+independent repair contracts. Program Lake builds check syntax/types. The
+explicit v2 state profile additionally checks finite operational correspondence.
 Raw source is the default embedding input. A guarded AST-normalized view
 requires explicit selection and retains the datasets-owned hybrid provenance.
 """
@@ -17,6 +18,8 @@ import time
 
 SCHEMA = "supervisor-security-source-program-384-advice/v1"
 CONFIG_SCHEMA = "supervisor-security-source-program-384-config/v1"
+STATE_CONFIG_SCHEMA = "supervisor-security-source-program-384-config/v2"
+STATE_SCHEMA = "supervisor-security-source-program-384-advice/v2"
 MAX_ROWS = 16
 MAX_SOURCE_BYTES = 65_536
 MAX_ADVICE_BYTES = 2_097_152
@@ -50,13 +53,15 @@ def _config(selection):
     if isinstance(selection, (str, Path)):
         selection = json.loads(_read(Path(selection).absolute(), 32768))
     required = {"schema", "checkpoint_path", "checkpoint_sha256", "decoder", "embedding_snapshot_path", "lake"}
+    if type(selection) is dict and selection.get("schema") == STATE_CONFIG_SCHEMA:
+        required.add("finite_state_domains")
     if (type(selection) is not dict or not required <= set(selection)
             or not set(selection) <= required | {"input_view"}):
         raise ValueError("closed explicit source-program configuration required")
     selected = deepcopy(selection)
     if selected.get("input_view", "raw") not in {"raw", "guarded_ast_normalized"}:
         raise ValueError("known explicit source input view required")
-    if selected["schema"] != CONFIG_SCHEMA or selected["decoder"] not in {"structured", "sequence_v2"}:
+    if selected["schema"] not in {CONFIG_SCHEMA, STATE_CONFIG_SCHEMA} or selected["decoder"] not in {"structured", "sequence_v2"}:
         raise ValueError("known Security source-program configuration required")
     _path(selected["checkpoint_path"])
     if type(selected["checkpoint_sha256"]) is not str or not re.fullmatch(r"[a-f0-9]{64}", selected["checkpoint_sha256"]):
@@ -90,6 +95,8 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
     remain advisory; they never block the existing supervisor workflow.
     The optional input_view selector changes only the embedding input contract;
     qualification and Lake replay always receive the original source bytes.
+    V2 requires explicit finite_state_domains and returns separate optional
+    source_state advice; a state failure never replaces the decoded candidate.
     """
     result = _base("disabled" if config is None else "fail_open_unavailable")
     if config is None:
@@ -100,6 +107,8 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
         selection = _config(config)
         result["checkpoint_selection"] = selection
         result["input_view"] = selection.get("input_view", "raw")
+        if selection["schema"] == STATE_CONFIG_SCHEMA:
+            result.update(schema=STATE_SCHEMA, source_state=None)
         stage = "source_inputs"
         if type(source_rows) is not list or not 1 <= len(source_rows) <= MAX_ROWS:
             raise ValueError("bounded explicit source rows required")
@@ -122,14 +131,23 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
             load_source_program_decoder_384, build_decoded_source_program_lake,
         )
         loader = load_source_program_decoder_384
-        if result["input_view"] == "guarded_ast_normalized":
+        load_options = dict(expected_sha256=selection["checkpoint_sha256"], decoder=selection["decoder"])
+        compatible_structured = selection["schema"] == STATE_CONFIG_SCHEMA and selection["decoder"] == "structured"
+        if compatible_structured:
+            from ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2 import (
+                load_source_program_decoder_384_v2,
+            )
+            loader = load_source_program_decoder_384_v2
+            load_options["input_view"] = result["input_view"]
+        elif result["input_view"] == "guarded_ast_normalized":
             from ipfs_datasets_py.logic.formalization.autoencoder.normalized_source_program_runtime_384 import (
                 load_normalized_source_program_decoder_384,
             )
             loader = load_normalized_source_program_decoder_384
-        runtime = loader(selection["checkpoint_path"],
-            expected_sha256=selection["checkpoint_sha256"], decoder=selection["decoder"])
+        runtime = loader(selection["checkpoint_path"], **load_options)
         result["runtime"] = runtime.describe()
+        if compatible_structured:
+            result["checkpoint_compatibility"] = _checkpoint_compatibility(result["runtime"], selection)
         if result["input_view"] == "guarded_ast_normalized":
             _normalized_provenance(result["runtime"])
             result["normalization_profile"] = result["runtime"]["hybrid_profile"]
@@ -138,6 +156,10 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
             snapshot_path=selection["embedding_snapshot_path"])
         if result["input_view"] == "guarded_ast_normalized":
             _normalized_provenance(inference)
+        if compatible_structured:
+            checked = _checkpoint_compatibility(inference, selection)
+            if checked != result["checkpoint_compatibility"]:
+                raise ValueError("checkpoint compatibility changed between loading and inference")
         # Independently check the returned source identities before persisting
         # or forwarding any attached native-program evidence.
         expected = {row["inference_id"]: row["source_sha256"] for row in result["input_bindings"]}
@@ -150,6 +172,20 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
         qualified = sum(row.get("source_contract", {}).get("status") == "qualified" for row in inference["rows"])
         result.update(status="source_candidate_advice" if qualified else "fail_open_no_qualified_candidates",
             qualified_candidate_count=qualified, source_count=len(source_rows))
+        if selection["schema"] == STATE_CONFIG_SCHEMA:
+            # This optional operational model binds code bytes, not the task's
+            # Intent prompt. Bad domains or unavailable native tooling retain
+            # the independent original inference and fail open for planning.
+            stage = "optional_source_state"
+            try:
+                from .security_source_state_advisor_384 import consume_source_state_advice
+                result["source_state"] = consume_source_state_advice(
+                    inference=inference, source_rows=source_rows, input_bindings=result["input_bindings"],
+                    finite_state_domains=selection["finite_state_domains"], lake=selection["lake"],
+                    maximum_bytes=max(1024, min(1_048_576, MAX_ADVICE_BYTES - len(_wire(result)) - 256)))
+            except Exception as error:
+                result["source_state"] = dict(status="fail_open_unavailable", continue_planning=True,
+                    error_type=type(error).__name__, source_executed=False, **FALSE)
         if selection["lake"] is not None:
             stage = "optional_lake"
             gate_rows = [dict(id="input-" + str(index), source_text=row["source_text"])
@@ -159,6 +195,11 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
                 timeout_seconds=selection["lake"]["timeout_seconds"])
             result["lake"] = execution.to_dict()
         stage = "advice_serialization"
+        if result.get("source_state") is not None and len(_wire(result)) > MAX_ADVICE_BYTES:
+            # Optional state output must not evict independently valid decoder
+            # advice when combined with an existing program-Lake receipt.
+            result["source_state"] = dict(status="fail_open_advice_over_budget", continue_planning=True,
+                source_executed=False, **FALSE)
         if len(_wire(result)) > MAX_ADVICE_BYTES:
             raise ValueError("source program advice exceeds explicit bound")
     except Exception as error:
@@ -179,6 +220,20 @@ def _normalized_provenance(report):
             or report.get("target_dependent_normalization") is not False
             or report.get("prediction_repair_performed") is not False):
         raise ValueError("datasets normalization provenance differs from explicit selection")
+
+
+def _checkpoint_compatibility(report, selection):
+    """Replay the narrow datasets-owned exception against exact artifact bytes."""
+    from ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2 import (
+        verify_checkpoint_compatibility,
+    )
+    receipt = report.get("checkpoint_compatibility")
+    if type(receipt) is not dict:
+        raise ValueError("explicit shared checkpoint compatibility receipt required")
+    checked = verify_checkpoint_compatibility(receipt, selection["checkpoint_path"], selection["checkpoint_sha256"])
+    if checked != receipt:
+        raise ValueError("checkpoint compatibility receipt differs from artifact replay")
+    return deepcopy(checked)
 
 
 def prepare_repository_source_program_advice(*, repository, paths, config, output=None):
