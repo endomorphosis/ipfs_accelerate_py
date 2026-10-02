@@ -32,7 +32,7 @@ variables and existing precondition/effect statements to Boolean expressions.
 No file, action, variable, predicate, or effect is guessed from the prompt.
 Only the selected contracts are checked; unselected files acquire no claim.
 
-The current learned single-action Intent decoder does not generate effect
+The historical atom-only single-action Intent decoder does not generate effect
 statements. Such a candidate remains unsupported for this check. The supervisor
 does not add an effect to make it pass, even when its original Intent advice and
 Security source prediction are otherwise usable. Intent advice validation
@@ -44,6 +44,34 @@ this consumer when an explicitly selected action-contract checkpoint produces
 a source-supported native document. It preserves the raw learned candidate
 separately and replays the shared numerical owner before forwarding that
 document. It does not change the historical atom-only model or its scope.
+
+For source-audited scalar action predictions, configuration v2 avoids manually
+authoring the typed effect formulas:
+
+```python
+config = {
+    "schema": "supervisor-intent-code-effect-config/v2",
+    "contracts": [{
+        "id": "declared-return-effect",
+        "source_id": "example.py",
+        "action_id": "action",
+        "input_parameter_mapping": {"left": "capacity", "right": "threshold"},
+        "input_domains": {
+            "capacity": {"lower": -1, "upper": 1},
+            "threshold": {"lower": -1, "upper": 1},
+        },
+    }],
+    "lake": {"executable": "/tools/lake", "timeout_seconds": 60},
+}
+```
+
+The datasets-owned association builder translates the decoded precondition and
+return equation, then independently rebuilds the association to check it. Source
+selection, action selection, the bijective parameter mapping, and finite ranges
+remain explicit caller declarations. The formulas are never selected to match
+the observed code result. Missing effects, unsupported code, stale predictions,
+or an invalid mapping fail open. Results retain the configuration digest and
+exact selections. Neither v1 nor v2 performs a repair or changes a native task.
 
 With Lake selected, the consumer verifies the live issued execution handle
 before serializing evidence. `effect_status` distinguishes `satisfied`, `refuted`,

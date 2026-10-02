@@ -295,6 +295,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         security_checkpoint_hub_descriptor: Path | None = None,
         formula_decoder_descriptor: Path | None = None, header_protocol_descriptor: Path | None = None,
         intent_checkpoint_descriptor: Path | None = None,
+        intent_action_384_config: Path | None = None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
@@ -385,6 +386,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         try:
             prepared = preparation.prepare(repository=Path("/app"), instruction=instruction, state=state,
                 intent_checkpoint_descriptor=intent_checkpoint_descriptor,
+                intent_action_384_config=intent_action_384_config,
                 intent_projection_request=intent_projection_request,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
@@ -576,6 +578,7 @@ def main():
     parser.add_argument("--formula-decoder-descriptor", type=Path)
     parser.add_argument("--header-protocol-descriptor", type=Path)
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
+    parser.add_argument("--intent-action-384-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")

@@ -110,7 +110,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
 
 
 def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
-            intent_requirement_contract: Path | None = None) -> dict:
+            intent_requirement_contract: Path | None = None,
+            intent_action_384_config: Path | None = None) -> dict:
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     archive = archive.resolve(strict=True)
@@ -120,6 +121,17 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
+    from .terminal_deployment import (
+        load_intent_action_384_config, _intent_action_384_assets,
+        validate_intent_action_384_binding, verify_intent_action_384_archive,
+    )
+    selected_intent = validate_intent_action_384_binding(manifest)
+    verify_intent_action_384_archive(archive / "runtime.tar.gz", manifest)
+    if intent_action_384_config is not None:
+        host_config = load_intent_action_384_config(intent_action_384_config)
+        _, expected_binding = _intent_action_384_assets(host_config)
+        if selected_intent != expected_binding:
+            raise ValueError("selected Intent384 config differs from the runtime archive")
     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset)
     config = JobConfig.model_validate(config_for(dataset, output, archive, arm,
         intent_requirement_contract=requirements), extra="forbid")
@@ -139,7 +151,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               "command": command, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
               "agent_timeout_seconds": 300, "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
-              "benchmark_advantage_claimed": False, **_intent_selection(requirements)}
+              "benchmark_advantage_claimed": False, **_intent_selection(requirements),
+              "intent_action_384": selected_intent}
     _json(output / "preparation.json", result)
     if dry.returncode:
         raise RuntimeError("Harbor preflight failed; see retained logs")
@@ -173,6 +186,7 @@ def collect(output: Path) -> dict:
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
+              "intent_action_384": prepared.get("intent_action_384"),
               "intent_selection_config_unchanged": configured_selection == selection}
     _json(output / "receipt.json", result)
     return result
@@ -208,6 +222,8 @@ def main():
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
+    parser.add_argument("--intent-action-384-config", type=Path,
+        help="Verify the explicit local Intent384 configuration matches the packaged assets")
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
@@ -215,7 +231,8 @@ def main():
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
         result = prepare(dataset=args.dataset, output=args.output, archive=args.archive, arm=args.arm,
-                         intent_requirement_contract=args.intent_requirement_contract)
+                         intent_requirement_contract=args.intent_requirement_contract,
+                         intent_action_384_config=args.intent_action_384_config)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output)
     print(json.dumps(result, sort_keys=True, indent=2))

@@ -1,0 +1,144 @@
+{
+  "archive_sha256": "96bd6be850118dac1f006142e681f460895457a7402a674eaf8dabef08a5c0c3",
+  "checkpoint_repository": "Publicus/intent-ir-autoencoder",
+  "checkpoint_revision": "d12dd68fcc54441ded09ed217526e02b7bdfd9e3",
+  "code_retrieval_embeddings_enabled": false,
+  "credentials_mounted": false,
+  "datasets_commit": "8cafb37b2a06383eac9d4e5402d884632fcf95d7",
+  "docker_network": "none",
+  "docker_user": "0:0 inside rootless daemon; maps to invoking host user",
+  "host_home_mounted": false,
+  "image_id": "sha256:e35631fbe9d12706ec806b2dab2c81b52ed06b987ee7aeb97567aa4c5e55fb58",
+  "initial_failures": [
+    "docker-01: rootless UID mapping prevented output writes; corrected run user",
+    "docker-02: Git-dependent producer pin failed before numerical inference",
+    "docker-03: transitive import still invoked the Git-dependent checker; removed that dependency"
+  ],
+  "intent_action_384_requirements": [
+    "sentence-transformers==5.4.1",
+    "transformers==4.52.1",
+    "safetensors==0.7.0",
+    "numpy==1.26.4"
+  ],
+  "model_selection": {
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "config": {
+      "checkpoint_path": "/opt/ipfs-supervisor/models/intent-action-384/checkpoint.json",
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "embedding_snapshot_path": "/opt/ipfs-supervisor/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+      "schema": "supervisor-intent-action-384-config/v1"
+    },
+    "config_path": "models/intent-action-384/config.json",
+    "config_sha256": "d6020d1db7e62105e41cdd6d2137b00f124a703c86d41c6e01a4063179f50e63",
+    "embedding_assets": [
+      {
+        "bytes": 190,
+        "name": "1_Pooling/config.json",
+        "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+      },
+      {
+        "bytes": 583,
+        "name": "config.json",
+        "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+      },
+      {
+        "bytes": 66746168,
+        "name": "model.safetensors",
+        "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+      },
+      {
+        "bytes": 385,
+        "name": "modules.json",
+        "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+      },
+      {
+        "bytes": 57,
+        "name": "sentence_bert_config.json",
+        "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+      },
+      {
+        "bytes": 125,
+        "name": "special_tokens_map.json",
+        "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+      },
+      {
+        "bytes": 711661,
+        "name": "tokenizer.json",
+        "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+      },
+      {
+        "bytes": 394,
+        "name": "tokenizer_config.json",
+        "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+      },
+      {
+        "bytes": 231508,
+        "name": "vocab.txt",
+        "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+      }
+    ],
+    "embedding_path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "mode": "frozen_source_audited_action_384_inference",
+    "path": "models/intent-action-384/checkpoint.json",
+    "runtime_download_calls": 0,
+    "runtime_training_steps": 0,
+    "schema": "terminal-intent-action-384-assets@1",
+    "source_training_data_included": false
+  },
+  "model_weights_changed": false,
+  "runtime_mount": "archive-extracted source and model files, read-only",
+  "schema": "intent384-startup-deployment-evidence/v1",
+  "selected_code_sources": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "repository": "accelerate",
+      "sha256": "ee877b2076364794c0fcd662bd5aec173d476e76ee6fa1782b674c3898865a42"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "repository": "accelerate",
+      "sha256": "fa36218c6fcda189cc4f2090e7266f2d5c8dd870b9fd4a34f20c834e83eefe71"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "repository": "accelerate",
+      "sha256": "2f0b4fbd8aed80466ff7e7ab5298854737d96b78abf393cf6bd539b104b716b1"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "repository": "accelerate",
+      "sha256": "50bc0b3364b5c8948733ce9730989f4a1456c44a2825ddfc45c2b3a13904f7a5"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "repository": "accelerate",
+      "sha256": "2182aa45deb31f65f62ace83e767bd1240a1a61a471d31df99a0b6e928a299d3"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py",
+      "repository": "accelerate",
+      "sha256": "33440293b980bec487fb442130a744283f7d0f6372209b042c98c2768cb4c993"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_advisor_selection.py",
+      "repository": "accelerate",
+      "sha256": "63ce7f72d6ea2ffd77f876cbffee83c25c1e3cd8baca47efebf2d3840822c5c7"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py",
+      "repository": "accelerate",
+      "sha256": "448fc19e6f4727510a8d34864bffbcae72fc59ee752a6abcb09a5f2fd8be56e0"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py",
+      "repository": "datasets",
+      "sha256": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/portable_source_pins.py",
+      "repository": "datasets",
+      "sha256": "ca685ec1d78167d8d74568d7d6090b1dc448a851b6136ef1022ef2fb649274e8"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ from .terminal_deployment import (
     SECURITY_INITIALIZER_PATH, SECURITY_CHECKPOINT_PATH, SECURITY_CHECKPOINT_HUB, deploy_supervisor, runtime_environment,
     SECURITY_FORMULA_PATH, SECURITY_FORMULA_DESCRIPTOR, SECURITY_HEADER_PROTOCOL,
     INTENT_CHECKPOINT_PATH, INTENT_ROUNDTRIP_PATH, INTENT_CHECKPOINT_DESCRIPTOR,
-    INTENT_PROJECTION_REQUEST_PATH,
+    INTENT_PROJECTION_REQUEST_PATH, INTENT_ACTION_384_CONFIG, validate_intent_action_384_binding,
 )
 from .native_codex_baseline import MODEL, CLI_VERSION
 from .full_supervisor_benchmark import _intent_selection
@@ -147,6 +147,14 @@ def intent_asset_arguments(manifest: dict, *, enabled: bool = True) -> tuple[lis
         raise ValueError("explicit boolean Intent preprocessing selection required")
     if not enabled:
         return ["--disable-intent-autoencoder"], {"enabled": False, "status": "disabled"}
+    selected = validate_intent_action_384_binding(manifest)
+    if selected is not None:
+        if manifest.get("intent_checkpoint") is not None or manifest.get("intent_projection_request") is not None:
+            raise ValueError("Intent384 and legacy Intent selections are mutually exclusive")
+        return ["--intent-action-384-config", ROOT + "/" + INTENT_ACTION_384_CONFIG], {
+            "enabled": True, "sha256": selected["checkpoint_sha256"], "config_sha256": selected["config_sha256"],
+            "embedding_revision": selected["embedding_revision"], "mode": selected["mode"],
+            "execution_authority": False}
     binding = manifest.get("intent_checkpoint")
     if binding is None:
         if manifest.get("intent_projection_request") is not None:

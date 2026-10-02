@@ -1,0 +1,36 @@
+{
+  "schema": "intent384-offline-container-preplanning/v1",
+  "qualified": true,
+  "network": "none",
+  "provider_calls": 0,
+  "coding_worker_launched": false,
+  "benchmark_result": false,
+  "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+  "cases": [
+    {
+      "label": "supported",
+      "status": "semantic_candidate_advice",
+      "preprocessing_seconds": 3.461379681,
+      "before_goal_decomposition": true,
+      "raw_instruction_preserved": true,
+      "numerical_replay_verified": true,
+      "summary_present": true,
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "completion_authority": false,
+      "execution_authority": false
+    },
+    {
+      "label": "terminal-bench",
+      "status": "fail_open_input_out_of_scope",
+      "preprocessing_seconds": 0.00045231,
+      "before_goal_decomposition": true,
+      "raw_instruction_preserved": true,
+      "numerical_replay_verified": false,
+      "summary_present": false,
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "completion_authority": false,
+      "execution_authority": false
+    }
+  ],
+  "seconds": 4.607110854936764
+}

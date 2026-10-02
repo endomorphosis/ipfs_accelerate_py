@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 
 CONFIG_SCHEMA = "supervisor-intent-code-effect-config/v1"
+ACTION_CONFIG_SCHEMA = "supervisor-intent-code-effect-config/v2"
 SCHEMA = "supervisor-intent-code-effect-advice/v1"
 MAX_BYTES = 2_097_152
 MAX_ROWS = 16
@@ -60,21 +61,30 @@ def _gate():
 
 def _selection(config):
     _require(type(config) is dict and set(config) == {"schema", "contracts", "lake"}
-        and config["schema"] == CONFIG_SCHEMA and len(_wire(config)) <= 262_144,
+        and config["schema"] in {CONFIG_SCHEMA, ACTION_CONFIG_SCHEMA} and len(_wire(config)) <= 262_144,
         "closed explicit Intent/code configuration required")
     contracts = config["contracts"]
     _require(type(contracts) is list and 1 <= len(contracts) <= MAX_ROWS,
         "bounded explicit contract selection required")
     seen = set()
     for item in contracts:
-        _require(type(item) is dict and set(item) == {"id", "source_id", "input_domains", "association"},
+        fields = {"association"} if config["schema"] == CONFIG_SCHEMA else {"action_id", "input_parameter_mapping"}
+        _require(type(item) is dict and set(item) == {"id", "source_id", "input_domains"} | fields,
             "closed contract selection required")
         for key in ("id", "source_id"):
             _require(type(item[key]) is str and 0 < len(item[key]) <= 256, "bounded contract identity required")
         _require(item["id"] not in seen, "unique contract IDs required")
         seen.add(item["id"])
-        _require(type(item["input_domains"]) is dict and type(item["association"]) is dict,
-            "explicit domains and association required")
+        _require(type(item["input_domains"]) is dict, "explicit domains required")
+        if config["schema"] == CONFIG_SCHEMA:
+            _require(type(item["association"]) is dict, "explicit association required")
+        else:
+            mapping = item["input_parameter_mapping"]
+            _require(item["action_id"] == "action" and type(mapping) is dict
+                and set(mapping) == {"left", "right"}
+                and all(type(value) is str and 0 < len(value) <= 256 for value in mapping.values())
+                and len(set(mapping.values())) == 2,
+                "explicit scalar action and bijective input mapping required")
     lake = config["lake"]
     if lake is not None:
         _require(type(lake) is dict and set(lake) == {"executable", "timeout_seconds"}
@@ -240,9 +250,24 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
         for item in selected["contracts"]:
             _require(item["source_id"] in joined, "selected contract source is outside captured inference")
             source, prediction = joined[item["source_id"]]
+            if selected["schema"] == ACTION_CONFIG_SCHEMA:
+                stage = "datasets_action_association"
+                from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+                arguments = (instruction, deepcopy(candidate), source["source_text"],
+                    deepcopy(prediction["candidate_ir"]), deepcopy(item["input_domains"]))
+                options = dict(action_id=item["action_id"],
+                    input_parameter_mapping=deepcopy(item["input_parameter_mapping"]))
+                before_binding = _wire([arguments, options])
+                association = builder.build_intent_action_association(*arguments, **options)
+                verified = builder.verify_intent_action_association(association, *arguments, **options)
+                _require(_wire(association) == _wire(verified)
+                    and before_binding == _wire([arguments, options]),
+                    "generated association changed predictions or caller declarations")
+            else:
+                association = item["association"]
             rows.append(dict(id=item["id"], intent_source_text=instruction, intent_candidate_ir=deepcopy(candidate),
                 code_source_text=source["source_text"], code_candidate_ir=deepcopy(prediction["candidate_ir"]),
-                input_domains=deepcopy(item["input_domains"]), association=deepcopy(item["association"])))
+                input_domains=deepcopy(item["input_domains"]), association=deepcopy(association)))
             bindings.append(dict(id=item["id"], source_id=item["source_id"], inference_id=prediction["id"]))
         before = _wire(rows)
         result = _base("contract_interpretation_advice")
@@ -250,6 +275,12 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
             intent_checkpoint_sha256=intent_checkpoint, security_checkpoint_sha256=code_checkpoint,
             security_advice_sha256=_sha(_wire(security_advice)), selected_contract_count=len(rows),
             input_bindings=bindings)
+        if selected["schema"] == ACTION_CONFIG_SCHEMA:
+            result.update(association_profile=builder.PROFILE, association_replay_verified=True,
+                configuration_sha256=_sha(_wire(selected)),
+                action_selections=[{key: deepcopy(item[key]) for key in
+                    ("id", "source_id", "action_id", "input_parameter_mapping", "input_domains")}
+                    for item in selected["contracts"]])
         stage = "datasets_contract_preparation"
         owner = _gate()
         if selected["lake"] is None:

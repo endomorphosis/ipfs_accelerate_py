@@ -1,0 +1,204 @@
+2026-10-02 03:22:58,630 - ipfs_accelerate_py.ipfs_kit_integration - INFO - Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py
+2026-10-02 03:22:58,630 - ipfs_accelerate_py.ipfs_kit_integration - INFO - IPFS Kit integration enabled successfully
+2026-10-02 03:22:58,630 - ipfs_accelerate_py.common.storage_wrapper - INFO - Storage initialized with distributed backend
+2026-10-02 03:23:01,710 - sentence_transformers.base.model - INFO - Loading SentenceTransformer model from /home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd.
+/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py:163: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+  if model.get_sentence_embedding_dimension() != 384:
+2026-10-02 03:23:02,774 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:03,308 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:03,480 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:03,514 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:03,549 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:03,589 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:04,357 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:04,908 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:04,951 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:04,988 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:05,829 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:09,107 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:09,155 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:09,191 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:09,903 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:10,496 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:10,679 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:10,715 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:10,750 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:10,793 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:11,562 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:12,121 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:12,165 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:12,202 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+2026-10-02 03:23:12,649 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:15,948 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:15,999 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:16,037 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-5/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:16,758 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:17,303 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:17,468 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:17,503 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:17,537 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:17,579 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:18,275 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:18,796 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:18,839 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:18,875 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+2026-10-02 03:23:19,331 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:22,623 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:22,673 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 03:23:22,708 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/case-1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+{
+  "schema": "intent384-startup-context-qualification/v1",
+  "qualified": true,
+  "provider_calls": 0,
+  "model_inference_executed": true,
+  "daemon_started": false,
+  "benchmark_result": false,
+  "admission_source": "independently authored local single-goal/task; decoded candidate grants no authority",
+  "effects_configuration": "generated from source-audited learned Intent plus caller-selected mapping and bounds",
+  "weight_sha256": {
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+  },
+  "rows": [
+    {
+      "id": "action-contract:test:0",
+      "intent_status": "semantic_candidate_advice",
+      "effect_status": "satisfied",
+      "live_build_verified": true,
+      "association_replay_verified": true,
+      "task_status": "ready",
+      "source_unchanged": true,
+      "task_revision_unchanged": true,
+      "intent_checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "security_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "semantic_root_cid": "baguqeera2jwixkafdg7jy2qoezhrukq2afi3nf4of4fe5gwznglg7qscwmma",
+      "world_snapshot_cid": "sha256:79e3200ad30114b0a3ba58deaaa9a68626898b12992e9174fbbb3ff72d8b8735",
+      "case_count": 9,
+      "enabled_case_count": 3,
+      "preplanning_seconds": 3.495539289,
+      "proof_authority": false,
+      "execution_authority": false,
+      "completion_authority": false
+    },
+    {
+      "id": "action-contract:test:5",
+      "intent_status": "semantic_candidate_advice",
+      "effect_status": "refuted",
+      "live_build_verified": true,
+      "association_replay_verified": true,
+      "task_status": "ready",
+      "source_unchanged": true,
+      "task_revision_unchanged": true,
+      "intent_checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "security_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "semantic_root_cid": "baguqeera3w4jywxkd4n3pgngj2g6kolhehmr25pspexc4td3jq6tgy33suga",
+      "world_snapshot_cid": "sha256:e6153c86b2d1b4953f74543d26d1d233bc6f71a6d650bd3ea11f5517a7cffd51",
+      "case_count": 9,
+      "enabled_case_count": 3,
+      "preplanning_seconds": 0.329654575,
+      "proof_authority": false,
+      "execution_authority": false,
+      "completion_authority": false
+    },
+    {
+      "id": "action-contract:test:1",
+      "intent_status": "semantic_candidate_advice",
+      "effect_status": "no_enabled_cases",
+      "live_build_verified": true,
+      "association_replay_verified": true,
+      "task_status": "ready",
+      "source_unchanged": true,
+      "task_revision_unchanged": true,
+      "intent_checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "security_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "semantic_root_cid": "baguqeeraei2jz4bxtzcf5ou3wzgr56xsylavtd2uqjgylfbzkoh7qfly6urq",
+      "world_snapshot_cid": "sha256:1826389d959eb41a73a9a57c4baf36ea524496cf81857ce4b64d2dea371d5457",
+      "case_count": 9,
+      "enabled_case_count": 0,
+      "preplanning_seconds": 0.333324066,
+      "proof_authority": false,
+      "execution_authority": false,
+      "completion_authority": false
+    }
+  ],
+  "controls": [
+    {
+      "instruction": "the agent may compute result.",
+      "status": "fail_open_input_out_of_scope",
+      "continue_planning": true,
+      "summary": null
+    },
+    {
+      "instruction": "Repair the vulnerabilities in bottle.py and write a report.",
+      "status": "fail_open_input_out_of_scope",
+      "continue_planning": true,
+      "summary": null
+    },
+    {
+      "case": "wrong_checkpoint_hash",
+      "status": "fail_open_unavailable",
+      "continue_planning": true
+    }
+  ],
+  "inputs_and_weights_unchanged": true,
+  "seconds": 23.98688842006959
+}

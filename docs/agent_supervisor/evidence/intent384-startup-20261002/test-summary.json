@@ -1,0 +1,1301 @@
+{
+  "supervisor_passed": 214,
+  "supervisor_skipped": 1,
+  "datasets_passed": 26,
+  "distinct_passed": 240,
+  "skipped_reason": "Legacy paired-text checkpoint descriptor was not supplied.",
+  "fresh_supervisor_seal_catalog": true,
+  "live_lake_selected": true,
+  "tests": [
+    {
+      "name": "test_disabled_selection_never_reads_configuration_or_imports_model",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_saved_candidate_replays_current_config_and_learned_contract_summary",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.007",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[missing]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[malformed]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[oversized]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[symlink]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[duplicate]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[unknown_field]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_config_is_optional_failure_without_model_call[wrong_hash]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[config_bytes]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[config_checkpoint]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_bytes]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_rehashed_candidate]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[source]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_extra]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_digest]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_disabled]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_symlink]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_is_rechecked_after_model_execution[prepare]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_is_rechecked_after_model_execution[load]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.006",
+      "skipped": false
+    },
+    {
+      "name": "test_summary_over_budget_keeps_original_instruction_available",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.006",
+      "skipped": false
+    },
+    {
+      "name": "test_configured_inference_precedes_declarations_and_reaches_original_planner",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "1.151",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_route_failures_preserve_exact_original_planner_request[missing_config]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "1.075",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_route_failures_preserve_exact_original_planner_request[stale_config]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "1.042",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_route_failures_preserve_exact_original_planner_request[disabled]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "1.105",
+      "skipped": false
+    },
+    {
+      "name": "test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[intent_checkpoint_descriptor]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.012",
+      "skipped": false
+    },
+    {
+      "name": "test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[intent_projection_request]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.011",
+      "skipped": false
+    },
+    {
+      "name": "test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[enable_source_unit_autoencoder]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "0.011",
+      "skipped": false
+    },
+    {
+      "name": "test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_384_selection",
+      "seconds": "4.082",
+      "skipped": false
+    },
+    {
+      "name": "test_closed_assets_relocate_and_leave_retrieval_disabled",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[null_snapshot]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[missing_snapshot]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[changed_checkpoint]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[missing_checkpoint]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[wrong_domain]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[extra_field]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_invalid_local_selection_is_rejected_before_archive[relative_checkpoint]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_duplicate_config_fields_and_config_symlink_are_rejected",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_cached_blob_symlinks_are_captured_but_external_targets_refused",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[path]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[config_path]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[checkpoint_sha256]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[embedding_path]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[embedding_assets]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[extra_member]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[missing_member]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[member_hash]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_manifest_selection_rejected[duplicate_member]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_archive_bytes_refused_even_when_outer_hash_is_updated",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_legacy_and_new_selection_cannot_mix",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.004",
+      "skipped": false
+    },
+    {
+      "name": "test_real_harbor_entrypoint_forwards_packaged_config[full]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_real_harbor_entrypoint_forwards_packaged_config[no-index]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_container_cli_forwards_exact_selection_without_model_call",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.348",
+      "skipped": false
+    },
+    {
+      "name": "test_benchmark_preparation_retains_config_binding_and_rejects_wrong_selection",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_action_384_transport",
+      "seconds": "0.019",
+      "skipped": false
+    },
+    {
+      "name": "test_archive_contains_only_explicit_runtime_sources_and_native_assets",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_extension_symlink_cannot_enter_runtime_archive",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_runtime_archive_refused_before_container_calls",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_model_revision_survives_asset_packaging",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_model_revision_must_be_an_explicit_snapshot_directory",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_prepare_preserves_original_dirty_bytes_and_signs_absent_report",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.604",
+      "skipped": false
+    },
+    {
+      "name": "test_prepare_rejects_undeclared_or_preseeded_inputs[preseed]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.077",
+      "skipped": false
+    },
+    {
+      "name": "test_prepare_rejects_undeclared_or_preseeded_inputs[untracked]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.078",
+      "skipped": false
+    },
+    {
+      "name": "test_prepare_rejects_undeclared_or_preseeded_inputs[symlink]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.075",
+      "skipped": false
+    },
+    {
+      "name": "test_signed_task_cannot_omit_create_or_change_public_check",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.418",
+      "skipped": false
+    },
+    {
+      "name": "test_public_smoke_is_structural_and_not_an_oracle",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.397",
+      "skipped": false
+    },
+    {
+      "name": "test_authored_fixture_context_uses_real_native_admission_and_full_index",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "4.732",
+      "skipped": false
+    },
+    {
+      "name": "test_planner_requires_external_worker_isolation_before_any_call",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_tampered_public_query_cannot_reach_planner",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.396",
+      "skipped": false
+    },
+    {
+      "name": "test_accepted_fixture_admission_survives_native_storage_failure",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "1.014",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_source_unit_advice_reaches_only_bounded_planner_context[None]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "1.219",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_source_unit_advice_reaches_only_bounded_planner_context[tamper]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "1.026",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_source_unit_advice_reaches_only_bounded_planner_context[replay]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "1.146",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_source_unit_advice_reaches_only_bounded_planner_context[summary_budget]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "1.018",
+      "skipped": false
+    },
+    {
+      "name": "test_intent_ablation_overrides_source_unit_intent_checkpoint_selection",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.313",
+      "skipped": false
+    },
+    {
+      "name": "test_source_family_flags_reach_preparation_with_intent_ablation_precedence[False]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.326",
+      "skipped": false
+    },
+    {
+      "name": "test_source_family_flags_reach_preparation_with_intent_ablation_precedence[True]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation",
+      "seconds": "0.360",
+      "skipped": false
+    },
+    {
+      "name": "test_absent_or_partial_usage_stays_unknown",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_all_arms_keep_original_task_resources_verifier_and_agent_budget",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_conflicting_duplicate_rejected",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_failed_and_successful_calls_both_count_cached_input_once",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_nonportable_asset_binding_is_rejected_before_run",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_only_full_arm_receives_explicit_portable_training_assets",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_only_full_arm_receives_frozen_model_and_pinned_hub_provenance",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_asset_flags_reach_full_execution_and_are_absent_from_no_index",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests",
+      "seconds": "0.009",
+      "skipped": false
+    },
+    {
+      "name": "test_driver_failure_still_exports_outputs_and_capture_failure_does_not_mask_it",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests",
+      "seconds": "0.006",
+      "skipped": false
+    },
+    {
+      "name": "test_failed_run_preserves_admission_without_exporting_owner_state",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests",
+      "seconds": "0.005",
+      "skipped": false
+    },
+    {
+      "name": "test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests",
+      "seconds": "0.111",
+      "skipped": false
+    },
+    {
+      "name": "test_requirements_gate_entry_point_and_survive_native_storage",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "1.432",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_provider_bindings_cannot_materialize_native_tasks[omit]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.547",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_provider_bindings_cannot_materialize_native_tasks[stale]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.493",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_provider_bindings_cannot_materialize_native_tasks[legacy]",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.492",
+      "skipped": false
+    },
+    {
+      "name": "test_mismatched_source_contract_refused_before_preparation",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.013",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_prepared_contract_cannot_reach_provider",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.358",
+      "skipped": false
+    },
+    {
+      "name": "test_symbolic_entrypoint_selects_and_materializes_without_planner_provider",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "1.973",
+      "skipped": false
+    },
+    {
+      "name": "test_symbolic_entrypoint_needs_no_provider_callable",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "1.523",
+      "skipped": false
+    },
+    {
+      "name": "test_symbolic_failure_is_retained_without_provider_fallback_or_native_tasks",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.426",
+      "skipped": false
+    },
+    {
+      "name": "test_symbolic_budget_expiry_prevents_admission_and_materialization",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.440",
+      "skipped": false
+    },
+    {
+      "name": "test_full_benchmark_strategy_metadata_tracks_versioned_contract_identity",
+      "class_name": "benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning",
+      "seconds": "0.014",
+      "skipped": false
+    },
+    {
+      "name": "test_no_selection_does_not_import_or_infer_a_model",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_selected_shared_checkpoint_is_replayed_and_both_candidates_remain_separate",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unsupported_native_candidate_is_preserved_without_becoming_an_effect",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[schema]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[extra]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[hash]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[relative_checkpoint]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[relative_snapshot]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_unknown_or_incomplete_configuration_fails_open_without_owner_import[missing]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[raw_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[native_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[source]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[checkpoint]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[authority]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_changed_shared_report_is_rejected_by_numerical_replay[extra]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[source]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[checkpoint]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[path]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[snapshot]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[authority]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[digest]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[missing_native]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_owner_transport_cannot_silently_drop_identity_or_authority_fields[raw_kind]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[raw_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[native_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[report_native]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[raw_hash]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[native_hash]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[instruction]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[authority]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[scope]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[replay_claim]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[extra]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_new_schema_dispatch_uses_verified_native_document_and_keeps_old_route_separate",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_cross_source_transport_uses_bound_native_document_and_preserves_raw_candidate",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_shared_owner_is_sanitized_and_preserves_original_instruction",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_adapter_document_envelope_matches_real_association_builder_identity",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.159",
+      "skipped": false
+    },
+    {
+      "name": "test_effect_boundary_requires_exact_replayed_bound_envelope[missing]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_effect_boundary_requires_exact_replayed_bound_envelope[bare_document]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_effect_boundary_requires_exact_replayed_bound_envelope[changed_document]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_effect_boundary_requires_exact_replayed_bound_envelope[extra]",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct",
+      "class_name": "test.api.semantic_state.test_intent_384_advisor",
+      "seconds": "0.679",
+      "skipped": false
+    },
+    {
+      "name": "test_disabled_consumer_does_not_import_or_replay_optional_owners",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_explicit_contract_joins_separate_originals_without_changing_either_advisor",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_live_checks_keep_positive_negative_and_empty_dispositions_distinct[satisfied]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_live_checks_keep_positive_negative_and_empty_dispositions_distinct[refuted]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_live_checks_keep_positive_negative_and_empty_dispositions_distinct[no_enabled_cases]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[instruction]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[source]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[duplicate_prediction]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[source_population]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[binding]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[checkpoint]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[no_intent]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[feature_only]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[target]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_missing_or_mismatched_originals_fail_open_before_native_gate[foreign_selection]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[intent_source]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[intent_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[code_source]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[code_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[input_domains]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[association]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[population]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[authority]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[top_identity]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[false_satisfaction]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[unchecked_evidence]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[repaired_candidate]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_native_binding_and_claim_mutations_cannot_be_forwarded[replay]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_abstaining_source_prediction_stays_missing_and_is_not_repaired",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_selected_subset_does_not_claim_all_sources_checked",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_failures_leave_original_advice_untouched[unavailable]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_failures_leave_original_advice_untouched[budget]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_failures_leave_original_advice_untouched[live_replay]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[unknown_schema]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[extra_target]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[duplicate_contract]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[foreign_field]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[relative_lake]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_configuration_requires_explicit_closed_contracts[unbounded_timeout]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_repository_recapture_uses_only_exact_preexisting_security_sources[none]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_repository_recapture_uses_only_exact_preexisting_security_sources[different_source]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_repository_recapture_uses_only_exact_preexisting_security_sources[unpermitted]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_repository_recapture_uses_only_exact_preexisting_security_sources[link]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_repository_recapture_uses_only_exact_preexisting_security_sources[during_check]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "3.106",
+      "skipped": false
+    },
+    {
+      "name": "test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "3.143",
+      "skipped": false
+    },
+    {
+      "name": "test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases]",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "2.886",
+      "skipped": false
+    },
+    {
+      "name": "test_real_trained_intent_without_effects_remains_unsupported",
+      "class_name": "test.api.semantic_state.test_intent_code_effect_advisor",
+      "seconds": "0.001",
+      "skipped": true
+    },
+    {
+      "name": "test_generated_formulas_keep_positive_negative_and_disabled_cases[+-left > 0-satisfied]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.550",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_formulas_keep_positive_negative_and_disabled_cases[--left > 0-refuted]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.552",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_formulas_keep_positive_negative_and_disabled_cases[*-left > 2-no_enabled_cases]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.550",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[aliased]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[missing]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[foreign]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.034",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[action]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[authored_formula]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[source]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[prediction]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[instruction]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[missing_effect]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.002",
+      "skipped": false
+    },
+    {
+      "name": "test_bad_selection_or_candidate_fails_open_without_manufacturing_effects[no_prediction]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.003",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_formula_mutation_is_rejected_by_independent_rebuild",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "0.102",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_selection_runs_live_lake[+-left > 0-satisfied]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "2.941",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_selection_runs_live_lake[--left > 0-refuted]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "2.972",
+      "skipped": false
+    },
+    {
+      "name": "test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases]",
+      "class_name": "test.api.semantic_state.test_intent_action_effect_selection",
+      "seconds": "3.055",
+      "skipped": false
+    },
+    {
+      "name": "test_launch_bundle_feeds_context_without_self_referential_native_task_mutation",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.736",
+      "skipped": false
+    },
+    {
+      "name": "test_prepare_task_context_feeds_matching_native_semantic_and_world_roots",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.861",
+      "skipped": false
+    },
+    {
+      "name": "test_native_retrieval_joins_the_same_task_capsules_and_world",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.840",
+      "skipped": false
+    },
+    {
+      "name": "test_refresh_marks_captured_world_semantics_stale_and_rejects_nomination_tampering",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "3.792",
+      "skipped": false
+    },
+    {
+      "name": "test_preparation_refuses_owner_drift_before_publishing_nominations[source]",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.209",
+      "skipped": false
+    },
+    {
+      "name": "test_preparation_refuses_owner_drift_before_publishing_nominations[intent]",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.434",
+      "skipped": false
+    },
+    {
+      "name": "test_preparation_refuses_output_outside_repository",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "0.753",
+      "skipped": false
+    },
+    {
+      "name": "test_worker_world_projection_omits_internal_contract_without_mutating_capture",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "0.001",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_security_source_program_runs_in_existing_task_context",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.465",
+      "skipped": false
+    },
+    {
+      "name": "test_optional_security_missing_checkpoint_does_not_block_task_context",
+      "class_name": "test.api.semantic_state.test_supervised_task_context",
+      "seconds": "2.354",
+      "skipped": false
+    }
+  ]
+}

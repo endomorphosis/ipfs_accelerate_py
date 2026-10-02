@@ -1,0 +1,738 @@
+{
+  "learned_arithmetic_integrated": false,
+  "runs": [
+    {
+      "bootstrap_errors": [],
+      "diagnostic_sitecustomize": false,
+      "doctor_stages": {
+        "impact": {
+          "mutation_admissible": true,
+          "reason_codes": [
+            "candidate_delta_rebuilt",
+            "complete_closure",
+            "current_cids"
+          ],
+          "receipt_id": "baguqeerawbupr2xdlpzpmlrqunc6yhelpwn27kjuiigeijwehpyblb6nr2da",
+          "status": "executed"
+        },
+        "plan_compilation": {
+          "disposition": "admitted",
+          "reason_codes": [
+            "atomic_scc_plan",
+            "mutation_admissible",
+            "no_model_invariant",
+            "plan_admitted",
+            "single_file_atomic_group",
+            "whole_file_preimage_binding"
+          ],
+          "receipt_id": "baguqeera63fvmzz5n5z5zxzawb3leb2rzzqixssf64otpo2tz2rlm4v3w5la",
+          "status": "executed"
+        },
+        "proof": {
+          "disposition": "verified",
+          "mutation_capable": true,
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeerayyse5yjpsr3ltaihajyorwzuedd62cukihto7uuua7ioufwfduoq",
+          "scope": "Pair-name substitution preserves the argument value; independent AST and signature replay binds the exact Python edit. No whole-program correctness theorem.",
+          "status": "executed"
+        },
+        "synthesis_preview": {
+          "disposition": "supported",
+          "reason_codes": [
+            "proof_admitted_render_supported"
+          ],
+          "receipt_id": "baguqeerapnlc5rzg6wbigp6kdkdvyyhapuq7glurcpqrenhinx5edygyij4a",
+          "status": "executed"
+        },
+        "tactician": {
+          "disposition": "planned",
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeerabwcsosygagymtnj6k6cs6e3wlxpe5ncng4ajq7x3gplsos32kzia",
+          "status": "executed"
+        }
+      },
+      "error": {
+        "message": "native START failed",
+        "type": "RuntimeError"
+      },
+      "final_public_check_exit_code": null,
+      "initial_public_check_exit_code": 1,
+      "label": "native-doctor-01",
+      "provider_calls": 0,
+      "qualified": false,
+      "remaining_processes": 0,
+      "seconds": 36.39574296795763,
+      "start": {
+        "audit_receipt_id": "sha256:e118a8d91a9dd84df321ab8873c1058d982b49f32574f9ffe711c87b50687409",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkgMrDf4ZjVc6vtwKypPSvWwuwvgd1soumj4sjJwBuePmc",
+        "contract_version": 1,
+        "data": {
+          "transaction": {
+            "applied_effect_ids": [],
+            "caller": "did:key:z6MkgMrDf4ZjVc6vtwKypPSvWwuwvgd1soumj4sjJwBuePmc",
+            "contract_version": 1,
+            "effect_ids": [
+              "start:isolated-process-tree"
+            ],
+            "failure_code": "conflict",
+            "fencing_epoch": 1,
+            "idempotency_key": "admitted-bb961a7edb044c5a916838b30840ed8c:start:0",
+            "lease_id": "lease:6eea4cbd563a4116891f7918ed0955a0",
+            "objective_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "objective_revision": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "operation": "start",
+            "phase": "repair_required",
+            "policy_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "policy_revision": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "recovery_action": "repair",
+            "repository_id": "baguqeeraq6i4fvxurn2gcqfle3n3qlpsj4jscya3mk5vauydhx6qd43accza",
+            "request_id": "baguqeerapexzjccbo4xerfztzotowsqfarh5tzyrh2ytt44ybtpd7jqcprha",
+            "result": null,
+            "revision": 2,
+            "schema": "ipfs_accelerate_py/agent-supervisor/control-mutation-transaction@1",
+            "transaction_id": "sha256:02e02d7bd5e55a5ed7d7d72ba33b7c82768d95043ca19e334002413f305c9b38",
+            "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03",
+            "updated_at_ms": 1790909517160
+          }
+        },
+        "effects": [],
+        "error": {
+          "code": "conflict",
+          "content_id": "baguqeeracj6jbv42owxrjyho5vcd4gvymt4qv3w5vg726nrv4ymfsue3op3q",
+          "contract_version": 1,
+          "details": {
+            "exception_type": "PartialMutationError"
+          },
+          "field": "",
+          "message": "startup did not prove sustained health before its deadline",
+          "retryable": false,
+          "schema": "ipfs_accelerate_py/agent-supervisor/operation-error@1"
+        },
+        "idempotency_key": "admitted-bb961a7edb044c5a916838b30840ed8c:start:0",
+        "objective_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+        "operation": "start",
+        "policy_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+        "preview": null,
+        "repository_id": "baguqeeraq6i4fvxurn2gcqfle3n3qlpsj4jscya3mk5vauydhx6qd43accza",
+        "request_id": "baguqeerapexzjccbo4xerfztzotowsqfarh5tzyrh2ytt44ybtpd7jqcprha",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "conflict",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "stop": {
+        "audit_receipt_id": "sha256:3566d1e7838f198db4d78003f7b63c326a09fb7465ac6c22f825e128efc47a8a",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkgMrDf4ZjVc6vtwKypPSvWwuwvgd1soumj4sjJwBuePmc",
+        "contract_version": 1,
+        "data": {
+          "transaction": {
+            "applied_effect_ids": [],
+            "caller": "did:key:z6MkgMrDf4ZjVc6vtwKypPSvWwuwvgd1soumj4sjJwBuePmc",
+            "contract_version": 1,
+            "effect_ids": [
+              "stop:isolated-process-tree"
+            ],
+            "failure_code": "conflict",
+            "fencing_epoch": 1,
+            "idempotency_key": "admitted-bb961a7edb044c5a916838b30840ed8c:stop:0",
+            "lease_id": "lease:6eea4cbd563a4116891f7918ed0955a0",
+            "objective_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "objective_revision": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "operation": "stop",
+            "phase": "repair_required",
+            "policy_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "policy_revision": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+            "recovery_action": "repair",
+            "repository_id": "baguqeeraq6i4fvxurn2gcqfle3n3qlpsj4jscya3mk5vauydhx6qd43accza",
+            "request_id": "baguqeeraoijfnfc232jqcswpyo6wj33pymjyvkydxwhoz3qcisw4zwbec4qa",
+            "result": null,
+            "revision": 2,
+            "schema": "ipfs_accelerate_py/agent-supervisor/control-mutation-transaction@1",
+            "transaction_id": "sha256:331b78fb371b6548ad2adb5000cd8eaa71c1a742e8c5a9991c5f7b74b3f0b8eb",
+            "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03",
+            "updated_at_ms": 1790909547257
+          }
+        },
+        "effects": [],
+        "error": {
+          "code": "conflict",
+          "content_id": "baguqeerazig6ujw3rsou4ec7vkfbi3a5u4zspdt2zkpukc7asdh7f6nxb4aa",
+          "contract_version": 1,
+          "details": {
+            "exception_type": "TransactionConflictError"
+          },
+          "field": "",
+          "message": "another lifecycle transition is still active",
+          "retryable": false,
+          "schema": "ipfs_accelerate_py/agent-supervisor/operation-error@1"
+        },
+        "idempotency_key": "admitted-bb961a7edb044c5a916838b30840ed8c:stop:0",
+        "objective_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+        "operation": "stop",
+        "policy_id": "sha256:b89879380eba9a6f5813284fe3c21dee7e3b6ade24a88c72a9ece98d367c1d8f",
+        "preview": null,
+        "repository_id": "baguqeeraq6i4fvxurn2gcqfle3n3qlpsj4jscya3mk5vauydhx6qd43accza",
+        "request_id": "baguqeeraoijfnfc232jqcswpyo6wj33pymjyvkydxwhoz3qcisw4zwbec4qa",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "conflict",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "task": null
+    },
+    {
+      "bootstrap_errors": [],
+      "diagnostic_sitecustomize": true,
+      "doctor_stages": {
+        "impact": {
+          "mutation_admissible": true,
+          "reason_codes": [
+            "candidate_delta_rebuilt",
+            "complete_closure",
+            "current_cids"
+          ],
+          "receipt_id": "baguqeeragt6qcn7tkahtoojsrezuqftxvv6he6hrp6ih56udkpcpw7ku2sya",
+          "status": "executed"
+        },
+        "plan_compilation": {
+          "disposition": "admitted",
+          "reason_codes": [
+            "atomic_scc_plan",
+            "mutation_admissible",
+            "no_model_invariant",
+            "plan_admitted",
+            "single_file_atomic_group",
+            "whole_file_preimage_binding"
+          ],
+          "receipt_id": "baguqeerahajkbwnrzpi3bpjpjs4ij47xavkqlsef47atmcdr5i7aw5envvya",
+          "status": "executed"
+        },
+        "proof": {
+          "disposition": "verified",
+          "mutation_capable": true,
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeerahlw5nx5ccf5mukdz7rd47mpgosqgtmzr647mxz2r7fr7sx6iuyuq",
+          "scope": "Pair-name substitution preserves the argument value; independent AST and signature replay binds the exact Python edit. No whole-program correctness theorem.",
+          "status": "executed"
+        },
+        "synthesis_preview": {
+          "disposition": "supported",
+          "reason_codes": [
+            "proof_admitted_render_supported"
+          ],
+          "receipt_id": "baguqeerapekj6ypyvi7yjdzcynuqigwwhd4xsazkb5twqwaxnkvlzo4jbt5a",
+          "status": "executed"
+        },
+        "tactician": {
+          "disposition": "planned",
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeera3jghoi5plt7ubbe24tl3zmtindkfqbv2ub4ycv3qlz5fd4bgwoma",
+          "status": "executed"
+        }
+      },
+      "error": null,
+      "final_public_check_exit_code": 0,
+      "initial_public_check_exit_code": 1,
+      "label": "native-doctor-02-diagnostic",
+      "provider_calls": 0,
+      "qualified": true,
+      "remaining_processes": 0,
+      "seconds": 27.710284844972193,
+      "start": {
+        "audit_receipt_id": "sha256:2fc96a255003c3f1e25846cf53cc484ec1458deb887e528056a2f04bd4f9b7cb",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkhaTM8T3AMW2e6cQymKcmWZNBPcVg3JQwPgkye99aPtKP",
+        "contract_version": 1,
+        "data": {
+          "health_window_ms": 500,
+          "new_process_identity": {
+            "argv": [
+              "/home/barberb/.local/bin/python",
+              "-P",
+              "-m",
+              "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+              "--todo-path",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/intent.duckdb",
+              "--state-dir",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/launch/state/run",
+              "--state-prefix",
+              "admitted",
+              "--task-prefix",
+              "##",
+              "--task-source-kind",
+              "duckdb",
+              "--authority-mode",
+              "quack",
+              "--quack-endpoint",
+              "quack:127.0.0.1:32791",
+              "--endpoint-secret-handle",
+              "handle:quack-token:[REDACTED]",
+              "--state-store-id",
+              "native-quack-qualification-v1",
+              "--state-store-generation",
+              "1",
+              "--state-schema-revision",
+              "5",
+              "--state-owner-bootstrap-fd",
+              "12",
+              "--state-owner-client-id",
+              "database-implementation-daemon:admitted-77aad067f0b149c4b8adcac2bf8b1cd4",
+              "--check-interval",
+              "0.25",
+              "--daemon-interval",
+              "0.25",
+              "--max-restarts",
+              "1",
+              "--max-task-attempts",
+              "1",
+              "--strict-task-sharding",
+              "--no-worktree-reconciliation",
+              "--no-retry-budget-guardrail",
+              "--no-dependency-guardrail",
+              "--no-reconciliation-guardrail",
+              "--no-objective-task-janitor",
+              "--no-objective-goal-refinement",
+              "--no-objective-goal-completion-reconcile",
+              "--no-objective-goal-migration",
+              "--no-objective-ast-dataset",
+              "--no-objective-todo-vector-index",
+              "--merge-target-branch",
+              "master",
+              "--merge-queue-dir",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/launch/state/merge_queue",
+              "--worktree-root",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/allocated-worktrees",
+              "--execution-slice-task-cid",
+              "baguqeeraujzbbmahbkgclxw2dre34pjawtvip5geqooi2zsxfha3ra6lndmq",
+              "--execution-slice-task-id",
+              "LOCAL-TASK",
+              "--task-context-bundle-artifact",
+              ".runtime/context-bundle.json",
+              "--task-context-bundle-sha256",
+              "c04eff68477f9734916c3907378c78afcb6047f0f155a18392458c2065b54201",
+              "--implement",
+              "--implementation-command",
+              "/home/barberb/.local/bin/python -B -P -m ipfs_accelerate_py.agent_supervisor.runtime.doctor_candidate_runner --artifact /home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/doctor/candidate-handoff.json --sha256 52840a04b66cb1c035df193146d7c303fb1b6a315f172b54254dff8a441e4a04 --task-cid baguqeeraujzbbmahbkgclxw2dre34pjawtvip5geqooi2zsxfha3ra6lndmq"
+            ],
+            "boot_id": "f4a3b80a-e3df-4702-8d03-86c19f69b2a9",
+            "configuration_root": "sha256:bf5820f33550dfa25bd978e7c53e088feffe2a7944387d4d020d3955da288b7a",
+            "cwd": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/repository",
+            "executable": "/usr/bin/python3.12",
+            "fencing_epoch": 1,
+            "identity_id": "sha256:ee47e8173d8766994bc29e07bac8edebc730376d5d404d1a3a0eb6416d63db93",
+            "parent_pid": 1703635,
+            "pid": 1705630,
+            "process_group_id": 1705630,
+            "profile_id": "sha256:d9d47b5a0fa0f5e7c455bc47c491a8f35b3d44f5a7e9aaffc4d22c6274835e73",
+            "repository_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/repository",
+            "run_id": "admitted-77aad067f0b149c4b8adcac2bf8b1cd4",
+            "run_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/launch/state/run",
+            "schema": "ipfs_accelerate_py/agent-supervisor/process-identity@1",
+            "session_id": 1705630,
+            "start_time_ticks": 147799434,
+            "state_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-02-diagnostic/launch/state",
+            "target_id": "baguqeerauhg25w4tt7ak5skjzefccotd6xpvqb4av3zmccm57mvyswoewarq"
+          },
+          "old_tree_fenced": false,
+          "receipt_id": "sha256:6bbc3ce535671a80abfbb2996fb3ed776940a3a62ffdfa5d59b421fa48e84efe",
+          "transition_artifact_sha256": "sha256:f9184643f66e4de43848eeab29555d9edd8d9cf416f116b43d78eeab99ff3f9d",
+          "transition_id": "sha256:fc14beda97f8819371e3405bb04274472e1695b1feed7abdb32fe1d61d3ff634"
+        },
+        "effects": [
+          {
+            "applied": true,
+            "authority": "mutation",
+            "content_id": "baguqeeraxslvd5bm53u2w43qwlrmt6rx4zxpu7nsgfsdgbg2punmsj45mnzq",
+            "contract_version": 1,
+            "effect_id": "start:isolated-process-tree",
+            "kind": "lifecycle_transition",
+            "paths": [
+              "lifecycle-transitions.jsonl",
+              "run"
+            ],
+            "receipt_id": "sha256:2fc96a255003c3f1e25846cf53cc484ec1458deb887e528056a2f04bd4f9b7cb",
+            "resource": "baguqeerauhg25w4tt7ak5skjzefccotd6xpvqb4av3zmccm57mvyswoewarq",
+            "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+          }
+        ],
+        "error": null,
+        "idempotency_key": "admitted-77aad067f0b149c4b8adcac2bf8b1cd4:start:0",
+        "objective_id": "sha256:bf5820f33550dfa25bd978e7c53e088feffe2a7944387d4d020d3955da288b7a",
+        "operation": "start",
+        "policy_id": "sha256:bf5820f33550dfa25bd978e7c53e088feffe2a7944387d4d020d3955da288b7a",
+        "preview": null,
+        "repository_id": "baguqeerauhg25w4tt7ak5skjzefccotd6xpvqb4av3zmccm57mvyswoewarq",
+        "request_id": "baguqeera7nv5mv57tvxrd35byo3kwxk43lwgzgezu36pf5hirv3br2aq24xq",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "succeeded",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "stop": {
+        "audit_receipt_id": "sha256:bfd49af13051c94fd890b32a46bdbea15fa0136fe6ee7205bad947524811bae7",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkhaTM8T3AMW2e6cQymKcmWZNBPcVg3JQwPgkye99aPtKP",
+        "contract_version": 1,
+        "data": {
+          "health_window_ms": 500,
+          "new_process_identity": null,
+          "old_tree_fenced": true,
+          "receipt_id": "sha256:587ddf1cc7184f9c0ffbc5d950d2ebf2b54cda99e52355d1e0e71e10de3d09d5",
+          "transition_artifact_sha256": "sha256:145dcbd66c5a4d8567476938176aa65973cc2bf803e1406fd9c03746c69e6196",
+          "transition_id": "sha256:c1c16877d21828f08b2263cdb9ce22dc219389cde3a3884d2fc0f1dab76ebc2f"
+        },
+        "effects": [
+          {
+            "applied": true,
+            "authority": "mutation",
+            "content_id": "baguqeeraruvpzymhdykeq7hkon3j4zqnoxzuajqu6aoxo53yciha26aljsua",
+            "contract_version": 1,
+            "effect_id": "stop:isolated-process-tree",
+            "kind": "lifecycle_transition",
+            "paths": [
+              "lifecycle-transitions.jsonl",
+              "run"
+            ],
+            "receipt_id": "sha256:bfd49af13051c94fd890b32a46bdbea15fa0136fe6ee7205bad947524811bae7",
+            "resource": "baguqeerauhg25w4tt7ak5skjzefccotd6xpvqb4av3zmccm57mvyswoewarq",
+            "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+          }
+        ],
+        "error": null,
+        "idempotency_key": "admitted-77aad067f0b149c4b8adcac2bf8b1cd4:stop:1",
+        "objective_id": "sha256:bf5820f33550dfa25bd978e7c53e088feffe2a7944387d4d020d3955da288b7a",
+        "operation": "stop",
+        "policy_id": "sha256:bf5820f33550dfa25bd978e7c53e088feffe2a7944387d4d020d3955da288b7a",
+        "preview": null,
+        "repository_id": "baguqeerauhg25w4tt7ak5skjzefccotd6xpvqb4av3zmccm57mvyswoewarq",
+        "request_id": "baguqeeraolbeskauyxfi7mdmgysrekb4wir4hle7mwdermchu6hyzpz2uo2q",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "succeeded",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "task": {
+        "revision": 4,
+        "status": "completed"
+      }
+    },
+    {
+      "bootstrap_errors": [],
+      "diagnostic_sitecustomize": false,
+      "doctor_stages": {
+        "impact": {
+          "mutation_admissible": true,
+          "reason_codes": [
+            "candidate_delta_rebuilt",
+            "complete_closure",
+            "current_cids"
+          ],
+          "receipt_id": "baguqeerafv6ghm5k3nuyf6dbic2ahkh6frvkhhpn5p4di2k3lz7z4x75nnbq",
+          "status": "executed"
+        },
+        "plan_compilation": {
+          "disposition": "admitted",
+          "reason_codes": [
+            "atomic_scc_plan",
+            "mutation_admissible",
+            "no_model_invariant",
+            "plan_admitted",
+            "single_file_atomic_group",
+            "whole_file_preimage_binding"
+          ],
+          "receipt_id": "baguqeeraakc25nzdrhqnq6fxnqnvxoftiqtrsyf25i4pfei7x266vc4ev56a",
+          "status": "executed"
+        },
+        "proof": {
+          "disposition": "verified",
+          "mutation_capable": true,
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeerakkcino22g6vziehjuk6cjsziiykzt6ustkvuvwbop7wo45nw2omq",
+          "scope": "Pair-name substitution preserves the argument value; independent AST and signature replay binds the exact Python edit. No whole-program correctness theorem.",
+          "status": "executed"
+        },
+        "synthesis_preview": {
+          "disposition": "supported",
+          "reason_codes": [
+            "proof_admitted_render_supported"
+          ],
+          "receipt_id": "baguqeerajluvbivhgy55cvccf6hokafkvoyjceg376pvrwxladf255ifrxxq",
+          "status": "executed"
+        },
+        "tactician": {
+          "disposition": "planned",
+          "reason_codes": [
+            "ok"
+          ],
+          "receipt_id": "baguqeerax7hoptvf73vcy5lajm6c46ji2vysaikvvsy4ig3pq3lemnuikgxq",
+          "status": "executed"
+        }
+      },
+      "error": null,
+      "final_public_check_exit_code": 0,
+      "initial_public_check_exit_code": 1,
+      "label": "native-doctor-03",
+      "provider_calls": 0,
+      "qualified": true,
+      "remaining_processes": 0,
+      "seconds": 18.387434389209375,
+      "start": {
+        "audit_receipt_id": "sha256:6e058c8f538658b29158de3eacc70cb976df310e509058fd282cb2d4a70d1693",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkvRCoreNtU3SQSodfNsBW6PwqEmnHQCK4T4YBm6NP9jsJ",
+        "contract_version": 1,
+        "data": {
+          "health_window_ms": 500,
+          "new_process_identity": {
+            "argv": [
+              "/home/barberb/.local/bin/python",
+              "-P",
+              "-m",
+              "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+              "--todo-path",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/intent.duckdb",
+              "--state-dir",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/launch/state/run",
+              "--state-prefix",
+              "admitted",
+              "--task-prefix",
+              "##",
+              "--task-source-kind",
+              "duckdb",
+              "--authority-mode",
+              "quack",
+              "--quack-endpoint",
+              "quack:127.0.0.1:37159",
+              "--endpoint-secret-handle",
+              "handle:quack-token:[REDACTED]",
+              "--state-store-id",
+              "native-quack-qualification-v1",
+              "--state-store-generation",
+              "1",
+              "--state-schema-revision",
+              "5",
+              "--state-owner-bootstrap-fd",
+              "12",
+              "--state-owner-client-id",
+              "database-implementation-daemon:admitted-3fec245571e14974a3a28d1af469d77e",
+              "--check-interval",
+              "0.25",
+              "--daemon-interval",
+              "0.25",
+              "--max-restarts",
+              "1",
+              "--max-task-attempts",
+              "1",
+              "--strict-task-sharding",
+              "--no-worktree-reconciliation",
+              "--no-retry-budget-guardrail",
+              "--no-dependency-guardrail",
+              "--no-reconciliation-guardrail",
+              "--no-objective-task-janitor",
+              "--no-objective-goal-refinement",
+              "--no-objective-goal-completion-reconcile",
+              "--no-objective-goal-migration",
+              "--no-objective-ast-dataset",
+              "--no-objective-todo-vector-index",
+              "--merge-target-branch",
+              "master",
+              "--merge-queue-dir",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/launch/state/merge_queue",
+              "--worktree-root",
+              "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/allocated-worktrees",
+              "--execution-slice-task-cid",
+              "baguqeeraujzbbmahbkgclxw2dre34pjawtvip5geqooi2zsxfha3ra6lndmq",
+              "--execution-slice-task-id",
+              "LOCAL-TASK",
+              "--task-context-bundle-artifact",
+              ".runtime/context-bundle.json",
+              "--task-context-bundle-sha256",
+              "4fdb4211ece4cb631c0fd5ec6a1df4ba1bb03b4e5b86231d05ebfb4df83f5d04",
+              "--implement",
+              "--implementation-command",
+              "/home/barberb/.local/bin/python -B -P -m ipfs_accelerate_py.agent_supervisor.runtime.doctor_candidate_runner --artifact /home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/doctor/candidate-handoff.json --sha256 e8416c779de7d4b62d17ecbf3a03785990ef3871e0b09dc98f0fa4191c08e093 --task-cid baguqeeraujzbbmahbkgclxw2dre34pjawtvip5geqooi2zsxfha3ra6lndmq"
+            ],
+            "boot_id": "f4a3b80a-e3df-4702-8d03-86c19f69b2a9",
+            "configuration_root": "sha256:d2e75214d72e7f5635c66c1b68659ac2d375cfbc77850600bd1ee1f3e078bccb",
+            "cwd": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/repository",
+            "executable": "/usr/bin/python3.12",
+            "fencing_epoch": 1,
+            "identity_id": "sha256:0412078e21dd09367c77df6bc89e717e9248a599bb929436810dd5bf3fe70981",
+            "parent_pid": 1941903,
+            "pid": 1944673,
+            "process_group_id": 1944673,
+            "profile_id": "sha256:ffd5722349e62bd9e5a4fcdecfbdc14be15318c9295e52fa16eaf27db8e70594",
+            "repository_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/repository",
+            "run_id": "admitted-3fec245571e14974a3a28d1af469d77e",
+            "run_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/launch/state/run",
+            "schema": "ipfs_accelerate_py/agent-supervisor/process-identity@1",
+            "session_id": 1944673,
+            "start_time_ticks": 147894708,
+            "state_root": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/native-doctor-03/launch/state",
+            "target_id": "baguqeera4xexwgp2hyy5bradt6u247ctijwpeloalwogjxobprqlt6hjsq7q"
+          },
+          "old_tree_fenced": false,
+          "receipt_id": "sha256:ee46868a2d5d2473a201161ef47d81dda961d4b244d68d55439ddc98ebd96b8c",
+          "transition_artifact_sha256": "sha256:1b68348c26b9174461f9fa81e46b4da8bca39f82ce636db696ee8d2042c20185",
+          "transition_id": "sha256:dce2e5acf9be77252e28fa755810df462568de4cf8b94768448d12d55f5ea078"
+        },
+        "effects": [
+          {
+            "applied": true,
+            "authority": "mutation",
+            "content_id": "baguqeerayoo5z725pr4sky7dwojjt5mqa5nxbnijrqybijbkyxqg7it7je7a",
+            "contract_version": 1,
+            "effect_id": "start:isolated-process-tree",
+            "kind": "lifecycle_transition",
+            "paths": [
+              "lifecycle-transitions.jsonl",
+              "run"
+            ],
+            "receipt_id": "sha256:6e058c8f538658b29158de3eacc70cb976df310e509058fd282cb2d4a70d1693",
+            "resource": "baguqeera4xexwgp2hyy5bradt6u247ctijwpeloalwogjxobprqlt6hjsq7q",
+            "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+          }
+        ],
+        "error": null,
+        "idempotency_key": "admitted-3fec245571e14974a3a28d1af469d77e:start:0",
+        "objective_id": "sha256:d2e75214d72e7f5635c66c1b68659ac2d375cfbc77850600bd1ee1f3e078bccb",
+        "operation": "start",
+        "policy_id": "sha256:d2e75214d72e7f5635c66c1b68659ac2d375cfbc77850600bd1ee1f3e078bccb",
+        "preview": null,
+        "repository_id": "baguqeera4xexwgp2hyy5bradt6u247ctijwpeloalwogjxobprqlt6hjsq7q",
+        "request_id": "baguqeeramhy7kpnbr67fivtqgnahlpdqqoitsjnd7rzvwhdvdw6s4lp3gj4q",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "succeeded",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "stop": {
+        "audit_receipt_id": "sha256:32e9ea1b5f184bd6d2ff7b3253779d42283878541afc9000a1d7df40d737f682",
+        "authority": "mutation",
+        "bounds": {
+          "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+          "contract_version": 1,
+          "max_depth": 8,
+          "max_effects": 64,
+          "max_items": 256,
+          "max_paths": 128,
+          "max_serialized_bytes": 262144,
+          "max_text_bytes": 8192,
+          "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+          "timeout_ms": 30000
+        },
+        "caller": "did:key:z6MkvRCoreNtU3SQSodfNsBW6PwqEmnHQCK4T4YBm6NP9jsJ",
+        "contract_version": 1,
+        "data": {
+          "health_window_ms": 500,
+          "new_process_identity": null,
+          "old_tree_fenced": true,
+          "receipt_id": "sha256:f65b107ddc22226e0a80c6f951a6ca99341757c46fdd5182971a671526305705",
+          "transition_artifact_sha256": "sha256:4dc3aa3b9683e0d2720ac658dea673bbe8120e294249a8a23f8eeb0a291ed7ed",
+          "transition_id": "sha256:4eba7f2bb2ce5f40b2690bb12df12d8122d6e2f2a8121c64104b073927da203e"
+        },
+        "effects": [
+          {
+            "applied": true,
+            "authority": "mutation",
+            "content_id": "baguqeeraiji7ltcgocfdqxu5fsyplpvyabtzsoaajav6ble7m333oaxoqanq",
+            "contract_version": 1,
+            "effect_id": "stop:isolated-process-tree",
+            "kind": "lifecycle_transition",
+            "paths": [
+              "lifecycle-transitions.jsonl",
+              "run"
+            ],
+            "receipt_id": "sha256:32e9ea1b5f184bd6d2ff7b3253779d42283878541afc9000a1d7df40d737f682",
+            "resource": "baguqeera4xexwgp2hyy5bradt6u247ctijwpeloalwogjxobprqlt6hjsq7q",
+            "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+          }
+        ],
+        "error": null,
+        "idempotency_key": "admitted-3fec245571e14974a3a28d1af469d77e:stop:1",
+        "objective_id": "sha256:d2e75214d72e7f5635c66c1b68659ac2d375cfbc77850600bd1ee1f3e078bccb",
+        "operation": "stop",
+        "policy_id": "sha256:d2e75214d72e7f5635c66c1b68659ac2d375cfbc77850600bd1ee1f3e078bccb",
+        "preview": null,
+        "repository_id": "baguqeera4xexwgp2hyy5bradt6u247ctijwpeloalwogjxobprqlt6hjsq7q",
+        "request_id": "baguqeeravp5z2x7crrh3pg6gk66wlqitaf4qmapcw3pcjy5e2kbcrcxnysfa",
+        "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+        "status": "succeeded",
+        "tree_id": "788778ef0fea2c10c8073397dccdbc271769fa03"
+      },
+      "task": {
+        "revision": 4,
+        "status": "completed"
+      }
+    }
+  ],
+  "scope": "Separate provider-free native Doctor keyword-repair lifecycle regression",
+  "source_code_changed": false
+}

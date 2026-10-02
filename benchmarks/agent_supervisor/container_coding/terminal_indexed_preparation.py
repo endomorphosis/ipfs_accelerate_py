@@ -152,6 +152,7 @@ def _load_intent_requirement_contract(path: Path | None, text: str) -> dict | No
 
 def prepare(*, repository: Path, instruction: Path, state: Path,
             intent_checkpoint_descriptor: Path | None = None,
+            intent_action_384_config: Path | None = None,
             intent_projection_request: Path | None = None,
             intent_projection_request_sha256: str | None = None,
             disable_intent_autoencoder: bool = False,
@@ -171,6 +172,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     if (type(disable_intent_autoencoder) is not bool or type(enable_source_unit_autoencoder) is not bool
             or type(source_unit_project_logic_families) is not bool):
         raise ValueError("Intent preprocessing ablation requires a boolean")
+    if intent_action_384_config is not None and (enable_source_unit_autoencoder or any(value is not None for value in (
+            intent_checkpoint_descriptor, intent_projection_request, intent_projection_request_sha256))):
+        raise ValueError("select one explicit Intent preprocessing route")
     repository = Path(repository).resolve(strict=True)
     instruction = Path(instruction).resolve(strict=True)
     state = Path(state).absolute()
@@ -185,12 +189,19 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     strategy = _planning_strategy(requirements)
     # This optional datasets-owned stage precedes any goal/task declarations.
     # Its output never replaces the raw instruction or independent domain roots.
-    from ipfs_accelerate_py.agent_supervisor.runtime.intent_autoencoder_advisor import prepare_intent_advice
-    intent_advice = prepare_intent_advice(instruction=text,
-        checkpoint_descriptor_path=intent_checkpoint_descriptor,
-        projection_request_path=intent_projection_request,
-        projection_request_sha256=intent_projection_request_sha256,
-        enabled=not disable_intent_autoencoder and not enable_source_unit_autoencoder)
+    intent_action_selection = None
+    if intent_action_384_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import prepare_intent_384_selection
+        intent_advice, intent_action_selection, intent_elapsed_ns = prepare_intent_384_selection(
+            instruction=text, config_path=intent_action_384_config, enabled=not disable_intent_autoencoder)
+    else:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_autoencoder_advisor import prepare_intent_advice
+        intent_advice = prepare_intent_advice(instruction=text,
+            checkpoint_descriptor_path=intent_checkpoint_descriptor,
+            projection_request_path=intent_projection_request,
+            projection_request_sha256=intent_projection_request_sha256,
+            enabled=not disable_intent_autoencoder and not enable_source_unit_autoencoder)
+        intent_elapsed_ns = intent_advice["elapsed_ns"]
     from .terminal_source_unit_advice import prepare_source_unit_advice, _wire as source_unit_wire
     source_unit_advice = prepare_source_unit_advice(instruction=text,
         enabled=enable_source_unit_autoencoder,
@@ -217,9 +228,11 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     intent_preplanning = {"artifact": "intent-advice.json", "artifact_sha256": None,
         "advice_sha256": intent_advice["advice_sha256"], "status": intent_advice["status"],
         "instruction_sha256": intent_advice["instruction_sha256"],
-        "seconds": intent_advice["elapsed_ns"] / 1_000_000_000,
+        "seconds": intent_elapsed_ns / 1_000_000_000,
         "before_goal_decomposition": True, "execution_authority": False,
         "completion_authority": False}
+    if intent_action_selection is not None:
+        intent_preplanning["intent_action_384_selection"] = intent_action_selection
     try:
         _write(state / "intent-advice.json", intent_advice)
         intent_preplanning["artifact_sha256"] = hashlib.sha256((state / "intent-advice.json").read_bytes()).hexdigest()
@@ -473,10 +486,20 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90) -> d
     selected_source_unit = prepared.get("source_unit_preplanning")
     if type(selected_source_unit) is not dict:
         selected_source_unit = {}
-    intent_advice = load_intent_advice(path=state / "intent-advice.json",
-        expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
-    intent_summary, intent_advice = intent_planner_summary(intent_advice,
-        instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+    if "intent_action_384_selection" in selected_intent:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import (
+            load_intent_384_selection, intent_384_planner_summary,
+        )
+        intent_advice = load_intent_384_selection(path=state / "intent-advice.json",
+            expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"],
+            selection=selected_intent["intent_action_384_selection"])
+        intent_summary, intent_advice = intent_384_planner_summary(intent_advice,
+            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+    else:
+        intent_advice = load_intent_advice(path=state / "intent-advice.json",
+            expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
+        intent_summary, intent_advice = intent_planner_summary(intent_advice,
+            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
     intent_delivery = {"status": intent_advice["status"],
         "instruction_sha256": intent_advice["instruction_sha256"],
         "advice_sha256": intent_advice["advice_sha256"],
@@ -770,6 +793,7 @@ def main():
     prep.add_argument("--instruction", type=Path, required=True)
     prep.add_argument("--state", type=Path, required=True)
     prep.add_argument("--intent-checkpoint-descriptor", type=Path)
+    prep.add_argument("--intent-action-384-config", type=Path)
     prep.add_argument("--intent-projection-request", type=Path)
     prep.add_argument("--intent-projection-request-sha256")
     prep.add_argument("--disable-intent-autoencoder", action="store_true")

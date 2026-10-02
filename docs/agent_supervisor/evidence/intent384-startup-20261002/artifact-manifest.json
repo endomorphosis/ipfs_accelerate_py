@@ -1,0 +1,95 @@
+{
+  "schema": "intent384-startup-evidence-files/v1",
+  "files": [
+    {
+      "path": "Dockerfile",
+      "bytes": 184,
+      "sha256": "b82eb1f1cd461905168fec9d3e69d614b9513691cae5190b6e7f68251a804456"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5981,
+      "sha256": "de98bc8d14f8e4bda4ea054821c8effe2a3eadf734d9a7de157eb9be343967a6"
+    },
+    {
+      "path": "context-inputs.json",
+      "bytes": 2199,
+      "sha256": "4e23db3c6ad166ab7affaa1e677d29807aa314b2ed525666a277689f972ef7f8"
+    },
+    {
+      "path": "context-result.json",
+      "bytes": 4259,
+      "sha256": "67378a68adcd38c2fa94b6036cae95fefe573cba34ebd11a7173c6092a82e768"
+    },
+    {
+      "path": "context.log",
+      "bytes": 37901,
+      "sha256": "df1b7cd95203de514b6a0fcf3ad94dc1a91924c092489d70664ee10063b3980d"
+    },
+    {
+      "path": "datasets-tests.log",
+      "bytes": 1163,
+      "sha256": "57d634cee1f8d78b509d93ab02befb0bdbfe627a59152ecedba8698dd33cb427"
+    },
+    {
+      "path": "deployment-identity.json",
+      "bytes": 6091,
+      "sha256": "b61d4fb3f12c8847bd68d9664338c1c987cb37d1630bf5e069cc97254ee89c41"
+    },
+    {
+      "path": "docker-result.json",
+      "bytes": 1241,
+      "sha256": "10a5caf56086da3d7617cfd9c9429d4c1e799b96c691bfa820faefc5766d810d"
+    },
+    {
+      "path": "docker-supported-advice.json",
+      "bytes": 55407,
+      "sha256": "b0a657391abeae454f9232f5e88b5e5bb57ce9f521437d8a0e64f49a19f7a8ee"
+    },
+    {
+      "path": "docker-unsupported-advice.json",
+      "bytes": 7261,
+      "sha256": "1b8b9d64707290a2705ea6fa04753bd600a22e0eba9f70d76b8655e6411ad2ae"
+    },
+    {
+      "path": "docker.log",
+      "bytes": 3305,
+      "sha256": "989c56a421aea87480d7eb786945a58543c5a3f0915b96950cce23d5d47f4fae"
+    },
+    {
+      "path": "docs-links.log",
+      "bytes": 88,
+      "sha256": "3813659ed5f44a1eb37d0667dfac72ae79955e80939583586d37f18f2dfb8b7a"
+    },
+    {
+      "path": "docs-vocabulary.log",
+      "bytes": 70,
+      "sha256": "8be454e062447d45dad3557d627eb43375fc1e49d4177aa71cb29bb0402e6555"
+    },
+    {
+      "path": "native-doctor-runs.json",
+      "bytes": 33611,
+      "sha256": "54f009d06827ea4aa795610294800c3a2e9866a847b36eb022a42785d0ffc936"
+    },
+    {
+      "path": "qualify_container.py",
+      "bytes": 3162,
+      "sha256": "b8f452e642cd5ce5603a938670412a438ad94445ce0bbe5897e0dab173a75b78"
+    },
+    {
+      "path": "qualify_context.py",
+      "bytes": 8027,
+      "sha256": "6c527c5c8a1c1c1548431b9695fb2507f40ab141759a36c6ec72f7a974329307"
+    },
+    {
+      "path": "supervisor-tests.log",
+      "bytes": 96242,
+      "sha256": "e248070e43bdee39d01401d9ebf0ed3e53a6b82699cfd652622005a91585b627"
+    },
+    {
+      "path": "test-summary.json",
+      "bytes": 52466,
+      "sha256": "764b3c2b9fd3e5feca01d85dbb86e7f711a8b5ebb50c0b03fa2f31aed8f2ba49"
+    }
+  ]
+}

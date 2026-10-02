@@ -50,6 +50,9 @@ INTENT_CHECKPOINT_PATH = "models/intent-autoencoder/candidate.json"
 INTENT_ROUNDTRIP_PATH = "models/intent-autoencoder/manifest.json"
 INTENT_CHECKPOINT_DESCRIPTOR = "models/intent-autoencoder.descriptor.json"
 INTENT_PROJECTION_REQUEST_PATH = "models/intent-projection-request.json"
+INTENT_ACTION_384_PATH = "models/intent-action-384/checkpoint.json"
+INTENT_ACTION_384_CONFIG = "models/intent-action-384/config.json"
+INTENT_ACTION_384_EMBEDDING = "models/intent-action-384/models--thenlper--gte-small/snapshots/"
 CANONICAL_CVE_PATH = "training/canonical-cve"
 
 INPUT_SNAPSHOT = r"""
@@ -227,6 +230,141 @@ def _intent_checkpoint_assets(descriptor):
         "runtime_download_calls": 0, "source_training_data_included": False}
 
 
+
+def load_intent_action_384_config(path: Path) -> dict:
+    """Read an explicitly selected bounded JSON file with no duplicate keys."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
+    path = Path(path).absolute()
+    if path.resolve(strict=True) != path or not path.is_file() or path.stat().st_size > 32768:
+        raise ValueError("bounded canonical local Intent384 config required")
+    raw = _portable_asset_bytes(path, expected_sha256=_sha(path), maximum=32768)
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate Intent384 config field")
+            value[key] = item
+        return value
+    def nonfinite(value):
+        raise ValueError("nonfinite Intent384 config value")
+    return _config(json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite))
+
+
+def _intent_action_384_assets(config):
+    """Capture shared Intent weights and the exact offline GTE inference assets."""
+    if config is None:
+        return [], None
+    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
+    from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
+    config = _config(config)
+    if config["embedding_snapshot_path"] is None:
+        raise ValueError("Intent384 packaging requires an explicit local embedding snapshot")
+    checkpoint = Path(config["checkpoint_path"])
+    payload = _portable_asset_bytes(checkpoint, expected_sha256=config["checkpoint_sha256"],
+        maximum=structured.MAX_BYTES)
+    structured.load_checkpoint(checkpoint, expected_sha256=config["checkpoint_sha256"], expected_domain="intent_ir")
+    snapshot, manifest = embedding._snapshot_assets(config["embedding_snapshot_path"])
+    embedding_path = INTENT_ACTION_384_EMBEDDING + embedding.PINNED_REVISION
+    assets = [(INTENT_ACTION_384_PATH, payload)]
+    for item in manifest:
+        # Native validation permits only the exact cached model/blob targets.
+        # Capture resolved regular bytes; the container needs no host symlinks.
+        assets.append((embedding_path + "/" + item["name"],
+            _portable_asset_bytes((snapshot / item["name"]).resolve(strict=True),
+                expected_sha256=item["sha256"], maximum=item["bytes"])))
+    if embedding._snapshot_assets(snapshot)[1] != manifest or _sha(checkpoint) != config["checkpoint_sha256"]:
+        raise ValueError("Intent384 assets changed during packaging")
+    relocated = {**config, "checkpoint_path": ROOT + "/" + INTENT_ACTION_384_PATH,
+        "embedding_snapshot_path": ROOT + "/" + embedding_path}
+    raw = json.dumps(relocated, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    assets.append((INTENT_ACTION_384_CONFIG, raw))
+    binding = {"schema": "terminal-intent-action-384-assets@1", "path": INTENT_ACTION_384_PATH,
+        "config_path": INTENT_ACTION_384_CONFIG, "config": relocated,
+        "config_sha256": hashlib.sha256(raw).hexdigest(), "checkpoint_sha256": config["checkpoint_sha256"],
+        "embedding_path": embedding_path, "embedding_revision": embedding.PINNED_REVISION,
+        "embedding_assets": manifest, "mode": "frozen_source_audited_action_384_inference",
+        "runtime_training_steps": 0, "runtime_download_calls": 0, "source_training_data_included": False}
+    return assets, binding
+
+
+def validate_intent_action_384_binding(manifest):
+    """Check fixed relocated paths and every model member against native pins."""
+    binding = manifest.get("intent_action_384")
+    if binding is None:
+        return None
+    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
+    fields = {"schema", "path", "config_path", "config", "config_sha256", "checkpoint_sha256",
+        "embedding_path", "embedding_revision", "embedding_assets", "mode", "runtime_training_steps",
+        "runtime_download_calls", "source_training_data_included"}
+    if type(binding) is not dict or set(binding) != fields:
+        raise ValueError("closed Intent384 deployment binding required")
+    config = _config(binding["config"])
+    embedding_path = INTENT_ACTION_384_EMBEDDING + embedding.PINNED_REVISION
+    expected = [{"name": name, "sha256": sha, "bytes": size}
+        for name, (size, sha) in sorted(embedding._PINNED_ASSETS.items())]
+    raw = json.dumps(config, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    if (binding["schema"] != "terminal-intent-action-384-assets@1"
+            or binding["path"] != INTENT_ACTION_384_PATH or binding["config_path"] != INTENT_ACTION_384_CONFIG
+            or config["checkpoint_path"] != ROOT + "/" + INTENT_ACTION_384_PATH
+            or binding["checkpoint_sha256"] != config["checkpoint_sha256"]
+            or config["embedding_snapshot_path"] != ROOT + "/" + embedding_path
+            or binding["embedding_path"] != embedding_path or binding["embedding_revision"] != embedding.PINNED_REVISION
+            or binding["embedding_assets"] != expected
+            or binding["config_sha256"] != hashlib.sha256(raw).hexdigest()
+            or binding["mode"] != "frozen_source_audited_action_384_inference"
+            or type(binding["runtime_training_steps"]) is not int or binding["runtime_training_steps"] != 0
+            or type(binding["runtime_download_calls"]) is not int or binding["runtime_download_calls"] != 0
+            or binding["source_training_data_included"] is not False):
+        raise ValueError("Intent384 deployment identity or asset pins differ")
+    files = manifest.get("files")
+    if type(files) is not list or any(type(row) is not dict or type(row.get("path")) is not str for row in files):
+        raise ValueError("Intent384 archive inventory required")
+    by_path = {row["path"]: row for row in files}
+    if len(by_path) != len(files):
+        raise ValueError("duplicate runtime archive member")
+    wanted = [(INTENT_ACTION_384_PATH, config["checkpoint_sha256"], None),
+        (INTENT_ACTION_384_CONFIG, binding["config_sha256"], len(raw))]
+    wanted += [(embedding_path + "/" + row["name"], row["sha256"], row["bytes"]) for row in expected]
+    if {name for name in by_path if name.startswith("models/intent-action-384/")} != {row[0] for row in wanted}:
+        raise ValueError("unexpected Intent384 archive member")
+    for name, digest, size in wanted:
+        row = by_path.get(name, {})
+        if (row.get("sha256") != digest or type(row.get("bytes")) is not int
+                or row["bytes"] <= 0 or (size is not None and row["bytes"] != size)):
+            raise ValueError("Intent384 archive member missing or changed")
+    return binding
+
+
+def verify_intent_action_384_archive(archive: Path, manifest: dict):
+    """Check selected inert model bytes before uploading the runtime archive."""
+    binding = validate_intent_action_384_binding(manifest)
+    if binding is None:
+        return
+    wanted = {row["path"]: row for row in manifest["files"]
+              if row["path"].startswith("models/intent-action-384/")}
+    observed = set()
+    with tarfile.open(archive, "r:gz") as bundle:
+        for member in bundle:
+            if not member.name.startswith("models/intent-action-384/"):
+                continue
+            row = wanted.get(member.name)
+            if (row is None or member.name in observed or not member.isfile()
+                    or member.size != row["bytes"]):
+                raise ValueError("unexpected or changed Intent384 archive member")
+            observed.add(member.name)
+            digest = hashlib.sha256()
+            count = 0
+            with bundle.extractfile(member) as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    count += len(block)
+                    digest.update(block)
+            if count != row["bytes"] or digest.hexdigest() != row["sha256"]:
+                raise ValueError("Intent384 archive member digest differs")
+    if observed != set(wanted):
+        raise ValueError("Intent384 archive member missing")
+
 def _intent_projection_request_assets(request, checkpoint):
     """Transport one inert, task-bound request; runtime verifies its candidate."""
     if request is None:
@@ -382,6 +520,7 @@ def build_runtime_archive(
     header_protocol: dict | None = None,
     intent_checkpoint: dict | None = None,
     intent_projection_request: dict | None = None,
+    intent_action_384_config: dict | None = None,
 ) -> dict:
     """Package only source/code assets and explicitly selected native runtimes."""
     output = Path(output).absolute()
@@ -403,6 +542,9 @@ def build_runtime_archive(
         security_initializer=security_initializer, canonical_cve_export=canonical_cve_export,
         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)
     security_training_selected = bool(portable_assets)
+    if intent_action_384_config is not None and any(value is not None for value in (intent_checkpoint, intent_projection_request)):
+        raise ValueError("Intent384 and legacy Intent model selections are mutually exclusive")
+    intent_action_assets, intent_action_binding = _intent_action_384_assets(intent_action_384_config)
     intent_assets, intent_binding = _intent_checkpoint_assets(intent_checkpoint)
     intent_request_assets, intent_request_binding = _intent_projection_request_assets(
         intent_projection_request, intent_checkpoint)
@@ -410,6 +552,7 @@ def build_runtime_archive(
     portable_assets.extend(formula_assets)
     portable_assets.extend(intent_assets)
     portable_assets.extend(intent_request_assets)
+    portable_assets.extend(intent_action_assets)
     security_bindings["security_checkpoint"] = checkpoint_binding
     if formula_binding is not None:
         security_bindings["formula_decoder"] = formula_binding
@@ -419,6 +562,8 @@ def build_runtime_archive(
         security_bindings["intent_checkpoint"] = intent_binding
     if intent_request_binding is not None:
         security_bindings["intent_projection_request"] = intent_request_binding
+    if intent_action_binding is not None:
+        security_bindings["intent_action_384"] = intent_action_binding
     output.mkdir(parents=True)
     files = []
 
@@ -519,6 +664,7 @@ def build_runtime_archive(
         "base_requirements": list(BASE_REQUIREMENTS),
         "learned_requirements": list(LEARNED_REQUIREMENTS) if model_snapshot else [],
         "torch_cpu_requirement": "torch==2.13.0+cpu" if model_snapshot or portable_assets else "",
+        "intent_action_384_requirements": list(LEARNED_REQUIREMENTS) if intent_action_binding is not None else [],
         "security_training_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if security_training_selected else [],
         "security_inference_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if checkpoint_binding is not None else [],
         **security_bindings,
@@ -529,6 +675,7 @@ def build_runtime_archive(
         "task_inputs_in_archive": intent_request_binding is not None,
         **({"task_modeling_premises_included": True} if intent_request_binding is not None else {}),
     }
+    validate_intent_action_384_binding(manifest)
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
 
@@ -548,6 +695,7 @@ async def deploy_supervisor(
     archive = Path(archive_dir) / "runtime.tar.gz"
     if _sha(archive) != manifest["archive_sha256"]:
         raise ValueError("runtime archive changed")
+    verify_intent_action_384_archive(archive, manifest)
     started = time.monotonic()
     steps = []
 
@@ -619,6 +767,7 @@ async def deploy_supervisor(
     requirements = manifest["base_requirements"] + [
         item for item in manifest["learned_requirements"] if not item.startswith("torch==")
     ] + manifest.get("security_training_requirements", []) + manifest.get("security_inference_requirements", [])
+    requirements += manifest.get("intent_action_384_requirements", [])
     requirements = list(dict.fromkeys(requirements))
     await execute(
         "python-install",
@@ -811,6 +960,8 @@ def main():
         help="pinned four-file frozen formula package descriptor; requires frozen security checkpoint")
     build.add_argument("--header-protocol-descriptor", type=Path,
         help="explicit reviewed header protocol; requires formula decoder")
+    build.add_argument("--intent-action-384-config", type=Path,
+        help="Explicit local shared Intent384 checkpoint and pinned GTE snapshot config")
     build.add_argument("--intent-checkpoint-descriptor", type=Path,
         help="pinned shared Intent structural or semantic roundtrip checkpoint descriptor")
     build.add_argument("--intent-projection-request", type=Path,
@@ -844,6 +995,8 @@ def main():
                              if args.formula_decoder_descriptor else None),
             header_protocol=(_load_initializer_descriptor(args.header_protocol_descriptor)
                              if args.header_protocol_descriptor else None),
+            intent_action_384_config=(load_intent_action_384_config(args.intent_action_384_config)
+                                     if args.intent_action_384_config else None),
             intent_checkpoint=(_load_initializer_descriptor(args.intent_checkpoint_descriptor)
                                if args.intent_checkpoint_descriptor else None),
             intent_projection_request=(_load_initializer_descriptor(args.intent_projection_request)

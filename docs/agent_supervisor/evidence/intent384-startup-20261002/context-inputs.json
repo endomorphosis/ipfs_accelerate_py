@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "expected_effect_status": "satisfied",
+      "id": "action-contract:test:0",
+      "instruction": "the calculator must compute result; requires left > 0; ensures result = old(right) + old(left) and returned.",
+      "source_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+      "split": "test"
+    },
+    {
+      "expected_effect_status": "refuted",
+      "id": "action-contract:test:5",
+      "instruction": "the runner must compute result; requires left > 0; ensures result = old(right) * old(left) and returned.",
+      "source_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+      "split": "test"
+    },
+    {
+      "expected_effect_status": "no_enabled_cases",
+      "id": "action-contract:test:1",
+      "instruction": "the service must compute result; requires left > 1; ensures result = old(right) - old(left) and returned.",
+      "source_sha256": "cf737a8b8bc09eba640e253e19cb99f06b24a97d09ea38b82c19f701df6174ea",
+      "split": "test"
+    }
+  ],
+  "intent_config": {
+    "checkpoint_path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "embedding_snapshot_path": null,
+    "schema": "supervisor-intent-action-384-config/v1"
+  },
+  "security_config": {
+    "checkpoint_path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "decoder": "structured",
+    "embedding_snapshot_path": null,
+    "finite_state_domains": {
+      "source.py": {
+        "capacity": {
+          "lower": -1,
+          "upper": 1
+        },
+        "threshold": {
+          "lower": -1,
+          "upper": 1
+        }
+      }
+    },
+    "lake": null,
+    "schema": "supervisor-security-source-program-384-config/v2"
+  },
+  "source_text": "def derive(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n"
+}
