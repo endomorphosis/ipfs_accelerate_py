@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T09:57:09.258416+00:00",
+  "updated_at_utc": "2026-10-02T10:09:46.772724+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -11,9 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 17,
-    "production_open": 15,
-    "criteria_qualified_for_declared_profile": 20
+    "production_closed": 18,
+    "production_open": 14,
+    "criteria_qualified_for_declared_profile": 21
   },
   "evidence": {
     "foundation-tests-log": {
@@ -304,6 +304,11 @@
       "repository": "ipfs_datasets_py",
       "path": "docs/software_contracts/evidence/codebase-repository-shards-20261002/qualification.json",
       "sha256": "12502d36e10433ef871a72634a0f477cbb66676c1f8b153c9d36b7dc014883e7",
+      "retention": "repository_evidence"
+    },
+    "independent-successor-context": {
+      "path": "docs/agent_supervisor/evidence/repository-successor-context-20261002/manifest.json",
+      "sha256": "c27ee5a228063327c63197ee8adbea920dc63786abc081299857121aabadc04c",
       "retention": "repository_evidence"
     }
   },
@@ -698,23 +703,25 @@
       "dependencies": "RPI-007, RPI-015",
       "criterion": "Capture successor source generations, compute conservative dependency invalidation, reprove affected obligations and rebuild matches/materials. Require active eligible evidence and residuals to agree with a cold rebuild. Retain original semantic intent lineage and historical receipts/models while allowing a new runtime admission revision. Add a successor-context API with newly signed baseline and independent admission; old context may replay historically but cannot dispatch after publication.",
       "source_line": 290,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "After actual publication, native context/world capsules refresh and a reopened durable source index captures generation 2. Fresh Python/Lean finite observations satisfy both original clauses with no residual; independent cold rebuild agrees on exact source snapshot, complete query, domain, outcomes, tool policy and bounded scope. Original evidence-index access and old candidate dispatch are rejected after publication; historical receipts remain distinct.",
-        "Combined opt-in semantic-manifest/public-context/checked-cache supervisor qualified in69.234s with zero model calls. Captured successor and independent cold reconstruction agree on all semantic unit rows, artifact references, declarations, coverage and finite behavior. Exact old source/cache dispatch refuses and owned processes/leases are zero. This does not supply generic dependency invalidation or independent successor admission."
+        "Combined opt-in semantic-manifest/public-context/checked-cache supervisor qualified in69.234s with zero model calls. Captured successor and independent cold reconstruction agree on all semantic unit rows, artifact references, declarations, coverage and finite behavior. Exact old source/cache dispatch refuses and owned processes/leases are zero. This does not supply generic dependency invalidation or independent successor admission.",
+        "The successor-context API now conservatively rechecks every bounded predecessor reverse-reference (maximum64), retains original instruction/IntentIR and full task lineage, captures the committed successor, and independently signs/materializes a new native baseline and task population. Positive and refuted affected records require fresh Python/Lean observations and independent cold source/cache agreement. Exact journal/source-operation replay handles interrupted preparation without reusing saved proofs. Eleven controls pass under final producer bytes, including real source-publication interruption, fresh-process recovery and missing/changed objective, goal, plan, head and receipt refusals. The preceding10 controls remain historical under their exact earlier producer. No task is omitted or completed automatically."
       ],
-      "remaining_work": [
-        "Conservative repository-wide dependency invalidation, affected-obligation scheduling and a new independently signed successor task/admission revision are not implemented by this fixture. Published vector retrieval remains unavailable; task completion does not close goal contracts."
-      ],
+      "remaining_work": [],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
-        "semantic-supervision"
+        "semantic-supervision",
+        "independent-successor-context"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [],
+      "dependency_scope": "Qualified bounded Python integer-offset successor context with complete affected-reference inventory and exact native task/parent recovery; unsupported obligation profiles or overflow refuse. Generic repository semantics and automatic successor dispatch are not asserted."
     },
     {
       "id": "RPI-017",

@@ -1,8 +1,8 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Seventeen exits are closed for their declared
-profiles; 15 remain open.** Twenty individual criteria have passed qualification;
+every original acceptance criterion. **Eighteen exits are closed for their declared
+profiles; 14 remain open.** Twenty-one individual criteria have passed qualification;
 three still depend on unfinished resource integration. These results do not establish
 default production activation or a Terminal Bench advantage.
 
@@ -216,3 +216,12 @@ subprocess cleanup, durable disk claims and retained unsafe-child ownership. Its
 host telemetry is explicitly injected in those controls. The actual-host attempt
 was refused at the unchanged disk watermark. Full pipeline integration and the
 resource prerequisite remain open.
+
+The successor-context API now qualifies016 for the bounded finite source profile.
+It rechecks the complete affected cache-reference population, preserves semantic
+intent and historical artifacts, compares an independent cold rebuild, and signs
+a new baseline and full task population. Eleven final-byte controls include actual
+source-publication interruption and separate-process recovery. Replay checks the
+exact objective, goals, tasks, plan, active head and planning receipt; altered or
+missing parents cannot inherit a successful task-only replay. The earlier10
+controls remain attached to their historical producer.
