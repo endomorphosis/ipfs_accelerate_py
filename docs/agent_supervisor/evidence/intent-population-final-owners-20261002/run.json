@@ -1,0 +1,28 @@
+{
+  "schema": "intent-population-final-owner-compatibility-run@1",
+  "started_at": "2026-10-02T16:51:39.033275+00:00",
+  "elapsed_seconds": 23.662959343055263,
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/integration/test_intent_population_admission.py::test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+    "--basetemp=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01",
+    "--junitxml=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01.xml"
+  ],
+  "returncode": 0,
+  "resource_mode": "actual default host; no injected sampler",
+  "resource_probe": {
+    "disk_percent": 94.3,
+    "memory_available_bytes": 105119526912,
+    "controlled_host_selected": null
+  },
+  "producer_drift": false,
+  "environment": {
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/tmp/ir-release-datasets-20261001:/tmp/ir-release-accelerate-20261001",
+    "GIT_CEILING_DIRECTORIES": "/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility"
+  }
+}

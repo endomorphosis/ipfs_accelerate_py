@@ -1,0 +1,55 @@
+{
+  "schema": "native-managed-run-selected-producers@1",
+  "scope": "Explicit source snapshots include uncommitted exact-path changes; baseline commits are not relabeled as tested bytes",
+  "baseline_heads": {
+    "accelerate": "8a37a3a81b99be4cc1f8df1143f308a3b7d1875e",
+    "datasets": "8de37ba8d216cd21a5d7134292de01d9e12c9a56"
+  },
+  "files": [
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "61c600d57b37437b721c3320eed2d5dc500f766f87fafb224db4b9d9eec02d7f"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py",
+      "sha256": "4ba2ed025b0449b5e7ed01051a01815dd135840ee064b1acdbee1cebac351eb5"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "fdcf6d4ce676fbb1e5b8b42bab18c76368509abaedc936b1efd9aa4d53bb37d1"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py",
+      "sha256": "7037fca4046b357ef941cd511b20da55979a8055056ebc755bcb65c0026cb55b"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "3b42f38d1c7b5c9841d4f0b845098f11a55858779e9b814d8ecd455904bfb321"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py",
+      "sha256": "2283708f5ec125676bfc8a08c518a28dd0d3fb13295e4e43f1d346eb31eaec5e"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+      "sha256": "a534d801c7724edd17cf7a3999e73c924eb87182f16a1629265caba3e2d194c1"
+    }
+  ]
+}

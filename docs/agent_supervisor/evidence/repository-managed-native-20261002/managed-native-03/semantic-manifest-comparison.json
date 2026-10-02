@@ -1,0 +1,691 @@
+{
+  "cold": {
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "declarations": [
+      {
+        "function_name": "increment",
+        "offset": 2,
+        "parameter": "n",
+        "path": "calc.py",
+        "profile": "python-integer-offset@1",
+        "schema": "codebase-integer-offset-contract@1"
+      }
+    ],
+    "semantic_state_cid": "baguqeeraojg6evqdm6s5czoejign2kl2veyrvdfgbtz22syktlojiozpc53a",
+    "units": [
+      {
+        "assumptions": [],
+        "ast_cid": null,
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeeraguy3aigva4vo3lt7chuogsxuyaefxc57hyifa2jdhypzxothfkna",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraguy3aigva4vo3lt7chuogsxuyaefxc57hyifa2jdhypzxothfkna",
+        "logical_unit_id": "baguqeeracvwi5s7rucesnpug7kknhezshpkg44rcscke4vskkoyeb4e7jlgq",
+        "model_status": "unsupported_language",
+        "native_artifacts": {},
+        "path": ".gitignore",
+        "proof_authority": false,
+        "source_cid": "bafkreialflw2jjjqt4zhd4vovf4qkbjaida5x4zktpaydbjkoqbqigpiti",
+        "source_key": "raw:2e67697469676e6f7265",
+        "symbols": [],
+        "unsupported_reason": "captured bytes have no admitted Python semantic profile",
+        "version_cid": "baguqeerapwoesfk7t6dnsqnxp7l5vkcwdc34koyec4kpmmhedsly3spac4ma"
+      },
+      {
+        "assumptions": [
+          "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+          "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+          "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+        ],
+        "ast_cid": "baguqeeralygfzykxzozu53zcmlrsoi6o24fbzg3pa2sugm4aanflsfdfl7fa",
+        "checked_evidence_references": [],
+        "declaration_status": "owner_supplied_specification_not_established_truth",
+        "declared_contract": {
+          "function_name": "increment",
+          "offset": 2,
+          "parameter": "n",
+          "path": "calc.py",
+          "profile": "python-integer-offset@1",
+          "schema": "codebase-integer-offset-contract@1"
+        },
+        "declared_contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "closed_local_expression_under_declared_runtime_assumptions",
+          "structural_edge_references": [
+            "baguqeerad5yc3rj4wjf4jdbut2hof6bbnqzmzrmtxyrelqae25ouvrzy4kaq",
+            "baguqeerajcabct35jnnstbgocpzzy53fo6uye7b5xffznpizmknnhrsx5m2q",
+            "baguqeerauyaiawqpt6kdxbv4enjllrikftyysxh5tf4wryfxjt7xbfisw63a"
+          ],
+          "unsupported_region": null,
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraqpkfde2vknzslpyey5evu7o5sc4hit3sn7thdum6mky6mt3oymla",
+        "logical_unit_id": "baguqeera2kncywndlnoij3i6uyrqxtiyfpzeaznzo2oevluqmd63kttr3s7q",
+        "model_status": "source_bound_model",
+        "native_artifacts": {
+          "compilation": "baguqeeraljsj33rx2tp7whez2ymi54voswyw4dcuggqx3yy7zbwlachoudoq",
+          "contracts": "baguqeera2lsaknt3hft3yfkiuy6bp3dnuwgwib6kk5ygjtwowjqelk4tn7ea",
+          "effects": "baguqeeraak6sap2ftdzhzdaxjmome35yvd5yc5fxczdd62xxt5ga7l4ojvva",
+          "program": "baguqeeraqzld2iwejxwdre2c7xhckohr2wlwpzukswia36ayzxzk6rqwimnq",
+          "source_correspondence": "baguqeerancatjmgl5qf7kr5ajjl3xa3yo4jbeejsmvb2agcwsv4v375llsua",
+          "vc_sets": "baguqeera7fcjk7fa5m6g32dh7a2oirtufkomx6a7waqs4eokuwmf3mnw7rda"
+        },
+        "path": "calc.py",
+        "proof_authority": false,
+        "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+        "source_key": "raw:63616c632e7079",
+        "symbols": [
+          {
+            "qualified_name": "calc.increment",
+            "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+            "span": {
+              "end_column": 16,
+              "end_line": 2,
+              "path": "calc.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera4ac7sm4kwpvucjy2t3ptwleidp4ksu2qzzysqxp6ggyqt7nxwf3q",
+            "version_cid": "baguqeera5se3tyvwcs5ftvio5eaj3e5olzkdrfti3lnbkejcq2hobvkltp6a"
+          },
+          {
+            "qualified_name": "calc",
+            "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "calc.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeray666anw6a6yef5ekmo5unydmeexniesynnyutobmtdlkihipyyda",
+            "version_cid": "baguqeera4y3oprpkf47q6uan6gjgqashzqaose2b2gnteslh3phunv4uxlhq"
+          }
+        ],
+        "unsupported_reason": null,
+        "version_cid": "baguqeerai42ik5ffslp2zgaskyg54f54xeoqvhhrzwc4wrw27osehe3nxzeq"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeeradv3iwmevb4rribuwstsrdqxxpm7lyu3zr7jpp23224e6uqgkgxma",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeera7diflswnv3jirojflfwntupt3ik4toeoast5ha65ocjgpfjlqwma",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera7diflswnv3jirojflfwntupt3ik4toeoast5ha65ocjgpfjlqwma",
+        "logical_unit_id": "baguqeeralksqtgnclkuqf7nl72xwa3jmbuyvug6nz6t4umxtmkn533oksgoa",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "decoy.py",
+        "proof_authority": false,
+        "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+        "source_key": "raw:6465636f792e7079",
+        "symbols": [
+          {
+            "qualified_name": "decoy",
+            "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "decoy.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera65wicdoymog2ehwyyj76g2tbbc2peglsvr4ie6yhi77qj6u45j7a",
+            "version_cid": "baguqeeray4cevzvbgqypa2z4nk6awmvfq3yoduowfzzduf6hlpfjt7cu7gnq"
+          },
+          {
+            "qualified_name": "decoy.increment",
+            "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+            "span": {
+              "end_column": 18,
+              "end_line": 2,
+              "path": "decoy.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera7qzusw5x2t34xoz3asxlabo7prs54h4mudu522q6qq36hvm6yt4a",
+            "version_cid": "baguqeeral2ko7eqsoebhx7nnenbivy6p3ojcl25wroyu5xdpqdwuetvphqsa"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeerakenbygj4dsor55lzfno7ujefg544mannxgj6eo4uhxg4ss4atnxq"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": null,
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeera6mrrlr2ifctgtcxhmvwd2eagl6rlqsfgw6ldj2ns4qkj7ot3bfcq",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera6mrrlr2ifctgtcxhmvwd2eagl6rlqsfgw6ldj2ns4qkj7ot3bfcq",
+        "logical_unit_id": "baguqeerans5n6w34a4zb5rofjnic76q7cpijkoiranivwgb5qaw3lkgoxdta",
+        "model_status": "unsupported_language",
+        "native_artifacts": {},
+        "path": "instruction.txt",
+        "proof_authority": false,
+        "source_cid": "bafkreiftn57d66r5a3q27o6maphnqokhkitdv56lypha3w5yq6q7q7q4be",
+        "source_key": "raw:696e737472756374696f6e2e747874",
+        "symbols": [],
+        "unsupported_reason": "captured bytes have no admitted Python semantic profile",
+        "version_cid": "baguqeera2c4hvcfn5hon62scfbjh63573nodvqa6jp3s4pt6z6gddzxebf5a"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeeraxkspwyfrdhyj3ikjv4wbpvvwfpjwvlhmjqcmtw4l4peogf6rxfia",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [
+            "baguqeera6n6q23lakbuwrczpejksukxke5cecaucps7ygljvu33ta3totqfq",
+            "baguqeeracfexr6rnuhe5c3nglekv2xqceps4fantripndojkq65eqju3ccsq",
+            "baguqeerad5yc3rj4wjf4jdbut2hof6bbnqzmzrmtxyrelqae25ouvrzy4kaq",
+            "baguqeeragey5fb65qgwbf6l4x5tiwm7nxvfnmncyujwwkrtlbs7dwq75hi2a",
+            "baguqeerajcabct35jnnstbgocpzzy53fo6uye7b5xffznpizmknnhrsx5m2q",
+            "baguqeerak3hwcf6ozindfgnjow32qlvcuwfbh5mc46itjdcc7qw3wleijsmq",
+            "baguqeeralscwrlavgkv64nbnyh7zootrim574ngtigq6yl4olf5frrw3rgdq",
+            "baguqeeranclgocrmkni6jlxg6l6wszwkxbw2j7myxlknff6wt7cynsmgxbvq",
+            "baguqeeraofjvf2brdlw2imgd67szrruyfzrjqpo2kvibhcvgxu7k3nafp4cq",
+            "baguqeerap34emtt4ghsr5qofi3acenxhjrup7ieyur6hdhdn2omyycmwy4eq",
+            "baguqeerauyaiawqpt6kdxbv4enjllrikftyysxh5tf4wryfxjt7xbfisw63a",
+            "baguqeeraz5dji37e7s2mjrprrn2jlhskc3mn4guvgxeug3jbyymapqkkbhqa"
+          ],
+          "unsupported_region": "baguqeeraql263qzhusaatkdkcq4akldgfqr3kkf62zoi5ynf3ru7w5i54rzq",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraql263qzhusaatkdkcq4akldgfqr3kkf62zoi5ynf3ru7w5i54rzq",
+        "logical_unit_id": "baguqeeraaevf3dqozyp5h25kecs5is2seaoovmdtx7m4nuygmww3vlyzk6gq",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "public_check.py",
+        "proof_authority": false,
+        "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+        "source_key": "raw:7075626c69635f636865636b2e7079",
+        "symbols": [
+          {
+            "qualified_name": "public_check",
+            "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "public_check.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeraiuyu7hwhrn2txxpqlzxqozrbmelvuex3askjihp2wrgwyadbj3ba",
+            "version_cid": "baguqeerasybdajdtgzzmqupacgtryeprqzyddmkvdfcy5wktkolq5osmlssa"
+          },
+          {
+            "qualified_name": "public_check.values",
+            "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+            "span": {
+              "end_column": 46,
+              "end_line": 2,
+              "path": "public_check.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 2
+            },
+            "stable_id": "baguqeeraullxey5z5vyz7ju2lyymql33bdwcazlmby2jigpdidhypbk45d5q",
+            "version_cid": "baguqeerahfysvk62agp5n2yjat2hkbb5747yj45kauohzz6ruyjbso2mdzgq"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeerah7u5htcmvszbfckh45zhgcuhmifm4an2warunuy23rlr2wdgit2a"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeerahov7zjqupn4m7ib6drtz2ctui3rzfmhiewdfh355j7tudyxavkqa",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [
+            "baguqeera7ujmkwscs26em3krxiz3bow7uukvhcb44ulnyoo5v4ruhwclfigq",
+            "baguqeerawur5go5hz3l3orq7pxt64zblm5wsv42wsyd7estswkapx57t43va"
+          ],
+          "unsupported_region": "baguqeera4uahellc4aofulhbafp3cgw2gsiiiy74zczec5pirmn5njpnjiqa",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera4uahellc4aofulhbafp3cgw2gsiiiy74zczec5pirmn5njpnjiqa",
+        "logical_unit_id": "baguqeeraksgkh544xksdighy2cp2cv6tdaiyem5uzisidum5bzadybdynbwq",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "unsupported.py",
+        "proof_authority": false,
+        "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+        "source_key": "raw:756e737570706f727465642e7079",
+        "symbols": [
+          {
+            "qualified_name": "unsupported.dynamic",
+            "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+            "span": {
+              "end_column": 23,
+              "end_line": 2,
+              "path": "unsupported.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeerawvjbac3txmm7j2inl3nf55nmivjzvy7l3asrzrkfxv7xtl6i4ggq",
+            "version_cid": "baguqeerasgzy7nxw7az2ojruqfqijm5sp7unhmzmdwqp557yplbvejhglq7a"
+          },
+          {
+            "qualified_name": "unsupported",
+            "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "unsupported.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeraycqxavjipgqi4ggxxeprlgjtgymaoglxcbkehr5xtreb7lalkekq",
+            "version_cid": "baguqeeracih2lft75ochdxunn2rm7gkc5csoy4w33bjz6uobdyp2soave2da"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeera6o6xonuehv37qt67zc6venhnw7oojmsuwxyakef4gdt77qgv4lka"
+      }
+    ]
+  },
+  "incremental": {
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "declarations": [
+      {
+        "function_name": "increment",
+        "offset": 2,
+        "parameter": "n",
+        "path": "calc.py",
+        "profile": "python-integer-offset@1",
+        "schema": "codebase-integer-offset-contract@1"
+      }
+    ],
+    "semantic_state_cid": "baguqeeraojg6evqdm6s5czoejign2kl2veyrvdfgbtz22syktlojiozpc53a",
+    "units": [
+      {
+        "assumptions": [],
+        "ast_cid": null,
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeeraguy3aigva4vo3lt7chuogsxuyaefxc57hyifa2jdhypzxothfkna",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraguy3aigva4vo3lt7chuogsxuyaefxc57hyifa2jdhypzxothfkna",
+        "logical_unit_id": "baguqeeracvwi5s7rucesnpug7kknhezshpkg44rcscke4vskkoyeb4e7jlgq",
+        "model_status": "unsupported_language",
+        "native_artifacts": {},
+        "path": ".gitignore",
+        "proof_authority": false,
+        "source_cid": "bafkreialflw2jjjqt4zhd4vovf4qkbjaida5x4zktpaydbjkoqbqigpiti",
+        "source_key": "raw:2e67697469676e6f7265",
+        "symbols": [],
+        "unsupported_reason": "captured bytes have no admitted Python semantic profile",
+        "version_cid": "baguqeerapwoesfk7t6dnsqnxp7l5vkcwdc34koyec4kpmmhedsly3spac4ma"
+      },
+      {
+        "assumptions": [
+          "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+          "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+          "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+        ],
+        "ast_cid": "baguqeeralygfzykxzozu53zcmlrsoi6o24fbzg3pa2sugm4aanflsfdfl7fa",
+        "checked_evidence_references": [],
+        "declaration_status": "owner_supplied_specification_not_established_truth",
+        "declared_contract": {
+          "function_name": "increment",
+          "offset": 2,
+          "parameter": "n",
+          "path": "calc.py",
+          "profile": "python-integer-offset@1",
+          "schema": "codebase-integer-offset-contract@1"
+        },
+        "declared_contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "closed_local_expression_under_declared_runtime_assumptions",
+          "structural_edge_references": [
+            "baguqeerad5yc3rj4wjf4jdbut2hof6bbnqzmzrmtxyrelqae25ouvrzy4kaq",
+            "baguqeerajcabct35jnnstbgocpzzy53fo6uye7b5xffznpizmknnhrsx5m2q",
+            "baguqeerauyaiawqpt6kdxbv4enjllrikftyysxh5tf4wryfxjt7xbfisw63a"
+          ],
+          "unsupported_region": null,
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraqpkfde2vknzslpyey5evu7o5sc4hit3sn7thdum6mky6mt3oymla",
+        "logical_unit_id": "baguqeera2kncywndlnoij3i6uyrqxtiyfpzeaznzo2oevluqmd63kttr3s7q",
+        "model_status": "source_bound_model",
+        "native_artifacts": {
+          "compilation": "baguqeeraljsj33rx2tp7whez2ymi54voswyw4dcuggqx3yy7zbwlachoudoq",
+          "contracts": "baguqeera2lsaknt3hft3yfkiuy6bp3dnuwgwib6kk5ygjtwowjqelk4tn7ea",
+          "effects": "baguqeeraak6sap2ftdzhzdaxjmome35yvd5yc5fxczdd62xxt5ga7l4ojvva",
+          "program": "baguqeeraqzld2iwejxwdre2c7xhckohr2wlwpzukswia36ayzxzk6rqwimnq",
+          "source_correspondence": "baguqeerancatjmgl5qf7kr5ajjl3xa3yo4jbeejsmvb2agcwsv4v375llsua",
+          "vc_sets": "baguqeera7fcjk7fa5m6g32dh7a2oirtufkomx6a7waqs4eokuwmf3mnw7rda"
+        },
+        "path": "calc.py",
+        "proof_authority": false,
+        "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+        "source_key": "raw:63616c632e7079",
+        "symbols": [
+          {
+            "qualified_name": "calc.increment",
+            "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+            "span": {
+              "end_column": 16,
+              "end_line": 2,
+              "path": "calc.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera4ac7sm4kwpvucjy2t3ptwleidp4ksu2qzzysqxp6ggyqt7nxwf3q",
+            "version_cid": "baguqeera5se3tyvwcs5ftvio5eaj3e5olzkdrfti3lnbkejcq2hobvkltp6a"
+          },
+          {
+            "qualified_name": "calc",
+            "source_cid": "bafkreia3xcqs3wtfgt37k7srqyuls374czxxfpbtzhj7lt6tud4noecfhu",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "calc.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeray666anw6a6yef5ekmo5unydmeexniesynnyutobmtdlkihipyyda",
+            "version_cid": "baguqeera4y3oprpkf47q6uan6gjgqashzqaose2b2gnteslh3phunv4uxlhq"
+          }
+        ],
+        "unsupported_reason": null,
+        "version_cid": "baguqeerai42ik5ffslp2zgaskyg54f54xeoqvhhrzwc4wrw27osehe3nxzeq"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeeradv3iwmevb4rribuwstsrdqxxpm7lyu3zr7jpp23224e6uqgkgxma",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeera7diflswnv3jirojflfwntupt3ik4toeoast5ha65ocjgpfjlqwma",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera7diflswnv3jirojflfwntupt3ik4toeoast5ha65ocjgpfjlqwma",
+        "logical_unit_id": "baguqeeralksqtgnclkuqf7nl72xwa3jmbuyvug6nz6t4umxtmkn533oksgoa",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "decoy.py",
+        "proof_authority": false,
+        "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+        "source_key": "raw:6465636f792e7079",
+        "symbols": [
+          {
+            "qualified_name": "decoy",
+            "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "decoy.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera65wicdoymog2ehwyyj76g2tbbc2peglsvr4ie6yhi77qj6u45j7a",
+            "version_cid": "baguqeeray4cevzvbgqypa2z4nk6awmvfq3yoduowfzzduf6hlpfjt7cu7gnq"
+          },
+          {
+            "qualified_name": "decoy.increment",
+            "source_cid": "bafkreiexubzjsnhii5qrsdfrdtil4wecgcbc6oiiquzzkq3kmcwh66ktvm",
+            "span": {
+              "end_column": 18,
+              "end_line": 2,
+              "path": "decoy.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeera7qzusw5x2t34xoz3asxlabo7prs54h4mudu522q6qq36hvm6yt4a",
+            "version_cid": "baguqeeral2ko7eqsoebhx7nnenbivy6p3ojcl25wroyu5xdpqdwuetvphqsa"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeerakenbygj4dsor55lzfno7ujefg544mannxgj6eo4uhxg4ss4atnxq"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": null,
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [],
+          "unsupported_region": "baguqeera6mrrlr2ifctgtcxhmvwd2eagl6rlqsfgw6ldj2ns4qkj7ot3bfcq",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera6mrrlr2ifctgtcxhmvwd2eagl6rlqsfgw6ldj2ns4qkj7ot3bfcq",
+        "logical_unit_id": "baguqeerans5n6w34a4zb5rofjnic76q7cpijkoiranivwgb5qaw3lkgoxdta",
+        "model_status": "unsupported_language",
+        "native_artifacts": {},
+        "path": "instruction.txt",
+        "proof_authority": false,
+        "source_cid": "bafkreiftn57d66r5a3q27o6maphnqokhkitdv56lypha3w5yq6q7q7q4be",
+        "source_key": "raw:696e737472756374696f6e2e747874",
+        "symbols": [],
+        "unsupported_reason": "captured bytes have no admitted Python semantic profile",
+        "version_cid": "baguqeera2c4hvcfn5hon62scfbjh63573nodvqa6jp3s4pt6z6gddzxebf5a"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeeraxkspwyfrdhyj3ikjv4wbpvvwfpjwvlhmjqcmtw4l4peogf6rxfia",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [
+            "baguqeera6n6q23lakbuwrczpejksukxke5cecaucps7ygljvu33ta3totqfq",
+            "baguqeeracfexr6rnuhe5c3nglekv2xqceps4fantripndojkq65eqju3ccsq",
+            "baguqeerad5yc3rj4wjf4jdbut2hof6bbnqzmzrmtxyrelqae25ouvrzy4kaq",
+            "baguqeeragey5fb65qgwbf6l4x5tiwm7nxvfnmncyujwwkrtlbs7dwq75hi2a",
+            "baguqeerajcabct35jnnstbgocpzzy53fo6uye7b5xffznpizmknnhrsx5m2q",
+            "baguqeerak3hwcf6ozindfgnjow32qlvcuwfbh5mc46itjdcc7qw3wleijsmq",
+            "baguqeeralscwrlavgkv64nbnyh7zootrim574ngtigq6yl4olf5frrw3rgdq",
+            "baguqeeranclgocrmkni6jlxg6l6wszwkxbw2j7myxlknff6wt7cynsmgxbvq",
+            "baguqeeraofjvf2brdlw2imgd67szrruyfzrjqpo2kvibhcvgxu7k3nafp4cq",
+            "baguqeerap34emtt4ghsr5qofi3acenxhjrup7ieyur6hdhdn2omyycmwy4eq",
+            "baguqeerauyaiawqpt6kdxbv4enjllrikftyysxh5tf4wryfxjt7xbfisw63a",
+            "baguqeeraz5dji37e7s2mjrprrn2jlhskc3mn4guvgxeug3jbyymapqkkbhqa"
+          ],
+          "unsupported_region": "baguqeeraql263qzhusaatkdkcq4akldgfqr3kkf62zoi5ynf3ru7w5i54rzq",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeeraql263qzhusaatkdkcq4akldgfqr3kkf62zoi5ynf3ru7w5i54rzq",
+        "logical_unit_id": "baguqeeraaevf3dqozyp5h25kecs5is2seaoovmdtx7m4nuygmww3vlyzk6gq",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "public_check.py",
+        "proof_authority": false,
+        "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+        "source_key": "raw:7075626c69635f636865636b2e7079",
+        "symbols": [
+          {
+            "qualified_name": "public_check",
+            "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "public_check.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeraiuyu7hwhrn2txxpqlzxqozrbmelvuex3askjihp2wrgwyadbj3ba",
+            "version_cid": "baguqeerasybdajdtgzzmqupacgtryeprqzyddmkvdfcy5wktkolq5osmlssa"
+          },
+          {
+            "qualified_name": "public_check.values",
+            "source_cid": "bafkreie2fo3j4sk7p63ex3mnmrn7oz7x2dm7tozb3jb5f4rprtuferw55a",
+            "span": {
+              "end_column": 46,
+              "end_line": 2,
+              "path": "public_check.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 2
+            },
+            "stable_id": "baguqeeraullxey5z5vyz7ju2lyymql33bdwcazlmby2jigpdidhypbk45d5q",
+            "version_cid": "baguqeerahfysvk62agp5n2yjat2hkbb5747yj45kauohzz6ruyjbso2mdzgq"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeerah7u5htcmvszbfckh45zhgcuhmifm4an2warunuy23rlr2wdgit2a"
+      },
+      {
+        "assumptions": [],
+        "ast_cid": "baguqeerahov7zjqupn4m7ib6drtz2ctui3rzfmhiewdfh355j7tudyxavkqa",
+        "checked_evidence_references": [],
+        "declaration_status": "absent",
+        "declared_contract": null,
+        "declared_contract_cid": null,
+        "declared_execution_records": [],
+        "dependency_frontier": {
+          "status": "unresolved",
+          "structural_edge_references": [
+            "baguqeera7ujmkwscs26em3krxiz3bow7uukvhcb44ulnyoo5v4ruhwclfigq",
+            "baguqeerawur5go5hz3l3orq7pxt64zblm5wsv42wsyd7estswkapx57t43va"
+          ],
+          "unsupported_region": "baguqeera4uahellc4aofulhbafp3cgw2gsiiiy74zczec5pirmn5njpnjiqa",
+          "whole_program_closed": false
+        },
+        "entry_cid": "baguqeera4uahellc4aofulhbafp3cgw2gsiiiy74zczec5pirmn5njpnjiqa",
+        "logical_unit_id": "baguqeeraksgkh544xksdighy2cp2cv6tdaiyem5uzisidum5bzadybdynbwq",
+        "model_status": "missing_contract",
+        "native_artifacts": {},
+        "path": "unsupported.py",
+        "proof_authority": false,
+        "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+        "source_key": "raw:756e737570706f727465642e7079",
+        "symbols": [
+          {
+            "qualified_name": "unsupported.dynamic",
+            "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+            "span": {
+              "end_column": 23,
+              "end_line": 2,
+              "path": "unsupported.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeerawvjbac3txmm7j2inl3nf55nmivjzvy7l3asrzrkfxv7xtl6i4ggq",
+            "version_cid": "baguqeerasgzy7nxw7az2ojruqfqijm5sp7unhmzmdwqp557yplbvejhglq7a"
+          },
+          {
+            "qualified_name": "unsupported",
+            "source_cid": "bafkreihejwhsii5lsdefpigjrah6zagxgedhfvnskmloci3ojc4gjin5ty",
+            "span": {
+              "end_column": 0,
+              "end_line": 1,
+              "path": "unsupported.py",
+              "schema": "ipfs-datasets.software-contracts.semantic-source-span@1",
+              "start_column": 0,
+              "start_line": 1
+            },
+            "stable_id": "baguqeeraycqxavjipgqi4ggxxeprlgjtgymaoglxcbkehr5xtreb7lalkekq",
+            "version_cid": "baguqeeracih2lft75ochdxunn2rm7gkc5csoy4w33bjz6uobdyp2soave2da"
+          }
+        ],
+        "unsupported_reason": "no owner-supplied declarative contract selected",
+        "version_cid": "baguqeera6o6xonuehv37qt67zc6venhnw7oojmsuwxyakef4gdt77qgv4lka"
+      }
+    ]
+  },
+  "source_head_generations_remain_distinct": true
+}

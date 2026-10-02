@@ -1,0 +1,60 @@
+{
+  "schema": "intent-population-final-owner-compatibility-evidence@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1844,
+      "sha256": "1bcbaaab3c656ec5cf6eeaa2839436a07155a85136b0479cfe1fb45547634704"
+    },
+    {
+      "path": "native-01.log",
+      "bytes": 4742,
+      "sha256": "019aa887cbb9f215ee8aff1485fed5fb81015ec4ecd46378c8063b7a2150dfd6"
+    },
+    {
+      "path": "native-01.xml",
+      "bytes": 416,
+      "sha256": "46728402052366adb54ef202e8dc080caaa3980d386e590ff6bb5a83bd862d0e"
+    },
+    {
+      "path": "native-02.log",
+      "bytes": 4742,
+      "sha256": "9bce91def960a17a0059670e6a5b8a3409f4243232e2404a58649058a6ddd4d6"
+    },
+    {
+      "path": "native-02.xml",
+      "bytes": 416,
+      "sha256": "0e69a9ae7b7838e34fc981bb1cc7c46150a90084104ea5fd5fad250b67e1d560"
+    },
+    {
+      "path": "producers-after.json",
+      "bytes": 24613,
+      "sha256": "9e4017c5f6bccd21666561aab2b1e6f198e55233a50f8f76fe90a7c0e71d1bad"
+    },
+    {
+      "path": "producers-before.json",
+      "bytes": 24613,
+      "sha256": "9e4017c5f6bccd21666561aab2b1e6f198e55233a50f8f76fe90a7c0e71d1bad"
+    },
+    {
+      "path": "producers-final.json",
+      "bytes": 24613,
+      "sha256": "9e4017c5f6bccd21666561aab2b1e6f198e55233a50f8f76fe90a7c0e71d1bad"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 1278,
+      "sha256": "be969605adb2a5abd4f5fd8c5004a564960cb1703b78ac36259e49d5b3dfeb00"
+    },
+    {
+      "path": "run-02.json",
+      "bytes": 1546,
+      "sha256": "227155e913ab008e2f1753a86c21027f9cf8d735a9f2ea0d128604395df2cc54"
+    },
+    {
+      "path": "run.json",
+      "bytes": 1172,
+      "sha256": "8406ea9f9d4c81d3475bca10ee75009e3f6defffbb3fedc966b1c75112e9d16a"
+    }
+  ]
+}

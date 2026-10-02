@@ -2,8 +2,8 @@
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
 every original acceptance criterion. **Eighteen exits are closed for their declared
-profiles; 14 remain open.** Twenty-two individual criteria have passed qualification;
-three still depend on unfinished resource integration and one on generic task
+profiles; 14 remain open.** Twenty-four individual criteria have passed qualification;
+five still depend on unfinished resource integration and one on generic task
 contracts. These results do not establish
 default production activation or a Terminal Bench advantage.
 
@@ -11,6 +11,7 @@ default production activation or a Terminal Bench advantage.
 
 | Qualification | Result | Scope |
 | --- | --- | --- |
+| Managed native supervisor | 178.179 seconds, zero LLM calls | Actual shared admission, protected validation, delegated worker, publication, successor/cold agreement and clean STOP; finite model-off profile |
 | Indexed native supervisor | 27.114 seconds, zero LLM calls | Authored finite Python repair; real START, worker, validation, publication, completion, successor observation and STOP |
 | Public evidence native supervisor | 28.831 seconds, zero LLM calls | Complete source, assumptions, checked records, counterexample and residuals reach the actual worker after semantic context encoding; public artifact replay needs no owner private keys |
 | Semantic manifest and checked cache | 69.234 seconds, zero LLM calls | Complete native repair with all six source entries, live ignore-scope replay, durable negative/positive cache records, and matching cold semantic rebuild |
@@ -244,8 +245,8 @@ checks and eight legacy guards pass. The fresh actual-host attempt is refused
 before work at `host_disk_high_watermark` in0.066511 seconds. Its result is an
 admission diagnostic, not a supervisor success or benchmark score.
 
-The six-family source portfolio is implemented but awaits final native
-qualification. Twelve current-source controls pass. Historical individual Lean,
+At the earlier implementation stage, the source portfolio awaited final native
+qualification; the successful six-backend results below supersede that status. Twelve current-source controls pass. Historical individual Lean,
 Z3, CVC5, Rocq, Isabelle and TLC smoke observations retain generated source/tool
 identities, but lack the wrapper hashes needed to qualify the final joined path.
 They are explicitly preserved as historical component evidence.
@@ -282,3 +283,42 @@ All27 reviewed population checks also pass in one84.76-second default-host
 run against the final catalog publication-fence implementation. The earlier
 intermediate-producer27-case run and its exact source are retained separately;
 these runs establish compatibility, not54 distinct cases or a timing comparison.
+
+The final proof portfolio passes20 checks under actual host admission, including
+six backends across five family IDs: Lean4, Rocq, Isabelle/HOL, SMT LIA (Z3 and
+CVC5), and TLA+ through TLC. Two captured integer-offset units and their required
+finite bridges are checked; missing tools, counterexamples, source invalidation,
+run-local single flight and deliberately injected disagreement are distinguished.
+This qualifies024 within that explicit profile, pending022 resource acceptance.
+
+Local8D federation now passes all12 native checks, including real parallel client
+fits, exact weighted reduction, retention before owner CAS, restart and
+cancellation. Independent diagnostic replay now uses the original complete batch
+geometry: it preserves exact equality rather than allowing a numerical tolerance.
+Forty component/protocol controls also pass.030's own criterion is qualified,
+while its resource/lifecycle dependencies remain open.031 still lacks an actual
+peer route and unavailable-peer qualification. These results do not qualify384D
+distributed training, unseen holdouts or a Hugging Face checkpoint release.
+
+Verified lossless archival recovered16.003GB net local allocation and cleared
+the unchanged disk admission policy. The first admitted managed run then exposed
+a real proof-cache relocation outside its named storage roots. Explicit native
+cache paths preserve the selected file across worker environments while signed
+owner/path checks and default migration remain intact.109 distinct path, cache,
+managed-consumer and successor controls pass. The fresh full managed supervisor
+run passed in178.179 seconds with zero LLM calls: START, checked repair, validation,
+publication, matching incremental/cold successor and STOP. It retained no owned
+processes, leases or resource reservations. This qualifies the authored finite
+model-off CPU integration;022 still requires device, hard-limit and pressure
+qualification. No official Terminal Bench score or efficiency advantage follows.
+
+The [managed native evidence](../agent_supervisor/evidence/repository-managed-native-20261002/manifest.json)
+retains the admitted failure and successful rerun separately. Independent review
+replayed three public signatures,118 CAS objects, the checked edit and protected
+worker lease chain. It verifies recorded evidence; it does not replay live leases
+or replace the native checker executions already recorded by the run.
+
+A targeted signed population-choice replay also passes in a fresh process on the
+final cache owners without new task revisions. Its two attempts count as one
+distinct compatibility case; the older27-case qualification keeps its historical
+producer pins. The24-qualified/18-closed/14-open bookkeeping audit passes.

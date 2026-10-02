@@ -1,0 +1,182 @@
+{
+  "contract": {
+    "actual_native_bound_owner_reopen": true,
+    "default_legacy_behavior_preserved": true,
+    "exact_mode_no_legacy_sibling_probe": true,
+    "exact_path_confers_no_proof_authority": true,
+    "explicit_exact_path": true,
+    "invalid_bound_owner_refused": true
+  },
+  "limits": [
+    "The exact-path and existing cache controls do not execute checkers/models; the separate successor group executes actual Python/Lean, while no group scores an official benchmark or invokes an LLM.",
+    "The /tmp test checkout relocation comparison changes tempfile.gettempdir only for placement classification; actual persistent full-trial rerun is separate.",
+    "Direct native behavioral _owners reopening is tested in the26 new controls; actual existing successor integration exercises the signed handoff and cold recovery independently.",
+    "Managed regression host telemetry and admission/failure injections remain explicitly controlled.",
+    "Formal cache producer bytes changed; prior proof receipts retain their historical pins and the next native run must issue fresh receipts."
+  ],
+  "qualified": true,
+  "schema": "formal-cache-exact-location-qualification@1",
+  "source_pins": [
+    {
+      "bytes": 110715,
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "3b42f38d1c7b5c9841d4f0b845098f11a55858779e9b814d8ecd455904bfb321"
+    },
+    {
+      "bytes": 25969,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py",
+      "sha256": "2283708f5ec125676bfc8a08c518a28dd0d3fb13295e4e43f1d346eb31eaec5e"
+    },
+    {
+      "bytes": 50937,
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "61c600d57b37437b721c3320eed2d5dc500f766f87fafb224db4b9d9eec02d7f"
+    },
+    {
+      "bytes": 10202,
+      "path": "test/api/test_formal_cache_exact_path.py",
+      "sha256": "ea5b2be2d15006bd6689fe1b8412ffa09494d51257f260890a2fedb948cb2cf9"
+    },
+    {
+      "bytes": 19876,
+      "path": "test/api/test_agent_supervisor_formal_verification_cache.py",
+      "sha256": "4031a22e44e7ebdb64d016e3e83cb9b11ef746ad19addeda1bb7460c1f5a86ef"
+    },
+    {
+      "bytes": 16195,
+      "path": "test/integration/test_repository_managed_preparation_and_handoff.py",
+      "sha256": "9b752aec539228ec22175a0ef84445c9692d79bc357d571f2b0ba50ce0a5559e"
+    },
+    {
+      "bytes": 4925,
+      "path": "test/api/test_native_repository_managed_driver.py",
+      "sha256": "4ddc60a9b0fc34068b436a5a11f74424ca906080e0e150053751bc2654384046"
+    },
+    {
+      "bytes": 2884,
+      "path": "test/api/test_native_repository_finite_supervision.py",
+      "sha256": "012deaa4c188ad0e1bc2ce10a1044bb1363de17478a4eb2b8a6050d639d709d6"
+    },
+    {
+      "bytes": 90990,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    },
+    {
+      "bytes": 99336,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "sha256": "e59250cbbe89a1a78ca024d109f4afc719e9e4d3885e0ba3e67a02c81b3b993c"
+    },
+    {
+      "bytes": 32153,
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+      "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+    },
+    {
+      "bytes": 15942,
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+      "sha256": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+    },
+    {
+      "bytes": 19981,
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "b8ea36fd5d5c1b887d40bf62e6ad018bba4b297810483b7429103aa6b1d1ad21"
+    },
+    {
+      "bytes": 29053,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf"
+    },
+    {
+      "bytes": 17150,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_handoff.py",
+      "sha256": "1de0d302ca96eb4dfe876de5faeaa9a7b7acaa6fba91e670cbdde1be3911d430"
+    },
+    {
+      "bytes": 28620,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+      "sha256": "a534d801c7724edd17cf7a3999e73c924eb87182f16a1629265caba3e2d194c1"
+    },
+    {
+      "bytes": 17392,
+      "path": "test/integration/test_repository_successor_context.py",
+      "sha256": "8071c216c05756d73e87905e9af3cfec9eb0f96bd48a6fb03a5f7db5223b44c4"
+    },
+    {
+      "bytes": 9792,
+      "path": "test/integration/test_repository_behavioral_admission.py",
+      "sha256": "c383f0122142656d45941b9ec5ece9e2ecfb8020f5dd4fd90e9ecf9a7a0e1ec1"
+    },
+    {
+      "bytes": 5746,
+      "path": "test/integration/test_terminal_codebase_semantic_index.py",
+      "sha256": "baa8637e964f12f6f7b85d4b276391b070e85f52b544f3fbe1c45e6ceca48edf"
+    },
+    {
+      "bytes": 19022,
+      "path": "test/api/test_finite_integer_codebase.py",
+      "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+    }
+  ],
+  "successor_environment": {
+    "basetemp": "/home/barberb/lift_coding/artifacts/cache-exact-path-20261002/successor-fixture-01",
+    "git_ceiling_override": false,
+    "orchestration_root": "/home/barberb/lift_coding/artifacts/cache-exact-path-20261002/successor-orchestration-01",
+    "pytest_seal_path": "/home/barberb/lift_coding/artifacts/cache-exact-path-20261002/successor-test-seal-01.duckdb",
+    "resource_policy_override": false,
+    "retained_fixture_reused": false
+  },
+  "test_groups": [
+    {
+      "failures": 0,
+      "junit": "exact-controls-01.xml",
+      "log": "exact-controls-01.log",
+      "name": "exact-controls-01",
+      "scope": "Actual native Git/DuckDB ownership plus fresh-process reopen; only tempfile placement classification is injected.",
+      "skipped": 0,
+      "tests": 26,
+      "xml_seconds": 14.492
+    },
+    {
+      "failures": 0,
+      "junit": "legacy-cache-controls-01.xml",
+      "log": "legacy-cache-controls-01.log",
+      "name": "legacy-cache-controls-01",
+      "scope": "Existing cache receipt, draft, TTL, rejection, thread/process single-flight and lease fencing controls.",
+      "skipped": 0,
+      "tests": 22,
+      "xml_seconds": 16.717
+    },
+    {
+      "failures": 0,
+      "junit": "managed-controls.xml",
+      "log": "managed-controls.log",
+      "name": "managed-controls",
+      "scope": "Root-owned existing managed consumer and driver regression; host telemetry/admission failure cases are controlled or injected, with actual local storage and selected subprocess consumers.",
+      "skipped": 0,
+      "tests": 43,
+      "xml_seconds": 25.888
+    },
+    {
+      "failures": 0,
+      "junit": "successor-controls-01.xml",
+      "log": "successor-controls-01.log",
+      "name": "successor-controls-01",
+      "scope": "Actual default-host native Python/Lean with fresh persistent fixture, source/cache successor reconstruction, cold fresh-process replay and retry corruption controls; no injected host capacities or thresholds.",
+      "skipped": 0,
+      "tests": 18,
+      "xml_seconds": 97.756
+    }
+  ],
+  "total_distinct_tests": 109,
+  "trigger": {
+    "error": {
+      "message": "preparation output owner is outside the exact named disk roots",
+      "type": "ValueError"
+    },
+    "qualified": false,
+    "result_path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02/result.json",
+    "root_cause": "Default cache path relocation moved a checkout-local database outside the managed named disk roots; a changed child orchestration root would also change reopen placement.",
+    "sha256": "156a0cb0d03f6a59a8795b525789ee6905e9a5bf3a64320b118dd24767c95eb3"
+  }
+}

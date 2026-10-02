@@ -1,0 +1,202 @@
+{
+  "artifact_cid": "baguqeeraxqlccvswaen32nm7g6bgvq6ybkmjw37dcuitui2rogdrx43cxjra",
+  "baseline_commit": "fca35416053e9c02d792b70b07a9bbd3f4c8b90f",
+  "changed_paths": [
+    "calc.py"
+  ],
+  "completion_authority": false,
+  "delegated_resource_phase": {
+    "bridge_phase_lease_id": "49aca635b703405d8bc14b59d410e948",
+    "completion_authority": false,
+    "daemon_reservation_id": "a55614643bb14965bcdaa2a4bbefef99",
+    "demand": {
+      "cpu_slots": 1,
+      "disk_bytes": 134217728,
+      "memory_mb": 1024,
+      "phase": "validation",
+      "process_slots": 1,
+      "threads_per_process": 1
+    },
+    "execution_authority": false,
+    "external_process_rss_captured": false,
+    "grant_schema": "repository-private-resource-grant@2",
+    "lease": {
+      "acquired_at": 1790958773.356187,
+      "cancelled": true,
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "validation",
+      "lease_id": "1eb1f3305a574e5a9e842ea7981eccea",
+      "memory_mb": 1024,
+      "owner_pid": 3439996,
+      "parent_lease_id": "51bff5e88932431c8325fbbd627deab3",
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 5.599576979875565e-07
+    },
+    "parent_lease_id": "51bff5e88932431c8325fbbd627deab3",
+    "private_token_disclosed": false,
+    "proof_authority": false,
+    "repository_id": "repository:finite-native-qualification",
+    "resource_capacity_only": true,
+    "root_lease_id": "a95526f874ee410db83d41c9c344cc8c",
+    "schema": "repository-delegated-pipeline-phase@1",
+    "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+  },
+  "evidence": {
+    "candidate_observation_cid": "baguqeerazhtlx3oulus77rtzyliaiiy25alw7ijebncq3cpo4dmlbrlarufq",
+    "complete_requirements": [
+      "finite-integer-offset-goal",
+      "finite-integer-type-goal"
+    ],
+    "initial_observation_cid": "baguqeeragnzyljmbyc7btf65l5yon2frvo24xj5x2eywbv3f5zx546m7grtq",
+    "input_sha256": "9436e9ee3ec70f6a948aa7cbe396badfec7c0c83f66bf73d9d1dea769417a6fd",
+    "inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "preview_cid": "baguqeeramgtl2qjgtzaym7setjktkzr6m4q7iabpkg24kfp44ww34bakq66q",
+    "query_cid": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+    "scope": "exact integer observations over the complete explicitly enumerated input domain",
+    "selected_operation": {
+      "function_name": "increment",
+      "operation": "update",
+      "parameter": "n",
+      "path": "calc.py",
+      "producer_id": "producer:task:finite:offset",
+      "requirement_id": "finite-integer-offset-goal",
+      "review_ref": "authored:bounded-offset-operation@1",
+      "task_id": "task:finite:offset"
+    },
+    "source_head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa",
+      "generation": 1,
+      "manifest_cid": "baguqeeraeupha2kqn6lebtwh5qoiwrfmamvp3oea4qlkr6tq7x4sexsureeq",
+      "receipt_cid": "baguqeerab4bsxywqh42326vqzpdm3enctcrszpjba7qmskgezce4c7c4s4ya",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa"
+    }
+  },
+  "execution_authority": false,
+  "model_inference_used": false,
+  "omission_authority": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_context": {
+    "assumptions_count": 3,
+    "checker_execution_performed": false,
+    "completion_authority": false,
+    "counterexample": {
+      "input": -2,
+      "observed_output": -1,
+      "required_output": 0
+    },
+    "execution_authority": false,
+    "expanded_prompt_sha256": "9bd768515d12d846ae5ad323163a2783bd39108dcabc217dddbf11e8e1705fdd",
+    "injected_after_semantic_encoding": true,
+    "integrity_replayed": true,
+    "model_inference_used": false,
+    "omission_authority": false,
+    "original_instruction_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+    "original_prompt_sha256": "bf73df0b97c8170ac93dd36adc34a9d8108e086e0f2338706f31f74dfadfc03e",
+    "owner_keys_used": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "residual_requirements": [
+      "finite-integer-offset-goal"
+    ],
+    "sha256": "ea4f14a755e4b59959a3df9c94eea323c95b6ee01b5ffdc993103646b336b31a",
+    "source_semantics_verified": false,
+    "whole_program_semantics_verified": false
+  },
+  "publication_authority": false,
+  "repository_evidence_fence": {
+    "after": {
+      "artifact_cid": "baguqeera4spagw5qwn2sdwoaw3m5bva54bqqh2uti5uo23fhyzuhc653vika",
+      "completion_authority": false,
+      "execution_authority": false,
+      "fresh_match_cid": "baguqeera2y626eco5xfqjgpf6arnymz2h6g3z7rdnzm5k3nz7oomxncogsna",
+      "fresh_native_checkers": true,
+      "legacy_handoff": {
+        "artifact": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-03/repository/.runtime/repository-finite-handoffs/5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e.json",
+        "sha256": "5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e"
+      },
+      "model_inference_used": false,
+      "native_task_population": [
+        "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+      ],
+      "omission_authority": false,
+      "private_owner_keys_used": false,
+      "proof_authority": false,
+      "public_context": {
+        "artifact": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-03/repository/.runtime/repository-finite-handoffs/ea4f14a755e4b59959a3df9c94eea323c95b6ee01b5ffdc993103646b336b31a.json",
+        "artifact_cid": "baguqeeradm4u44orvci7vzeac23hkzgnbsj5zs5736ga6yqrveigglcz5pqa",
+        "handoff_sha256": "5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e",
+        "sha256": "ea4f14a755e4b59959a3df9c94eea323c95b6ee01b5ffdc993103646b336b31a"
+      },
+      "schema": "repository-behavioral-admission-fence@1",
+      "source_equivalence_proved": false,
+      "source_head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa",
+        "generation": 1,
+        "manifest_cid": "baguqeeraeupha2kqn6lebtwh5qoiwrfmamvp3oea4qlkr6tq7x4sexsureeq",
+        "receipt_cid": "baguqeerab4bsxywqh42326vqzpdm3enctcrszpjba7qmskgezce4c7c4s4ya",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa"
+      },
+      "status": "current_repository_evidence"
+    },
+    "atomic_filesystem_transaction": false,
+    "before": {
+      "artifact_cid": "baguqeera4spagw5qwn2sdwoaw3m5bva54bqqh2uti5uo23fhyzuhc653vika",
+      "completion_authority": false,
+      "execution_authority": false,
+      "fresh_match_cid": "baguqeerajll4g52w7a5eni5smodp2233k5m6d2y7ithvipodeta6porh4exq",
+      "fresh_native_checkers": true,
+      "legacy_handoff": {
+        "artifact": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-03/repository/.runtime/repository-finite-handoffs/5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e.json",
+        "sha256": "5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e"
+      },
+      "model_inference_used": false,
+      "native_task_population": [
+        "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+      ],
+      "omission_authority": false,
+      "private_owner_keys_used": false,
+      "proof_authority": false,
+      "public_context": {
+        "artifact": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-03/repository/.runtime/repository-finite-handoffs/ea4f14a755e4b59959a3df9c94eea323c95b6ee01b5ffdc993103646b336b31a.json",
+        "artifact_cid": "baguqeeradm4u44orvci7vzeac23hkzgnbsj5zs5736ga6yqrveigglcz5pqa",
+        "handoff_sha256": "5e578bb968e0a28dbae3615d52377ecba350da62f2d41d755bbe1eba13a6ea4e",
+        "sha256": "ea4f14a755e4b59959a3df9c94eea323c95b6ee01b5ffdc993103646b336b31a"
+      },
+      "schema": "repository-behavioral-admission-fence@1",
+      "source_equivalence_proved": false,
+      "source_head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa",
+        "generation": 1,
+        "manifest_cid": "baguqeeraeupha2kqn6lebtwh5qoiwrfmamvp3oea4qlkr6tq7x4sexsureeq",
+        "receipt_cid": "baguqeerab4bsxywqh42326vqzpdm3enctcrszpjba7qmskgezce4c7c4s4ya",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeraw6acaqcslrs5mqbzgpf5bcweqjih5m76ddgogrb5boihluno2saa"
+      },
+      "status": "current_repository_evidence"
+    },
+    "source_observed_before_and_after": true
+  },
+  "schema": "native-repository-finite-materialization@1",
+  "source_after_sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+  "source_semantics_verified": false,
+  "status": "candidate_materialized",
+  "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+  "whole_program_semantics_verified": false,
+  "write_mode": "atomic_replace"
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "intent-population-final-owner-compatibility@1",
+  "qualified": true,
+  "distinct_tests": 1,
+  "attempts": [
+    {
+      "attempt": "01",
+      "passed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "pytest_seconds": 21.77,
+      "run_metadata": "run.json"
+    },
+    {
+      "attempt": "02",
+      "passed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "pytest_seconds": 19.57,
+      "run_metadata": "run-02.json"
+    }
+  ],
+  "profile": "reviewed alternative selection; fresh-process exact native owner replay",
+  "test": "test/integration/test_intent_population_admission.py::test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+  "producer_files": 58,
+  "policy_producer_pins": 57,
+  "producer_drift": false,
+  "actual_default_host": true,
+  "injected_host_sampler": false,
+  "limitations": [
+    "Historical 27-case results are not rerun or relabeled.",
+    "This alternative-selection test requests no finite proof and uses no learned inference.",
+    "No generic TIP-010/TIP-011 closure, daemon execution or benchmark score is established.",
+    "Two attempts run the same one distinct test; the first uses default seal metadata and the second a dedicated persistent seal."
+  ]
+}

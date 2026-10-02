@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+test/integration/test_intent_population_admission.py::test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions 
+-------------------------------- live log setup --------------------------------
+2026-10-02 16:51:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/4e580c9c70ff41fdb7d1/catalogs/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/4e580c9c70ff41fdb7d1/catalogs/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+-------------------------------- live log call ---------------------------------
+2026-10-02 16:51:58 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:58 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:58 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:58 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:51:59 [    INFO] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01/test_actual_fresh_process_repl0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/intent-population-20261002/final-owner-compatibility/native-01.xml -
+============================= slowest 10 durations =============================
+3.88s call     integration/test_intent_population_admission.py::test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions
+2.99s setup    integration/test_intent_population_admission.py::test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 1 passed in 21.77s ==============================

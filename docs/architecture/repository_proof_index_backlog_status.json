@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T16:13:40.814877+00:00",
+  "updated_at_utc": "2026-10-02T16:55:20.736278+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -13,7 +13,7 @@
     "criteria": 32,
     "production_closed": 18,
     "production_open": 14,
-    "criteria_qualified_for_declared_profile": 22
+    "criteria_qualified_for_declared_profile": 24
   },
   "evidence": {
     "foundation-tests-log": {
@@ -346,6 +346,39 @@
     "reviewed-population-final-catalog": {
       "path": "docs/agent_supervisor/evidence/intent-population-catalog-20261002/manifest.json",
       "sha256": "966be3a1f25a085828e64a2789466adf4b4ff41380b1a9e3189f30e715ba51f6",
+      "retention": "repository_evidence"
+    },
+    "native-proof-portfolio": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-obligation-portfolio-native-20261002/manifest.json",
+      "sha256": "350e8fed9265f1331aae3e5ce767a980d897f207bb3360c51c350e406384e4bf",
+      "retention": "repository_evidence"
+    },
+    "native-proof-portfolio-current-compatibility": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-obligation-portfolio-exact-path-20261002/manifest.json",
+      "sha256": "bba4d88b6470d55b388b1d37746c2327328484312007ba6b035b87b50248866b",
+      "retention": "repository_evidence"
+    },
+    "native-source-federation": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/autoencoders/evidence/codebase-federation-native-20261002/qualification.json",
+      "sha256": "2a732fce8f28fa1d3b28626aa7350bc55a400c48cd1450d7325b65806362fd25",
+      "retention": "repository_evidence"
+    },
+    "formal-cache-exact-path": {
+      "path": "docs/agent_supervisor/evidence/formal-cache-exact-path-20261002/manifest.json",
+      "sha256": "a05646acc25aac15a007e33d8797a72d99c9300c59821b40d8e69ebdce491680",
+      "retention": "repository_evidence"
+    },
+    "managed-native-full-pipeline": {
+      "path": "docs/agent_supervisor/evidence/repository-managed-native-20261002/manifest.json",
+      "sha256": "fb7571e3094470462433d3d33c39e5a77cde395105adfbeaa5a42487c8c03f50",
+      "retention": "repository_evidence"
+    },
+    "population-final-owner-compatibility": {
+      "path": "docs/agent_supervisor/evidence/intent-population-final-owners-20261002/manifest.json",
+      "sha256": "ea1b13f5f8d2b74d316b7054a1c4c650bc00caa41877cf1f4cd3ea54605f98ae",
       "retention": "repository_evidence"
     }
   },
@@ -745,7 +778,8 @@
       "locally_qualified_portions": [
         "After actual publication, native context/world capsules refresh and a reopened durable source index captures generation 2. Fresh Python/Lean finite observations satisfy both original clauses with no residual; independent cold rebuild agrees on exact source snapshot, complete query, domain, outcomes, tool policy and bounded scope. Original evidence-index access and old candidate dispatch are rejected after publication; historical receipts remain distinct.",
         "Combined opt-in semantic-manifest/public-context/checked-cache supervisor qualified in69.234s with zero model calls. Captured successor and independent cold reconstruction agree on all semantic unit rows, artifact references, declarations, coverage and finite behavior. Exact old source/cache dispatch refuses and owned processes/leases are zero. This does not supply generic dependency invalidation or independent successor admission.",
-        "The successor-context API now conservatively rechecks every bounded predecessor reverse-reference (maximum64), retains original instruction/IntentIR and full task lineage, captures the committed successor, and independently signs/materializes a new native baseline and task population. Positive and refuted affected records require fresh Python/Lean observations and independent cold source/cache agreement. Exact journal/source-operation replay handles interrupted preparation without reusing saved proofs. Eleven controls pass under final producer bytes, including real source-publication interruption, fresh-process recovery and missing/changed objective, goal, plan, head and receipt refusals. The preceding10 controls remain historical under their exact earlier producer. No task is omitted or completed automatically."
+        "The successor-context API now conservatively rechecks every bounded predecessor reverse-reference (maximum64), retains original instruction/IntentIR and full task lineage, captures the committed successor, and independently signs/materializes a new native baseline and task population. Positive and refuted affected records require fresh Python/Lean observations and independent cold source/cache agreement. Exact journal/source-operation replay handles interrupted preparation without reusing saved proofs. Eleven controls pass under final producer bytes, including real source-publication interruption, fresh-process recovery and missing/changed objective, goal, plan, head and receipt refusals. The preceding10 controls remain historical under their exact earlier producer. No task is omitted or completed automatically.",
+        "After exact-path cold cache creation was added, all18 current successor integration cases passed in97.77s under default host sampling with fresh persistent fixtures, actual Python/Lean checks and independent-process recovery. The constructor compatibility change does not grant new successor or completion authority."
       ],
       "remaining_work": [],
       "evidence": [
@@ -754,7 +788,8 @@
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
         "semantic-supervision",
-        "independent-successor-context"
+        "independent-successor-context",
+        "formal-cache-exact-path"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "blocking_dependencies": [],
@@ -853,7 +888,8 @@
         "The new opt-in reviewed finite population profile passes27controlled-host tests with real source/CAS/Intent owners and Python/Lean checks. It supports bounded conditional/alternative/prohibition coverage, inert zero-task decisions, preserved source files for omitted proven properties, one atomic choice per signed policy/source/Intent owner, and exact interrupted-publication/lost-reply/fresh-process recovery. Existing nonempty graph behavior is unchanged. Both actual default-host attempts refused source admission under memory-stall backoff; no default-host qualification or generic TIP closure is claimed.",
         "A later default-host attempt passed21 checks covering signed requirements, reduced-task authorization, atomic choice, rollback, corrupted-state refusal and fresh-process replay. The next finite zero-edit setup refused a native lease after actual memory-stall pressure rose; the remaining finite proof cases are still pending. A preceding harness setup error and the resource refusal are both retained.",
         "After memory pressure cleared, all6 remaining native finite-property, conditional, prohibition and artifact-interruption checks passed in52.65s. The two unchanged-producer runs cover all27 distinct profile controls under default host sampling; earlier failed attempts remain retained. This qualifies the bounded own criterion, not generic task discovery/execution or an official benchmark.",
-        "After the additive catalog publication-fence change, all27 profile controls passed again in one default-host run in84.76s against the finalfdcf catalog producer. The same27 cases also passed in116.53s against the retained intermediate3ffd producer. Exact source snapshots and immutable public decisions/proof/source CAS are packaged; the two runs are not54 distinct checks or a controlled timing comparison."
+        "After the additive catalog publication-fence change, all27 profile controls passed again in one default-host run in84.76s against the finalfdcf catalog producer. The same27 cases also passed in116.53s against the retained intermediate3ffd producer. Exact source snapshots and immutable public decisions/proof/source CAS are packaged; the two runs are not54 distinct checks or a controlled timing comparison.",
+        "One targeted mint-to-signed-choice-to-fresh-process replay case passes on the final exact-path owners, without new task revisions or producer drift. Two actual-default attempts (21.77s/default metadata seal and19.57s/dedicated seal) cover one distinct compatibility case. This joins the changed owner boundary without relabeling the historical27-case producer population or claiming another finite-proof/model/daemon run."
       ],
       "remaining_work": [
         "TIP-010 general task discovery and TIP-011 generic multitask execution/per-task context/final aggregation remain open. The qualified profile requires independently reviewed groundings; arbitrary text semantics, cross-file frames, unrestricted zero-task execution and general population planning remain outside its scope."
@@ -865,7 +901,8 @@
         "finite-native-owned-file-scope",
         "reviewed-task-population-admission",
         "reviewed-task-population-native-attempt",
-        "reviewed-population-final-catalog"
+        "reviewed-population-final-catalog",
+        "population-final-owner-compatibility"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "blocking_dependencies": [
@@ -889,10 +926,11 @@
         "Optional canonical native parent support joins the existing durable daemon disk/RSS ledger without another root reservation.154controls pass:9actual shared-host controls include token/live parent links, cancellation/release/death and a real child launched during revocation;145existing isolated-scheduler/filesystem regressions preserve default behavior. Full pipeline composition remains separate.",
         "Opt-in protected pipeline adapter passes31controlled-owner tests with actual subprocesses and durable disk records under explicitly injected host telemetry. It bounds queued and retained payloads, reserves validation/cleanup compartments, retains unsafe native child reservations across scope exit and garbage collection, and recovers through protected cleanup using the same authority and disk roots. Actual-host admission remains refused by the unchanged disk watermark; this is not full-pipeline qualification.",
         "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
-        "The retained Python lifecycle inventory now has a fixed process-local cap reserved before host admission:31ordinary plus1cleanup-only slot. Waiting entries, native-expired retained contexts and outer-close races remain counted; explicit safe recovery releases handles while preserving durable disk claims. Seventy-two distinct current-producer controlled checks pass, including39pipeline/lifecycle and33managed-preparation/driver regressions. A fresh actual-host probe refused at the unchanged disk watermark before work; no default-host or full-pipeline qualification is claimed."
+        "The retained Python lifecycle inventory now has a fixed process-local cap reserved before host admission:31ordinary plus1cleanup-only slot. Waiting entries, native-expired retained contexts and outer-close races remain counted; explicit safe recovery releases handles while preserving durable disk claims. Seventy-two distinct current-producer controlled checks pass, including39pipeline/lifecycle and33managed-preparation/driver regressions. A fresh actual-host probe refused at the unchanged disk watermark before work; no default-host or full-pipeline qualification is claimed.",
+        "After reversible exact archive compaction cleared actual disk admission, managed-native-02 exposed checkout proof-cache relocation outside the declared roots. An explicit canonical native cache path fixes creation and verified worker/cold-successor reopening without changing default migration.109 distinct controls pass across26 path,22 legacy cache,43 managed and18 actual successor checks. A fresh managed-native-03 completed the full authored finite model-off pipeline in178.179s with default host sampling, real START/repair/validation/publication/STOP, matching cold successor semantics, zero provider calls and no owned processes/leases or retained reservations."
       ],
       "remaining_work": [
-        "Full native pipeline integration and actual-host qualification remain pending. GPU/per-device admission, host-wide retained-payload accounting, hard enforcement, gradual recovery and the complete pressure matrix remain open. Named-root disk sampling does not protect against unrelated external writers."
+        "The bounded cooperative sampled CPU pipeline is now qualified. Full criterion acceptance still requires GPU/per-device admission, host-wide retained-payload accounting, hard enforcement, gradual recovery and the complete pressure matrix. External supervisor/worker RSS and bounded ambient semantic temporary snapshots are not included in its named-root/direct-child census; unrelated external writers remain outside its disk enforcement. No learned pipeline or matched benchmark is implied."
       ],
       "evidence": [
         "foundation-tests-log",
@@ -903,7 +941,9 @@
         "nested-durable-resources",
         "protected-pipeline-resources",
         "managed-preparation-worker-integration",
-        "pipeline-lifecycle-cap"
+        "pipeline-lifecycle-cap",
+        "formal-cache-exact-path",
+        "managed-native-full-pipeline"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -951,17 +991,24 @@
       "criterion": "Reuse the typed obligation DAG and AND/OR plans; execute independent nodes and compatible per-node portfolios under shared leases. Bind families, operations, semantic lowering, assumptions, bounds and assurance; add explicit cross-family bridge obligations. Qualify Lean/Rocq/Isabelle reconstruction, SMT and TLA+ routes only for supported fixtures. Test single flight, unavailable tools, solver disagreement, dependent invalidation and cancellation that preserves required validation.",
       "source_line": 298,
       "production_acceptance": "open",
-      "local_status": "implemented_pending_native_qualification",
+      "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
-        "Opt-in AND/OR obligation portfolio and closed integer model projections now have12current-source controls. Lean, Z3, CVC5, Rocq, Isabelle and TLC each have historical native component smoke observations with exact generated source/tool receipts, but missing historical wrapper hashes prevent final-producer qualification. SMT nominations require kernel reconstruction; the finite TLC safety branch requires its explicit bridge. Whole final native portfolio and adversarial matrix remain unqualified after CPU, memory and disk refusals."
+        "Opt-in AND/OR obligation portfolio and closed integer model projections now have12current-source controls. Lean, Z3, CVC5, Rocq, Isabelle and TLC each have historical native component smoke observations with exact generated source/tool receipts, but missing historical wrapper hashes prevent final-producer qualification. SMT nominations require kernel reconstruction; the finite TLC safety branch requires its explicit bridge. Before the later native qualification below, the joined portfolio and adversarial matrix remained unqualified after CPU, memory and disk refusals.",
+        "Both full20-case runs passed under actual unchanged shared-host admission (71.02s and63.78s). Native Lean/Rocq/Isabelle reconstruction, Z3/CVC5 LIA checks, finite TLC safety and required Lean bridge receipts bind source/contract/assumption/bounds. Fourteen checker attempts and eight run-local deduplications join to one native parent; refuted bridge, unavailable kernel, injected solver disagreement quarantine, changed-source invalidation, unsupported/wrong-parent refusal and pre-signaled optional cancellation preserving required validation all pass. The latest tree deltas are preserved as unimported context, not claimed as executed FVC behavior."
       ],
       "remaining_work": [
-        "Qualify the final joined two-unit six-family execution under one admitted supervisor reservation, plus unavailable tools, cancellation, counterexamples, disagreement, drift, unsupported profiles and wrong-parent controls. Historical component smokes do not establish final-wrapper qualification."
+        "Own finite-profile criterion is qualified; production closure awaits RPI-022. General Python semantics, arbitrary cross-family equivalence and mid-flight cancellation of arbitrary backend trees are outside this qualification."
       ],
       "evidence": [
-        "logic-family-portfolio-implementation"
+        "logic-family-portfolio-implementation",
+        "native-proof-portfolio",
+        "native-proof-portfolio-current-compatibility"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "two captured integer-offset units; six native backends / five family IDs; explicit finite one-way bridge",
+      "blocking_dependencies": [
+        "RPI-022"
+      ]
     },
     {
       "id": "RPI-025",
@@ -1064,8 +1111,8 @@
         "The opt-in dirty paged stager now seals a complete bounded working-tree inventory before parsing, extracts resumable pages, resolves the complete global graph, and publishes through the existing CodebaseCatalog transaction.49 controls cover cancellation/source-fence rollback and dirty-source behavior. An actual-default320-entry run with160 dirty files passed in168.164s across20 pages and native reopen at128; independent isolated replay passed in15.140s with an empty AST cache and parser tripwires. Earlier interrupted/expired/deadline attempts and exact producer bodies remain retained; these differently configured attempts are not a matched speedup comparison."
       ],
       "remaining_work": [
-        "The new explicit dirty profile permits512 entries and64KiB per file; initial capture/live fences and final global assembly remain whole bounded-generation work. Existing frozen256-entry scanner consumers are unchanged. Full supervisor selection of the new adapter remains pending.",
-        "Replay still traverses prior pages and successor generations re-extract them. Cross-generation AST reuse, larger-scale incremental I/O, compatible CUDA, complete pressure/backpressure qualification and repeated timing distributions remain open. Existing catalog source/AST publication remains the sole head owner; resident inference remains bounded to one child invocation."
+        "Compatible CUDA inference and the complete memory/backpressure qualification remain unverified under the frozen criterion, together with the open RPI-022 resource dependency. The existing CPU feature trainer remains selected.",
+        "The qualified new dirty profile permits512 entries and64KiB per file. Initial capture/live fences and final global assembly remain whole bounded-generation work; prior-page replay is bounded but not sublinear. The existing catalog remains the sole source/AST head owner."
       ],
       "evidence": [
         "paged-staging-tests-log",
@@ -1076,7 +1123,10 @@
         "repository-shards-resident-inference",
         "dirty-paged-staging-native"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "not_yet_qualified",
+      "out_of_profile_extensions": [
+        "Cross-generation AST reuse, arbitrary-size streaming capture, default supervisor selection of the optional512-entry dirty adapter and repeated timing distributions are follow-up improvements, not additional frozen acceptance gates. Existing frozen256-entry consumers remain unchanged."
+      ]
     },
     {
       "id": "RPI-030",
@@ -1085,17 +1135,25 @@
       "criterion": "Extend the bounded source-bound 8D adapter to qualified production worker dispatch using existing sample-weighted reduction and binary update artifacts; preserve its explicit aggregate Adam reset and source/count contracts. Keep separate 8D/384D lineages and repository-private heads where mappings differ. Freeze common parent, feature/token/target semantics, parameter layout, producer/objective and approved source/corpus digests/counts. Preseal sparse key union; reject unknown keys, independently learned latent mappings, wrong parents/corpora, duplicate updates and stale fences. Demonstrate actual codebase local training, deterministic aggregate materialization and parent/child canary qualification before owner CAS. Do not average proof metadata or optimizer histories.",
       "source_line": 304,
       "production_acceptance": "open",
-      "local_status": "implemented_pending_native_qualification",
+      "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
-        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. Final12-case full native matrix is blocked by actual supervisor disk admission. This is a separate8D protocol and does not establish distributed384D training or model quality."
+        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. The initial12-case full native matrix was blocked by actual supervisor disk admission; later results below supersede that status. This is a separate8D protocol and does not establish distributed384D training or model quality.",
+        "After exact owner-derived joined-batch diagnostic replay fixed a float64 GEMM geometry mismatch,40 component/protocol regressions and all12 actual-default native cases pass (155.00s). Actual unequal-count client fitting, binary weighted reduction/aggregate Adam reset, independent parent/origin retention before owner CAS, real two-process overlap equal to sequential execution, indexed restart without fit, committed-reply recovery, source/artifact/metric/stale-parent refusals and cancellation/reaping are retained. Exact numerical equality is preserved; initial admitted failure and old sources remain evidence."
       ],
       "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+        "Own local8D criterion is qualified; production closure awaits RPI-010/RPI-022/RPI-027. This is a five-source development retention cohort and separate8D lineage, not384D training, unseen holdout quality, remote fleet qualification or a Hugging Face release."
       ],
       "evidence": [
-        "source-federation-implementation"
+        "source-federation-implementation",
+        "native-source-federation"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "local source-bound structural 8D federation; five development sources; full parameter-key union and existing owner CAS",
+      "blocking_dependencies": [
+        "RPI-010",
+        "RPI-022",
+        "RPI-027"
+      ]
     },
     {
       "id": "RPI-031",
@@ -1104,15 +1162,17 @@
       "criterion": "Carry scoped round/worker/attempt/fence/source/model/bucket bindings and exact SHA-256/CID artifact references through existing task/proof-context transport. Qualify lost responses, duplicate delivery, unavailable peers and stale completion. Initially run federation only. Future gradient mode requires injected collective backend plus deployment verifier, fixed membership/step/bucket ordering, declared reduction/scaling and resource/device accounting; failure aborts without fallback to FedAvg. Transport receipts never certify numerical work or proof authority.",
       "source_line": 305,
       "production_acceptance": "open",
-      "local_status": "implemented_pending_native_qualification",
+      "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
-        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. Final12-case full native matrix is blocked by actual supervisor disk admission. This is a separate8D protocol and does not establish distributed384D training or model quality."
+        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. The initial12-case full native matrix was blocked by actual supervisor disk admission; later results below supersede that status. This is a separate8D protocol and does not establish distributed384D training or model quality.",
+        "The actual12-case local federation matrix now passes, including exact retry, lost committed completion reply, source/artifact failure, indexed restart and cancellation. Existing local queue controls cover duplicate concurrent claims and expired/replaced completions. The current dispatcher only accepts a local TaskQueue; missing local artifacts or handler failures do not qualify unavailable peers."
       ],
       "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+        "Implement and qualify a bounded actual peer transport, including unavailable peers and its scoped attempt/fence/artifact recovery, before claiming the complete frozen transport criterion. Resource/training dependencies remain open; gradient synchronization remains unavailable and fails closed without falling back to federation."
       ],
       "evidence": [
-        "source-federation-implementation"
+        "source-federation-implementation",
+        "native-source-federation"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1173,7 +1233,20 @@
         "observed_criterion": "Specify bounded typed relevant-unit, unit-evidence, intent-resolution and residual-obligation queries with root-bound cursors and exact consumed record/receipt commitments. Version native normalized proof-key membership/reverse-dependency projections and measure hot exact selector indexes; a discovery join cannot grant eligibility. Register reverse source/contract/premise/tool/model dependencies at publication. Reuse durable accelerate FormalVerificationCache through the full-key adapter; persist or deterministically rebuild datasets proof/CodeEvidencePlane projections. Qualify fresh-process replay, incomplete pages/frontiers, model-only versus source edits, formatting span rebinding, wrong assumptions, revoked/missing evidence and freeze-to-admission races. Required service gates cannot depend on optional context hooks."
       }
     ],
-    "policy": "Frozen acceptance criteria remain unchanged; concurrent source revisions are retained for review, not silently applied to completion decisions."
+    "policy": "Frozen acceptance criteria remain unchanged; concurrent source revisions are retained for review, not silently applied to completion decisions.",
+    "followup_observations": [
+      {
+        "sha256": "9a04ac23336265bc508d06b049110b4e71d39bf89a6742cea1e7638ef3d578b1",
+        "observed_at_utc": "2026-10-02T16:48:20.671069+00:00",
+        "criterion_changes_from_frozen": [
+          "RPI-003",
+          "RPI-029",
+          "RPI-032"
+        ],
+        "criterion_text_matches_prior_observation": true,
+        "review": "Independent current-source comparison; frozen acceptance text and earlier source observation retained."
+      }
+    ]
   },
   "closure_audit": {
     "rule": "Every RPI dependency of a closed criterion must itself be closed; own qualification remains independent.",

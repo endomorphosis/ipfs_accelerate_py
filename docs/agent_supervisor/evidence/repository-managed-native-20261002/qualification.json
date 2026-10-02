@@ -1,0 +1,59 @@
+{
+  "exclusions": [
+    "private policy and owner directories",
+    "private resource grant bodies",
+    "native DuckDB/SQLite/WAL/lock files",
+    "lifecycle process grants and private key material",
+    "Git administration"
+  ],
+  "failure": {
+    "qualified": false,
+    "reason": "preparation output owner is outside the exact named disk roots",
+    "run": "managed-native-02",
+    "seconds": 2.7003437159582973,
+    "source_provenance": "Exact historical committed bytes; no relabeling as later exact-path implementation."
+  },
+  "limits": [
+    "This is one authored, complete controlled-language finite integer fixture, with model inference explicitly off; it is not an official Terminal-Bench score.",
+    "The successful run used captured working bytes for the exact-path cache changes. Baseline Git commits identify ancestry, not those changed bytes.",
+    "CPU/process-memory accounting is cooperative/sampled, not hard aggregate enforcement. GPU/per-device and gradual recovery remain outside this qualification.",
+    "Disk accounting covers exact named roots and conservative precharges. Ambient semantic temporary paths and external supervisor/worker RSS are explicitly not captured.",
+    "The independent review verifies retained signatures, hashes and historical lease identities. It does not reopen private SQL state or re-admit expired leases.",
+    "No ablation, token-saving comparison, learned Intent interpretation, new training, or proof of general Python runtime semantics is claimed."
+  ],
+  "reviewed_provenance": {
+    "complete_transitive_dependency_attestation": false,
+    "historical_direct_source_pins": 6,
+    "historical_resource_chain": "one native host root -> protected validation phase -> daemon reservation -> worker child",
+    "private_grant_body_excluded": true,
+    "protected_phases": 7,
+    "public_integrity_replay": "Complete retained before/candidate artifact reconstruction without fresh checker invocation",
+    "success_captured_working_bytes_match_current": true,
+    "success_direct_source_pins": 9,
+    "total_pipeline_phases": 24,
+    "verified_public_signatures": 3,
+    "verified_source_cas_objects": 118
+  },
+  "schema": "repository-managed-native-qualification/v1",
+  "status": "qualified_bounded_managed_profile",
+  "success": {
+    "cold_semantic_and_behavioral_agree": true,
+    "owned_leases_remaining": 0,
+    "owned_processes_remaining": 0,
+    "provider_calls": 0,
+    "provider_tokens": 0,
+    "public_before_after_fences": true,
+    "publication_matches_checked_candidate": true,
+    "qualified": true,
+    "run": "managed-native-03",
+    "seconds": 178.17940519098192,
+    "stale_index_cache_dispatch_refused": true,
+    "start": "succeeded",
+    "stop": "succeeded",
+    "task": {
+      "revision": 4,
+      "status": "completed"
+    },
+    "training_steps": 0
+  }
+}

@@ -1,0 +1,87 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 26 items
+
+test/api/test_formal_cache_exact_path.py::test_exact_path_survives_reopen_while_default_still_relocates 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_survives_reope0/checkout/owned/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_survives_reope0/checkout/owned/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_survives_reope0/checkout/owned/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_survives_reope0/checkout/owned/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_survives_reope0/child-orchestration/ae4a6a226a207ae8d0bd/catalogs/legacy-default.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  3%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_reopen_in_fresh_process_with_changed_orchestration 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_reopen_in_fresh_pro0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_reopen_in_fresh_pro0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  7%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[None] [32mPASSED[0m[32m [ 11%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[0] [32mPASSED[0m[32m [ 15%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[1] [32mPASSED[0m[32m [ 19%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[true] [32mPASSED[0m[32m [ 23%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[flag4] [32mPASSED[0m[32m [ 26%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_option_requires_real_bool_before_storage_write[flag5] [32mPASSED[0m[32m [ 30%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[none] [32mPASSED[0m[32m [ 34%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[relative] [32mPASSED[0m[32m [ 38%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[directory] [32mPASSED[0m[32m [ 42%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[no_suffix] [32mPASSED[0m[32m [ 46%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[sqlite_suffix] [32mPASSED[0m[32m [ 50%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[upper_suffix] [32mPASSED[0m[32m [ 53%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[uri] [32mPASSED[0m[32m [ 57%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[dot] [32mPASSED[0m[32m [ 61%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[parent_dot] [32mPASSED[0m[32m [ 65%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[double_separator] [32mPASSED[0m[32m [ 69%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[target_symlink] [32mPASSED[0m[32m [ 73%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[broken_symlink] [32mPASSED[0m[32m [ 76%][0m
+test/api/test_formal_cache_exact_path.py::test_invalid_exact_locations_refuse_before_storage_write[ancestor_symlink] [32mPASSED[0m[32m [ 80%][0m
+test/api/test_formal_cache_exact_path.py::test_exact_path_does_not_probe_or_import_legacy_sibling 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_does_not_probe0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_exact_path_does_not_probe0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 84%][0m
+test/api/test_formal_cache_exact_path.py::test_native_behavioral_owner_reopens_bound_exact_path_after_environment_change 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r0/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 88%][0m
+test/api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[missing] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r1/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r1/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r1/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 92%][0m
+test/api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[replaced] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r2/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r2/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r2/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 96%][0m
+test/api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[symlink] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 16:32:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r3/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r3/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 16:32:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4880/test_native_behavioral_owner_r3/checkout/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/cache-exact-path-20261002/exact-controls-01.xml -
+============================= slowest 10 durations =============================
+1.02s call     api/test_formal_cache_exact_path.py::test_native_behavioral_owner_reopens_bound_exact_path_after_environment_change
+0.26s call     api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[replaced]
+0.23s call     api/test_formal_cache_exact_path.py::test_exact_reopen_in_fresh_process_with_changed_orchestration
+0.22s call     api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[missing]
+0.21s call     api/test_formal_cache_exact_path.py::test_native_behavioral_owner_refuses_missing_or_changed_proof_identity[symlink]
+0.15s call     api/test_formal_cache_exact_path.py::test_exact_path_survives_reopen_while_default_still_relocates
+0.06s call     api/test_formal_cache_exact_path.py::test_exact_path_does_not_probe_or_import_legacy_sibling
+0.01s setup    api/test_formal_cache_exact_path.py::test_exact_path_survives_reopen_while_default_still_relocates
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m26 passed[0m[32m in 14.54s[0m[32m ==============================[0m

@@ -1,0 +1,11 @@
+# Exact proof-cache location qualification
+
+The managed native trial stopped because the default cache resolver moved a database inside the enclosing Git checkout into the account orchestration directory, outside the admitted disk roots. Reopening the signed path under the daemon's different orchestration environment could relocate it again.
+
+`FormalVerificationCache(..., exact_path=True)` now uses an explicitly supplied canonical absolute `.duckdb` file, without relocation or legacy migration. Default behavior remains unchanged. The finite trial creates and reopens its caches using this mode; behavioral admission also uses it after validating the bound owner paths and existing storage.
+
+**109 distinct controls passed:** 26 new exact-location controls, 22 existing cache controls, 43 managed consumer/driver regressions, and 18 successor integration controls. The new controls use actual Git and DuckDB owners, include a fresh child-process reopen under a changed orchestration environment, retain exact inode/data identity, refuse invalid paths before writes, and verify that a legacy sibling is neither probed nor imported. Native behavioral owners reject missing, replaced and symlinked proof stores. Only temporary-directory placement classification is injected in the new tests because ordinary `/tmp` paths intentionally bypass default relocation.
+
+The 43 managed regressions contain explicitly controlled host telemetry and failure injections; they are not an actual-host benchmark result. The 18 successor controls use the actual default host policy, native Python/Lean, a fresh persistent fixture, and fresh-process recovery; they directly exercise the changed cold-cache constructor. The other groups perform no checker/model inference. No group invokes an LLM, grants new authority, or scores an official benchmark. The full persistent native trial is retained separately. New producer bytes require fresh proof receipts; old evidence is not relabeled.
+
+`qualification.json` binds test groups, direct source pins, limitations and the actual triggering failure. Logs and JUnit outputs retain the exact results. `manifest.json` hashes this evidence package. No runtime keys, databases or private grants are included.

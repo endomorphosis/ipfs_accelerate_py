@@ -83,3 +83,20 @@ The helper controls use injected host telemetry, real file-backed source/catalog
 owners and actual subprocess delegation. The CLI/parser/error controls use explicit
 failure doubles and do not establish live admission. Actual native runs and legacy
 model preparation checks are reported separately in the retained evidence.
+
+The persistent native run exposed an additional storage contract: the default
+proof-cache constructor relocates checkout-resident catalogs to the account
+orchestration directory. That placed a preparation output outside the declared
+disk roots. The isolated driver now supplies an explicit absolute `.duckdb`
+filename with `FormalVerificationCache(..., exact_path=True)`. Verified behavioral
+owner reopening and independent cold successor storage use the same mode.
+It rejects path aliases and symlinks, skips legacy migration, and preserves the
+selected native location across parent and worker orchestration environments.
+Default callers retain their existing placement and migration policy. Signed
+owner inode checks, existing schema checks and complete root equality still apply.
+
+After that fix, the actual-default managed run completed in 178.179 seconds with
+zero provider calls: START, checked worker repair, validation, publication,
+successor/cold comparison and STOP all passed. No run-owned processes or leases
+remained. This is the finite model-off integration profile described above;
+it does not supply a Terminal Bench score or qualify the remaining resource modes.

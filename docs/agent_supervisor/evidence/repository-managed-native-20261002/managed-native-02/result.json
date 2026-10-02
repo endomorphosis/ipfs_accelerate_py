@@ -1,0 +1,796 @@
+{
+  "behavioral_evidence_selected": true,
+  "benchmark_result": false,
+  "budgeted_preparation_selected": true,
+  "error": {
+    "message": "preparation output owner is outside the exact named disk roots",
+    "type": "ValueError"
+  },
+  "full_trial_resource_receipt": {
+    "active_phase_count": 0,
+    "budget": {
+      "cpu_slots": 3,
+      "device": "cpu",
+      "disk_bytes": 1610612736,
+      "enforcement": "sampled",
+      "maximum_phases": 128,
+      "maximum_queued_metadata_bytes": 65536,
+      "maximum_queued_phases": 8,
+      "memory_mb": 3072,
+      "process_slots": 3,
+      "threads_per_process": 1,
+      "wall_time_ms": 599966
+    },
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "child_lease_id": "b343fccec0294be88de7cae6668fee51",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 134217728,
+          "memory_mb": 1024,
+          "phase": "validation",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 443,
+        "parent_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+        "queue_time_ms": 7,
+        "request_id": "d25d638bcca942a8819ef6d5475dbcda",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "c1d152b89ad1421cb2d2c1c3efd0ab41",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 134217728,
+          "memory_mb": 1024,
+          "phase": "proof",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "error_type": "ValueError",
+        "execution_time_ms": 2122,
+        "parent_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+        "queue_time_ms": 7,
+        "request_id": "1480558da81943cbb0b8f0bce8f01180",
+        "status": "failed"
+      }
+    ],
+    "hard_enforcement": false,
+    "host_authority": {
+      "owner": "datasets.GlobalResourceScheduler",
+      "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+      "root_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+      "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+    },
+    "limitations": [
+      "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+      "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+      "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+      "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+      "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+      "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+      "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+    ],
+    "native_parent": {
+      "acquired_at": 1790957969.4443226,
+      "cancelled": true,
+      "child_process_slots": 3,
+      "cpu_slots": 3,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+      "memory_mb": 3072,
+      "owner_pid": 3203332,
+      "parent_lease_id": null,
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 6.079208105802536e-07
+    },
+    "owned_active_root_count": 0,
+    "profile": "cpu-shared-native-sampled@1",
+    "queued_metadata_bytes": 0,
+    "queued_phase_count": 0,
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "repository-shared-host-envelope@1",
+    "shared_active_root_count": 1,
+    "supervisor_lease_id": "resource-lease:f7550744b7564a3c842bfef7c5a215d7",
+    "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+    "task_execution_authority": false,
+    "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+    "validation_reserve": {
+      "cpu_slots": 2,
+      "memory_mb": 0
+    }
+  },
+  "full_trial_resources_selected": true,
+  "host_pressure": {
+    "cpu": "some avg10=30.38 avg60=29.94 avg300=27.35 total=468896230861\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "io": "some avg10=0.00 avg60=0.74 avg300=1.42 total=21601629722\nfull avg10=0.00 avg60=0.72 avg300=1.40 total=19468016312\n",
+    "memory": "some avg10=0.00 avg60=0.03 avg300=0.03 total=8523774848\nfull avg10=0.00 avg60=0.02 avg300=0.02 total=7648445200\n"
+  },
+  "initial_public_check_exit_code": 1,
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "managed_profile": {
+    "ambient_semantic_temporary_files_in_named_roots": false,
+    "cpu_slots": 3,
+    "disk_bytes": 1610612736,
+    "expected_ordinary_high_level_phases": 5,
+    "expected_ordinary_preparation_phases": 12,
+    "expected_protected_high_level_phases": 4,
+    "expected_protected_preparation_phases": 3,
+    "external_supervisor_and_worker_rss_captured": false,
+    "high_level_write_ceiling_bytes": 134217728,
+    "maximum_declared_ordinary_disk_bytes": 872415232,
+    "maximum_declared_protected_disk_bytes": 587202560,
+    "memory_mb": 3072,
+    "preparation_write_ceiling_bytes": 16777216,
+    "process_slots": 3,
+    "protected_disk_bytes": 671088640,
+    "protected_memory_mb": 1024
+  },
+  "observations": [],
+  "phase_accounting": {
+    "complete_contiguous_wall_coverage": true,
+    "enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "includes_cleanup": true,
+    "includes_queue_waits": true,
+    "schema": "repository-trial-wall-accounting@1",
+    "seconds": 2.7003437159582973,
+    "setup_before_resource_admission": true
+  },
+  "pipeline_resource_receipt": {
+    "active_phases": 0,
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02/pipeline-disk-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 40763535,
+              "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02/managed-attempts/2-initial_public_validation"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": {
+              "birth": "152627622",
+              "pid": 3207598
+            },
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790957969.462295,
+            "external_charges": {
+              "pipeline-55e2de5ff2ae8a08bc71ab3a55727da9fbd945ba1db0195719d29e336120a3e5": 134217728
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 30978,
+              "inventory": {
+                "apparent_bytes": 30978,
+                "entry_count": 64,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 220587032576,
+              "observed_apparent_bytes": 30978,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 134217728,
+            "final_total_charged_bytes": 134217728,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.0021017121616750956,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 0.00018547405488789082,
+              "process_check_seconds": 0.03667864506132901,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.0002894101198762655
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 134217728,
+              "charged_bytes": 134248049,
+              "checked_at": 1790957969.5441127,
+              "external_charged_bytes": 134217728,
+              "inventory": {
+                "apparent_bytes": 30321,
+                "entry_count": 64,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 220587048960,
+              "observed_apparent_bytes": 30321,
+              "outstanding_full_reservations_bytes": 134217728,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 134217728
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 134217728,
+              "charged_bytes": 134248706,
+              "checked_at": 1790957969.8699489,
+              "external_charged_bytes": 134217728,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 30978,
+                "entry_count": 64,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 220587032576,
+              "observed_apparent_bytes": 30978,
+              "outstanding_full_reservations_bytes": 134217728,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 134217728
+            },
+            "memory_mb": 1024,
+            "owner_pid": 3203332,
+            "parent_lease_id": "b343fccec0294be88de7cae6668fee51",
+            "prior_children": [],
+            "released_at": 1790957969.8846962,
+            "reservation_id": "4dac28fd2b944a7bbad2de520fbda985",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 134217728,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "4dac28fd2b944a7bbad2de520fbda985",
+          "resource_lease": {
+            "acquired_at": 1790957969.4697824,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "2f82f4216200413685e6bce1b31cdc70",
+            "memory_mb": 1024,
+            "owner_pid": 3203332,
+            "parent_lease_id": "b343fccec0294be88de7cae6668fee51",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 2.398155629634857e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 40763473,
+              "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 457,
+        "payload_bytes": 272,
+        "phase": "validation",
+        "protected": true,
+        "request_id": "3e7cbaca4b444bdd8b66dfcc17595aa4",
+        "status": "completed"
+      },
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02/pipeline-disk-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": false,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 40763537,
+              "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02/managed-attempts/3-initial_preparation"
+            },
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790957969.9204495,
+            "external_charges": {
+              "pipeline-55e2de5ff2ae8a08bc71ab3a55727da9fbd945ba1db0195719d29e336120a3e5": 134217728
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 134217728,
+              "charged_bytes": 134250969,
+              "checked_at": 1790957970.0103283,
+              "external_charged_bytes": 134217728,
+              "inventory": {
+                "apparent_bytes": 33241,
+                "entry_count": 65,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 220587024384,
+              "observed_apparent_bytes": 33241,
+              "outstanding_full_reservations_bytes": 134217728,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 134217728
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 134217728,
+              "charged_bytes": 134250969,
+              "checked_at": 1790957969.9844124,
+              "external_charged_bytes": 0,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 33241,
+                "entry_count": 65,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 220587024384,
+              "observed_apparent_bytes": 33241,
+              "outstanding_full_reservations_bytes": 134217728,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 0
+            },
+            "memory_mb": 1024,
+            "owner_pid": 3203332,
+            "parent_lease_id": "c1d152b89ad1421cb2d2c1c3efd0ab41",
+            "prior_children": [],
+            "reservation_id": "ff36b15c5f464eb4bee5da1594e4b27c",
+            "retention_reason": "context_failed",
+            "scheduler_lane": "hammer_lean",
+            "status": "retained",
+            "storage_bytes": 134217728,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "ff36b15c5f464eb4bee5da1594e4b27c",
+          "resource_lease": {
+            "acquired_at": 1790957969.9272125,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "11154d1b59da4100b0b32156530ad415",
+            "memory_mb": 1024,
+            "owner_pid": 3203332,
+            "parent_lease_id": "c1d152b89ad1421cb2d2c1c3efd0ab41",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 2.8801150619983673e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 40763473,
+              "path": "/home/barberb/lift_coding/artifacts/repository-behavioral-supervision-20261002/managed-native-02"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "retained",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 2137,
+        "payload_bytes": 266,
+        "phase": "proof",
+        "protected": false,
+        "request_id": "c1cc45ac23734f949711f8fe89b08603",
+        "status": "failed"
+      }
+    ],
+    "hard_enforcement": false,
+    "lifecycle": {
+      "awaiting_host_admission": 0,
+      "host_resource_authority": false,
+      "maximum": 32,
+      "ordinary": 0,
+      "pending_reap": 0,
+      "recovery_only": 0,
+      "recovery_only_maximum": 1,
+      "reserved": 0,
+      "schema": "repository-pipeline-lifecycle-inventory@1",
+      "scope": "process_local_python_handles_only"
+    },
+    "limitations": [
+      "CPU admission and process-group RSS sampling are not aggregate kernel enforcement",
+      "disk authority covers the existing ledger's named roots, not all host filesystems",
+      "payload bounds cover references retained by this adapter, not caller-owned copies or model tensors",
+      "consumer APIs must honor native lease/cancellation/thread options and reap their own children",
+      "validation and cleanup share a protected compartment and can queue behind each other",
+      "GPU, unknown devices, hard enforcement and gradual host recovery are not qualified"
+    ],
+    "owned_disk_bytes": 268435456,
+    "policy": {
+      "maximum_queued_payload_bytes": 4194304,
+      "maximum_retained_payload_bytes": 16777216,
+      "protected_cpu_slots": 1,
+      "protected_disk_bytes": 671088640,
+      "protected_memory_mb": 1024,
+      "protected_phase_slots": 8,
+      "protected_process_slots": 1,
+      "protected_queue_slots": 1,
+      "protected_queued_payload_bytes": 65536,
+      "protected_retained_payload_bytes": 1048576
+    },
+    "profile": "cpu-protected-payload-durable-disk@1",
+    "queued_payload_bytes": 0,
+    "queued_phases": 0,
+    "recovery_only": false,
+    "retained_disk_reservations": [
+      "ff36b15c5f464eb4bee5da1594e4b27c"
+    ],
+    "retained_host_phase_count": 0,
+    "retained_payload_bytes": 0,
+    "root": {
+      "active_phase_count": 0,
+      "budget": {
+        "cpu_slots": 3,
+        "device": "cpu",
+        "disk_bytes": 1610612736,
+        "enforcement": "sampled",
+        "maximum_phases": 128,
+        "maximum_queued_metadata_bytes": 65536,
+        "maximum_queued_phases": 8,
+        "memory_mb": 3072,
+        "process_slots": 3,
+        "threads_per_process": 1,
+        "wall_time_ms": 599966
+      },
+      "closed": true,
+      "completion_authority": false,
+      "events": [
+        {
+          "child_lease_id": "b343fccec0294be88de7cae6668fee51",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 134217728,
+            "memory_mb": 1024,
+            "phase": "validation",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 443,
+          "parent_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+          "queue_time_ms": 7,
+          "request_id": "d25d638bcca942a8819ef6d5475dbcda",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "c1d152b89ad1421cb2d2c1c3efd0ab41",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 134217728,
+            "memory_mb": 1024,
+            "phase": "proof",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "error_type": "ValueError",
+          "execution_time_ms": 2122,
+          "parent_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+          "queue_time_ms": 7,
+          "request_id": "1480558da81943cbb0b8f0bce8f01180",
+          "status": "failed"
+        }
+      ],
+      "hard_enforcement": false,
+      "host_authority": {
+        "owner": "datasets.GlobalResourceScheduler",
+        "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+        "root_lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+        "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+      },
+      "limitations": [
+        "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+        "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+        "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+        "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+        "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+        "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+        "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+      ],
+      "native_parent": {
+        "acquired_at": 1790957969.4443226,
+        "cancelled": true,
+        "child_process_slots": 3,
+        "cpu_slots": 3,
+        "gpu_memory_mb": 0,
+        "lane": "orchestration",
+        "lease_id": "e61c94ba97c44ee9b0ae4ebced82d565",
+        "memory_mb": 3072,
+        "owner_pid": 3203332,
+        "parent_lease_id": null,
+        "released": true,
+        "requires_gpu": false,
+        "unified_memory_mb": 0,
+        "wait_seconds": 6.079208105802536e-07
+      },
+      "owned_active_root_count": 0,
+      "profile": "cpu-shared-native-sampled@1",
+      "queued_metadata_bytes": 0,
+      "queued_phase_count": 0,
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "repository-shared-host-envelope@1",
+      "shared_active_root_count": 1,
+      "supervisor_lease_id": "resource-lease:f7550744b7564a3c842bfef7c5a215d7",
+      "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+      "task_execution_authority": false,
+      "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+      "validation_reserve": {
+        "cpu_slots": 2,
+        "memory_mb": 0
+      }
+    },
+    "schema": "repository-pipeline-resources@1",
+    "task_execution_authority": false
+  },
+  "pipeline_resources_selected": true,
+  "preparation_reports": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "qualified": false,
+  "resource_state": {
+    "active_child_lease_count": 5,
+    "active_lease_count": 7,
+    "active_root_lease_count": 2,
+    "allocated": {
+      "cpu_slots": 4,
+      "memory_mb": 4096
+    },
+    "allocated_child_process_slots": 4,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 12,
+      "cpu_slots": 12,
+      "gpu_memory_mb": null,
+      "memory_mb": 95592,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 23,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 16,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "lanes": {
+      "hammer_lean": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 3,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 3,
+          "wait_seconds_max": 5.599576979875565e-07,
+          "wait_seconds_mean": 3.625949223836263e-07,
+          "wait_seconds_total": 1.087784767150879e-06
+        }
+      },
+      "orchestration": {
+        "allocated": {
+          "child_process_slots": 4,
+          "cpu_slots": 4,
+          "gpu_memory_mb": 0,
+          "memory_mb": 4096,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 3,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 3,
+          "wait_seconds_max": 6.561167538166046e-07,
+          "wait_seconds_mean": 6.346187243858973e-07,
+          "wait_seconds_total": 1.903856173157692e-06
+        }
+      },
+      "persistence": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 1,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 1,
+          "wait_seconds_max": 1.0079238563776016e-06,
+          "wait_seconds_mean": 1.0079238563776016e-06,
+          "wait_seconds_total": 1.0079238563776016e-06
+        }
+      },
+      "snapshot_evaluation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 11,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 11,
+          "wait_seconds_max": 6.398186087608337e-07,
+          "wait_seconds_mean": 3.47594984553077e-07,
+          "wait_seconds_total": 3.823544830083847e-06
+        }
+      },
+      "trainer": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 4,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 4,
+          "wait_seconds_max": 6.239861249923706e-07,
+          "wait_seconds_mean": 4.4802436605095863e-07,
+          "wait_seconds_total": 1.7920974642038345e-06
+        }
+      },
+      "validation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 2,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 1,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 1,
+          "wait_seconds_max": 6.242189556360245e-07,
+          "wait_seconds_mean": 6.242189556360245e-07,
+          "wait_seconds_total": 6.242189556360245e-07
+        }
+      }
+    },
+    "proof_backoff": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 0,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "wait_time_seconds": {
+      "count": 23,
+      "max": 1.0079238563776016e-06,
+      "mean": 4.451924368091252e-07,
+      "p50": 4.1583552956581116e-07,
+      "p95": 6.561167538166046e-07,
+      "p99": 1.0079238563776016e-06,
+      "total": 1.0239426046609879e-05
+    },
+    "waiting_request_count": 0
+  },
+  "run_owner_pid": 3203332,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 2.7003437159582973,
+  "training_steps": 0,
+  "trial_phases": [
+    {
+      "elapsed_seconds": 0.033005816861987114,
+      "end_seconds": 0.033005816861987114,
+      "phase": "setup",
+      "start_seconds": 0.0,
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.03819558513350785,
+      "end_seconds": 0.07120140199549496,
+      "phase": "host_admission",
+      "start_seconds": 0.033005816861987114,
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.45773840183392167,
+      "end_seconds": 0.5289398038294166,
+      "phase": "initial_public_validation",
+      "start_seconds": 0.07120140199549496,
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 2.1714039121288806,
+      "end_seconds": 2.7003437159582973,
+      "phase": "initial_preparation",
+      "start_seconds": 0.5289398038294166,
+      "status": "failed"
+    }
+  ]
+}
