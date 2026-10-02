@@ -1,0 +1,15 @@
+{
+  "schema": "repository-typed-intent-evidence-sources@1",
+  "sources": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/repository_intent_evidence.py",
+      "sha256": "00dbd197c771c47da34ad3c286067c4540a62295db7ddf553d5f92fcdef5f0ca",
+      "size_bytes": 6085
+    },
+    {
+      "path": "test/integration/test_repository_intent_evidence.py",
+      "sha256": "396c2008de5c3fef2f6eb0c9c6bc5f02d0cce3f9bfd4b4716a031657571530f0",
+      "size_bytes": 8808
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "closed-local-evidence-manifest@1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "2b5bb33bd5d974dffedd85b3113ba633b31f63e90f6247bebf82578ecff36503",
+      "size_bytes": 845
+    },
+    {
+      "path": "producer-sources.json",
+      "sha256": "fceae3edd72169fd9ce4320a9342b11a2b763268f2269301ae7cdb52263aca01",
+      "size_bytes": 485
+    },
+    {
+      "path": "qualification.json",
+      "sha256": "7191eacc6b336f4adbf9370cae1fb56ce4c448c1df36c7ff90dc5ea70fbac195",
+      "size_bytes": 2318
+    },
+    {
+      "path": "rpi032-typed-final02-tests.log",
+      "sha256": "9ad6c0fde50e26e31e8c1e971fa9dbe64fe336fe87cfe35be3515ebc56516740",
+      "size_bytes": 32406
+    },
+    {
+      "path": "rpi032-typed-final02-tests.xml",
+      "sha256": "658db30c08792faf969c38bec5ebbe9360efe11df0e2641a4323c2779add33f2",
+      "size_bytes": 17726
+    },
+    {
+      "path": "rpi032-typed-final03-tests.log",
+      "sha256": "119bf8a2bab6b13a591b7fe53476eba143709ab48752dde86b3c39910127b1a4",
+      "size_bytes": 34840
+    },
+    {
+      "path": "rpi032-typed-final03-tests.xml",
+      "sha256": "e2d9e4c279268903ecc5194eb925f485428570cbfa0fe33e3aae0680f84d0269",
+      "size_bytes": 18535
+    },
+    {
+      "path": "rpi032-typed-final04-tests.log",
+      "sha256": "66a7b24415ee68b1348e04f8d4bf69ccb0e9efc9c662883d18ad12255e678a72",
+      "size_bytes": 31763
+    },
+    {
+      "path": "rpi032-typed-final04-tests.xml",
+      "sha256": "dcb0e39833c06bb091e50f660acb30f08f100530429540c8117913a74564d06f",
+      "size_bytes": 17198
+    },
+    {
+      "path": "rpi032-typed-final05-tests.log",
+      "sha256": "3f5f87403943ab55005d5243c1de5f399955a96f4c74adc22f04109345df8c76",
+      "size_bytes": 1947
+    },
+    {
+      "path": "rpi032-typed-final05-tests.xml",
+      "sha256": "63f0f995c093dae251e3a181bdbf684bb899845a835b92bf7a57bb89aa3f2010",
+      "size_bytes": 1936
+    },
+    {
+      "path": "rpi032-typed-intent-tests.log",
+      "sha256": "41d7b7bc5c07964afa12359bed101f1577f6d12955b3fc78e7903d3032de6fb1",
+      "size_bytes": 41587
+    },
+    {
+      "path": "rpi032-typed-intent-tests.xml",
+      "sha256": "4c2abe2c9eebe10ed705d885ba4a31efe6d15cef75ca135bd2c4085c06421a2e",
+      "size_bytes": 19112
+    }
+  ]
+}

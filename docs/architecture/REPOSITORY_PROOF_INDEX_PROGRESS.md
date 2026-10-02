@@ -183,3 +183,8 @@ full-daemon repair in203.410 seconds with zero LLM calls. The worker reopens the
 native evidence owners and checks source state before and after materialization.
 Both successor finite behavior and complete semantic rows match a cold rebuild.
 This is an authored model-off integration fixture, not an official benchmark.
+
+Typed intent and residual queries now pass11 controls, including a separate
+process reopening durable source/catalog/cache owners and running a fresh positive
+checker. All four bounded native query shapes are implemented; they retain the
+complete requirement population and confer no task-omission authority.

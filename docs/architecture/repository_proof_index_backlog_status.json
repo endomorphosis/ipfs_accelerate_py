@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T08:44:24.452681+00:00",
+  "updated_at_utc": "2026-10-02T09:01:01.836428+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -252,6 +252,11 @@
     "joined-source-evidence-matrix": {
       "path": "docs/agent_supervisor/evidence/repository-code-evidence-source-matrix-20261002/manifest.json",
       "sha256": "14026df5fbab05936cc42d9b70cb879cb3833dc52bfa5ced8d0405f820469c9a",
+      "retention": "repository_evidence"
+    },
+    "typed-intent-evidence": {
+      "path": "docs/agent_supervisor/evidence/repository-typed-intent-evidence-20261002/manifest.json",
+      "sha256": "90595aca22181618ad97c5ac0de34c65abc16cb7ed3a9645853af72a3e84a2e8",
       "retention": "repository_evidence"
     }
   },
@@ -971,7 +976,8 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Historical proof-cache discovery uses bounded keyset pages, continuation keys and explicit omissions; the compatibility scanner walks beyond 512 rows and persists reports. Exact source locator plus full key prevents basename/truncated-key collisions.",
-        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases."
+        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases.",
+        "Eleven controls qualify complete typed intent-resolution and residual-obligation queries, exact consumed native record/receipt commitments, wrong premise/tool refusal and independent-process positive replay with a fresh checker. This completes the four bounded local query shapes; source/configuration and admission matrices are tracked separately."
       ],
       "remaining_work": [
         "Complete declared source/configuration/model and freeze-to-admission matrix remains open beyond the qualified bounded local facade. DQP-backed cross-process service and generic model-dependent projections are unsupported in this profile."
@@ -983,7 +989,8 @@
         "proof-cache-summary-json",
         "proof-cache-checksums-json",
         "typed-code-evidence",
-        "joined-source-evidence-matrix"
+        "joined-source-evidence-matrix",
+        "typed-intent-evidence"
       ],
       "criterion_acceptance": "not_yet_qualified"
     }

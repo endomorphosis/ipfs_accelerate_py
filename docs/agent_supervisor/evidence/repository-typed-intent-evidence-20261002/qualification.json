@@ -1,0 +1,75 @@
+{
+  "schema": "repository-typed-intent-evidence-qualification@1",
+  "distinct_tests": 11,
+  "passed": 11,
+  "skipped": 0,
+  "attempts": [
+    {
+      "log": "rpi032-typed-intent-tests.log",
+      "xml": "rpi032-typed-intent-tests.xml",
+      "tests": "9",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "68.652"
+    },
+    {
+      "log": "rpi032-typed-final02-tests.log",
+      "xml": "rpi032-typed-final02-tests.xml",
+      "tests": "9",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "44.933"
+    },
+    {
+      "log": "rpi032-typed-final03-tests.log",
+      "xml": "rpi032-typed-final03-tests.xml",
+      "tests": "9",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "139.660"
+    },
+    {
+      "log": "rpi032-typed-final04-tests.log",
+      "xml": "rpi032-typed-final04-tests.xml",
+      "tests": "9",
+      "failures": "0",
+      "errors": "1",
+      "skipped": "0",
+      "time": "201.924"
+    },
+    {
+      "log": "rpi032-typed-final05-tests.log",
+      "xml": "rpi032-typed-final05-tests.xml",
+      "tests": "11",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "166.385"
+    }
+  ],
+  "actual_native_controls": [
+    "typed complete intent query and separate residual query preserve every statement",
+    "query bound overflow refuses complete population, never truncates",
+    "alternate native tool key misses positive history",
+    "re-sealed wrong premise refuses positive history",
+    "fresh process reopens persisted source/catalog/cache and performs fresh positive checker"
+  ],
+  "fixture_scope": "Final05 reopens genuine final09 behavioral native source/catalog/cache/CAS owners; every query retains live source/checker fences. No mock positive checker, no repeated source preparation claimed.",
+  "retained_fixture_path": "/tmp/rpi014-native-qualified-09/actual-behavioral-admission0",
+  "host_refusals": "Earlier runs preserve actual global admission timeouts; all safety/backoff unchanged.",
+  "unsupported": [
+    "generic DQP/Quack release",
+    "task population omission",
+    "source/runtime equivalence",
+    "model-dependent proof claims"
+  ],
+  "authority": {
+    "proof": false,
+    "execution": false,
+    "completion": false,
+    "omission": false
+  }
+}
