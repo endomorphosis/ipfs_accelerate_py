@@ -61,7 +61,8 @@ def finite_successor_semantics(match):
     return result
 
 
-def prepare_request(*, index, head, repository, intent, declared, tools, scheduler):
+def prepare_request(*, index, head, repository, intent, declared, tools, scheduler,
+        semantic_index=None, checked_cache=None):
     """Derive roots from actual source, signed task/policy and explicit absent domains."""
     from ipfs_accelerate_py.agent_supervisor.planning import finite_integer_codebase as matcher
     from ipfs_accelerate_py.agent_supervisor.planning.finite_integer_plan_preview import (
@@ -83,8 +84,23 @@ def prepare_request(*, index, head, repository, intent, declared, tools, schedul
     native_manifest = index.load(head.manifest_cid)
     selection = dict(tools=tools, operations=catalog.to_dict(), model="disabled",
                      native_task_cid=declared["task_cid"])
+    if semantic_index is not None:
+        selected_query = matcher.prepare_finite_integer_query(intent_document=document, source_text=INSTRUCTION)
+        if semantic_index["contract"] != selected_query["contract"]:
+            raise ValueError("semantic index declaration differs from the selected intent contract")
+        selection["semantic_index"] = semantic_index
+    if checked_cache is not None:
+        selection["checked_cache"] = checked_cache["binding"]
 
     def observed_roots():
+        if checked_cache is not None:
+            lookup = checked_cache["owner"].lookup(owner_inputs=checked_cache["inputs"])
+            if _cache_binding(lookup) != checked_cache["binding"]:
+                raise ValueError("finite checked cache changed before planning admission")
+        if semantic_index is not None:
+            from .terminal_codebase_semantic_index import verify_semantic_index
+            verify_semantic_index(index=index, repository=repository, expected_head=head,
+                descriptor=semantic_index, scheduler=scheduler)
         admission = local.verify_local_benchmark_admission(declared["admission"], initial=True)
         projection = intent.plan_projection(task_cids=[declared["task_cid"]])
         return PlanAuthorityRoots(repository_id=head.repository_id,
@@ -119,7 +135,13 @@ def prepare_request(*, index, head, repository, intent, declared, tools, schedul
         operation_catalog=catalog, tool_policy=tools, policy_observer=policy_observer)
 
 
-def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = False):
+def _cache_binding(result):
+    return {key: result[key] for key in ("schema", "status", "record_cid", "request_key", "scope",
+        "source_runtime_semantics_verified", "execution_authority", "completion_authority")}
+
+
+def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = False,
+        semantic_manifest: bool = False, checked_cache: bool = False):
     import duckdb
     from ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation import seal_finite_integer_tools
     from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import get_global_resource_scheduler
@@ -153,11 +175,16 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 "unsupported.py": "def dynamic(n):\n    return eval(str(n))\n",
                 "public_check.py": CHECK}.items():
             (repository / name).write_text(body)
+        if semantic_manifest:
+            # The stricter source profile captures ignore rules as versioned
+            # source. Ambient info/exclude patterns cannot define its scope.
+            (repository / ".gitignore").write_text(".runtime/\n__pycache__/\n")
         for args in (("init", "-q"), ("config", "user.name", "Repository finite qualification"),
                 ("config", "user.email", "qualification@example.invalid"),
                 ("add", "."), ("commit", "-qm", "Independent complete finite acceptance")):
             _git(repository, *args)
-        (repository / ".git/info/exclude").write_text(".runtime/\n__pycache__/\n")
+        if not semantic_manifest:
+            (repository / ".git/info/exclude").write_text(".runtime/\n__pycache__/\n")
         (repository / ".runtime").mkdir(mode=0o755)
         baseline = _git(repository, "rev-parse", "HEAD")
         check = ["python3", "-B", "public_check.py"]
@@ -167,17 +194,45 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             raise RuntimeError("independent public acceptance must initially fail")
         tools = seal_finite_integer_tools(python_executable=python, lean_executable=lean)
         scheduler = get_global_resource_scheduler()
+        def prepare_source(index, *, repository_id, operation_id, expected_head):
+            if not semantic_manifest:
+                return index.prepare_current(repository, repository_id=repository_id,
+                    operation_id=operation_id, expected_head=expected_head, scheduler=scheduler).head, None
+            from .terminal_codebase_semantic_index import prepare_semantic_index
+            from ipfs_datasets_py.logic.software_contracts.codebase_integer_profile import IntegerOffsetContract
+            return prepare_semantic_index(index=index, repository=repository,
+                repository_id=repository_id, operation_id=operation_id, expected_head=expected_head,
+                contract=IntegerOffsetContract("calc.py", "increment", "n", 2), scheduler=scheduler)
+        def prepare_cache(index, head, name):
+            from ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache import FiniteCheckedCache
+            from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import FormalVerificationCache
+            from ipfs_datasets_py.logic.software_contracts.codebase_integer_profile import IntegerOffsetContract
+            owner = FiniteCheckedCache(FormalVerificationCache(output / "checked-cache"), index.artifacts)
+            inputs = dict(index=index, repository=repository, expected_head=head,
+                contract=IntegerOffsetContract("calc.py", "increment", "n", 2), inputs=INPUTS,
+                tool_policy=tools, scheduler=scheduler)
+            saved = owner.check_and_store(owner_inputs=inputs)
+            _write(output / (name + "-checked-cache.json"), saved)
+            return dict(owner=owner, inputs=inputs, binding=_cache_binding(saved)), saved
         with duckdb.connect(str(output / "repository.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             index = _index(cx, output / "artifacts")
-            head = index.prepare_current(repository, repository_id="repository:finite-native-qualification",
-                operation_id="initial", expected_head=None, scheduler=scheduler).head
+            head, semantic_index = prepare_source(index, repository_id="repository:finite-native-qualification",
+                operation_id="initial", expected_head=None)
+            report["initial_semantic_index"] = semantic_index
+            cached = None
+            if checked_cache:
+                cached, cache_result = prepare_cache(index, head, "initial")
+                report["initial_checked_cache"] = _cache_binding(cache_result)
+                if cache_result["status"] != "refuted" or cache_result["positive_reuse_eligible"]:
+                    raise RuntimeError("initial offset must remain a checked residual")
             with IntentRepository(output / "intent.duckdb") as intent:
                 declared = prepare_local_task(repository=repository, state=output / "policy", intent=intent,
                     scope_paths=["calc.py", "instruction.txt", "public_check.py"], output_path="calc.py",
                     validation_argv=check, objective=INSTRUCTION.replace("\n", " "))
                 cid = declared["task_cid"]
                 options = prepare_request(index=index, head=head, repository=repository, intent=intent,
-                    declared=declared, tools=tools, scheduler=scheduler)
+                    declared=declared, tools=tools, scheduler=scheduler,
+                    semantic_index=semantic_index, checked_cache=cached)
                 candidate = prepare_finite_repository_handoff(**options, admission=declared["admission"],
                     intent=intent, task_cid=cid, state=output / "finite-repair", instruction_path="instruction.txt")
                 _write(output / "candidate-result.json", candidate)
@@ -296,8 +351,33 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         with duckdb.connect(str(output / "repository.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             index = _index(cx, output / "artifacts")
             prior = index.current(head.repository_id)
-            successor = index.prepare_current(repository, repository_id=head.repository_id,
-                operation_id="published-successor", expected_head=prior, scheduler=scheduler).head
+            successor, successor_index = prepare_source(index, repository_id=head.repository_id,
+                operation_id="published-successor", expected_head=prior)
+            report["successor_semantic_index"] = successor_index
+            if checked_cache:
+                successor_cache, cache_result = prepare_cache(index, successor, "successor")
+                report["successor_checked_cache"] = _cache_binding(cache_result)
+                # Reconstruct through a new cache handle after durable store.
+                from ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache import FiniteCheckedCache
+                from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import FormalVerificationCache
+                reopened = FiniteCheckedCache(FormalVerificationCache(output / "checked-cache"), index.artifacts)
+                replay = reopened.lookup(owner_inputs=successor_cache["inputs"])
+                _write(output / "successor-checked-cache-replay.json", replay)
+                report["checked_cache_replay_agrees"] = (
+                    _cache_binding(replay) == _cache_binding(cache_result)
+                    and replay["positive_reuse_eligible"] is True
+                    and replay["fresh_native_observation"] is True)
+                try:
+                    reopened.lookup(owner_inputs={**successor_cache["inputs"], "expected_head": head})
+                except ValueError:
+                    report["stale_checked_cache_refused"] = True
+                else:
+                    report["stale_checked_cache_refused"] = False
+            if successor_index is not None:
+                from ipfs_datasets_py.logic.software_contracts.codebase_semantic_manifest import load_codebase_semantic_manifest
+                manifest = load_codebase_semantic_manifest(index, successor_index["manifest_cid"])
+                successor_manifest_semantics = {key: manifest[key] for key in
+                    ("units", "coverage", "declarations", "semantic_state_cid")}
             try:
                 query_finite_evidence_index(index=index, repository=repository, expected_head=head,
                                            expected=historical, scheduler=scheduler)
@@ -314,8 +394,16 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             _write(output / "successor-match.json", matched)
         with duckdb.connect(str(output / "cold.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             cold = _index(cx, output / "cold-artifacts")
-            cold_head = cold.prepare_current(repository, repository_id=head.repository_id,
-                operation_id="independent-cold-successor", expected_head=None, scheduler=scheduler).head
+            cold_head, cold_index = prepare_source(cold, repository_id=head.repository_id,
+                operation_id="independent-cold-successor", expected_head=None)
+            report["cold_semantic_index"] = cold_index
+            if cold_index is not None:
+                manifest = load_codebase_semantic_manifest(cold, cold_index["manifest_cid"])
+                cold_manifest_semantics = {key: manifest[key] for key in successor_manifest_semantics}
+                report["cold_semantic_manifest_agrees"] = successor_manifest_semantics == cold_manifest_semantics
+                _write(output / "semantic-manifest-comparison.json", dict(
+                    incremental=successor_manifest_semantics, cold=cold_manifest_semantics,
+                    source_head_generations_remain_distinct=successor.generation != cold_head.generation))
             cold_match = matcher.match_finite_integer_intent(index=cold, repository=repository,
                 repository_id=head.repository_id, expected_head=cold_head,
                 intent_document=matcher.build_finite_integer_intent(INSTRUCTION), source_text=INSTRUCTION,
@@ -335,6 +423,9 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             and report["published_commit"] != baseline and report["published_source_matches_checked_candidate"]
             and report["stale_index_refused"] and report["stale_dispatch_refused"]
             and report["cold_successor_agrees"] and report["successor"]["fact_count"] == 2
+            and (not semantic_manifest or report.get("cold_semantic_manifest_agrees") is True)
+            and (not checked_cache or (report.get("checked_cache_replay_agrees") is True
+                                      and report.get("stale_checked_cache_refused") is True))
             and not report["successor"]["residuals"]
             and not report["owned_remaining_leases"])
     except Exception as error:
@@ -355,6 +446,8 @@ def main():
     parser.add_argument("--python", required=True, type=Path)
     parser.add_argument("--lean", required=True, type=Path)
     parser.add_argument("--public-evidence", action="store_true")
+    parser.add_argument("--semantic-manifest", action="store_true")
+    parser.add_argument("--checked-cache", action="store_true")
     result = qualify(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("qualified", "seconds", "provider_calls")}))
     return 0 if result["qualified"] else 1

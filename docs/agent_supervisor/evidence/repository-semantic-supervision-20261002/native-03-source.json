@@ -1,0 +1,45 @@
+{
+  "captured_at": "2026-10-02T06:47:16.205889+00:00",
+  "files": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "c2a5924abb122fa3bacd0f8843bcc3f6a1d2fec931915c9702f307852bf28651"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py",
+      "sha256": "ff864c2c85ed07b12e0891a473ef1740830953bd1d3c929b35222b5589fb1d07"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+      "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+      "sha256": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_public_context.py",
+      "sha256": "7b7e980cadb1ed7f000381103470b9f04d67715c0b067d03bde8ab06e7b5134c"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+      "sha256": "8c43bc1b97a94c5100815447130a549266b9ccdc266574e2b8b224a3ea82aef5"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py",
+      "sha256": "7037fca4046b357ef941cd511b20da55979a8055056ebc755bcb65c0026cb55b"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+      "sha256": "79a8e1b92365264bfafb511f1689a321d7d742046101199aca253da97726aec2"
+    }
+  ]
+}

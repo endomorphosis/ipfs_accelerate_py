@@ -1,0 +1,14 @@
+[
+  {
+    "historical_only": true,
+    "positive_reuse_eligible": false,
+    "record_cid": "baguqeerarkhm6xvtibikdbkxcpyu2m2f47fifc4a4d2ndrssbs5cd4faatwq",
+    "request_key": "proof-cache-key:sha256:90f08b5cee2254e70c33012c44a1a684ba0347a8c4e798491a8d5a7c39dcc968"
+  },
+  {
+    "historical_only": true,
+    "positive_reuse_eligible": false,
+    "record_cid": "baguqeeraeglnfz4t363zk23o4i2vdl7kfosrmkhgmcxqdfgvu6vtgzv5kp3q",
+    "request_key": "proof-cache-key:sha256:bcf8078de5dc22236e933a5356f5186d7a715842391a0240393fc958ad9d7d39"
+  }
+]

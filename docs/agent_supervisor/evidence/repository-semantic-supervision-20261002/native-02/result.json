@@ -1,0 +1,946 @@
+{
+  "after_stop": {
+    "captured_at_ms": 1790923370222,
+    "completion_authority": false,
+    "configuration_root": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+    "healthy": false,
+    "native_heartbeat": null,
+    "process_tree": {
+      "captured_at_ms": 1790923370222,
+      "members": [],
+      "profile_id": "sha256:6295a9a2c2f1931582422e3a64beea9bcf692acca219afc9d3ecc76ec2fb6069",
+      "run_id": "admitted-dae3fd78f75642cda6deb485e4d27605",
+      "schema": "ipfs_accelerate_py/agent-supervisor/process-tree@1",
+      "tree_id": "sha256:2496597a1956e876b046649737ba723b31c646c12632705aef9de00225bdc96c"
+    },
+    "production_activation": false,
+    "provider_dispatch_allowed": true,
+    "published_context": [
+      {
+        "completion_authority": false,
+        "context_bundle": {
+          "artifact": ".runtime/published-context/admitted-dae3fd78f75642cda6deb485e4d27605/1-sha256:e272f7e011ca3e48047ee757e014a9b4f3f06e196ea9298a7c950510d7599f16/context-bundle.json",
+          "sha256": "e400db30a001882e919ce90fd4812d6bc090d38534349eb37f08970e03ed1f87"
+        },
+        "goal_progress": {
+          "canonical_state_mutated": false,
+          "capture_cid": "baguqeerazslew7rjulczdheqy3asauvccp2clnxfslsaev63yrq2boy6sb6q",
+          "completion_authority": false,
+          "completion_projection_cid": "baguqeerakxo3mif5eyzau6uxjyvcggxs7hdv5ggagod6pdy7b2ecb73vpzra",
+          "declared_goal_edges": [],
+          "event_watermark": 5,
+          "execution_authority": false,
+          "goal_completion_authority": "unresolved",
+          "goal_contracts_evaluated": false,
+          "goals": [
+            {
+              "child_goal_cids": [],
+              "completion_authority": false,
+              "direct_task_cids": [
+                "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+              ],
+              "goal_alias": "LOCAL-GOAL",
+              "goal_cid": "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona",
+              "goal_completion_authority": "unresolved",
+              "goal_contracts_evaluated": false,
+              "observed_counts": {
+                "completed_with_current_receipt": 1,
+                "current_completion_receipts": 1,
+                "observed_descendant_tasks": 1,
+                "observed_status_counts": {
+                  "completed": 1
+                }
+              },
+              "parent_goal_cid": "",
+              "revision": 1,
+              "status": "open",
+              "title": "Under python-integer-offset-finite@1, calc.py::increment(n) must return an exact int for inputs [-2,-1,0,1,2]. Under python-integer-offset-finite@1, calc.py::increment(n) must return n + 2 for inputs [-2,-1,0,1,2].",
+              "title_truncated": false
+            }
+          ],
+          "live_freshness_verified_here": false,
+          "parent_edges": [],
+          "plan_projection_cid": "baguqeerafx2mgcd4ol7cfptm5kvqvvblzurffv6zmtwcf7vu2acjjkr5ppha",
+          "population_scope": "selected-tasks",
+          "progress_cid": "baguqeeraknc7wnrsnl6hgzsp4g7z4jts6itsybkkgog2znwsdpbj6ikmdgra",
+          "roots": [
+            "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona"
+          ],
+          "schema": "supervisor-observed-intent-progress@1",
+          "status": "observed",
+          "task_population_complete": false,
+          "tasks": [
+            {
+              "completion_authority": false,
+              "current_completion_receipt": {
+                "attempt_id": "",
+                "claim_cid": "",
+                "evidence_digest": "baguqeerab36n2kjcghwhj4ni4lgkzax5ltiytet4d4gvnphorzmqrbdxiiza",
+                "fencing_token": 0,
+                "receipt_cid": "baguqeeravujppxjqigraviw3xsy7ml7ds7j47uvue6sqdyzwugblyqap6n5a",
+                "validation_run_id": ""
+              },
+              "dependencies": [],
+              "goal_cid": "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona",
+              "revision": 4,
+              "status": "completed",
+              "task_alias": "LOCAL-TASK",
+              "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+            }
+          ],
+          "unavailable_reasons": [],
+          "world_snapshot_cid": "sha256:e79c631d39124d44e2ae034e37e90cb8ca28befc65e963d836ef8660d5e6cb60"
+        },
+        "refresh_artifact": ".runtime/published-context/admitted-dae3fd78f75642cda6deb485e4d27605/1-sha256:e272f7e011ca3e48047ee757e014a9b4f3f06e196ea9298a7c950510d7599f16/result.json",
+        "refresh_sha256": "30f3be2776e38ad2bf872e5c163768533daa9ce8c50da69fdc348e8e7af9ca71",
+        "retrieval_status": "unavailable",
+        "semantic_root_cid": "baguqeeragxila74dfqs4mlrm6adgn27ac3u47cgmnlyqbyfaaaz3lp7g4tma",
+        "source_scope": {
+          "accepted_source_tree_includes_declared_outputs": true,
+          "declared_outputs_outside_index_scope": [],
+          "preserved_paths": [
+            "calc.py",
+            "instruction.txt",
+            "public_check.py"
+          ],
+          "scope_expanded": false
+        },
+        "status": "refreshed",
+        "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+        "task_revision": 4,
+        "world_snapshot_cid": "sha256:e79c631d39124d44e2ae034e37e90cb8ca28befc65e963d836ef8660d5e6cb60"
+      }
+    ],
+    "published_context_observation_seconds": 1.712726118043065,
+    "schema": "isolated-supervisor-observation@1",
+    "task_admission_authority": false
+  },
+  "baseline_commit": "cd5f218111ecf4f151aac0a113e13dc1dc23c532",
+  "benchmark_result": false,
+  "bootstrap_errors": [],
+  "captured_paths": [
+    ".gitignore",
+    "calc.py",
+    "decoy.py",
+    "instruction.txt",
+    "public_check.py",
+    "unsupported.py"
+  ],
+  "cold_semantic_index": {
+    "contract": {
+      "function_name": "increment",
+      "offset": 2,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza",
+      "generation": 1,
+      "manifest_cid": "baguqeeragsdma3mt5xlqdqpoeiksgf6n7webyt4v5fryo6hrkky5taw543fa",
+      "receipt_cid": "baguqeerasz7dbxdoe2ts6rethklfsst2dic6wqelyofkhc2x47bptrtx2ica",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza"
+    },
+    "manifest_cid": "baguqeeraatg5zcwz6n2uxy6q2m4olvii3adgnitj62rsiht5kppmywve2plq",
+    "policy_receipt_cid": "baguqeeraxkid423rnhunczvtlyuf3otpvnommvv6his6ogzactcqk6wyf6wq",
+    "proof_authority": false,
+    "schema": "terminal-codebase-semantic-index@1",
+    "training_executed": false
+  },
+  "cold_successor_agrees": true,
+  "context_bundle": {
+    "artifact": ".runtime/context-bundle.json",
+    "sha256": "8fe2b58f144eb1cedb63e35c1f7209ad9f48b587cdbcd9cfe416ea26c5ebdee2"
+  },
+  "final_public_check_exit_code": 0,
+  "handoff_sha256": "6bf1bb30b4aebf47406a8cfc3319581d6cf98d28d54d82c78701062543d6c006",
+  "index_query": {
+    "cache_authority": "historical_candidate_only",
+    "completion_authority": false,
+    "counts": {
+      "clauses": 2,
+      "facts": 1,
+      "observations": 5
+    },
+    "current_facts": [],
+    "execution_authority": false,
+    "fresh_observation_required": true,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla",
+      "generation": 1,
+      "manifest_cid": "baguqeerawip3oyu7k24pzhr7vb7qqulpjfxfnol7kpsky6tvy5nwgofqfwya",
+      "receipt_cid": "baguqeerahievigavnkpadqpje6mzvkz5bmcygkn2ff52st3ghedd2fihlioa",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla"
+    },
+    "historical_fact_ids": [
+      "finite-observation:baguqeeranvdbqdhhr7dvdk2de7i3faaghqvoq7nla2fm6bovrkrs2vsahbja"
+    ],
+    "live_source_checked_before_and_after": true,
+    "manifest_id": "sha256:ec29540e75f9a6afad52027851bcfdbd245c037d98cbe56a9b4ba01e8cbd4213",
+    "match_sha256": "sha256:dc2c5c235ccdcacf91668bec9cb306e25257b33bf447343d4c8220067e14305f",
+    "proof_authority": false,
+    "schema": "terminal-codebase-finite-evidence-query@1"
+  },
+  "initial_fact_count": 1,
+  "initial_head": {
+    "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla",
+    "generation": 1,
+    "manifest_cid": "baguqeerawip3oyu7k24pzhr7vb7qqulpjfxfnol7kpsky6tvy5nwgofqfwya",
+    "receipt_cid": "baguqeerahievigavnkpadqpje6mzvkz5bmcygkn2ff52st3ghedd2fihlioa",
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla"
+  },
+  "initial_public_check_exit_code": 1,
+  "initial_residuals": [
+    "finite-integer-offset-goal"
+  ],
+  "initial_semantic_index": {
+    "contract": {
+      "function_name": "increment",
+      "offset": 2,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla",
+      "generation": 1,
+      "manifest_cid": "baguqeerawip3oyu7k24pzhr7vb7qqulpjfxfnol7kpsky6tvy5nwgofqfwya",
+      "receipt_cid": "baguqeerahievigavnkpadqpje6mzvkz5bmcygkn2ff52st3ghedd2fihlioa",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla"
+    },
+    "manifest_cid": "baguqeeraxg4itkijbut2ssg22orznfs5zvcqo62kldo5km2t34ieptugglja",
+    "policy_receipt_cid": "baguqeeragbc7f5z6jf6a4wqla3znp5gkqk3al6naz6nosdxwszhimj3lyk5q",
+    "proof_authority": false,
+    "schema": "terminal-codebase-semantic-index@1",
+    "training_executed": false
+  },
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "native_diagnostics": {
+    "admitted_database_daemon_pass_heartbeat.json": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1",
+      "selection_idle_reason": ""
+    },
+    "admitted_native_owner_heartbeat.json": {
+      "schema": "native-typed-owner-live-observation@1"
+    },
+    "admitted_supervisor_status.json": {
+      "daemon_pid": null,
+      "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
+      "status": "stopped",
+      "supervisor_pid": 1671687
+    },
+    "exception_types": [],
+    "git_dubious_ownership": false,
+    "logs": [
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 0,
+        "path": "supervisor-process.log",
+        "tail_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "traceback_frames": []
+      },
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 31559,
+        "path": "run/admitted_managed_daemon_20261002T064242Z.log",
+        "tail_sha256": "0dd748f37cf3a2d8880b9527d49d95850ab4f0ee6cc71fa27b7beade23dc7cf0",
+        "traceback_frames": []
+      }
+    ],
+    "schema": "native-supervisor-diagnostics@1",
+    "traceback_frames": []
+  },
+  "observations": [
+    {
+      "revision": 3,
+      "seconds": 28.730307860998437,
+      "status": "in_progress"
+    },
+    {
+      "revision": 4,
+      "seconds": 34.712437964975834,
+      "status": "completed"
+    }
+  ],
+  "owned_remaining_leases": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "public_context": {
+    "artifact": "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/repository/.runtime/repository-finite-handoffs/3e52388d3d0cfe1a378c0fcabc357481619398519f1e86d79de2b896e284ee8e.json",
+    "artifact_cid": "baguqeerajqeh743z2ozgd5bwgbm76lhvkvhrlkxodrgshjwq7t6r4xw65nkq",
+    "handoff_sha256": "6bf1bb30b4aebf47406a8cfc3319581d6cf98d28d54d82c78701062543d6c006",
+    "sha256": "3e52388d3d0cfe1a378c0fcabc357481619398519f1e86d79de2b896e284ee8e"
+  },
+  "public_context_worker_receipt": {
+    "artifact_cid": "baguqeeragv7g2lw2lovb32zctcewecpkolw332oksy2l7mvgncl6avn7t3oa",
+    "baseline_commit": "cd5f218111ecf4f151aac0a113e13dc1dc23c532",
+    "changed_paths": [
+      "calc.py"
+    ],
+    "completion_authority": false,
+    "evidence": {
+      "candidate_observation_cid": "baguqeeraquq3ddgmnyv6fv44r5ka4io3v6phod56ctne5he25zztprpgpyha",
+      "complete_requirements": [
+        "finite-integer-offset-goal",
+        "finite-integer-type-goal"
+      ],
+      "initial_observation_cid": "baguqeerazqhhafxir2wvlsov6qdykqghbjzbzs4u4g5ixlo5khg3l67a7knq",
+      "input_sha256": "ddcddc91d0a322eb242b972fd5e262cd7c244027acef852461d9e7358d0cd38e",
+      "inputs": [
+        -2,
+        -1,
+        0,
+        1,
+        2
+      ],
+      "preview_cid": "baguqeerablhzjmeb66s5weeipaitirpvxjckkzghimdsgkx4wya7c7eajmta",
+      "query_cid": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+      "scope": "exact integer observations over the complete explicitly enumerated input domain",
+      "selected_operation": {
+        "function_name": "increment",
+        "operation": "update",
+        "parameter": "n",
+        "path": "calc.py",
+        "producer_id": "producer:task:finite:offset",
+        "requirement_id": "finite-integer-offset-goal",
+        "review_ref": "authored:bounded-offset-operation@1",
+        "task_id": "task:finite:offset"
+      },
+      "source_head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla",
+        "generation": 1,
+        "manifest_cid": "baguqeerawip3oyu7k24pzhr7vb7qqulpjfxfnol7kpsky6tvy5nwgofqfwya",
+        "receipt_cid": "baguqeerahievigavnkpadqpje6mzvkz5bmcygkn2ff52st3ghedd2fihlioa",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla"
+      }
+    },
+    "execution_authority": false,
+    "model_inference_used": false,
+    "omission_authority": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "public_context": {
+      "assumptions_count": 3,
+      "checker_execution_performed": false,
+      "completion_authority": false,
+      "counterexample": {
+        "input": -2,
+        "observed_output": -1,
+        "required_output": 0
+      },
+      "execution_authority": false,
+      "expanded_prompt_sha256": "1b04938698e97ab41f3162d47a6d60153a3565647eae47bc50c8b78369a0791c",
+      "injected_after_semantic_encoding": true,
+      "integrity_replayed": true,
+      "model_inference_used": false,
+      "omission_authority": false,
+      "original_instruction_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+      "original_prompt_sha256": "ccb790fd8910b05ff70a57c64184bed85e84437d962e8ad8b35ca45e5ff22b61",
+      "owner_keys_used": false,
+      "proof_authority": false,
+      "publication_authority": false,
+      "residual_requirements": [
+        "finite-integer-offset-goal"
+      ],
+      "sha256": "3e52388d3d0cfe1a378c0fcabc357481619398519f1e86d79de2b896e284ee8e",
+      "source_semantics_verified": false,
+      "whole_program_semantics_verified": false
+    },
+    "publication_authority": false,
+    "schema": "native-repository-finite-materialization@1",
+    "source_after_sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+    "source_semantics_verified": false,
+    "status": "candidate_materialized",
+    "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+    "whole_program_semantics_verified": false,
+    "write_mode": "atomic_replace"
+  },
+  "published_commit": "d95ebfd8fc158c1bdc72310609a16a429dc14041",
+  "published_source_matches_checked_candidate": true,
+  "qualified": true,
+  "remaining_processes": 0,
+  "resource_state": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "allocated_child_process_slots": 0,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 119,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 119,
+      "saturation_events_total": 1,
+      "timeouts_total": 0
+    },
+    "lanes": {
+      "snapshot_evaluation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 107,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 107,
+          "wait_seconds_max": 28.006378833204508,
+          "wait_seconds_mean": 0.26174226609302387,
+          "wait_seconds_total": 28.006422471953556
+        }
+      },
+      "validation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 2,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 12,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 12,
+          "wait_seconds_max": 4.6403147280216217e-07,
+          "wait_seconds_mean": 3.346358425915241e-07,
+          "wait_seconds_total": 4.0156301110982895e-06
+        }
+      }
+    },
+    "proof_backoff": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 1,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "wait_time_seconds": {
+      "count": 119,
+      "max": 28.006378833204508,
+      "mean": 0.23534812174440056,
+      "p50": 3.83937731385231e-07,
+      "p95": 6.239861249923706e-07,
+      "p99": 9.599607437849045e-07,
+      "total": 28.006426487583667
+    },
+    "waiting_request_count": 0
+  },
+  "retained_preview_execution_debt": {
+    "admitted": false,
+    "admitted_width": 0,
+    "assignments": [],
+    "capacity_snapshot_id": "baguqeera76vi3ndc7qnl6a6wra4chv763nnfj2yes4nklwza5f3jadz4aqsa",
+    "conflict_graph": {
+      "blocking_pairs": [],
+      "edges": [],
+      "task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "conflict_width": 1,
+    "conflicts": [],
+    "critical_path": [
+      "task:finite:offset"
+    ],
+    "critical_path_duration_ms": 1000,
+    "dependency_edges": [],
+    "dependency_graph": {
+      "critical_path": [
+        "task:finite:offset"
+      ],
+      "critical_path_duration_ms": 1000,
+      "edges": [],
+      "estimated_makespan_ms": 1000,
+      "ready_waves": [
+        {
+          "conflict_free_lanes": [
+            [
+              "task:finite:offset"
+            ]
+          ],
+          "conflict_width": 1,
+          "dependency_wave": 0,
+          "graph_ready_task_ids": [
+            "task:finite:offset"
+          ],
+          "graph_width": 1
+        }
+      ]
+    },
+    "deterministic_replay": {
+      "capacity_snapshot_id": "baguqeera76vi3ndc7qnl6a6wra4chv763nnfj2yes4nklwza5f3jadz4aqsa",
+      "compiler_interface": "ParallelPlanCompiler@1",
+      "input_digest": "parallel-plan-input:sha256:fd1651f158cc3f21ded3261c5c47416d23c35b8f6c5996cd944baa02d77ba743",
+      "plan_id": "parallel-execution-plan:sha256:5434f4633c5ab63c1e22cfafd3f1702a28c5e7aecc0f5549803cfdc391829bdd",
+      "provider_snapshot_ids": [],
+      "repository_tree_id": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla"
+    },
+    "estimated_makespan_ms": 1000,
+    "execution_waves": [],
+    "graph_width": 1,
+    "input_digest": "parallel-plan-input:sha256:fd1651f158cc3f21ded3261c5c47416d23c35b8f6c5996cd944baa02d77ba743",
+    "interface": "ParallelExecutionPlan@1",
+    "issues": [
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "capacity snapshot has no executable CPU/process slot",
+        "task_ids": []
+      },
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "task task:finite:offset cannot fit available host/provider resources",
+        "task_ids": [
+          "task:finite:offset"
+        ]
+      },
+      {
+        "code": "stale_capacity",
+        "evidence": [
+          "observed_at_ms=0",
+          "current_time_ms=0",
+          "fresh_until_ms=0"
+        ],
+        "message": "host capacity snapshot is missing freshness evidence or is stale",
+        "task_ids": []
+      }
+    ],
+    "leaf_producer_closure": {
+      "closed": true,
+      "producer_by_leaf_id": {
+        "finite-effect:baguqeeratwbjxivqestyw2vchvyitfc2g6644r2kgljb4tvbg6qdb4huourq": "task:finite:offset",
+        "terminal:task:finite:offset": "task:finite:offset"
+      },
+      "required_leaf_ids": [
+        "terminal:task:finite:offset"
+      ],
+      "terminal_task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "merge_order": [],
+    "outcome": "rejected",
+    "plan_id": "parallel-execution-plan:sha256:5434f4633c5ab63c1e22cfafd3f1702a28c5e7aecc0f5549803cfdc391829bdd",
+    "provider_snapshot_ids": [],
+    "ready": false,
+    "ready_waves": [
+      {
+        "conflict_free_lanes": [
+          [
+            "task:finite:offset"
+          ]
+        ],
+        "conflict_width": 1,
+        "dependency_wave": 0,
+        "graph_ready_task_ids": [
+          "task:finite:offset"
+        ],
+        "graph_width": 1
+      }
+    ],
+    "repository_tree_id": "baguqeeraxcyvrlriwz7ausgjdrgcq7uurvcm67ygltcdnrbc65ddv7yjmrla",
+    "requested_width": 1,
+    "resource_feasibility": {
+      "available_host": {
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "process_slots": 0
+      },
+      "context_feasible": true,
+      "cost_feasible": true,
+      "feasible": false,
+      "freshness_proved": false,
+      "host_feasible": false,
+      "provider_by_task_id": {
+        "task:finite:offset": ""
+      },
+      "provider_feasible": true,
+      "required_totals": {
+        "context_tokens": 0,
+        "cost_micros": 0,
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "output_tokens": 0,
+        "process_slots": 1,
+        "quota_units": 0
+      },
+      "token_feasible": true
+    },
+    "resource_width": 0,
+    "schema": "ipfs_accelerate_py/agent-supervisor/parallel-execution-plan@1",
+    "widths": {
+      "admitted_width": 0,
+      "conflict_width": 1,
+      "graph_width": 1,
+      "requested_width": 1,
+      "resource_width": 0
+    }
+  },
+  "run_owner_pid": 1661982,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 73.90234586503357,
+  "selected_operations": [
+    "task:finite:offset"
+  ],
+  "stale_dispatch_refused": true,
+  "stale_index_refused": true,
+  "start": {
+    "audit_receipt_id": "sha256:be1b96796942c3901413b11d16636cd26d9e16c53dd251a983fcbd10019b554c",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6MkfDFw8GBDh1Zc8YaiWs98Btss42uJZjW3UEtT1RCuABfn",
+    "contract_version": 1,
+    "data": {
+      "health_window_ms": 500,
+      "new_process_identity": {
+        "argv": [
+          "/home/barberb/.local/bin/python",
+          "-P",
+          "-m",
+          "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+          "--todo-path",
+          "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/intent.duckdb",
+          "--state-dir",
+          "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/launch/state/run",
+          "--state-prefix",
+          "admitted",
+          "--task-prefix",
+          "##",
+          "--task-source-kind",
+          "duckdb",
+          "--authority-mode",
+          "quack",
+          "--quack-endpoint",
+          "quack:127.0.0.1:37749",
+          "--endpoint-secret-handle",
+          "handle:quack-token:[REDACTED]",
+          "--state-store-id",
+          "native-quack-qualification-v1",
+          "--state-store-generation",
+          "1",
+          "--state-schema-revision",
+          "5",
+          "--state-owner-bootstrap-fd",
+          "12",
+          "--state-owner-client-id",
+          "database-implementation-daemon:admitted-dae3fd78f75642cda6deb485e4d27605",
+          "--check-interval",
+          "0.25",
+          "--daemon-interval",
+          "0.25",
+          "--max-restarts",
+          "1",
+          "--max-task-attempts",
+          "1",
+          "--strict-task-sharding",
+          "--no-worktree-reconciliation",
+          "--no-retry-budget-guardrail",
+          "--no-dependency-guardrail",
+          "--no-reconciliation-guardrail",
+          "--no-objective-task-janitor",
+          "--no-objective-goal-refinement",
+          "--no-objective-goal-completion-reconcile",
+          "--no-objective-goal-migration",
+          "--no-objective-ast-dataset",
+          "--no-objective-todo-vector-index",
+          "--merge-target-branch",
+          "master",
+          "--merge-queue-dir",
+          "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/launch/state/merge_queue",
+          "--worktree-root",
+          "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/worktrees",
+          "--execution-slice-task-cid",
+          "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+          "--execution-slice-task-id",
+          "LOCAL-TASK",
+          "--task-context-bundle-artifact",
+          ".runtime/context-bundle.json",
+          "--task-context-bundle-sha256",
+          "8fe2b58f144eb1cedb63e35c1f7209ad9f48b587cdbcd9cfe416ea26c5ebdee2",
+          "--implement",
+          "--implementation-command",
+          "/home/barberb/.local/bin/python -B -P -m ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_public_context --artifact /home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/repository/.runtime/repository-finite-handoffs/6bf1bb30b4aebf47406a8cfc3319581d6cf98d28d54d82c78701062543d6c006.json --sha256 6bf1bb30b4aebf47406a8cfc3319581d6cf98d28d54d82c78701062543d6c006 --task-cid baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq --owner-did did:key:z6MkfDFw8GBDh1Zc8YaiWs98Btss42uJZjW3UEtT1RCuABfn --profile-id 325b275cfd155b07bf776c326c24df1c --public-context /home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/repository/.runtime/repository-finite-handoffs/3e52388d3d0cfe1a378c0fcabc357481619398519f1e86d79de2b896e284ee8e.json --public-context-sha256 3e52388d3d0cfe1a378c0fcabc357481619398519f1e86d79de2b896e284ee8e"
+        ],
+        "boot_id": "f4a3b80a-e3df-4702-8d03-86c19f69b2a9",
+        "configuration_root": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+        "cwd": "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/repository",
+        "executable": "/usr/bin/python3.12",
+        "fencing_epoch": 1,
+        "identity_id": "sha256:eea77f56c41bcda13829e578b2b835d322976bee1501580ee707520183f5de58",
+        "parent_pid": 1661982,
+        "pid": 1671687,
+        "process_group_id": 1671687,
+        "profile_id": "sha256:6295a9a2c2f1931582422e3a64beea9bcf692acca219afc9d3ecc76ec2fb6069",
+        "repository_root": "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/repository",
+        "run_id": "admitted-dae3fd78f75642cda6deb485e4d27605",
+        "run_root": "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/launch/state/run",
+        "schema": "ipfs_accelerate_py/agent-supervisor/process-identity@1",
+        "session_id": 1671687,
+        "start_time_ticks": 149166799,
+        "state_root": "/home/barberb/lift_coding/artifacts/repository-semantic-supervision-20261002/native-02/launch/state",
+        "target_id": "baguqeerankllsclmyelnphgjyoaarmbt2cd4f5kqfkqsxn27dhzpxttr4wfq"
+      },
+      "old_tree_fenced": false,
+      "receipt_id": "sha256:2cca07fee8c2a3578eb666f68240428d69343a7ab10a2d5b437c72cefe090ad4",
+      "transition_artifact_sha256": "sha256:31600ff757c8bc4d6e08a10f734942a63ac79fdd2aedfa867138394f047b8d6d",
+      "transition_id": "sha256:84c96ea2428b0317c7dcb3e8f4c4b31807bbcb2075c26ad487cc923c9af0e133"
+    },
+    "effects": [
+      {
+        "applied": true,
+        "authority": "mutation",
+        "content_id": "baguqeerap5xriuo3mynfzmvpnfhdssowmuat4jufmf3g5uwuxxvgf7x74ima",
+        "contract_version": 1,
+        "effect_id": "start:isolated-process-tree",
+        "kind": "lifecycle_transition",
+        "paths": [
+          "lifecycle-transitions.jsonl",
+          "run"
+        ],
+        "receipt_id": "sha256:be1b96796942c3901413b11d16636cd26d9e16c53dd251a983fcbd10019b554c",
+        "resource": "baguqeerankllsclmyelnphgjyoaarmbt2cd4f5kqfkqsxn27dhzpxttr4wfq",
+        "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+      }
+    ],
+    "error": null,
+    "idempotency_key": "admitted-dae3fd78f75642cda6deb485e4d27605:start:0",
+    "objective_id": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+    "operation": "start",
+    "policy_id": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+    "preview": null,
+    "repository_id": "baguqeerankllsclmyelnphgjyoaarmbt2cd4f5kqfkqsxn27dhzpxttr4wfq",
+    "request_id": "baguqeeraqupzebio5s47uvl7ski5j2kzhgjiixntx7h6g74y4v6frs2n72dq",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "succeeded",
+    "tree_id": "3673b3df325402a9f6658dec6cb39b45c5eb9cf6"
+  },
+  "stop": {
+    "audit_receipt_id": "sha256:a7fe8af1b8ab8fded4929b98483feaf1f63258fe0e244a79b9f7df885e44e22e",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6MkfDFw8GBDh1Zc8YaiWs98Btss42uJZjW3UEtT1RCuABfn",
+    "contract_version": 1,
+    "data": {
+      "health_window_ms": 500,
+      "new_process_identity": null,
+      "old_tree_fenced": true,
+      "receipt_id": "sha256:6fd6ddc780a6dbbfa23bc482f1af224d287302b07db632f0d997031c7f80c37e",
+      "transition_artifact_sha256": "sha256:2cda0e7ed27fdc565d211580aec45abb35802b8c7c8a5428e4ac4231f9e6ebea",
+      "transition_id": "sha256:3c9a7bd2c744c37402e488c3f95b050280a17a4e49bc4a4206b4ce42ca35c0e9"
+    },
+    "effects": [
+      {
+        "applied": true,
+        "authority": "mutation",
+        "content_id": "baguqeeraq2nocvy5kk44p2agefomncbeenl42zysj7otbekswtgcmrkrfmka",
+        "contract_version": 1,
+        "effect_id": "stop:isolated-process-tree",
+        "kind": "lifecycle_transition",
+        "paths": [
+          "lifecycle-transitions.jsonl",
+          "run"
+        ],
+        "receipt_id": "sha256:a7fe8af1b8ab8fded4929b98483feaf1f63258fe0e244a79b9f7df885e44e22e",
+        "resource": "baguqeerankllsclmyelnphgjyoaarmbt2cd4f5kqfkqsxn27dhzpxttr4wfq",
+        "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+      }
+    ],
+    "error": null,
+    "idempotency_key": "admitted-dae3fd78f75642cda6deb485e4d27605:stop:1",
+    "objective_id": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+    "operation": "stop",
+    "policy_id": "sha256:40116e64d8940ad072d0393d30fef26b111c6cce89ad060b8b568097adeb518d",
+    "preview": null,
+    "repository_id": "baguqeerankllsclmyelnphgjyoaarmbt2cd4f5kqfkqsxn27dhzpxttr4wfq",
+    "request_id": "baguqeerawf6eyyci3cx7o24w3r5wmubw52bhh6qz4m5ojkxbswqs6lup6lna",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "succeeded",
+    "tree_id": "3673b3df325402a9f6658dec6cb39b45c5eb9cf6"
+  },
+  "successor": {
+    "fact_count": 2,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza",
+      "generation": 2,
+      "manifest_cid": "baguqeeragsdma3mt5xlqdqpoeiksgf6n7webyt4v5fryo6hrkky5taw543fa",
+      "receipt_cid": "baguqeerac3p6o7ndqc4vzfkgz2an366mllulx7wijbkdgjo4hrotga43bogq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza"
+    },
+    "observation_cid": "baguqeeral2pzwpg2tztwbu7ud5doygx4plgm5s7dshgpst7wmfyi6hf7geva",
+    "residuals": []
+  },
+  "successor_semantic_index": {
+    "contract": {
+      "function_name": "increment",
+      "offset": 2,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "coverage": {
+      "ast_failed": 0,
+      "ast_ok": 4,
+      "ast_partial": 0,
+      "captured_entries": 6,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 6,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 8,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 5
+    },
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza",
+      "generation": 2,
+      "manifest_cid": "baguqeeragsdma3mt5xlqdqpoeiksgf6n7webyt4v5fryo6hrkky5taw543fa",
+      "receipt_cid": "baguqeerac3p6o7ndqc4vzfkgz2an366mllulx7wijbkdgjo4hrotga43bogq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraifek7horo7xzhp2tj45brzzzawlwbsfxoph324noyurgfvd5kyza"
+    },
+    "manifest_cid": "baguqeera4eumf4jkywmqq4o5btrejsmjdoiagzfpjq4dukqaheoijihvveuq",
+    "policy_receipt_cid": "baguqeeraaa5chtequ7paowdj3mlt7hsfszn4ilhvjqkuo7wuqilobrlfubea",
+    "proof_authority": false,
+    "schema": "terminal-codebase-semantic-index@1",
+    "training_executed": false
+  },
+  "task": {
+    "revision": 4,
+    "status": "completed"
+  },
+  "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+  "training_steps": 0
+}

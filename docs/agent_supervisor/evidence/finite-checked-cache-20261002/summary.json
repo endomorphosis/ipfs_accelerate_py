@@ -1,0 +1,20 @@
+{
+  "checker_call_savings_claimed": false,
+  "completion_authority": false,
+  "duplicate_publication_same_record": true,
+  "execution_authority": false,
+  "finite_inputs_per_contract": 5,
+  "fresh_process_native_positive_recheck": true,
+  "model_mode": "off",
+  "native_dimensions": 16,
+  "positive_native_artifacts": 11,
+  "positive_records": 1,
+  "profile": "python-integer-offset-finite@1",
+  "refuted_records": 1,
+  "reverse_dependencies": 2,
+  "schema": "finite-checked-cache-qualification/v1",
+  "scope": "exact_generated_finite_integer_table_theorems_only",
+  "source_provenance": "authored fixture",
+  "source_runtime_semantics_verified": false,
+  "status": "qualified_selected_profile"
+}

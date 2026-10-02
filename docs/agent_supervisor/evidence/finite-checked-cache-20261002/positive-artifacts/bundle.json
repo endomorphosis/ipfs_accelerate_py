@@ -1,0 +1,385 @@
+{
+  "body_cids": {
+    "compiled": "bafkreihi4obx6qlkmxyg6gvin3bzqb5ama5qoxw56yrnh2blt4p3epua3y",
+    "driver": "bafkreigi4pzfm6krdkddsnruuzrfk2viw42q2rqec3pbokgwo6j22eg6eq",
+    "lean_certificate": "bafkreiheogxb4yplm3l5lxl5d4f5vgwmf6ntyredrc4tmevwbycyjjsnk4",
+    "lean_olean": "bafkreiebrj3defihvuxyl7jeq5euunl4xc7bnzthw77dmx4ealhikezy2a",
+    "lean_process": "bafkreigsvpafz7y74yxnpjvdsl2qebn6dbcaktsb6gjchmq3txfoudoxga",
+    "lean_source": "bafkreig6ggtapm5myc55jn2tnbqie5nhj7n7r4i6ytqozu7ibupwnobihm",
+    "python_process": "bafkreiduoklps3zepdo7sjojqqk7p5th4qcryitis3ekuyopodaswyanfa",
+    "request": "bafkreibwdtc2ivcjpfpxvih7k3rs422lclrys64b4d24w56zdkazblj7wq",
+    "source": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+    "tool_policy": "bafkreicmmw5nvahd67smfzrahn5qq77nihryniaovojeqy7zrht6kqpir4",
+    "trace": "bafkreicvurfhlj3knhd2rvaowakz3a4rmvoxwxudyzb2dxppe4igzux5vq"
+  },
+  "observation": {
+    "artifacts": {
+      "compiled": {
+        "cid": "bafkreihi4obx6qlkmxyg6gvin3bzqb5ama5qoxw56yrnh2blt4p3epua3y",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/compiled.json",
+        "sha256": "e8e3837f416a65f06f1aa86ec39807a0603b075eddf622d3e82b9f1fb23e80de",
+        "size_bytes": 8827
+      },
+      "driver": {
+        "cid": "bafkreigi4pzfm6krdkddsnruuzrfk2viw42q2rqec3pbokgwo6j22eg6eq",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/driver.py",
+        "sha256": "c8e3f25679511a86393634a662556aa8b7350d460416de1728d67793ad10de24",
+        "size_bytes": 1591
+      },
+      "lean_certificate": {
+        "cid": "bafkreiheogxb4yplm3l5lxl5d4f5vgwmf6ntyredrc4tmevwbycyjjsnk4",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/lean_certificate.json",
+        "sha256": "e471ae1e61eb66d7d5dd7d1f0bda9acc2f9b3c448388b93612b60e0584a64d57",
+        "size_bytes": 2292
+      },
+      "lean_olean": {
+        "cid": "bafkreiebrj3defihvuxyl7jeq5euunl4xc7bnzthw77dmx4ealhikezy2a",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/FiniteInteger.olean",
+        "sha256": "818a76321507ad2f85fd2487494a357cb8be16e667b7fe365f8402ce851338d0",
+        "size_bytes": 45528
+      },
+      "lean_process": {
+        "cid": "bafkreigsvpafz7y74yxnpjvdsl2qebn6dbcaktsb6gjchmq3txfoudoxga",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/lean_process.json",
+        "sha256": "d2abc05cff1fe62ed7a6a392f50205be1844054e41f19223b21b9dcaea0dd730",
+        "size_bytes": 1491
+      },
+      "lean_source": {
+        "cid": "bafkreig6ggtapm5myc55jn2tnbqie5nhj7n7r4i6ytqozu7ibupwnobihm",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/FiniteInteger.lean",
+        "sha256": "de31a607b3acc0bbd4b75368608275a74fdbf8f11ec4e0ecd3e80d1f66b8283b",
+        "size_bytes": 981
+      },
+      "python_process": {
+        "cid": "bafkreiduoklps3zepdo7sjojqqk7p5th4qcryitis3ekuyopodaswyanfa",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/python_process.json",
+        "sha256": "747296f96f2478ddf925c98415f7f667e4051c226896c8aa61cf70c12b600d28",
+        "size_bytes": 1555
+      },
+      "request": {
+        "cid": "bafkreibwdtc2ivcjpfpxvih7k3rs422lclrys64b4d24w56zdkazblj7wq",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/request.json",
+        "sha256": "361cc5a45449795f7aa0ff56e32e6b4b12e3897b81e0f5cb77d91a8190ad3fb4",
+        "size_bytes": 287
+      },
+      "source": {
+        "cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/captured_source.py",
+        "sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+        "size_bytes": 47
+      },
+      "tool_policy": {
+        "cid": "bafkreicmmw5nvahd67smfzrahn5qq77nihryniaovojeqy7zrht6kqpir4",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/tool_policy.json",
+        "sha256": "4c65bada80e3f7e4c2e6203b7b087fed41e386a00eab924863f989e7e541e88f",
+        "size_bytes": 1291
+      },
+      "trace": {
+        "cid": "bafkreicvurfhlj3knhd2rvaowakz3a4rmvoxwxudyzb2dxppe4igzux5vq",
+        "path": "/tmp/finite-cache-check-n15hl_0e/native/observations.json",
+        "sha256": "55a44a75a76a69c7a8d40eb0159d8391655d7b5e83c643a1ddef27106cd2fdac",
+        "size_bytes": 835
+      }
+    },
+    "behavior_authority": false,
+    "compiled_cid": "baguqeera5dryg72bnjs7a3y2vbxmhgahubqdwb263x3cfu7ifopr7mr6qdpa",
+    "completion_authority": false,
+    "contract": {
+      "function_name": "increment",
+      "offset": 1,
+      "parameter": "n",
+      "path": "calc.py",
+      "profile": "python-integer-offset@1",
+      "schema": "codebase-integer-offset-contract@1"
+    },
+    "contract_cid": "baguqeerayyz5ncqe2pe6huka4n6xwppaxu7pwyzlmseuskbrxzdayzl2xiua",
+    "counterexample": null,
+    "diagnostics": [],
+    "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+    "domain_inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "execution_authority": false,
+    "head": {
+      "ast_revision_id": "rev:repository:rpi007-authored-finite:snapshot:baguqeera77jb23mqrnt6ghc7j3ps3iyzbhsoepn6xj5rjpv74xajdhpue4fa",
+      "generation": 1,
+      "manifest_cid": "baguqeeratzb3rwza373nqqwtjw3l7oujlzykfctgbxzysdli3ll3eyusszea",
+      "receipt_cid": "baguqeeraewuyif3peqeacglz7hi3e355npwm7qdnr677kpsqbhbt6atl4ina",
+      "repository_id": "repository:rpi007-authored-finite",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeera77jb23mqrnt6ghc7j3ps3iyzbhsoepn6xj5rjpv74xajdhpue4fa"
+    },
+    "kernel_checked_model_table": true,
+    "lean_certificate": {
+      "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+      "olean_cid": "bafkreiebrj3defihvuxyl7jeq5euunl4xc7bnzthw77dmx4ealhikezy2a",
+      "process": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+          "-j",
+          "1",
+          "-o",
+          "FiniteInteger.olean",
+          "FiniteInteger.lean"
+        ],
+        "elapsed_ms": 187,
+        "error": "",
+        "interface_version": "bounded-tool-runner/v1",
+        "limits": {
+          "address_space_bytes": 4294967296,
+          "cpu_seconds": 60,
+          "max_input_bytes": 262144,
+          "max_output_bytes": 262144,
+          "max_output_files": 8,
+          "max_workspace_bytes": 4194304,
+          "resident_memory_bytes": 536870912,
+          "timeout_ms": 59744
+        },
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      },
+      "schema": "codebase-finite-integer-table-certificate@1",
+      "scope": "Kernel-checked recorded finite table arithmetic under standard trusted compiled Init imports; observation origin and CPython semantics are not Lean theorems.",
+      "source_cid": "bafkreig6ggtapm5myc55jn2tnbqie5nhj7n7r4i6ytqozu7ibupwnobihm",
+      "theorems": [
+        "domain_coverage",
+        "recorded_integer_types",
+        "observed_body_offset",
+        "offset_clause"
+      ],
+      "tool": {
+        "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+        "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "size_bytes": 13824
+      },
+      "trace_cid": "baguqeerakwseu5nhnju4pkgub2yblhmdsfsv2626qpdehio554tra3gs7wwa",
+      "version_process": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+          "--version"
+        ],
+        "elapsed_ms": 41,
+        "error": "",
+        "interface_version": "bounded-tool-runner/v1",
+        "limits": {
+          "address_space_bytes": 4294967296,
+          "cpu_seconds": 60,
+          "max_input_bytes": 262144,
+          "max_output_bytes": 262144,
+          "max_output_files": 8,
+          "max_workspace_bytes": 4194304,
+          "resident_memory_bytes": 536870912,
+          "timeout_ms": 59802
+        },
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "Lean (version 4.34.1, aarch64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      }
+    },
+    "mutation_authority": false,
+    "observations": [
+      {
+        "input": -2,
+        "input_type": "int",
+        "output": -1,
+        "output_type": "int"
+      },
+      {
+        "input": -1,
+        "input_type": "int",
+        "output": 0,
+        "output_type": "int"
+      },
+      {
+        "input": 0,
+        "input_type": "int",
+        "output": 1,
+        "output_type": "int"
+      },
+      {
+        "input": 1,
+        "input_type": "int",
+        "output": 2,
+        "output_type": "int"
+      },
+      {
+        "input": 2,
+        "input_type": "int",
+        "output": 3,
+        "output_type": "int"
+      }
+    ],
+    "offset_clause_satisfied": true,
+    "output": "/tmp/finite-cache-check-n15hl_0e/native",
+    "profile": "python-integer-offset-finite@1",
+    "proof_authority": false,
+    "python_process": {
+      "cancelled": false,
+      "command": [
+        "/usr/bin/python3.12",
+        "-I",
+        "-S",
+        "driver.py"
+      ],
+      "elapsed_ms": 42,
+      "error": "",
+      "interface_version": "bounded-tool-runner/v1",
+      "limits": {
+        "address_space_bytes": 536870912,
+        "cpu_seconds": 60,
+        "max_input_bytes": 262144,
+        "max_output_bytes": 262144,
+        "max_output_files": 8,
+        "max_workspace_bytes": 4194304,
+        "resident_memory_bytes": 536870912,
+        "timeout_ms": 59870
+      },
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\"domain_cid\":\"baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq\",\"exception_type\":null,\"inputs\":[-2,-1,0,1,2],\"observations\":[{\"input\":-2,\"input_type\":\"int\",\"output\":-1,\"output_type\":\"int\"},{\"input\":-1,\"input_type\":\"int\",\"output\":0,\"output_type\":\"int\"},{\"input\":0,\"input_type\":\"int\",\"output\":1,\"output_type\":\"int\"},{\"input\":1,\"input_type\":\"int\",\"output\":2,\"output_type\":\"int\"},{\"input\":2,\"input_type\":\"int\",\"output\":3,\"output_type\":\"int\"}],\"python\":{\"cache_tag\":\"cpython-312\",\"executable\":\"/usr/bin/python3.12\",\"implementation\":\"cpython\",\"version\":\"3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]\"},\"schema\":\"codebase-finite-integer-trace@1\",\"source_cid\":\"bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq\",\"source_sha256\":\"dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac\",\"status\":\"complete\"}\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true,
+      "workspace_limit_exceeded": false
+    },
+    "result_cid": "baguqeeracco4d2ljn2vqjj4yizrpr7s5xbpsorelgn7olnoltwjqmqxco3nq",
+    "runtime_behavior_verified": false,
+    "runtime_observation_coverage_complete": true,
+    "schema": "codebase-finite-integer-observation@1",
+    "scope": "Exhaustive observations over the exact declared finite integer inputs only; Lean certifies recorded table arithmetic, not CPython observation origin, universal source semantics, module loading, resource failures or worker admission.",
+    "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+    "source_path": "calc.py",
+    "source_semantics_verified": false,
+    "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+    "status": "observed",
+    "tool_policy": {
+      "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+      "environment": {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "LEAN_NUM_THREADS": "1",
+        "LEAN_STACK_SIZE_KB": "8192",
+        "PATH": "/usr/bin:/bin"
+      },
+      "lean": {
+        "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+        "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "size_bytes": 13824
+      },
+      "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+      "process_limits": {
+        "lean": {
+          "address_space_bytes": 4294967296,
+          "resident_memory_bytes": 536870912
+        },
+        "lean_arguments": [
+          "-j",
+          "1",
+          "-o",
+          "FiniteInteger.olean",
+          "FiniteInteger.lean"
+        ],
+        "max_input_bytes": 262144,
+        "max_output_bytes": 262144,
+        "max_output_files": 8,
+        "max_workspace_bytes": 4194304,
+        "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+        "python": {
+          "address_space_bytes": 536870912,
+          "resident_memory_bytes": 536870912
+        }
+      },
+      "profile": "python-integer-offset-finite@1",
+      "python": {
+        "path": "/usr/bin/python3.12",
+        "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+        "size_bytes": 7845032
+      },
+      "schema": "codebase-finite-integer-tools@1"
+    },
+    "tool_policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+    "trace": {
+      "domain_cid": "baguqeera6ja56wvkmi2cff6om2ewexiddz2yvmz7kioz63mn6rlon3pngysq",
+      "exception_type": null,
+      "inputs": [
+        -2,
+        -1,
+        0,
+        1,
+        2
+      ],
+      "observations": [
+        {
+          "input": -2,
+          "input_type": "int",
+          "output": -1,
+          "output_type": "int"
+        },
+        {
+          "input": -1,
+          "input_type": "int",
+          "output": 0,
+          "output_type": "int"
+        },
+        {
+          "input": 0,
+          "input_type": "int",
+          "output": 1,
+          "output_type": "int"
+        },
+        {
+          "input": 1,
+          "input_type": "int",
+          "output": 2,
+          "output_type": "int"
+        },
+        {
+          "input": 2,
+          "input_type": "int",
+          "output": 3,
+          "output_type": "int"
+        }
+      ],
+      "python": {
+        "cache_tag": "cpython-312",
+        "executable": "/usr/bin/python3.12",
+        "implementation": "cpython",
+        "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+      },
+      "schema": "codebase-finite-integer-trace@1",
+      "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+      "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+      "status": "complete"
+    },
+    "trace_cid": "baguqeerakwseu5nhnju4pkgub2yblhmdsfsv2626qpdehio554tra3gs7wwa",
+    "type_clause_satisfied": true
+  },
+  "schema": "finite-checked-artifact-bundle@1"
+}

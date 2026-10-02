@@ -1,0 +1,25 @@
+{
+  "files": [
+    {
+      "path": "test/api/test_finite_checked_cache.py",
+      "sha256": "2188dffb8819f762e1d98a3c464d5f9f89cb4bc619519c676c4664fedc4c0caa"
+    },
+    {
+      "path": "test/api/test_agent_supervisor_formal_verification_cache.py",
+      "sha256": "4031a22e44e7ebdb64d016e3e83cb9b11ef746ad19addeda1bb7460c1f5a86ef"
+    },
+    {
+      "path": "test/api/test_finite_cache_correspondence.py",
+      "sha256": "dd37e7500b2948f4e981ba66eea16e0da982650af20d7d7e979bf51796d97ba0"
+    },
+    {
+      "path": "test/api/test_canonical_cache_key_bridge.py",
+      "sha256": "7ba94f8dfff6ceb339d7659eaca67a687d0b89ca03e1f557993ff8f24f16bddb"
+    },
+    {
+      "path": "test/api/test_finite_integer_codebase.py",
+      "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+    }
+  ],
+  "repository": "accelerate"
+}

@@ -1,0 +1,96 @@
+{
+  "schema": "repository-semantic-supervision-qualification@1",
+  "source": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "c2a5924abb122fa3bacd0f8843bcc3f6a1d2fec931915c9702f307852bf28651"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py",
+      "sha256": "ff864c2c85ed07b12e0891a473ef1740830953bd1d3c929b35222b5589fb1d07"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+      "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+      "sha256": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_public_context.py",
+      "sha256": "7b7e980cadb1ed7f000381103470b9f04d67715c0b067d03bde8ab06e7b5134c"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+      "sha256": "8c43bc1b97a94c5100815447130a549266b9ccdc266574e2b8b224a3ea82aef5"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py",
+      "sha256": "7037fca4046b357ef941cd511b20da55979a8055056ebc755bcb65c0026cb55b"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+      "sha256": "79a8e1b92365264bfafb511f1689a321d7d742046101199aca253da97726aec2"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "path": "test/integration/test_terminal_codebase_semantic_index.py",
+      "sha256": "baa8637e964f12f6f7b85d4b276391b070e85f52b544f3fbe1c45e6ceca48edf"
+    }
+  ],
+  "tests": {
+    "passed": 5,
+    "seconds": 37.19,
+    "skips": 0
+  },
+  "native": {
+    "qualified": true,
+    "seconds": 69.23399481596425,
+    "provider_calls": 0,
+    "source_inventory": 6,
+    "source_bound_models": 1,
+    "initial_facts": 1,
+    "initial_residuals": 1,
+    "successor_facts": 2,
+    "successor_residuals": 0,
+    "cold_full_semantic_manifest_agrees": true,
+    "checked_cache_replay_agrees": true,
+    "stale_checked_cache_refused": true,
+    "owned_processes": 0,
+    "owned_leases": 0
+  },
+  "attempts": {
+    "tests-01": "Three native semantic adapter tests before added live ignore replay; passed20.19s.",
+    "tests-02": "Three admission setup timeouts under actual memory pressure, one live-scope control passed; retained109.83s.",
+    "tests-03": "Final five cases passed with unchanged actual resource safety.",
+    "native-01": "Manifest/public context before live ignore replay; qualified46.401s, diagnostic historical source not fully archived.",
+    "native-02": "Manifest/public context with live ignore replay; qualified73.902s, before explicit cold semantic-row comparison and cache integration.",
+    "native-03": "Combined final source blocked by resource lease timeout30.514s; no daemon/task claim.",
+    "native-04": "Identical final producer bytes after host pressure fell; complete combined route qualified."
+  },
+  "scope": {
+    "official_benchmark": false,
+    "learned_instruction": false,
+    "training": false,
+    "ducklake": false,
+    "cached_checkers_avoided": false,
+    "default_activation": false,
+    "comparative_performance_claim": false
+  },
+  "limitations": [
+    "Authored finite controlled-language repair; arbitrary Python and natural instruction interpretation are outside this profile.",
+    "Source and manifest live observations are point-in-time; subsequent stages must observe again.",
+    "Read-only scope deadline enforcement is cooperative; fixed Git subprocess bounds remain.",
+    "Fresh positive cache lookup still runs actual native checkers.",
+    "Local timings reflect different opt-ins and uncontrolled host load, not matched ablation performance."
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T06:27:43.519337+00:00",
+  "updated_at_utc": "2026-10-02T07:20:23.227420+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -11,9 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 6,
-    "production_open": 26,
-    "criteria_qualified_for_declared_profile": 8
+    "production_closed": 10,
+    "production_open": 22,
+    "criteria_qualified_for_declared_profile": 12
   },
   "evidence": {
     "foundation-tests-log": {
@@ -166,6 +166,30 @@
       "repository": "ipfs_datasets_py",
       "sha256": "5496c7585a741526c27d7d7529510a865e562a707d14ad60d58f5fefca549907",
       "retention": "repository_evidence"
+    },
+    "finite-checked-cache": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/finite-checked-cache-20261002/manifest.json",
+      "sha256": "f9a88979e0e80be85cc2d4ae172ca99449c7d504ac158b4d8b37f3606fc31466",
+      "retention": "repository_evidence"
+    },
+    "strict-training-generation": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/autoencoders/evidence/codebase-training-generation-20261002/manifest.json",
+      "sha256": "d7fe022f3506312f91c60b94e3dae57454a59c723cfc1c86054d7fed8ec25f06",
+      "retention": "repository_evidence"
+    },
+    "semantic-supervision": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/repository-semantic-supervision-20261002/manifest.json",
+      "sha256": "f44aacd4bd2387a8975da455618f910bb0623e7a885168504176c2c59640b607",
+      "retention": "repository_evidence"
+    },
+    "native-intent-codebase-catalog": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/intent-codebase-catalog-20261002/manifest.json",
+      "sha256": "8c1264e446155d2493da7187e0d4c99fbb1d44b301ebe48d736e8c2297cb72be",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -225,20 +249,25 @@
       "dependencies": "RPI-002",
       "criterion": "Add a separately owned `intent-codebase-catalog@1`, immutable artifact backend and typed bounded owner queries. Reference existing corpus/model IDs without altering closed catalog schemas. Define sole authorities for each state domain. Qualify actual file-backed restart hydration, schema migration, uniqueness, fences and bounded reads without warmed dictionaries.",
       "source_line": 277,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Native file-backed structural catalog and AST transactions recover in fresh processes; exact head CAS, operation retry, ABA generations, rollback and corruption tests pass."
+        "Native file-backed structural catalog and AST transactions recover in fresh processes; exact head CAS, operation retry, ABA generations, rollback and corruption tests pass.",
+        "Forty-two native tests qualify exact derived discovery on the existing source transaction/CAS, independent model/corpus identity associations, physical v1-to-v2 migration and rollback, two fresh-process reopens, normative SQL membership, bounded byte reads and actual conflicting source writers. Associations grant no training/inference/proof authority."
       ],
-      "remaining_work": [
-        "Explicit schema migration and bounded cross-domain owner/root correspondence remain open. DuckLake delivery is tracked separately under RPI-017."
-      ],
+      "remaining_work": [],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
-        "foundation-selected-port-manifest"
+        "foundation-selected-port-manifest",
+        "native-intent-codebase-catalog"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "intent-codebase-catalog@1 over bounded native single-root structural/finite artifact owners",
+      "blocking_dependencies": [],
+      "out_of_profile_extensions": [
+        "Scalable authenticated query cursors, distributed atomic snapshots, DuckLake delivery and global artifact GC remain separate criteria."
+      ]
     },
     {
       "id": "RPI-004",
@@ -310,22 +339,27 @@
       "dependencies": "RPI-003, RPI-006",
       "criterion": "Persist canonical cache entries, artifact bodies, checked evidence, reverse dependencies and bounded exact proof lookup. Route hits through existing trust-aware reconstruction. Qualify a fresh-process cache/index roundtrip, complete keys, corrupt/missing bodies, duplicate rows and explicit negative-cache status.",
       "source_line": 281,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Doctor reuse controls persist canonical keys, reverse root dependencies, root revocations, tombstones, quarantine and observed receipt identities in the existing FormalVerificationCache database; migration, restart and malformed state fail-closed controls pass. Existing receipt reconstruction remains required."
+        "Doctor reuse controls persist canonical keys, reverse root dependencies, root revocations, tombstones, quarantine and observed receipt identities in the existing FormalVerificationCache database; migration, restart and malformed state fail-closed controls pass. Existing receipt reconstruction remains required.",
+        "The finite companion owner reuses FormalVerificationCache and the native immutable source CAS for full keys, all eleven checked artifact bodies, actual kernel table receipts, explicit negative statuses and bounded reverse dependencies. Forty-two native controls and a separate fresh-process positive/refuted reproducer passed; another126 unchanged cache/key regressions passed. Positive lookup independently reconstructs every binding and freshly reruns Python/Lean, so no avoided-checker claim is made."
       ],
-      "remaining_work": [
-        "The current Quack snapshot transport lacks the required atomic read/write/read owner command and is refused. Complete datasets proof-artifact/CodeEvidencePlane projections and independently executed checker qualification remain open; diagnostics remain process-local."
-      ],
+      "remaining_work": [],
       "evidence": [
         "proof-cache-tests-log",
         "proof-cache-tests-xml",
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
-        "proof-cache-checksums-json"
+        "proof-cache-checksums-json",
+        "finite-checked-cache"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "exact_generated_finite_integer_table_theorems_only",
+      "out_of_profile_extensions": [
+        "Generic proof profiles, Quack transport, DuckLake delivery and authenticated reuse without rerunning checkers are separate capabilities."
+      ],
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-008",
@@ -333,18 +367,23 @@
       "dependencies": "RPI-001, RPI-002",
       "criterion": "Add a codebase corpus frontend with exact enumerated source samples and independent syntax, semantic and checked-property targets. Freeze split and connected-lineage deduplication before fitting. Record teacher/label provenance, missing labels and transductive use. Reject desired intent or unchecked model predictions as correctness labels.",
       "source_line": 282,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Source-owned 384D corpus enumerates exact captured files and independent reviewed AST/ProgramIR labels, fixes train/validation/holdout roles, and rejects exact/AST-clone/group/numerical split overlap. Complete structural inventory remains separate from the selected corpus."
+        "Source-owned 384D corpus enumerates exact captured files and independent reviewed AST/ProgramIR labels, fixes train/validation/holdout roles, and rejects exact/AST-clone/group/numerical split overlap. Complete structural inventory remains separate from the selected corpus.",
+        "The additive strict corpus freezes connected exact/alpha-renamed/group/declared-lineage components before fitting, preserves dedup and missing-label denominators, separates independently derived syntax/semantic/checked finite-state targets, and rejects caller correctness labels. Two actual native finite-state targets cover18 Lean cases; seven missing property labels remain. Parent pretraining exposure is explicitly only partially known; operator-overlapping legacy split results are retained separately."
       ],
-      "remaining_work": [
-        "Connected semantic/rename lineage grouping, richer syntax/semantic/checked-property objectives, independent parent pretraining leakage audit and large repository corpus coverage remain open."
-      ],
+      "remaining_work": [],
       "evidence": [
-        "source384-qualified-02"
+        "source384-qualified-02",
+        "strict-training-generation"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "source384-scalar-connected-lineage@1",
+      "out_of_profile_extensions": [
+        "The selected corpus covers the fixed two-operand arithmetic grammar. Unknown parent pretraining data is not treated as proven independent."
+      ],
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-009",
@@ -352,18 +391,20 @@
       "dependencies": "RPI-008",
       "criterion": "Define `codebase-model-generation@1` and child-adaptation APIs for supported trainers. Bind parent, corpus, source, actual weight/codebook bytes, implementation, numerical layout, seed and environment. Demonstrate real numerical work under immutable child ownership and expected head compare-and-swap. Keep fixed semantic definitions outside learned latent space.",
       "source_line": 283,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Real bounded numerical fitting creates immutable registry children of the exact retained shared SecurityIR artifact. Replay checks original bytes, compatibility, complete source head, corpus/target manifests, producer, parent/projection/vocabulary and native run completion."
+        "Real bounded numerical fitting creates immutable registry children of the exact retained shared SecurityIR artifact. Replay checks original bytes, compatibility, complete source head, corpus/target manifests, producer, parent/projection/vocabulary and native run completion.",
+        "Actual operator-disjoint source fitting produced an immutable numerical child with exact source/corpus/parent/weights/codebook/layout/producer/environment bindings and explicit deterministic randomness policy. Thirty-one combined corpus/generation controls passed, including native head CAS, stale competing/post-fit head refusal and cold refit-free replay. Only a byte-identical independently checked good-parent copy qualified the CAS control; the trained child regressed from parent3of3 to child0of3 and remained unpromoted."
       ],
-      "remaining_work": [
-        "Explicit generation schema compatibility and owner expected-head compare-and-swap qualification remain open. The measured child retention failure prevents quality/promotion claims but does not negate completed numerical work."
-      ],
+      "remaining_work": [],
       "evidence": [
-        "source384-qualified-02"
+        "source384-qualified-02",
+        "strict-training-generation"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "codebase-model-generation@1",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-010",
@@ -406,7 +447,6 @@
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "codebase_ir/source_conditioned_384_v1",
       "blocking_dependencies": [
-        "RPI-009",
         "RPI-010",
         "RPI-027"
       ]
@@ -451,7 +491,8 @@
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
-        "finite-native-owned-file-scope"
+        "finite-native-owned-file-scope",
+        "semantic-supervision"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -498,7 +539,8 @@
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
         "public-context-manifest",
-        "public-context-native"
+        "public-context-native",
+        "semantic-supervision"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "blocking_dependencies": [
@@ -515,7 +557,8 @@
       "production_acceptance": "open",
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
-        "After actual publication, native context/world capsules refresh and a reopened durable source index captures generation 2. Fresh Python/Lean finite observations satisfy both original clauses with no residual; independent cold rebuild agrees on exact source snapshot, complete query, domain, outcomes, tool policy and bounded scope. Original evidence-index access and old candidate dispatch are rejected after publication; historical receipts remain distinct."
+        "After actual publication, native context/world capsules refresh and a reopened durable source index captures generation 2. Fresh Python/Lean finite observations satisfy both original clauses with no residual; independent cold rebuild agrees on exact source snapshot, complete query, domain, outcomes, tool policy and bounded scope. Original evidence-index access and old candidate dispatch are rejected after publication; historical receipts remain distinct.",
+        "Combined opt-in semantic-manifest/public-context/checked-cache supervisor qualified in69.234s with zero model calls. Captured successor and independent cold reconstruction agree on all semantic unit rows, artifact references, declarations, coverage and finite behavior. Exact old source/cache dispatch refuses and owned processes/leases are zero. This does not supply generic dependency invalidation or independent successor admission."
       ],
       "remaining_work": [
         "Conservative repository-wide dependency invalidation, affected-obligation scheduling and a new independently signed successor task/admission revision are not implemented by this fixture. Published vector retrieval remains unavailable; task completion does not close goal contracts."
@@ -524,7 +567,8 @@
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
-        "finite-native-owned-file-scope"
+        "finite-native-owned-file-scope",
+        "semantic-supervision"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -561,7 +605,8 @@
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
-        "finite-native-owned-file-scope"
+        "finite-native-owned-file-scope",
+        "semantic-supervision"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

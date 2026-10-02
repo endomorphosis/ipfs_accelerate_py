@@ -1,0 +1,38 @@
+{
+  "actual_python_and_lean": true,
+  "checker_savings_claimed": false,
+  "completion_authority": false,
+  "criterion": "RPI-007",
+  "current_source_and_tools_rechecked": true,
+  "diagnostic_preserved": "pre-final combined run included one incorrect immediate retry expectation; final test verifies native failure TTL refusal before retry",
+  "distinct_current_tests_passed": 168,
+  "execution_authority": false,
+  "final_focused_tests": {
+    "failed": 0,
+    "passed": 42,
+    "seconds": 128.63,
+    "skipped": 0
+  },
+  "fresh_process_reconstruction": true,
+  "frozen_owners_modified": false,
+  "generic_repository_proof_coverage": false,
+  "positive_reuse_requires_fresh_native_checker": true,
+  "profile": "python-integer-offset-finite@1",
+  "quack_transport_qualified": false,
+  "schema": "finite-checked-cache-evidence/v1",
+  "scope": "exact_generated_finite_integer_table_theorems_only",
+  "selected_run": "/home/barberb/lift_coding/artifacts/repository-finite-checked-cache-20261002/run-01",
+  "source_owner_count": 44,
+  "source_runtime_semantics_verified": false,
+  "status": "qualified_selected_finite_profile",
+  "unchanged_neighboring_regressions": {
+    "counts": {
+      "canonical_bridge": 58,
+      "finite_correspondence": 46,
+      "formal_cache": 22
+    },
+    "failed": 0,
+    "passed": 126,
+    "skipped": 0
+  }
+}

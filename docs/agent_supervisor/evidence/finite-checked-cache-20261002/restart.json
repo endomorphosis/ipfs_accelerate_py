@@ -1,0 +1,18 @@
+{
+  "process_id": 1745032,
+  "reopened_durable_DuckDB_and_CAS": true,
+  "results": {
+    "positive": {
+      "fresh_native_observation": true,
+      "positive_reuse_eligible": true,
+      "record_cid": "baguqeeraeglnfz4t363zk23o4i2vdl7kfosrmkhgmcxqdfgvu6vtgzv5kp3q",
+      "status": "positive"
+    },
+    "refuted": {
+      "fresh_native_observation": false,
+      "positive_reuse_eligible": false,
+      "record_cid": "baguqeerarkhm6xvtibikdbkxcpyu2m2f47fifc4a4d2ndrssbs5cd4faatwq",
+      "status": "refuted"
+    }
+  }
+}

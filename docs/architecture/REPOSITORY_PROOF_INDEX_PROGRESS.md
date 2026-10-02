@@ -1,8 +1,8 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Six exits are closed for their declared
-profiles; 26 remain open.** Eight individual criteria have passed qualification,
+every original acceptance criterion. **Ten exits are closed for their declared
+profiles; 22 remain open.** Twelve individual criteria have passed qualification,
 including two still blocked by prerequisites. These results do not establish
 default production activation or a Terminal Bench advantage.
 
@@ -12,9 +12,11 @@ default production activation or a Terminal Bench advantage.
 | --- | --- | --- |
 | Indexed native supervisor | 27.114 seconds, zero LLM calls | Authored finite Python repair; real START, worker, validation, publication, completion, successor observation and STOP |
 | Public evidence native supervisor | 28.831 seconds, zero LLM calls | Complete source, assumptions, checked records, counterexample and residuals reach the actual worker after semantic context encoding; public artifact replay needs no owner private keys |
+| Semantic manifest and checked cache | 69.234 seconds, zero LLM calls | Complete native repair with all six source entries, live ignore-scope replay, durable negative/positive cache records, and matching cold semantic rebuild |
 | Source staging, 320 files | 670.197 → 26.821 seconds | Paired local structural fixture, 20 shards, native database reopen at 128 files; approximately 25× faster |
 | Learned source IR | Three source-aligned arithmetic outputs passed `lake build`; three zero-head outputs were rejected | Actual shared checkpoint and GTE inference; compilation establishes syntax/typing within the declared source profile |
 | Repository-round holdouts | Parent 9/9; adapted child 0/9 | Retention regression in a small training corpus; no model promoted; independence from all parent pretraining data is not asserted |
+| Strict connected-lineage holdouts | Parent 3/3; child 0/3; zero-head 1/3 | Separate operator-disjoint corpus; the older parameter-renamed split is rejected by the stricter policy; no trained child promoted |
 
 The native supervisor began with one eligible finite fact and one unresolved
 offset requirement. Its checked candidate went through the independently signed
@@ -88,12 +90,36 @@ requires native tools at their sealed paths. Delivery criterion 015 is qualified
 generic repository-evidence admission remains open. Historical execution
 manifests retain the exact sources used at the recorded revision.
 
+RPI-008/009 now qualify the strict corpus and versioned generation contract.
+Thirty-one tests cover connected split exclusion, exact source labels, two
+independently checked finite-state labels (18 Lean cases), missing labels,
+actual numerical work, expected-head CAS and refit-free restart. Fixed semantic
+definitions stay outside learned latent state. The failed child cannot promote;
+the successful CAS control uses a clearly identified byte-identical copy of the
+good parent. Unknown parent pretraining exposure remains unknown.
+
+The finite checked-cache criterion (007) has 42 passing native tests and a
+separate fresh-process reproducer, plus 126 unchanged cache/key regressions.
+It stores all native artifact bodies and explicit refuted/error statuses in the
+existing FormalVerificationCache/CAS owners. Positive reuse reconstructs the
+complete finite-table proof and reruns Python/Lean. Its production closure still
+depends on 003. No checker-call savings are claimed.
+
+The combined semantic/cache supervisor run above reopens the owners, publishes
+the checked repair and agrees with a cold rebuild on complete semantic unit
+rows as well as finite behavior. Five adapter tests include live scope changes,
+artifact-write tripwires and cancellation. Actual host-pressure refusals are
+retained alongside successful retries; the differently configured single runs
+are not a matched timing comparison.
+
 - [Native supervisor attempts, source/checker receipts and test logs](../agent_supervisor/evidence/repository-finite-supervision-20261002/manifest.json).
 - [Structural foundation, staging controls and paired timings](../agent_supervisor/evidence/codebase-foundation-20261002/README.md).
 - [Doctor/cache/key bridge verification](../agent_supervisor/evidence/repository-proof-index-20261002/README.md).
 - [Owner-derived finite key correspondence](../agent_supervisor/evidence/finite-cache-correspondence-20261002/manifest.json).
 - [Native semantic profile acceptance](../agent_supervisor/evidence/repository-profile-acceptance-20261002/qualification.json).
 - [Public worker evidence and native run](../agent_supervisor/evidence/repository-public-context-20261002/manifest.json).
+- [Durable finite checked cache](../agent_supervisor/evidence/finite-checked-cache-20261002/manifest.json).
+- [Combined semantic/cache native supervision](../agent_supervisor/evidence/repository-semantic-supervision-20261002/qualification.json).
 - [Datasets source384 implementation and qualification](https://github.com/endomorphosis/ipfs_datasets_py/blob/659278b8e2b05135b2c58475cc62e5b7c22d0c51/docs/autoencoders/codebase_source384.md).
 
 Focused suites passed for the source/catalog foundation and staging (239 cases),
@@ -112,3 +138,10 @@ passes. Three concurrent upstream criterion revisions (003, 029, 032) are
 recorded separately in the ledger; frozen acceptance text is not silently
 rewritten. GitHub Actions could not start because the account is locked by a
 billing issue; local verification is not reported as passing hosted CI.
+
+The derived IntentIR/CodebaseIR catalog (003) passed 42 native tests covering
+physical migration and rollback, cold hydration, bounded immutable membership,
+and actual conflicting source writes. It preserves separate source, model and
+corpus authorities. Its closure also closes the prerequisite for the finite
+checked-cache criterion (007). The selector reduced expensive reconstructions
+from four to one in a small measured fixture; this is not a general speedup claim.

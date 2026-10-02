@@ -1,0 +1,147 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 164 items
+
+test/api/test_finite_checked_cache.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 20%]
+[0m[32m.[0m[31mF[0m[32m.[0m[32m.[0m[31m                                                                     [ 23%][0m
+test/api/test_agent_supervisor_formal_verification_cache.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m [ 30%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m                                                               [ 36%][0m
+test/api/test_finite_cache_correspondence.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m [ 53%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m                                                      [ 64%][0m
+test/api/test_canonical_cache_key_bridge.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m [ 81%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m                                           [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_____ test_interrupted_publication_never_leaves_an_eligible_partial_record _____[0m
+
+setup = (<ipfs_accelerate_py.agent_supervisor.proof.finite_checked_cache.FiniteCheckedCache object at 0xfee373ea8cb0>, {'index...asets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfee389c6b5c0>, ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfee389c69ac0>
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_interrupted_publication_never_leaves_an_eligible_partial_record[39;49;00m(setup, monkeypatch):[90m[39;49;00m
+        store, args = setup[90m[39;49;00m
+        real = store.cache.put[90m[39;49;00m
+        [94mdef[39;49;00m[90m [39;49;00m[92minterrupted[39;49;00m(*a, **kw):[90m[39;49;00m
+            value = real(*a, **kw)[90m[39;49;00m
+            [94massert[39;49;00m value.stored[90m[39;49;00m
+            [94mraise[39;49;00m [96mRuntimeError[39;49;00m([33m"[39;49;00m[33minterrupted after native proof row[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mwith[39;49;00m monkeypatch.context() [94mas[39;49;00m patch:[90m[39;49;00m
+            patch.setattr(store.cache, [33m"[39;49;00m[33mput[39;49;00m[33m"[39;49;00m, interrupted)[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises([96mRuntimeError[39;49;00m, match=[33m"[39;49;00m[33minterrupted[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                store.check_and_store(owner_inputs=args)[90m[39;49;00m
+        [94massert[39;49;00m store.lookup(owner_inputs=args)[[33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33mmiss[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        [94mwith[39;49;00m store._transaction() [94mas[39;49;00m cx:[90m[39;49;00m
+            [94massert[39;49;00m cx.execute([33m"[39;49;00m[33mSELECT count(*) FROM finite_checked_cache_records[39;49;00m[33m"[39;49;00m).fetchone()[[94m0[39;49;00m] == [94m0[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m cx.execute([33m"[39;49;00m[33mSELECT count(*) FROM finite_checked_cache_dependencies[39;49;00m[33m"[39;49;00m).fetchone()[[94m0[39;49;00m] == [94m0[39;49;00m[90m[39;49;00m
+>       [94massert[39;49;00m store.check_and_store(owner_inputs=args)[[33m"[39;49;00m[33mpositive_reuse_eligible[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/api/test_finite_checked_cache.py[0m:257: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py[0m:428: in check_and_store
+    [0moutcome = [96mself[39;49;00m.cache.single_flight(ProofCacheKey.from_dict(report[[33m"[39;49;00m[33mbridged_key[39;49;00m[33m"[39;49;00m]), publish,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py[0m:2807: in single_flight
+    [0mfound, value = [96mself[39;49;00m._read_outcome(cache_key.key_id, observed_fence)[90m[39;49;00m
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache.FormalVerificationCache object at 0xfee373ea8aa0>
+key_id = 'proof-cache-key:sha256:4198c936f91d5d7f9d7a8ea5951e51a9311228404379192ac9a7e1bef68268e6'
+fencing_token = 1
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_read_outcome[39;49;00m([96mself[39;49;00m, key_id: [96mstr[39;49;00m, fencing_token: [96mint[39;49;00m) -> [96mtuple[39;49;00m[[96mbool[39;49;00m, Any]:[90m[39;49;00m
+        now = [96mself[39;49;00m._now_ms()[90m[39;49;00m
+        connection = [96mself[39;49;00m._connect()[90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            row = connection.execute([90m[39;49;00m
+    [90m            [39;49;00m[33m"""[39;49;00m
+    [33m            SELECT * FROM proof_flight_outcomes[39;49;00m
+    [33m            WHERE key_id=? AND fencing_token=? AND expires_at_ms>?[39;49;00m
+    [33m            """[39;49;00m,[90m[39;49;00m
+                (key_id, fencing_token, now),[90m[39;49;00m
+            ).fetchone()[90m[39;49;00m
+        [94mfinally[39;49;00m:[90m[39;49;00m
+            connection.close()[90m[39;49;00m
+        [94mif[39;49;00m row [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mreturn[39;49;00m [94mFalse[39;49;00m, [94mNone[39;49;00m[90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            payload = _strict_json_loads([96mstr[39;49;00m(row[[33m"[39;49;00m[33moutcome_json[39;49;00m[33m"[39;49;00m]))[90m[39;49;00m
+            encoded = canonical_json(payload)[90m[39;49;00m
+            digest = [33mf[39;49;00m[33m"[39;49;00m[33msha256:[39;49;00m[33m{[39;49;00mhashlib.sha256(encoded.encode([33m'[39;49;00m[33mutf-8[39;49;00m[33m'[39;49;00m)).hexdigest()[33m}[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+            [94mif[39;49;00m digest != [96mstr[39;49;00m(row[[33m"[39;49;00m[33moutcome_digest[39;49;00m[33m"[39;49;00m]):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33msingle-flight outcome digest mismatch[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m ([90m[39;49;00m
+                [95mnot[39;49;00m [96misinstance[39;49;00m(payload, Mapping)[90m[39;49;00m
+                [95mor[39;49;00m payload.get([33m"[39;49;00m[33mschema_version[39;49;00m[33m"[39;49;00m) != FORMAL_VERIFICATION_FLIGHT_SCHEMA[90m[39;49;00m
+                [95mor[39;49;00m payload.get([33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m) != row[[33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            ):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33msingle-flight outcome envelope mismatch[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mexcept[39;49;00m ([96mTypeError[39;49;00m, [96mValueError[39;49;00m, json.JSONDecodeError) [94mas[39;49;00m exc:[90m[39;49;00m
+            [94mraise[39;49;00m SingleFlightExecutionError([90m[39;49;00m
+                bounded_rejection_reason([33m"[39;49;00m[33msingle_flight_execution_failed[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            ) [94mfrom[39;49;00m[90m [39;49;00m[04m[96mexc[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m row[[33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33merror[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            error = payload.get([33m"[39;49;00m[33mvalue[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            reason_code = ([90m[39;49;00m
+                [96mstr[39;49;00m(error.get([33m"[39;49;00m[33mreason_code[39;49;00m[33m"[39;49;00m))[90m[39;49;00m
+                [94mif[39;49;00m [96misinstance[39;49;00m(error, Mapping)[90m[39;49;00m
+                [94melse[39;49;00m [33m"[39;49;00m[33msingle_flight_execution_failed[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+            )[90m[39;49;00m
+>           [94mraise[39;49;00m SingleFlightExecutionError(bounded_rejection_reason(reason_code))[90m[39;49;00m
+[1m[31mE           ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache.SingleFlightExecutionError: single_flight_execution_failed: inspect the leader locally and retry verification[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py[0m:2710: SingleFlightExecutionError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-02 06:37:51,427 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:51,455 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 06:37:52,406 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:52,436 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:52,480 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:52,518 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:52,547 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:52,805 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:53,053 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:54,125 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 06:37:54,137 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4621/test_interrupted_publication_n0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[33m=============================== warnings summary ===============================[0m
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+api/test_agent_supervisor_formal_verification_cache.py::test_single_flight_deduplicates_processes
+  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=1499810) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+------- generated xml file: /tmp/rpi007-finite-cache-qualified-tests.xml -------
+============================= slowest 10 durations =============================
+4.75s call     api/test_finite_checked_cache.py::test_actual_positive_exact_theorem_scope_and_complete_bodies
+4.73s call     api/test_finite_checked_cache.py::test_concurrent_real_publication_has_one_immutable_receipt
+4.20s call     api/test_finite_checked_cache.py::test_capacity_and_sql_primary_keys_never_silently_truncate
+3.76s call     api/test_finite_checked_cache.py::test_fresh_process_reopens_every_owner_and_rechecks_native_evidence
+3.27s call     api/test_finite_checked_cache.py::test_dependency_lookup_bounds_and_exact_record_join
+2.80s call     api/test_finite_checked_cache.py::test_current_source_domain_producer_and_tool_fences
+2.66s call     api/test_finite_checked_cache.py::test_interrupted_publication_never_leaves_an_eligible_partial_record
+2.42s call     api/test_finite_checked_cache.py::test_sql_and_rehashed_record_corruption_refuses_reuse[formal_receipt_malformed]
+2.36s call     api/test_finite_checked_cache.py::test_missing_each_native_artifact_refuses_positive_reuse[lean_source]
+2.24s call     api/test_finite_checked_cache.py::test_missing_each_native_artifact_refuses_positive_reuse[lean_process]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_finite_checked_cache.py::[1mtest_interrupted_publication_never_leaves_an_eligible_partial_record[0m - ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache.SingleF...
+[31m============ [31m[1m1 failed[0m, [32m163 passed[0m, [33m4 warnings[0m[31m in 185.11s (0:03:05)[0m[31m =============[0m
