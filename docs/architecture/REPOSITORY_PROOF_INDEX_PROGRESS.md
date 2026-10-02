@@ -267,3 +267,18 @@ the six remaining cases passed in52.65 seconds with real Python/Lean proofs.
 All27 distinct profile checks now pass across two unchanged-producer default-host
 runs. This qualifies the bounded RPI-021 criterion; production closure still waits
 for TIP-010/TIP-011, keeping the18-closed/14-open ledger unchanged.
+
+The optional dirty-source stager now passes49 catalog/staging controls and an
+actual-default320-entry run with160 dirty files. It resumes after128 entries,
+completes20 pages, and publishes one complete head in168.164 seconds. Independent
+isolated replay passes in15.140 seconds with parser tripwires. Whole-source
+fences now run at the existing catalog transaction boundaries while per-unit
+cancellation checks remain. Earlier incomplete trials retain their exact sources
+and failures; they do not establish a matched timing comparison. The new512-entry
+profile leaves frozen256-entry consumers unchanged. Cross-generation reuse,
+full-supervisor selection, CUDA and pressure qualification remain open in029.
+
+All27 reviewed population checks also pass in one84.76-second default-host
+run against the final catalog publication-fence implementation. The earlier
+intermediate-producer27-case run and its exact source are retained separately;
+these runs establish compatibility, not54 distinct cases or a timing comparison.

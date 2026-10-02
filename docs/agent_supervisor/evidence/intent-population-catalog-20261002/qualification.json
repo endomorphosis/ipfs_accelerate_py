@@ -1,0 +1,206 @@
+{
+  "current_final_producer_pins_verified": true,
+  "distinct_final_tests": 27,
+  "final_run": "seventh",
+  "historical_tests_overlap_final": true,
+  "limitations": [
+    "The sixth run is historical evidence under intermediate catalog3ffd1bac; only seventh qualifies final catalogfdcf6d4c.",
+    "Both27-test runs cover the same test population; they are not54 distinct tests.",
+    "Generic TIP-010/TIP-011 task discovery/execution dependencies remain open; no daemon START, benchmark score, arbitrary text semantics or cross-file frame proof is claimed.",
+    "Historical public decisions and serialized CAS do not grant live proof, dispatch or completion authority.",
+    "Private profile/lifecycle roots, mutable source/Intent/cache databases, locks and signing secrets were not copied."
+  ],
+  "qualified_profile": "reviewed finite intent population@1 with standalone IntegerOffsetContract groundings",
+  "resource_mode": "native default-host runs reported by the invoking owner; no controlled sampler selected in these runs",
+  "retained_artifact_bytes": 2916528,
+  "retained_artifacts": [
+    {
+      "bytes": 118289,
+      "case": "test_actual_changed_native_cho0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_changed_native_cho1",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_changed_native_cho2",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_changed_native_cho3",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118269,
+      "case": "test_actual_choice_cannot_accu0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_choice_transaction0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 281511,
+      "case": "test_actual_conditional_guard_0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 21
+    },
+    {
+      "bytes": 455371,
+      "case": "test_actual_conditional_guard_1",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 21
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_fresh_process_repl0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_lost_publication_r0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 530255,
+      "case": "test_actual_native_proof_elisi0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 36
+    },
+    {
+      "bytes": 498883,
+      "case": "test_actual_native_proof_zero_0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 36
+    },
+    {
+      "bytes": 85927,
+      "case": "test_actual_prohibition_reject0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    },
+    {
+      "bytes": 118289,
+      "case": "test_actual_public_artifact_st0",
+      "decisions": 1,
+      "scope": "immutable public population decisions and finite source/proof CAS only; mutation controls may subsequently refuse changed private native rows",
+      "source_cas": 8
+    }
+  ],
+  "runs": [
+    {
+      "errors": 0,
+      "failed": 0,
+      "label": "sixth",
+      "passed": 27,
+      "producer_manifest": "native-sixth-producers.json",
+      "pytest_console_seconds": 116.53,
+      "scope": "historical_intermediate_catalog",
+      "skipped": 0,
+      "test_names": [
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[task]",
+        "test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives",
+        "test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[1-selected1-True]",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[2-selected0-False]",
+        "test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+        "test_actual_lost_publication_reply_recovers_exact_native_population_and_decision",
+        "test_actual_native_proof_elision_cannot_authorize_overwriting_its_source",
+        "test_actual_native_proof_zero_edit_and_retry_keep_full_universe",
+        "test_actual_prohibition_rejects_effect_and_admits_inert_zero_population",
+        "test_actual_public_artifact_staging_interruption_leaves_no_partial_public_name",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[atom]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[authority]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[producers]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[source]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[universe]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[unknown]",
+        "test_nonagent_actor_cannot_inherit_native_agent_authorization",
+        "test_prohibition_covers_all_grounded_future_effects",
+        "test_selected_write_cannot_overwrite_a_property_used_to_elide_other_tasks",
+        "test_signed_alternative_retains_full_universe_and_independent_allowed_sets",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent may modify calc.]",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent must modify calc then agent must modify other.]",
+        "test_unknown_conditional_guard_never_justifies_omission"
+      ],
+      "xml_seconds": 116.515
+    },
+    {
+      "errors": 0,
+      "failed": 0,
+      "label": "seventh",
+      "passed": 27,
+      "producer_manifest": "native-seventh-producers.json",
+      "pytest_console_seconds": 84.76,
+      "scope": "final_catalog_qualification",
+      "skipped": 0,
+      "test_names": [
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[task]",
+        "test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives",
+        "test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[1-selected1-True]",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[2-selected0-False]",
+        "test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+        "test_actual_lost_publication_reply_recovers_exact_native_population_and_decision",
+        "test_actual_native_proof_elision_cannot_authorize_overwriting_its_source",
+        "test_actual_native_proof_zero_edit_and_retry_keep_full_universe",
+        "test_actual_prohibition_rejects_effect_and_admits_inert_zero_population",
+        "test_actual_public_artifact_staging_interruption_leaves_no_partial_public_name",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[atom]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[authority]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[producers]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[source]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[universe]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[unknown]",
+        "test_nonagent_actor_cannot_inherit_native_agent_authorization",
+        "test_prohibition_covers_all_grounded_future_effects",
+        "test_selected_write_cannot_overwrite_a_property_used_to_elide_other_tasks",
+        "test_signed_alternative_retains_full_universe_and_independent_allowed_sets",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent may modify calc.]",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent must modify calc then agent must modify other.]",
+        "test_unknown_conditional_guard_never_justifies_omission"
+      ],
+      "xml_seconds": 84.749
+    }
+  ],
+  "schema": "intent-population-catalog-regression@1",
+  "scope": [
+    "Preserves complete independently signed requirement/task universe for bounded conditional, alternative and prohibition decisions.",
+    "Checks one durable policy/source choice, exact native parent/task replay, fresh-process recovery, proof-elided source preservation and inert zero-task decisions.",
+    "Requalifies unchanged population/successor/test bytes against the final optional catalog publication-checkpoint owner."
+  ],
+  "status": "final_bounded_profile_qualified",
+  "unique_tests_across_both_runs": 27
+}

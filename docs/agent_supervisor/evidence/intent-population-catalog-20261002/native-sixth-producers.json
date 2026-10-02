@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-10-02T15:54:21.841591+00:00",
+  "producers": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py",
+      "bytes": 28300,
+      "sha256": "78858f9807862a80710cbfbfc2156c261eae0820eda4e864fdcf8059c3e3d12b"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+      "bytes": 28569,
+      "sha256": "f861778baaeef73fbebf23adfc395e5bf2951d02209f4ce0dd68331a89324700"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/integration/test_intent_population_admission.py",
+      "bytes": 22078,
+      "sha256": "fad6905f852c0ecb9e21259a286a2bd196c4a207d2d8daa79676141014fb37ed"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "bytes": 30458,
+      "sha256": "3ffd1bac575de712da84c9b98d2d8233b670b6f6d8d0abec2f2f40d05c25692f"
+    }
+  ]
+}

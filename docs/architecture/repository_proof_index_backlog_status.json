@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T15:16:15.442235+00:00",
+  "updated_at_utc": "2026-10-02T16:13:40.814877+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -335,6 +335,17 @@
     "pipeline-lifecycle-cap": {
       "path": "docs/agent_supervisor/evidence/pipeline-lifecycle-cap-20261002/manifest.json",
       "sha256": "c4a7f08c31319e6f39fbebb4bd12c6a680e6ac846521a6b047c84bb2bba68930",
+      "retention": "repository_evidence"
+    },
+    "dirty-paged-staging-native": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-dirty-staging-20261002/qualification.json",
+      "sha256": "012ef9a692f7b5241c8ec0355ba5abd8a371d5d250bf01df54500e83dd013ccf",
+      "retention": "repository_evidence"
+    },
+    "reviewed-population-final-catalog": {
+      "path": "docs/agent_supervisor/evidence/intent-population-catalog-20261002/manifest.json",
+      "sha256": "966be3a1f25a085828e64a2789466adf4b4ff41380b1a9e3189f30e715ba51f6",
       "retention": "repository_evidence"
     }
   },
@@ -841,7 +852,8 @@
         "Already-satisfied finite requirements return no handoff and leave the independently signed native task ready; no task omission or proof-based completion is admitted. Full original finite instruction and exact signed population are retained in the nonempty native run.",
         "The new opt-in reviewed finite population profile passes27controlled-host tests with real source/CAS/Intent owners and Python/Lean checks. It supports bounded conditional/alternative/prohibition coverage, inert zero-task decisions, preserved source files for omitted proven properties, one atomic choice per signed policy/source/Intent owner, and exact interrupted-publication/lost-reply/fresh-process recovery. Existing nonempty graph behavior is unchanged. Both actual default-host attempts refused source admission under memory-stall backoff; no default-host qualification or generic TIP closure is claimed.",
         "A later default-host attempt passed21 checks covering signed requirements, reduced-task authorization, atomic choice, rollback, corrupted-state refusal and fresh-process replay. The next finite zero-edit setup refused a native lease after actual memory-stall pressure rose; the remaining finite proof cases are still pending. A preceding harness setup error and the resource refusal are both retained.",
-        "After memory pressure cleared, all6 remaining native finite-property, conditional, prohibition and artifact-interruption checks passed in52.65s. The two unchanged-producer runs cover all27 distinct profile controls under default host sampling; earlier failed attempts remain retained. This qualifies the bounded own criterion, not generic task discovery/execution or an official benchmark."
+        "After memory pressure cleared, all6 remaining native finite-property, conditional, prohibition and artifact-interruption checks passed in52.65s. The two unchanged-producer runs cover all27 distinct profile controls under default host sampling; earlier failed attempts remain retained. This qualifies the bounded own criterion, not generic task discovery/execution or an official benchmark.",
+        "After the additive catalog publication-fence change, all27 profile controls passed again in one default-host run in84.76s against the finalfdcf catalog producer. The same27 cases also passed in116.53s against the retained intermediate3ffd producer. Exact source snapshots and immutable public decisions/proof/source CAS are packaged; the two runs are not54 distinct checks or a controlled timing comparison."
       ],
       "remaining_work": [
         "TIP-010 general task discovery and TIP-011 generic multitask execution/per-task context/final aggregation remain open. The qualified profile requires independently reviewed groundings; arbitrary text semantics, cross-file frames, unrestricted zero-task execution and general population planning remain outside its scope."
@@ -852,7 +864,8 @@
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
         "reviewed-task-population-admission",
-        "reviewed-task-population-native-attempt"
+        "reviewed-task-population-native-attempt",
+        "reviewed-population-final-catalog"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "blocking_dependencies": [
@@ -1047,11 +1060,12 @@
       "locally_qualified_portions": [
         "Additive CodebasePagedStager seals complete clean committed inventories, stages bounded deterministic source/AST shards, recovers exact cursors after native restart, and preserves deferred/opaque dispositions. Twenty-three focused tests pass, including exact byte/pin checks on parsed-cache hits, direct classifier-owner drift refusal and bounded eviction.",
         "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim.",
-        "Forty additional component controls qualify bounded complete dirty source/AST projections, immutable source-bound cursors, existing global dependency edges, cold/incremental page equality, explicit large-source deferral, optional Git batch reads preserving dirty CAS bytes, bounded watcher hints, and actual GTE/shared384 checkpoint inference with resident model reuse. Native model and parent-capacity controls use the actual default datasets scheduler; source/Git/watcher controls explicitly inject host telemetry. One local comparison loaded GTE once instead of four times and retained identical decoded rows; no timing distribution or benchmark advantage is claimed."
+        "Forty additional component controls qualify bounded complete dirty source/AST projections, immutable source-bound cursors, existing global dependency edges, cold/incremental page equality, explicit large-source deferral, optional Git batch reads preserving dirty CAS bytes, bounded watcher hints, and actual GTE/shared384 checkpoint inference with resident model reuse. Native model and parent-capacity controls use the actual default datasets scheduler; source/Git/watcher controls explicitly inject host telemetry. One local comparison loaded GTE once instead of four times and retained identical decoded rows; no timing distribution or benchmark advantage is claimed.",
+        "The opt-in dirty paged stager now seals a complete bounded working-tree inventory before parsing, extracts resumable pages, resolves the complete global graph, and publishes through the existing CodebaseCatalog transaction.49 controls cover cancellation/source-fence rollback and dirty-source behavior. An actual-default320-entry run with160 dirty files passed in168.164s across20 pages and native reopen at128; independent isolated replay passed in15.140s with an empty AST cache and parser tripwires. Earlier interrupted/expired/deadline attempts and exact producer bodies remain retained; these differently configured attempts are not a matched speedup comparison."
       ],
       "remaining_work": [
-        "Initial dirty capture remains bounded whole-generation <=256; the separately qualified clean committed stager handles resumable extraction. The new Git reader is opt-in and does not replace the frozen initial scanner.",
-        "Resident models persist for one bounded child invocation only. Compatible CUDA execution, larger dirty pipeline integration, complete pressure qualification, larger-scale incremental I/O and repeated timing distributions remain unqualified. Current complete source promotion remains with the existing native owner; derived pages do not promote heads."
+        "The new explicit dirty profile permits512 entries and64KiB per file; initial capture/live fences and final global assembly remain whole bounded-generation work. Existing frozen256-entry scanner consumers are unchanged. Full supervisor selection of the new adapter remains pending.",
+        "Replay still traverses prior pages and successor generations re-extract them. Cross-generation AST reuse, larger-scale incremental I/O, compatible CUDA, complete pressure/backpressure qualification and repeated timing distributions remain open. Existing catalog source/AST publication remains the sole head owner; resident inference remains bounded to one child invocation."
       ],
       "evidence": [
         "paged-staging-tests-log",
@@ -1059,7 +1073,8 @@
         "paged-staging-native-comparison",
         "paged-staging-native-final",
         "paged-staging-evidence-manifest",
-        "repository-shards-resident-inference"
+        "repository-shards-resident-inference",
+        "dirty-paged-staging-native"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
