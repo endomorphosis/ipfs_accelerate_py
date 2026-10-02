@@ -1,0 +1,80 @@
+{
+  "schema": "pipeline-lifecycle-cap-source-pins@1",
+  "files": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_handoff.py",
+      "sha256": "1de0d302ca96eb4dfe876de5faeaa9a7b7acaa6fba91e670cbdde1be3911d430"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_budgeted_behavioral_runner.py",
+      "sha256": "cddd3e018b2146d470cef2416e0d59872cad03c0c78658f96a578bd267fb303d"
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "b8ea36fd5d5c1b887d40bf62e6ad018bba4b297810483b7429103aa6b1d1ad21"
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "b2a94ee2acd608fa8389549460149d053cab01d4d22a0fe56f1b466b48df0da3"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_repository_pipeline_lifecycle.py",
+      "sha256": "23b787d24a878794be524c7d34b5592a2c148497cbb9ad052c6359aa18c5144c"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_repository_pipeline_resources.py",
+      "sha256": "6cbf839695fcd5c3683eeee2010f09ee55906614601c42a6aaaeb0d25b522196"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/integration/test_repository_managed_preparation_and_handoff.py",
+      "sha256": "9b752aec539228ec22175a0ef84445c9692d79bc357d571f2b0ba50ce0a5559e"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_native_repository_managed_driver.py",
+      "sha256": "4ddc60a9b0fc34068b436a5a11f74424ca906080e0e150053751bc2654384046"
+    },
+    {
+      "repository": "accelerate",
+      "path": "docs/agent_supervisor/REPOSITORY_PIPELINE_RESOURCES.md",
+      "sha256": "172ecbeb0d8a0e8c6db03dc83e249b7107386f5fe8a21fb104d6f3ac4a9311f4"
+    },
+    {
+      "repository": "accelerate",
+      "path": "docs/agent_supervisor/REPOSITORY_MANAGED_BENCHMARK_PREPARATION.md",
+      "sha256": "d48501b8877a9582e703badef030a05329ccbdd925f6c853c985d27f9c3a6020"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/backends/codebase_process.py",
+      "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+    }
+  ]
+}

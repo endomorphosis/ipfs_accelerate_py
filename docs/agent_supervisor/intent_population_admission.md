@@ -95,3 +95,11 @@ prerequisites remain open in
 RPI-021 production closure must therefore remain open even when this profile's
 local controls pass. See the exact run/provenance record in
 [`evidence/intent-population-20261002/qualification.json`](evidence/intent-population-20261002/qualification.json).
+
+The subsequent [default-host qualification](evidence/intent-population-native-20261002/qualification.json)
+passes all27 distinct checks across two runs under identical producer bytes:
+21 passed before a memory-pressure refusal, then the remaining6 passed in52.65s
+after pressure cleared. The latter includes fresh native finite Python/Lean
+observations. Both failed attempts and the earlier controlled evidence remain
+retained. This qualifies the bounded profile, while the generic TIP dependencies
+above still prevent production closure.

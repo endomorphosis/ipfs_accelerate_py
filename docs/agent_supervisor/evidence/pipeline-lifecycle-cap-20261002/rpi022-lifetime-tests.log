@@ -1,0 +1,48 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 7 items
+
+test/api/test_repository_pipeline_lifecycle.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps _[0m
+
+small_inventory = None
+injected_owners = (<ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler.ResourceScheduler object at 0xf4d11195da60>, <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xf4d11195cb30>)
+tmp_path = PosixPath('/tmp/rpi022-lifetime/test_injected_native_expiry_do0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps[39;49;00m(small_inventory,injected_owners,tmp_path):[90m[39;49;00m
+        supervisor,shared=injected_owners[90m[39;49;00m
+        [90m# Real file-backed native leases expire. Only host telemetry and this short[39;49;00m[90m[39;49;00m
+        [90m# test lease lifetime differ; old Python/native contexts remain reachable.[39;49;00m[90m[39;49;00m
+        shared.config=replace(shared.config,lease_ttl_seconds=[94m.2[39;49;00m,auto_renew_leases=[94mFalse[39;49;00m)[90m[39;49;00m
+        children=[];olds=[][90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            [94mfor[39;49;00m number [95min[39;49;00m [96mrange[39;49;00m([94m2[39;49;00m):[90m[39;49;00m
+>               [94mwith[39;49;00m pytest.raises(bridge.RepositoryResourceError,match=[33m'[39;49;00m[33mactive phases did not drain[39;49;00m[33m'[39;49;00m):[90m[39;49;00m
+[1m[31mE               AssertionError: Regex pattern did not match.[0m
+[1m[31mE                 Expected regex: 'active phases did not drain'[0m
+[1m[31mE                 Actual message: 'supervisor lane policy refused repository envelope: lease_process_capacity'[0m
+
+[1m[31mtest/api/test_repository_pipeline_lifecycle.py[0m:80: AssertionError
+-------------- generated xml file: /tmp/rpi022-lifetime-tests.xml --------------
+============================= slowest 10 durations =============================
+5.24s call     api/test_repository_pipeline_lifecycle.py::test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps
+0.02s teardown api/test_repository_pipeline_lifecycle.py::test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps
+0.01s teardown api/test_repository_pipeline_lifecycle.py::test_cap_precedes_concurrent_host_admission_and_failed_entries_release
+0.01s teardown api/test_repository_pipeline_lifecycle.py::test_recovery_mode_requires_exact_boolean_before_host_admission[1]
+0.01s teardown api/test_repository_pipeline_lifecycle.py::test_recovery_mode_requires_exact_boolean_before_host_admission[yes]
+0.01s call     api/test_repository_pipeline_lifecycle.py::test_cap_precedes_concurrent_host_admission_and_failed_entries_release
+0.01s teardown api/test_repository_pipeline_lifecycle.py::test_recovery_mode_requires_exact_boolean_before_host_admission[None]
+0.01s setup    api/test_repository_pipeline_lifecycle.py::test_recovery_mode_requires_exact_boolean_before_host_admission[None]
+0.01s setup    api/test_repository_pipeline_lifecycle.py::test_cap_precedes_concurrent_host_admission_and_failed_entries_release
+0.01s setup    api/test_repository_pipeline_lifecycle.py::test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_pipeline_lifecycle.py::[1mtest_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps[0m - AssertionError: Regex pattern did not match.
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m========================= [31m[1m1 failed[0m, [32m4 passed[0m[31m in 6.14s[0m[31m ==========================[0m

@@ -1,0 +1,164 @@
+{
+  "schema": "reviewed-intent-population-native-attempt@1",
+  "timestamp": "2026-10-02T15:13:51.836054+00:00",
+  "status": "native_default_host_bounded_profile_qualified",
+  "resource_mode": "unchanged_default_native_sampler",
+  "production_acceptance": "open",
+  "own_criterion_qualified": true,
+  "producers": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_population_admission.py",
+      "sha256": "78858f9807862a80710cbfbfc2156c261eae0820eda4e864fdcf8059c3e3d12b",
+      "bytes": 28300
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+      "sha256": "f861778baaeef73fbebf23adfc395e5bf2951d02209f4ce0dd68331a89324700",
+      "bytes": 28569
+    },
+    {
+      "path": "test/integration/test_intent_population_admission.py",
+      "sha256": "fad6905f852c0ecb9e21259a286a2bd196c4a207d2d8daa79676141014fb37ed",
+      "bytes": 22078
+    }
+  ],
+  "runs": [
+    {
+      "label": "third",
+      "name": "pytest",
+      "errors": "1",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "1",
+      "time": "13.807",
+      "timestamp": "2026-10-02T14:58:00.182057+00:00",
+      "hostname": "spark-b271",
+      "passed_test_names": []
+    },
+    {
+      "label": "fourth",
+      "name": "pytest",
+      "errors": "1",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "22",
+      "time": "117.658",
+      "timestamp": "2026-10-02T14:58:42.803325+00:00",
+      "hostname": "spark-b271",
+      "passed_test_names": [
+        "test_signed_alternative_retains_full_universe_and_independent_allowed_sets",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[source]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[atom]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[universe]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[producers]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[unknown]",
+        "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[authority]",
+        "test_unknown_conditional_guard_never_justifies_omission",
+        "test_prohibition_covers_all_grounded_future_effects",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent must modify calc then agent must modify other.]",
+        "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent may modify calc.]",
+        "test_nonagent_actor_cannot_inherit_native_agent_authorization",
+        "test_selected_write_cannot_overwrite_a_property_used_to_elide_other_tasks",
+        "test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives",
+        "test_actual_lost_publication_reply_recovers_exact_native_population_and_decision",
+        "test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+        "test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[task]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]",
+        "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]"
+      ]
+    },
+    {
+      "label": "fifth",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "6",
+      "time": "52.633",
+      "timestamp": "2026-10-02T15:10:46.886157+00:00",
+      "hostname": "spark-b271",
+      "passed_test_names": [
+        "test_actual_native_proof_zero_edit_and_retry_keep_full_universe",
+        "test_actual_native_proof_elision_cannot_authorize_overwriting_its_source",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[2-selected0-False]",
+        "test_actual_conditional_guard_binds_finite_initial_source_truth[1-selected1-True]",
+        "test_actual_prohibition_rejects_effect_and_admits_inert_zero_population",
+        "test_actual_public_artifact_staging_interruption_leaves_no_partial_public_name"
+      ]
+    }
+  ],
+  "diagnostics": {
+    "third": "Harness invocation failed before test setup: missing parent of explicit pytest basetemp. Parent created for fourth attempt.",
+    "fourth": "21 passed, then source capture for zero-edit proof case timed out waiting for native lease. Post-run actual full-memory PSI avg10 was49.11%; scheduler proof_backoff.reason=proof_memory_stall. No active leases remained.",
+    "fifth": "Actual memory-stall avg10 cleared; only the six remaining checks were selected. All6 passed52.65s with real source/Intent owners and fresh Python/Lean finite observations. No telemetry override or policy change."
+  },
+  "limitations": [
+    "27 distinct checks qualified across two unchanged-producer runs, not one uninterrupted27-check execution. Earlier failed attempts remain visible.",
+    "The independently reviewed bounded population profile is qualified; generic TIP-010/TIP-011 dependencies remain open.",
+    "No supervisor START/worker execution, official benchmark score, arbitrary-text semantics or cross-file frame proof is claimed.",
+    "Historical27 controlled-host checks remain separate."
+  ],
+  "qualified_profile": "reviewed finite intent population@1; independently signed grounded requirements; standalone IntegerOffsetContract properties",
+  "distinct_native_passed": 27,
+  "qualification_across_runs": [
+    "fourth",
+    "fifth"
+  ],
+  "qualified_test_names": [
+    "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_body]",
+    "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_goal]",
+    "test_actual_changed_native_choice_or_selected_population_refuses_replay[choice_plan]",
+    "test_actual_changed_native_choice_or_selected_population_refuses_replay[task]",
+    "test_actual_choice_cannot_accumulate_disjoint_authorized_alternatives",
+    "test_actual_choice_transaction_rolls_back_tasks_if_record_publication_fails",
+    "test_actual_conditional_guard_binds_finite_initial_source_truth[1-selected1-True]",
+    "test_actual_conditional_guard_binds_finite_initial_source_truth[2-selected0-False]",
+    "test_actual_fresh_process_replays_file_backed_choice_without_new_task_revisions",
+    "test_actual_lost_publication_reply_recovers_exact_native_population_and_decision",
+    "test_actual_native_proof_elision_cannot_authorize_overwriting_its_source",
+    "test_actual_native_proof_zero_edit_and_retry_keep_full_universe",
+    "test_actual_prohibition_rejects_effect_and_admits_inert_zero_population",
+    "test_actual_public_artifact_staging_interruption_leaves_no_partial_public_name",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[atom]",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[authority]",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[producers]",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[source]",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[universe]",
+    "test_even_resigned_policy_cannot_drop_or_rewrite_declared_meaning[unknown]",
+    "test_nonagent_actor_cannot_inherit_native_agent_authorization",
+    "test_prohibition_covers_all_grounded_future_effects",
+    "test_selected_write_cannot_overwrite_a_property_used_to_elide_other_tasks",
+    "test_signed_alternative_retains_full_universe_and_independent_allowed_sets",
+    "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent may modify calc.]",
+    "test_temporal_or_permitted_truth_is_not_inferred_from_current_code[agent must modify calc then agent must modify other.]",
+    "test_unknown_conditional_guard_never_justifies_omission"
+  ],
+  "retained_artifacts": [
+    {
+      "case": "test_actual_conditional_guard_0",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    },
+    {
+      "case": "test_actual_conditional_guard_1",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    },
+    {
+      "case": "test_actual_native_proof_elisi0",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    },
+    {
+      "case": "test_actual_native_proof_zero_0",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    },
+    {
+      "case": "test_actual_prohibition_reject0",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    },
+    {
+      "case": "test_actual_public_artifact_st0",
+      "scope": "public immutable decisions and finite fixture source/proof CAS; private signing keys, lease tokens and mutable databases excluded"
+    }
+  ]
+}

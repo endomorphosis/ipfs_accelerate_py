@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T10:29:02.217115+00:00",
+  "updated_at_utc": "2026-10-02T15:16:15.442235+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -13,7 +13,7 @@
     "criteria": 32,
     "production_closed": 18,
     "production_open": 14,
-    "criteria_qualified_for_declared_profile": 21
+    "criteria_qualified_for_declared_profile": 22
   },
   "evidence": {
     "foundation-tests-log": {
@@ -325,6 +325,16 @@
     "reviewed-task-population-admission": {
       "path": "docs/agent_supervisor/evidence/intent-population-20261002/qualification.json",
       "sha256": "6173347bea94015662bae8f11ced2a0c4c89ef5adec5e37a612371e2089e9b7f",
+      "retention": "repository_evidence"
+    },
+    "reviewed-task-population-native-attempt": {
+      "path": "docs/agent_supervisor/evidence/intent-population-native-20261002/manifest.json",
+      "sha256": "8a495af9b4fc8c393525d504f79c65d0b56bb9286ff0a437d5edfdce5f2917ac",
+      "retention": "repository_evidence"
+    },
+    "pipeline-lifecycle-cap": {
+      "path": "docs/agent_supervisor/evidence/pipeline-lifecycle-cap-20261002/manifest.json",
+      "sha256": "c4a7f08c31319e6f39fbebb4bd12c6a680e6ac846521a6b047c84bb2bba68930",
       "retention": "repository_evidence"
     }
   },
@@ -769,7 +779,8 @@
         "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero.",
         "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress.",
         "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
-        "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified."
+        "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
+        "All33managed-preparation/delegation/driver controls also pass under the revised bounded-lifecycle adapter; historical evidence remains pinned to its original producer. Full native pipeline execution remains pending disk admission."
       ],
       "remaining_work": [
         "Complete whole-trial phase/deadline and resource-bridge qualification, including worker delegation, remains pending."
@@ -783,7 +794,8 @@
         "budgeted-repository-preparation",
         "behavioral-native-supervision",
         "resource-worker-delegation",
-        "managed-preparation-worker-integration"
+        "managed-preparation-worker-integration",
+        "pipeline-lifecycle-cap"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -824,27 +836,30 @@
       "criterion": "Separately qualify conditional/alternative/prohibition semantics, zero-edit and reduced task populations under a new explicit profile. Preserve older rejection behavior. Prove complete requirement coverage and independent scope/task-population authorization before allowing evidence to eliminate signed tasks.",
       "source_line": 295,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Already-satisfied finite requirements return no handoff and leave the independently signed native task ready; no task omission or proof-based completion is admitted. Full original finite instruction and exact signed population are retained in the nonempty native run.",
-        "The new opt-in reviewed finite population profile passes27controlled-host tests with real source/CAS/Intent owners and Python/Lean checks. It supports bounded conditional/alternative/prohibition coverage, inert zero-task decisions, preserved source files for omitted proven properties, one atomic choice per signed policy/source/Intent owner, and exact interrupted-publication/lost-reply/fresh-process recovery. Existing nonempty graph behavior is unchanged. Both actual default-host attempts refused source admission under memory-stall backoff; no default-host qualification or generic TIP closure is claimed."
+        "The new opt-in reviewed finite population profile passes27controlled-host tests with real source/CAS/Intent owners and Python/Lean checks. It supports bounded conditional/alternative/prohibition coverage, inert zero-task decisions, preserved source files for omitted proven properties, one atomic choice per signed policy/source/Intent owner, and exact interrupted-publication/lost-reply/fresh-process recovery. Existing nonempty graph behavior is unchanged. Both actual default-host attempts refused source admission under memory-stall backoff; no default-host qualification or generic TIP closure is claimed.",
+        "A later default-host attempt passed21 checks covering signed requirements, reduced-task authorization, atomic choice, rollback, corrupted-state refusal and fresh-process replay. The next finite zero-edit setup refused a native lease after actual memory-stall pressure rose; the remaining finite proof cases are still pending. A preceding harness setup error and the resource refusal are both retained.",
+        "After memory pressure cleared, all6 remaining native finite-property, conditional, prohibition and artifact-interruption checks passed in52.65s. The two unchanged-producer runs cover all27 distinct profile controls under default host sampling; earlier failed attempts remain retained. This qualifies the bounded own criterion, not generic task discovery/execution or an official benchmark."
       ],
       "remaining_work": [
-        "Actual default-host qualification of the new bounded profile remains pending after two resource refusals. TIP-010 general task discovery and TIP-011 generic multitask execution/per-task context/final aggregation remain open. The profile requires independently reviewed groundings and does not prove arbitrary text semantics or cross-file frames."
+        "TIP-010 general task discovery and TIP-011 generic multitask execution/per-task context/final aggregation remain open. The qualified profile requires independently reviewed groundings; arbitrary text semantics, cross-file frames, unrestricted zero-task execution and general population planning remain outside its scope."
       ],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
-        "reviewed-task-population-admission"
+        "reviewed-task-population-admission",
+        "reviewed-task-population-native-attempt"
       ],
-      "criterion_acceptance": "not_yet_qualified",
+      "criterion_acceptance": "qualified_for_declared_profile",
       "blocking_dependencies": [
         "TIP-010",
-        "TIP-011",
-        "actual default-host profile qualification"
-      ]
+        "TIP-011"
+      ],
+      "qualified_profile": "reviewed finite intent population@1; independently grounded signed universe; standalone finite IntegerOffsetContract observations"
     },
     {
       "id": "RPI-022",
@@ -860,7 +875,8 @@
         "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
         "Optional canonical native parent support joins the existing durable daemon disk/RSS ledger without another root reservation.154controls pass:9actual shared-host controls include token/live parent links, cancellation/release/death and a real child launched during revocation;145existing isolated-scheduler/filesystem regressions preserve default behavior. Full pipeline composition remains separate.",
         "Opt-in protected pipeline adapter passes31controlled-owner tests with actual subprocesses and durable disk records under explicitly injected host telemetry. It bounds queued and retained payloads, reserves validation/cleanup compartments, retains unsafe native child reservations across scope exit and garbage collection, and recovers through protected cleanup using the same authority and disk roots. Actual-host admission remains refused by the unchanged disk watermark; this is not full-pipeline qualification.",
-        "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified."
+        "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
+        "The retained Python lifecycle inventory now has a fixed process-local cap reserved before host admission:31ordinary plus1cleanup-only slot. Waiting entries, native-expired retained contexts and outer-close races remain counted; explicit safe recovery releases handles while preserving durable disk claims. Seventy-two distinct current-producer controlled checks pass, including39pipeline/lifecycle and33managed-preparation/driver regressions. A fresh actual-host probe refused at the unchanged disk watermark before work; no default-host or full-pipeline qualification is claimed."
       ],
       "remaining_work": [
         "Full native pipeline integration and actual-host qualification remain pending. GPU/per-device admission, host-wide retained-payload accounting, hard enforcement, gradual recovery and the complete pressure matrix remain open. Named-root disk sampling does not protect against unrelated external writers."
@@ -873,7 +889,8 @@
         "resource-worker-delegation",
         "nested-durable-resources",
         "protected-pipeline-resources",
-        "managed-preparation-worker-integration"
+        "managed-preparation-worker-integration",
+        "pipeline-lifecycle-cap"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

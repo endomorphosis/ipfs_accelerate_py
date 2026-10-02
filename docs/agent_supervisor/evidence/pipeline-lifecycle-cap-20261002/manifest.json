@@ -1,0 +1,90 @@
+{
+  "schema": "pipeline-lifecycle-cap-evidence-files@1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "6690b4bb5b6085a4a6749e281688c06b464a996e1d00bf9d0f5c99ddd7f34f55",
+      "bytes": 1894
+    },
+    {
+      "path": "historical-repository_pipeline_resources.py.txt",
+      "sha256": "e07cb3e23dc608626e82ba926b946415fcd2eb94b542aee516cf612d30383e81",
+      "bytes": 24065
+    },
+    {
+      "path": "producer-sources.json",
+      "sha256": "d141e5880ec9def1216cfbc72ff6650256c3a02e8d193f8e297a6890ab16b799",
+      "bytes": 3291
+    },
+    {
+      "path": "qualification.json",
+      "sha256": "c2291042ccc44e2296278a82a3684b75d7e4786af180a5efe81abffc4811b41f",
+      "bytes": 16356
+    },
+    {
+      "path": "repository_pipeline_resources.py.txt",
+      "sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf",
+      "bytes": 29053
+    },
+    {
+      "path": "rpi022-lifecycle-race-tests.log",
+      "sha256": "c924d36dd4ae603d99f271ad18d351b674f1c783e990d9aec77d6d37bb3abf8a",
+      "bytes": 1596
+    },
+    {
+      "path": "rpi022-lifecycle-race-tests.xml",
+      "sha256": "14309fd7bacaf420b2506f1e5505d9b231ac3f896d692c0b425a0df900dc7430",
+      "bytes": 411
+    },
+    {
+      "path": "rpi022-lifetime-live-tests.log",
+      "sha256": "3dbd1ea0e30855f2d4d79dc19aa7f31d1f2f6f7724e4aab302641bc9e492f207",
+      "bytes": 4949
+    },
+    {
+      "path": "rpi022-lifetime-live-tests.xml",
+      "sha256": "c6c19344eda2a72453aa8547a834f5181e9fdf861f53679e4fc36da26be769b0",
+      "bytes": 2644
+    },
+    {
+      "path": "rpi022-lifetime-tests.log",
+      "sha256": "cafedb782b7d19c926fe0b94a609348d7cae22097f4f055db0bf45a3c14c95a1",
+      "bytes": 4765
+    },
+    {
+      "path": "rpi022-lifetime-tests.xml",
+      "sha256": "373c8b7c434944c17b81ffecdf40a53fc9fc310212d7f96b0f5516a26463ea60",
+      "bytes": 2540
+    },
+    {
+      "path": "rpi022-lifetime2-tests.log",
+      "sha256": "de56fa5baca1e9773e055e40b16f0d0d416d59b4784a4e77c7d1e3cef5432591",
+      "bytes": 2977
+    },
+    {
+      "path": "rpi022-lifetime2-tests.xml",
+      "sha256": "120bbad59550136695b1d6558e644900bfecbe8753b60b080f9e63ca9422b3b2",
+      "bytes": 5967
+    },
+    {
+      "path": "rpi022-managed-cap-tests.log",
+      "sha256": "a8cac760f540b9c415fa4979f3e235d890931dfb1cc03568319fad86fac3ce31",
+      "bytes": 2971
+    },
+    {
+      "path": "rpi022-managed-cap-tests.xml",
+      "sha256": "8a9fa634dd6b8420d0a5c4e458aeaab5d5dbc5cbc13e3c832dbc6cf289f3e507",
+      "bytes": 5476
+    },
+    {
+      "path": "rpi022-managed-driver-cap-tests.log",
+      "sha256": "0a070311a8430f96f73dcfdb523dd73f75c7bf302428302324cc9c27301935c7",
+      "bytes": 1491
+    },
+    {
+      "path": "rpi022-managed-driver-cap-tests.xml",
+      "sha256": "47c3f3ca39e41fc27554abf2b655af34311ca8dbcc64972edee57ced6285705a",
+      "bytes": 713
+    }
+  ]
+}

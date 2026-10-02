@@ -2,8 +2,9 @@
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
 every original acceptance criterion. **Eighteen exits are closed for their declared
-profiles; 14 remain open.** Twenty-one individual criteria have passed qualification;
-three still depend on unfinished resource integration. These results do not establish
+profiles; 14 remain open.** Twenty-two individual criteria have passed qualification;
+three still depend on unfinished resource integration and one on generic task
+contracts. These results do not establish
 default production activation or a Terminal Bench advantage.
 
 ## Actual results
@@ -217,6 +218,15 @@ host telemetry is explicitly injected in those controls. The actual-host attempt
 was refused at the unchanged disk watermark. Full pipeline integration and the
 resource prerequisite remain open.
 
+Retained Python lifecycle handles now have a fixed process-local cap:31 ordinary
+slots and one cleanup-only slot, reserved before native host admission. Waiting
+requests and contexts whose native leases expired still count. Safe explicit
+recovery releases handles while preserving durable disk claims. Seventy-two
+distinct current-producer controlled checks pass, including39 pipeline/lifecycle
+controls and33 managed-preparation/driver regressions. The actual-host probe still
+refuses the unchanged disk watermark. This bounds local handle lifetime without
+claiming host-wide payload, GPU or hard resource enforcement.
+
 The successor-context API now qualifies016 for the bounded finite source profile.
 It rechecks the complete affected cache-reference population, preserves semantic
 intent and historical artifacts, compares an independent cold rebuild, and signs
@@ -247,3 +257,13 @@ files remain protected, and zero-task decisions remain inert. Lost replies and
 interrupted public artifact staging recover exact prior choices. Both actual
 default-host attempts refused admission under memory-stall backoff. RPI-021 stays
 open, together with its generic TIP-010/TIP-011 prerequisites.
+
+A subsequent default-host population run passed21 checks, including native
+transaction rollback, corrupted-state refusal and fresh-process replay. Source
+capture for the next finite proof case then timed out as actual memory-stall
+pressure rose. The partial run and a preceding harness setup error are retained
+separately in `intent-population-native-20261002`. After memory pressure cleared,
+the six remaining cases passed in52.65 seconds with real Python/Lean proofs.
+All27 distinct profile checks now pass across two unchanged-producer default-host
+runs. This qualifies the bounded RPI-021 criterion; production closure still waits
+for TIP-010/TIP-011, keeping the18-closed/14-open ledger unchanged.

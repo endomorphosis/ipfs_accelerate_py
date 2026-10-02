@@ -1,0 +1,25 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 30 items
+
+test/integration/test_repository_managed_preparation_and_handoff.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 13%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                               [100%][0m
+
+------------ generated xml file: /tmp/rpi022-managed-cap-tests.xml -------------
+============================= slowest 10 durations =============================
+2.91s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_runs_actual_scan_catalog_and_validation
+1.17s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_sampled_growth_over_ceiling_retains_failed_claim
+0.35s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_cross_process_child_joins_same_controlled_native_owner
+0.27s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors
+0.26s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_failure_retains_precharged_native_disk_claim
+0.21s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[repository]
+0.21s call     integration/test_repository_managed_preparation_and_handoff.py::test_managed_preparation_refuses_scope_before_source_publication[unselected_model]
+0.20s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[root]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[mode]
+0.19s call     integration/test_repository_managed_preparation_and_handoff.py::test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[directory]
+[32m============================= [32m[1m30 passed[0m[32m in 10.86s[0m[32m ==============================[0m

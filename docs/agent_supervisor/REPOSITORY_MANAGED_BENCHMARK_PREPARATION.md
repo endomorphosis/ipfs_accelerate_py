@@ -63,8 +63,13 @@ Failure handling retains the primary error, additional resource cleanup errors,
 failed receipt observations and `result.json`. A failed finalization can retain
 disk/host contexts for explicit recovery; the driver does not claim automatic
 reaping of uncooperative external workers. Callers must drain
-`pending_pipeline_recoveries()`. Forgotten handles across canonical lease expiry
-can accumulate over a long-lived process; a lifetime inventory cap is not qualified.
+`pending_pipeline_recoveries()`. The pipeline adapter now caps process-local
+lifecycles before host admission: 31 ordinary scopes and one cleanup-only scope.
+Expired native leases do not free retained Python handles. Use the reserved
+`recovery_only=True` path for explicit cleanup; it cannot delegate native consumer
+capacity or run benchmark processes. This bookkeeping cap does not change host
+admission or silently release unsafe children or durable disk claims. See
+[the lifecycle rules](REPOSITORY_PIPELINE_RESOURCES.md).
 
 This remains a cooperative sampled CPU profile. The external supervisor/worker
 RSS is not captured by the daemon's direct-child sampler. Deterministic semantic

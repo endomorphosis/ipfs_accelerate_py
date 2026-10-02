@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.753" timestamp="2026-10-02T15:08:46.716378+00:00" hostname="spark-b271"><testcase classname="api.test_repository_pipeline_resources" name="test_live_pipeline_composes_actual_host_and_named_disk_owners" time="0.014"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_disk_high_watermark">tmp_path = PosixPath('/tmp/rpi022-lifetime-live/test_live_pipeline_composes_ac0')
+
+    def test_live_pipeline_composes_actual_host_and_named_disk_owners(tmp_path):
+        """This can be refused by current host pressure; never substitute telemetry."""
+        supervisor = ResourceScheduler(ResourcePolicy(max_lanes=8))
+        shared = get_global_resource_scheduler()
+&gt;       with reserve(tmp_path, supervisor, limits=budget(wall_time_ms=15000)) as parent:
+
+test/api/test_repository_pipeline_resources.py:274: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/api/test_repository_pipeline_resources.py:58: in reserve
+    with pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id='rpi022-pipeline',
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py:519: in reserve
+    with self.bridge.reserve(repository_id=repository_id, workspace=workspace,
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:303: in reserve
+    _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'supervisor lane policy refused repository envelope: host_disk_high_watermark'
+
+    def _require(value, message):
+        if not value:
+&gt;           raise RepositoryResourceError(message)
+E           ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_disk_high_watermark
+
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:56: RepositoryResourceError</failure></testcase></testsuite></testsuites>

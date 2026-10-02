@@ -86,6 +86,31 @@ collection cannot release generator-owned host capacity. Inspect
 native authority, ledger and roots can recover with `owner=old_handle`. Cross-process
 crash recovery stays with the existing native scheduler and durable disk owner.
 
+The process-local lifecycle inventory is capped at 32 handles: 31 ordinary
+pipelines and one explicit `recovery_only=True` pipeline. A slot is reserved
+before entering native host admission, so concurrent entries and admission waits
+also count. Native lease expiry never frees a Python lifecycle slot. A slot is
+released after the outer scope has exited, all queued/active/retained contexts
+have finished, and the canonical parent has closed. Normal completion and failed
+host admission release their slots without changing disk claims.
+
+The reserved recovery lifecycle admits only `cleanup` phases. Its phases cannot
+run workload processes or delegate capacity through `native_options()`; they can
+use `recover_retained` and explicit durable finalization. This allows cleanup
+when ordinary handles have filled their compartment. If the recovery lifecycle
+itself becomes unsafe, its slot remains occupied and further admission refuses.
+The caller must stop/reap children and recover the existing owner; capacity is
+never silently released to make room. An idle failed outer close can be retried
+with `old_handle.reap_lifecycle()` after all its contexts have finished. This
+calls the canonical parent's normal close and does not release retained disk
+claims. Source work must not proceed under a recovery-only lifecycle.
+
+`pipeline_lifecycle_inventory()` reports bounded counts, including entries
+waiting for host admission. Receipts identify these as process-local Python
+handle bookkeeping with no host resource authority. This cap does not limit
+caller-retained object copies, all processes on the host, or actual aggregate
+RSS. Native scheduler admission and the durable disk ledger remain authoritative.
+
 Qualification distinguishes injected host telemetry from actual-host acceptance.
 The controlled suite uses real file-backed owners and real subprocesses, including
 overshoot, cancellation, unsafe scope exit and subsequent cleanup. The actual-host

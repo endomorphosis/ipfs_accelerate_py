@@ -1,0 +1,410 @@
+{
+  "schema": "pipeline-lifecycle-cap-qualification@1",
+  "final_source_sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf",
+  "distinct_controlled_tests": 72,
+  "controlled_passed": 72,
+  "controlled_skipped": 0,
+  "controlled_groups": {
+    "pipeline_and_lifecycle": 39,
+    "managed_preparation_and_delegation": 30,
+    "driver_fault_controls": 3
+  },
+  "qualified_tests": [
+    {
+      "classname": "api.test_native_repository_managed_driver",
+      "name": "test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact"
+    },
+    {
+      "classname": "api.test_native_repository_managed_driver",
+      "name": "test_managed_driver_retains_primary_error_when_both_receipt_observers_fail"
+    },
+    {
+      "classname": "api.test_native_repository_managed_driver",
+      "name": "test_pipeline_cli_is_explicit_and_legacy_full_flag_is_distinct"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_cap_precedes_concurrent_host_admission_and_failed_entries_release"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_injected_idle_native_close_failure_retains_slot_until_explicit_reap"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_injected_normal_repeated_reservations_release_lifecycle_without_changing_disk_authority"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_injected_queued_scope_stays_counted_while_outer_close_waits_for_active_scope"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_recovery_mode_requires_exact_boolean_before_host_admission[1]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_recovery_mode_requires_exact_boolean_before_host_admission[None]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_lifecycle",
+      "name": "test_recovery_mode_requires_exact_boolean_before_host_admission[yes]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_actual_disk_overshoot_reaps_process_and_retains_claim"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_bounded_process_uses_actual_payload_and_reaps_before_release"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_cancelled_queue_releases_payload_references"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_exact_nested_authority_and_explicit_durability"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_failed_disk_claim_stays_charged_until_protected_cleanup"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_full_training_cannot_take_validation_or_cleanup_compartment"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_live_registered_child_retains_bridge_until_reaped"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_missing_finalize_retains_claim_and_refuses_reused_attempt"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_ordinary_demand_cannot_borrow_protected_capacity[cpu_slots-2]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_ordinary_demand_cannot_borrow_protected_capacity[disk_bytes-8388609]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_ordinary_demand_cannot_borrow_protected_capacity[memory_mb-385]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_ordinary_demand_cannot_borrow_protected_capacity[process_slots-2]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_ordinary_history_exhaustion_preserves_cleanup"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_outstanding_native_consumer_cannot_release_parent"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_payload_queue_bytes_count_actual_immutable_inputs"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_precharge_bounds_paths_and_final_disk_bytes"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_process_cancellation_reaps_and_retains_disk"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_process_cannot_escape_owner_thread_or_capture_bound"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_retained_payload_covers_active_inputs_and_capture_allowance"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_injected_validation_requires_explicit_compatible_memory_declaration"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change0]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change1]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change2]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change3]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change4]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change5]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change6]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change7]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change8]"
+    },
+    {
+      "classname": "api.test_repository_pipeline_resources",
+      "name": "test_policy_refuses_unbounded_or_empty_partitions[change9]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_failure_retains_precharged_native_disk_claim"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[boolean_write]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[outside_attempt]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[outside_cas]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[unselected_model]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[unselected_proof]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[wrong_owner]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_refuses_scope_before_source_publication[zero_write]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_preparation_runs_actual_scan_catalog_and_validation"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_managed_sampled_growth_over_ceiling_retains_failed_claim"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v1_dispatch_retains_legacy_exact_root_behavior"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_actual_consumer_authenticates_daemon_and_all_native_ancestors"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_actual_cross_process_child_joins_same_controlled_native_owner"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_ancestor_cancel_propagates_to_actual_consumer"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_cancellation_and_released_phase_refuse_delegation"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[bridge]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[capacity]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[daemon_id]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[directory]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[expires]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[hardlink]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[mode]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[owner]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[phase]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[repository]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[root]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[task]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[token]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[unknown]"
+    },
+    {
+      "classname": "integration.test_repository_managed_preparation_and_handoff",
+      "name": "test_v2_resealed_or_unsafe_grant_cannot_admit_native_consumer[version]"
+    }
+  ],
+  "attempts": [
+    {
+      "label": "lifetime",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "5",
+      "time": "6.093",
+      "timestamp": "2026-10-02T15:00:03.554049+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "lifetime2",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "38",
+      "time": "22.850",
+      "timestamp": "2026-10-02T15:02:11.327341+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "lifecycle-race",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "1",
+      "time": "0.848",
+      "timestamp": "2026-10-02T15:04:58.512084+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "managed-cap",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "30",
+      "time": "10.841",
+      "timestamp": "2026-10-02T15:05:43.386045+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "managed-driver-cap",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "3",
+      "time": "2.049",
+      "timestamp": "2026-10-02T15:08:24.231261+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "lifetime-live",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "1",
+      "time": "0.753",
+      "timestamp": "2026-10-02T15:08:46.716378+00:00",
+      "hostname": "spark-b271"
+    }
+  ],
+  "default_host": {
+    "status": "admission_refused",
+    "reason": "host_disk_high_watermark",
+    "test": "test_live_pipeline_composes_actual_host_and_named_disk_owners",
+    "log": "rpi022-lifetime-live-tests.log",
+    "qualified": false,
+    "tests_failed": 1
+  },
+  "native_controls": [
+    "Concurrent lifecycle capacity checked before bridge.reserve; failed host entries release slots.",
+    "Two actual child processes and file-backed native lease expiry leave old Python contexts counted.",
+    "Ordinary cap refuses new parents across separate supervisor bookkeeping owners sharing one exact native host authority.",
+    "Reserved recovery-only scope rejects validation/training/scan, delegation and workload process calls.",
+    "Explicit child stop/reap and durable cleanup restore lifecycle slots.",
+    "Idle failed native close remains counted until explicit safe retry.",
+    "Outer-close race retains slot while active/queued contexts drain; durable disk claims remain charged."
+  ],
+  "fault_injection": {
+    "host_sampler": "injected foundation telemetry for controlled owner tests",
+    "capacity": "test lifetime cap reduced from production32 to3 to exercise overflow using2 actual retained parents",
+    "lease_lifetime": "native file-backed test leases use0.2s TTL and disable renewal; cleanup restores120s renewal",
+    "driver": "three explicit routing/failure-retention unit controls"
+  },
+  "production_cap": {
+    "total": 32,
+    "ordinary": 31,
+    "recovery_only": 1,
+    "scope": "process-local Python lifecycle inventory, not host resource authority"
+  },
+  "initial_attempt": "First controlled attempt stopped after four passes because the test reused one supervisor bookkeeping owner and correctly hit lease_process_capacity; test changed to separate local repository owners sharing the same native authority. Production unchanged.",
+  "not_claimed": [
+    "default-host pipeline acceptance",
+    "whole supervisor qualification",
+    "host-wide or exact RSS object accounting",
+    "hard memory/disk enforcement",
+    "GPU/per-device accounting",
+    "gradual resource recovery"
+  ],
+  "historical_producer_sha256": "e07cb3e23dc608626e82ba926b946415fcd2eb94b542aee516cf612d30383e81",
+  "historical_evidence_rewritten": false
+}
