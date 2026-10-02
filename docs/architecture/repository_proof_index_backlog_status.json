@@ -273,6 +273,18 @@
       "path": "docs/agent_supervisor/evidence/repository-worker-contracts-20261002/manifest.json",
       "sha256": "7b74ec21dbdc794068de59e8fe4f559bd2753b7bc6e0a2d4400a6e2dec014f5e",
       "retention": "repository_evidence"
+    },
+    "source-federation-implementation": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/autoencoders/evidence/codebase-federation-20261002/manifest.json",
+      "sha256": "5a218ef14f4f2ebcbd05f5424524ae57518ce69eded85aacae643a5dde773a26",
+      "retention": "repository_evidence"
+    },
+    "nested-durable-resources": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/autoencoders/evidence/nested-daemon-resources-20261002/manifest.json",
+      "sha256": "b555234190d7983004f029283bfedbee9a737d3fc54c7c12fda467c13799a4db",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -784,7 +796,8 @@
       "locally_qualified_portions": [
         "Datasets shared lease admission, nested parent preservation, pressure refusal and cancellation are qualified in the structural wrapper.",
         "Eighteen controls include actual shared-default/live-sampler two-repository admission, killed-parent lease recovery and child-process cancellation; injected telemetry controls are separately identified. The CPU bridge is reusable by native scan/training/proof consumers with one shared host authority.",
-        "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed."
+        "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
+        "Optional canonical native parent support joins the existing durable daemon disk/RSS ledger without another root reservation.154controls pass:9actual shared-host controls include token/live parent links, cancellation/release/death and a real child launched during revocation;145existing isolated-scheduler/filesystem regressions preserve default behavior. Full pipeline composition remains separate."
       ],
       "remaining_work": [
         "Bridge disk/queue accounting is local declaration plus sampling; GPU/per-device/global retained-payload queues, hard enforcement, gradual recovery and protected validation capacity within each parent remain open."
@@ -794,7 +807,8 @@
         "foundation-tests-junit",
         "foundation-selected-port-manifest",
         "shared-host-resource-bridge",
-        "resource-worker-delegation"
+        "resource-worker-delegation",
+        "nested-durable-resources"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -964,12 +978,16 @@
       "criterion": "Extend the bounded source-bound 8D adapter to qualified production worker dispatch using existing sample-weighted reduction and binary update artifacts; preserve its explicit aggregate Adam reset and source/count contracts. Keep separate 8D/384D lineages and repository-private heads where mappings differ. Freeze common parent, feature/token/target semantics, parameter layout, producer/objective and approved source/corpus digests/counts. Preseal sparse key union; reject unknown keys, independently learned latent mappings, wrong parents/corpora, duplicate updates and stale fences. Demonstrate actual codebase local training, deterministic aggregate materialization and parent/child canary qualification before owner CAS. Do not average proof metadata or optimizer histories.",
       "source_line": 304,
       "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
+      "local_status": "implemented_pending_native_qualification",
+      "locally_qualified_portions": [
+        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. Final12-case full native matrix is blocked by actual supervisor disk admission. This is a separate8D protocol and does not establish distributed384D training or model quality."
+      ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": [],
+      "evidence": [
+        "source-federation-implementation"
+      ],
       "criterion_acceptance": "not_yet_qualified"
     },
     {
@@ -979,12 +997,16 @@
       "criterion": "Carry scoped round/worker/attempt/fence/source/model/bucket bindings and exact SHA-256/CID artifact references through existing task/proof-context transport. Qualify lost responses, duplicate delivery, unavailable peers and stale completion. Initially run federation only. Future gradient mode requires injected collective backend plus deployment verifier, fixed membership/step/bucket ordering, declared reduction/scaling and resource/device accounting; failure aborts without fallback to FedAvg. Transport receipts never certify numerical work or proof authority.",
       "source_line": 305,
       "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
+      "local_status": "implemented_pending_native_qualification",
+      "locally_qualified_portions": [
+        "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. Final12-case full native matrix is blocked by actual supervisor disk admission. This is a separate8D protocol and does not establish distributed384D training or model quality."
+      ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": [],
+      "evidence": [
+        "source-federation-implementation"
+      ],
       "criterion_acceptance": "not_yet_qualified"
     },
     {
