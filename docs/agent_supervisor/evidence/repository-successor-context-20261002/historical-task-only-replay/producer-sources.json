@@ -1,0 +1,17 @@
+{
+  "schema": "repository-successor-source-pins@1",
+  "files": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py",
+      "sha256": "e9c59195f58c12d87e9dd77be0c6cdd4499bd1afc888c2357c98234e3824df9b"
+    },
+    {
+      "path": "test/integration/test_repository_successor_context.py",
+      "sha256": "6f3a53764008cb6d2390411dd18b04036fdf42cd0068af8d4fb0ca2c67e528fa"
+    },
+    {
+      "path": "docs/agent_supervisor/repository_successor_context.md",
+      "sha256": "982b968cf5ec4d243be3092486067ee9d682d09a83a6df2aca88697efabe822f"
+    }
+  ]
+}

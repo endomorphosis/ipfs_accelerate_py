@@ -1,0 +1,121 @@
+{
+  "schema": "repository-successor-final-qualification@1",
+  "final_source_sha256": "f861778baaeef73fbebf23adfc395e5bf2951d02209f4ce0dd68331a89324700",
+  "distinct_tests_under_final_bytes": 11,
+  "passed": 11,
+  "skipped": 0,
+  "qualified_tests": [
+    "test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[competing_head]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[goal]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[goal_missing]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[objective]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[objective_missing]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[plan]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[plan_missing]",
+    "test_changed_native_parent_or_head_refuses_lost_reply_replay[receipt_missing]",
+    "test_fresh_process_recovers_same_operation_with_fresh_proofs",
+    "test_lost_materialization_reply_replays_exact_native_population"
+  ],
+  "runs": [
+    {
+      "label": "parent-audit",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "1",
+      "time": "14.163",
+      "timestamp": "2026-10-02T09:56:59.696319+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "parent-audit2",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "1",
+      "time": "15.340",
+      "timestamp": "2026-10-02T09:58:05.541099+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "parent-audit3",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "1",
+      "time": "14.898",
+      "timestamp": "2026-10-02T09:58:58.791202+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "parent-audit4",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "9",
+      "time": "17.743",
+      "timestamp": "2026-10-02T09:59:54.257615+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "parent-audit5",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "1",
+      "skipped": "0",
+      "tests": "1",
+      "time": "14.531",
+      "timestamp": "2026-10-02T10:01:47.066174+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "parent-audit6",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "9",
+      "time": "17.900",
+      "timestamp": "2026-10-02T10:03:16.466246+00:00",
+      "hostname": "spark-b271"
+    },
+    {
+      "label": "final-native",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "2",
+      "time": "88.648",
+      "timestamp": "2026-10-02T10:04:11.004838+00:00",
+      "hostname": "spark-b271"
+    }
+  ],
+  "historical_scope": {
+    "directory": "historical-task-only-replay",
+    "distinct_tests": 10,
+    "producer_sha256": "e9c59195f58c12d87e9dd77be0c6cdd4499bd1afc888c2357c98234e3824df9b",
+    "not_relabelled_as_final": true
+  },
+  "native_scope": [
+    "Body corruption without revision changes and missing objective/goal/plan rejected.",
+    "Competing active head and missing signed planning receipt rejected.",
+    "Exact untouched population replay returns unchanged receipt.",
+    "Fresh complete source-successor preparation with fault after durable source publication.",
+    "Separate process cold owner/journal replay performs fresh native proofs and independent cold comparison."
+  ],
+  "fixture_controls": "Parent audit retains an authored prior admitted fixture; direct database mutation tests restore rows. A receipt_missing test suffix initially also deleted its plan; the fixture was restored from its exact immutable native revision before corrected controls. The final actual proof pair starts from a separate fresh fixture.",
+  "resource_policy": "Default shared host admission unchanged; historical admission refusals retained.",
+  "scope": "Bounded Python integer-offset source successor and exact full native task/parent recovery. No daemon or task completion is invoked.",
+  "authority": {
+    "proof": false,
+    "execution": false,
+    "completion": false,
+    "omission": false
+  }
+}

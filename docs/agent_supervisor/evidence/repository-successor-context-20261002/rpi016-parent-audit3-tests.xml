@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="14.898" timestamp="2026-10-02T09:58:58.791202+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_lost_materialization_reply_replays_exact_native_population" time="0.218"><failure message="ValueError: successor native plan head population changed before retry">admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+
+    def test_lost_materialization_reply_replays_exact_native_population(admitted):
+        result=admitted.get('successor_result') or json.loads((admitted['root']/'successor/test-successor-result.json').read_text())
+        before={cid:dict(admitted['intent'].get_task(cid)) for cid in result['materialized']['task_cids']}
+&gt;       replay=successor._materialize_or_replay(result['admission'],admitted['intent'])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_repository_successor_context.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:162: in _materialize_or_replay
+    return _materialize_or_replay_owned(admission,owner)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:220: in _materialize_or_replay_owned
+    _require([tuple(row) for row in active]==[(receipt['plan_id'],)],'successor native plan head population changed before retry')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'successor native plan head population changed before retry'
+
+    def _require(value, message):
+        if not value:
+&gt;           raise ValueError(message)
+E           ValueError: successor native plan head population changed before retry
+
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:52: ValueError</failure></testcase></testsuite></testsuites>

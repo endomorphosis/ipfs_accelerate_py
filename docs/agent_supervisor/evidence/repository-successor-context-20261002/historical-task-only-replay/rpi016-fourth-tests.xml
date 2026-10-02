@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="68.161" timestamp="2026-10-02T09:09:23.797911+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_graph_revision_changes_only_identity_references_preserving_full_population" time="50.113" /><testcase classname="integration.test_repository_successor_context" name="test_unchanged_commit_cannot_create_successor_admission" time="0.089" /><testcase classname="integration.test_repository_successor_context" name="test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks" time="2.283"><failure message="ValueError: native evidence owner path must not be group/world writable">admitted = {'root': PosixPath('/tmp/rpi016-native-fourth/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-nat...policy/profile', 'lifecycle_dir': '/tmp/rpi016-native-fourth/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf9181dd8b350&gt;
+
+    def test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks(admitted,monkeypatch):
+        repository=admitted['repository'];old_task=admitted['controls']['task_cid']
+        original=json.loads(open(admitted['controls']['artifact']).read())['payload']
+        with gate._owners(original['owner_roots']) as (catalog,cache):
+            from ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead
+            from ipfs_datasets_py.logic.software_contracts.codebase_integer_profile import IntegerOffsetContract
+            query=original['behavioral_match']['fresh_match']['query']
+            positive=cache.check_and_store(owner_inputs=dict(index=catalog.index,repository=repository,
+                expected_head=CodebaseHead.from_dict(original['source_head']),
+                contract=replace(IntegerOffsetContract.from_dict(query['contract']),offset=1),
+                inputs=query['domain_inputs'],tool_policy=original['tool_policy']))
+            assert positive['status']=='positive'
+        source=repository/'calc.py';source.write_text('def increment(n: int) -&gt; int:\n    return n + 2\n')
+        finite_git(repository,'add','calc.py');finite_git(repository,'commit','-qm','Explicit checked source successor')
+        state=admitted['root']/'successor'
+        build=successor.build_codebase_semantic_manifest
+        def interrupt(*args,**kwargs): raise RuntimeError('lost reply after durable source publication')
+        interrupt.__module__=build.__module__  # Fault injection preserves actual file provenance.
+        with monkeypatch.context() as control:
+            control.setattr(successor,'build_codebase_semantic_manifest',interrupt)
+            with gate._owners(original['owner_roots']) as (catalog,cache):
+                with pytest.raises(RuntimeError,match='lost reply'):
+&gt;                   successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))
+
+test/integration/test_repository_successor_context.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:209: in prepare_repository_successor_context
+    return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:255: in _prepare_repository_successor_context
+    successor_commit=commit,owner_roots=old['owner_roots'],intent_database=predecessor._entry(Path(intent.database_path)),
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py:76: in _entry
+    _require((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'native evidence owner path must not be group/world writable'
+
+    def _require(value, message):
+        if not value:
+&gt;           raise ValueError(message)
+E           ValueError: native evidence owner path must not be group/world writable
+
+ipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py:61: ValueError</failure></testcase></testsuite></testsuites>

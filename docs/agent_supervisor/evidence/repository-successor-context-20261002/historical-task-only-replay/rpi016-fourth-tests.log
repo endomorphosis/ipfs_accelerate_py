@@ -1,0 +1,109 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 6 items
+
+test/integration/test_repository_successor_context.py [32m.[0m[32m.[0m[31mF[0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks _[0m
+
+admitted = {'root': PosixPath('/tmp/rpi016-native-fourth/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-nat...policy/profile', 'lifecycle_dir': '/tmp/rpi016-native-fourth/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf9181dd8b350>
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks[39;49;00m(admitted,monkeypatch):[90m[39;49;00m
+        repository=admitted[[33m'[39;49;00m[33mrepository[39;49;00m[33m'[39;49;00m];old_task=admitted[[33m'[39;49;00m[33mcontrols[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mtask_cid[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+        original=json.loads([96mopen[39;49;00m(admitted[[33m'[39;49;00m[33mcontrols[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33martifact[39;49;00m[33m'[39;49;00m]).read())[[33m'[39;49;00m[33mpayload[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+        [94mwith[39;49;00m gate._owners(original[[33m'[39;49;00m[33mowner_roots[39;49;00m[33m'[39;49;00m]) [94mas[39;49;00m (catalog,cache):[90m[39;49;00m
+            [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mduckdb_control[39;49;00m[04m[96m.[39;49;00m[04m[96mcodebase_catalog[39;49;00m[90m [39;49;00m[94mimport[39;49;00m CodebaseHead[90m[39;49;00m
+            [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m[04m[96m.[39;49;00m[04m[96mcodebase_integer_profile[39;49;00m[90m [39;49;00m[94mimport[39;49;00m IntegerOffsetContract[90m[39;49;00m
+            query=original[[33m'[39;49;00m[33mbehavioral_match[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mfresh_match[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mquery[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+            positive=cache.check_and_store(owner_inputs=[96mdict[39;49;00m(index=catalog.index,repository=repository,[90m[39;49;00m
+                expected_head=CodebaseHead.from_dict(original[[33m'[39;49;00m[33msource_head[39;49;00m[33m'[39;49;00m]),[90m[39;49;00m
+                contract=replace(IntegerOffsetContract.from_dict(query[[33m'[39;49;00m[33mcontract[39;49;00m[33m'[39;49;00m]),offset=[94m1[39;49;00m),[90m[39;49;00m
+                inputs=query[[33m'[39;49;00m[33mdomain_inputs[39;49;00m[33m'[39;49;00m],tool_policy=original[[33m'[39;49;00m[33mtool_policy[39;49;00m[33m'[39;49;00m]))[90m[39;49;00m
+            [94massert[39;49;00m positive[[33m'[39;49;00m[33mstatus[39;49;00m[33m'[39;49;00m]==[33m'[39;49;00m[33mpositive[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+        source=repository/[33m'[39;49;00m[33mcalc.py[39;49;00m[33m'[39;49;00m;source.write_text([33m'[39;49;00m[33mdef increment(n: int) -> int:[39;49;00m[33m\n[39;49;00m[33m    return n + 2[39;49;00m[33m\n[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+        finite_git(repository,[33m'[39;49;00m[33madd[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mcalc.py[39;49;00m[33m'[39;49;00m);finite_git(repository,[33m'[39;49;00m[33mcommit[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33m-qm[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mExplicit checked source successor[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+        state=admitted[[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m]/[33m'[39;49;00m[33msuccessor[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+        build=successor.build_codebase_semantic_manifest[90m[39;49;00m
+        [94mdef[39;49;00m[90m [39;49;00m[92minterrupt[39;49;00m(*args,**kwargs): [94mraise[39;49;00m [96mRuntimeError[39;49;00m([33m'[39;49;00m[33mlost reply after durable source publication[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+        interrupt.[91m__module__[39;49;00m=build.[91m__module__[39;49;00m  [90m# Fault injection preserves actual file provenance.[39;49;00m[90m[39;49;00m
+        [94mwith[39;49;00m monkeypatch.context() [94mas[39;49;00m control:[90m[39;49;00m
+            control.setattr(successor,[33m'[39;49;00m[33mbuild_codebase_semantic_manifest[39;49;00m[33m'[39;49;00m,interrupt)[90m[39;49;00m
+            [94mwith[39;49;00m gate._owners(original[[33m'[39;49;00m[33mowner_roots[39;49;00m[33m'[39;49;00m]) [94mas[39;49;00m (catalog,cache):[90m[39;49;00m
+                [94mwith[39;49;00m pytest.raises([96mRuntimeError[39;49;00m,match=[33m'[39;49;00m[33mlost reply[39;49;00m[33m'[39;49;00m):[90m[39;49;00m
+>                   successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_successor_context.py[0m:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:209: in prepare_repository_successor_context
+    [0m[94mreturn[39;49;00m _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:255: in _prepare_repository_successor_context
+    [0msuccessor_commit=commit,owner_roots=old[[33m'[39;49;00m[33mowner_roots[39;49;00m[33m'[39;49;00m],intent_database=predecessor._entry(Path(intent.database_path)),[90m[39;49;00m
+                                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py[0m:76: in _entry
+    [0m_require((stat.S_ISDIR(info.st_mode) [94mif[39;49;00m directory [94melse[39;49;00m stat.S_ISREG(info.st_mode))[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'native evidence owner path must not be group/world writable'
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_require[39;49;00m(value, message):[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m value:[90m[39;49;00m
+>           [94mraise[39;49;00m [96mValueError[39;49;00m(message)[90m[39;49;00m
+[1m[31mE           ValueError: native evidence owner path must not be group/world writable[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_behavioral_admission.py[0m:61: ValueError
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 09:10:29,682 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:29,691 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:30,954 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:30,989 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,044 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,083 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,143 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,215 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,240 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,252 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,285 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,311 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,382 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,408 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,786 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,796 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 09:10:31,873 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-fourth/actual-behavioral-admission0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+--------------- generated xml file: /tmp/rpi016-fourth-tests.xml ---------------
+============================= slowest 10 durations =============================
+50.10s setup    integration/test_repository_successor_context.py::test_graph_revision_changes_only_identity_references_preserving_full_population
+2.28s call     integration/test_repository_successor_context.py::test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks
+0.09s call     integration/test_repository_successor_context.py::test_unchanged_commit_cannot_create_successor_admission
+0.01s call     integration/test_repository_successor_context.py::test_graph_revision_changes_only_identity_references_preserving_full_population
+
+(5 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_successor_context.py::[1mtest_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks[0m - ValueError: native evidence owner path must not be group/world writable
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m==================== [31m[1m1 failed[0m, [32m2 passed[0m[31m in 68.19s (0:01:08)[0m[31m ====================[0m

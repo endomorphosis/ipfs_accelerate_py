@@ -1,0 +1,170 @@
+{
+  "schema": "repository-successor-evidence-files@1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "3da2a64ffdaa183b9e52792107b2e06c0e39d17add99f38e6ae2205bdd2a6097",
+      "bytes": 1534
+    },
+    {
+      "path": "producer-sources.json",
+      "sha256": "a495f4b87219e4f41012f3a2858e6f99ec47218d08f3c9eefcb094ea8e440f98",
+      "bytes": 593
+    },
+    {
+      "path": "qualification.json",
+      "sha256": "13584bd66ea171c4071b4f049f01afa679b2aafb58e088d66e5506968e6ff22b",
+      "bytes": 6276
+    },
+    {
+      "path": "request.json",
+      "sha256": "b35de8a5dc0e366a3c1df2d8f7ab409740db38010aaf9bde20cd26fc2ee636dd",
+      "bytes": 10389
+    },
+    {
+      "path": "rpi016-eighth-tests.log",
+      "sha256": "4d19e99be0621ae8c7932e770b1e39280a403ccb98cff02d0096070a59bf4308",
+      "bytes": 32476
+    },
+    {
+      "path": "rpi016-eighth-tests.xml",
+      "sha256": "38f4e9957449b7cd71d278d858e508b3f93d9aba9882f6bb3a0b27c217bb08ea",
+      "bytes": 16704
+    },
+    {
+      "path": "rpi016-eleventh-tests.log",
+      "sha256": "bdfccc4ee48ff0136df5369b94000e54178bb19c9b346abe9a62be549e0c7e1b",
+      "bytes": 12133
+    },
+    {
+      "path": "rpi016-eleventh-tests.xml",
+      "sha256": "1281c87ad9b94982cb4011a99ce6ade98c14e670fcc79db0f528f6fa43faf777",
+      "bytes": 12173
+    },
+    {
+      "path": "rpi016-fifth-tests.log",
+      "sha256": "bdf9bbc1299b951f40214656890db3755a6a9d3e2d4254183b77b48752c9173b",
+      "bytes": 2193
+    },
+    {
+      "path": "rpi016-fifth-tests.xml",
+      "sha256": "aa71c7bad8758f1a782027710c08e5af83b9429fbb15106fb7fa4e622eb31c7c",
+      "bytes": 1195
+    },
+    {
+      "path": "rpi016-first-tests.log",
+      "sha256": "6084e48102db8915d10aa959ccd9ee96350edff059c089ce9bbca6d5f3f173ce",
+      "bytes": 32475
+    },
+    {
+      "path": "rpi016-first-tests.xml",
+      "sha256": "113279bd9114741e1f188f4a3bd8f819db55947d8cedb6b5f45a0861c1ff8be5",
+      "bytes": 16704
+    },
+    {
+      "path": "rpi016-fourteenth-tests.log",
+      "sha256": "2a82407e2712cf3aefa6219745711cdbf0762df7e6c9d2e16c0cd2b95599931d",
+      "bytes": 1496
+    },
+    {
+      "path": "rpi016-fourteenth-tests.xml",
+      "sha256": "a1560814c18507583c2ebf4658b8482ca3dc138be8fb8af347223f3f7733bd27",
+      "bytes": 399
+    },
+    {
+      "path": "rpi016-fourth-tests.log",
+      "sha256": "64a6d225ac3c3e510b42169e641039a3d003e5d31a446470787708e95e630b22",
+      "bytes": 20878
+    },
+    {
+      "path": "rpi016-fourth-tests.xml",
+      "sha256": "6eb857ac70686278229b664cdcd1b467944078615b16559d85582e36d7c9b89d",
+      "bytes": 4514
+    },
+    {
+      "path": "rpi016-ninth-tests.log",
+      "sha256": "6aebcb9c8eee6463b2149b7806d87e2cee6a677eb15e61815e33458e7f6241bf",
+      "bytes": 6091
+    },
+    {
+      "path": "rpi016-ninth-tests.xml",
+      "sha256": "a819e693dbfd689a3f782ab2b71b2bfa9371ed9047214ecef9897ba3aaf15269",
+      "bytes": 2429
+    },
+    {
+      "path": "rpi016-second-tests.log",
+      "sha256": "2b37f1f244a5caa5688b55d21ab06a3388c7253086e970d0eca3bfb41a3737b3",
+      "bytes": 49463
+    },
+    {
+      "path": "rpi016-second-tests.xml",
+      "sha256": "cf2995e9523219280602315d1fddf7812b3cc86423a17e0f7009ca773c524737",
+      "bytes": 6726
+    },
+    {
+      "path": "rpi016-seventh-tests.log",
+      "sha256": "a6ed2ebcebf64046c354e9a2c8cb8e6c524d645d05f5649e699bc9ae8d92de1d",
+      "bytes": 2583
+    },
+    {
+      "path": "rpi016-seventh-tests.xml",
+      "sha256": "93a4d01b855547063c2c3a7788577654b6e20a052370ef74df228986ab00112a",
+      "bytes": 1700
+    },
+    {
+      "path": "rpi016-sixth-tests.log",
+      "sha256": "24c6d697832acb875246f858da507655c80546164f26f7f59d976388f51a784c",
+      "bytes": 32475
+    },
+    {
+      "path": "rpi016-sixth-tests.xml",
+      "sha256": "f05d9a061681272d296d3301b5b21dd66377a815bf7c225f09e0a5a8cb80b6a9",
+      "bytes": 16704
+    },
+    {
+      "path": "rpi016-tenth-tests.log",
+      "sha256": "c3794751dfe9237bbf7d69b52154e20f45b5d2baf353eb8abd476e3889bd07b4",
+      "bytes": 32476
+    },
+    {
+      "path": "rpi016-tenth-tests.xml",
+      "sha256": "6ca0dacb25fac9eedf7c20e3a084594492f55d16962fa9fae25d4c063a2774f8",
+      "bytes": 16704
+    },
+    {
+      "path": "rpi016-third-tests.log",
+      "sha256": "7381e519f865923b29ff83f5afae917f76d608240966acc3d6d4a82159cb6c02",
+      "bytes": 1782
+    },
+    {
+      "path": "rpi016-third-tests.xml",
+      "sha256": "288c44a4035b40a9ff4b8f878b3c3eae4957334e5475a6aeb4512958761d0d27",
+      "bytes": 736
+    },
+    {
+      "path": "rpi016-thirteenth-tests.log",
+      "sha256": "8c870a7480d18f21fef472a2cc9baf388d1bf37f09c3d01ea7ac66e026f64b8b",
+      "bytes": 1501
+    },
+    {
+      "path": "rpi016-thirteenth-tests.xml",
+      "sha256": "e8f82df36b681bfc49ffaba706fae984540d593ea6a9907bde438ac69fcd9881",
+      "bytes": 401
+    },
+    {
+      "path": "rpi016-twelfth-tests.log",
+      "sha256": "8ee4c62248b5478807172898aa7eaf72f519b0a16da8d16a4e460c332512cd18",
+      "bytes": 10556
+    },
+    {
+      "path": "rpi016-twelfth-tests.xml",
+      "sha256": "d918215225f2fd8840578e4751f1290831d3c1eabc5af07a1e1f53f140bb3524",
+      "bytes": 8577
+    },
+    {
+      "path": "test-successor-result.json",
+      "sha256": "65b097372bf00729a7d125beea7ae59b52715a1aff7fd0d00f5107fcd818bd05",
+      "bytes": 241334
+    }
+  ]
+}

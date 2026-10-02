@@ -1,0 +1,59 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items / 9 deselected / 9 selected
+
+test/integration/test_repository_successor_context.py [31mF[0m
+
+=================================== FAILURES ===================================
+[31m[1m_______ test_lost_materialization_reply_replays_exact_native_population ________[0m
+
+admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_lost_materialization_reply_replays_exact_native_population[39;49;00m(admitted):[90m[39;49;00m
+        result=admitted.get([33m'[39;49;00m[33msuccessor_result[39;49;00m[33m'[39;49;00m) [95mor[39;49;00m json.loads((admitted[[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m]/[33m'[39;49;00m[33msuccessor/test-successor-result.json[39;49;00m[33m'[39;49;00m).read_text())[90m[39;49;00m
+        before={cid:[96mdict[39;49;00m(admitted[[33m'[39;49;00m[33mintent[39;49;00m[33m'[39;49;00m].get_task(cid)) [94mfor[39;49;00m cid [95min[39;49;00m result[[33m'[39;49;00m[33mmaterialized[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mtask_cids[39;49;00m[33m'[39;49;00m]}[90m[39;49;00m
+>       replay=successor._materialize_or_replay(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m],admitted[[33m'[39;49;00m[33mintent[39;49;00m[33m'[39;49;00m])[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_successor_context.py[0m:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:162: in _materialize_or_replay
+    [0m[94mreturn[39;49;00m _materialize_or_replay_owned(admission,owner)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:212: in _materialize_or_replay_owned
+    [0m_require(exact(owner.get_plan(receipt[[33m'[39;49;00m[33mplan_id[39;49;00m[33m'[39;49;00m]),expected_plan),[33m'[39;49;00m[33msuccessor native plan changed before retry[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False, message = 'successor native plan changed before retry'
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_require[39;49;00m(value, message):[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m value:[90m[39;49;00m
+>           [94mraise[39;49;00m [96mValueError[39;49;00m(message)[90m[39;49;00m
+[1m[31mE           ValueError: successor native plan changed before retry[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:52: ValueError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-02 10:02:01,373 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 10:02:01,423 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 10:02:01,465 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------- generated xml file: /tmp/rpi016-parent-audit5-tests.xml ------------
+============================= slowest 10 durations =============================
+0.14s call     integration/test_repository_successor_context.py::test_lost_materialization_reply_replays_exact_native_population
+0.07s setup    integration/test_repository_successor_context.py::test_lost_materialization_reply_replays_exact_native_population
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_successor_context.py::[1mtest_lost_materialization_reply_replays_exact_native_population[0m - ValueError: successor native plan changed before retry
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m======================= [31m[1m1 failed[0m, [33m9 deselected[0m[31m in 14.57s[0m[31m =======================[0m

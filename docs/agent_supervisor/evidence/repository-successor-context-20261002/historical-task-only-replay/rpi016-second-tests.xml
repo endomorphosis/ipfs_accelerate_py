@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="38.281" timestamp="2026-10-02T08:55:36.428180+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_graph_revision_changes_only_identity_references_preserving_full_population" time="0.076" /><testcase classname="integration.test_repository_successor_context" name="test_unchanged_commit_cannot_create_successor_admission" time="0.156" /><testcase classname="integration.test_repository_successor_context" name="test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks" time="22.887"><failure message="ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.admission_receipt.payload.pending_requirements[0].kind is not a reviewed structured-identity type: EvidenceRequirementKind">admitted = {'root': PosixPath('/tmp/rpi014-native-qualified-09/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi0.../profile', 'lifecycle_dir': '/tmp/rpi014-native-qualified-09/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+
+    def test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks(admitted):
+        repository=admitted['repository'];old_task=admitted['controls']['task_cid']
+        original=json.loads(open(admitted['controls']['artifact']).read())['payload']
+        source=repository/'calc.py';source.write_text('def increment(n: int) -&gt; int:\n    return n + 2\n')
+        finite_git(repository,'add','calc.py');finite_git(repository,'commit','-qm','Explicit checked source successor')
+        with gate._owners(original['owner_roots']) as (catalog,cache):
+&gt;           result=successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,admitted['root']/'successor'))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/integration/test_repository_successor_context.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py:230: in prepare_repository_successor_context
+    payload['context_cid']=cid_for_structured(payload)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:260: in cid_for_structured
+    canonical_dag_json_bytes(obj),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:191: in canonical_dag_json_bytes
+    validate_structured_value(obj)
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:146: in validate_structured_value
+    validate_structured_value(item, path=f"{path}[{index}]")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = &lt;EvidenceRequirementKind.REVIEW: 'review'&gt;
+path = '$.admission_receipt.payload.pending_requirements[0].kind'
+
+    def validate_structured_value(value: Any, *, path: str = "$") -&gt; None:
+        """Require one reviewed structured-identity value recursively.
+    
+        Accepted types: ``None``, ``bool``, ``int`` (non-bool), ``str``, ``list``,
+        and ``dict`` with exclusively ``str`` keys.  Floats (including finite
+        floats), bytes, sets, tuples, paths, host objects, and any other type are
+        rejected.  Non-finite numbers are impossible for ``int``; the float check
+        is kept for clear error messages if a float slips through.
+        """
+    
+        value_type = type(value)
+    
+        if value is None or value_type is str:
+            return
+    
+        if value_type is bool:
+            return
+    
+        if value_type is int:
+            # Reject bool masquerading if called with a subclass; bool is handled.
+            return
+    
+        if value_type is float:
+            if not math.isfinite(value):
+                raise StructuredIdentityError(
+                    f"{path} rejects non-finite float ({value!r})"
+                )
+            raise StructuredIdentityError(
+                f"{path} rejects float; use int or encode as a reviewed string"
+            )
+    
+        if value_type is list:
+            for index, item in enumerate(value):
+                validate_structured_value(item, path=f"{path}[{index}]")
+            return
+    
+        if value_type is dict:
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise StructuredIdentityError(
+                        f"{path} map keys must be str, got {type(key).__name__}"
+                    )
+                validate_structured_value(item, path=f"{path}.{key}")
+            return
+    
+        # Explicit high-signal rejections (also covered by the generic branch).
+        if value_type in {bytes, bytearray, memoryview}:
+            raise StructuredIdentityError(
+                f"{path} rejects binary types; use source-byte identity instead"
+            )
+        if value_type in {set, frozenset, tuple}:
+            raise StructuredIdentityError(
+                f"{path} rejects {value_type.__name__}; use list or map"
+            )
+        if isinstance(value, Path):
+            raise StructuredIdentityError(
+                f"{path} rejects Path host objects; use a string path or CID"
+            )
+    
+&gt;       raise StructuredIdentityError(
+            f"{path} is not a reviewed structured-identity type: "
+            f"{value_type.__name__}"
+        )
+E       ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.admission_receipt.payload.pending_requirements[0].kind is not a reviewed structured-identity type: EvidenceRequirementKind
+
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:172: StructuredIdentityError</failure></testcase></testsuite></testsuites>

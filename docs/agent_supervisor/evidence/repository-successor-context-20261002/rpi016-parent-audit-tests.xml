@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="14.163" timestamp="2026-10-02T09:56:59.696319+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_lost_materialization_reply_replays_exact_native_population" time="0.061"><failure message="KeyError: 'successor_result'">admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+
+    def test_lost_materialization_reply_replays_exact_native_population(admitted):
+&gt;       result=admitted['successor_result']
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'successor_result'
+
+test/integration/test_repository_successor_context.py:107: KeyError</failure></testcase></testsuite></testsuites>

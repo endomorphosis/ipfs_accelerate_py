@@ -1,0 +1,101 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 10 items
+
+test/integration/test_repository_successor_context.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m
+
+=================================== FAILURES ===================================
+[31m[1m_________ test_fresh_process_recovers_same_operation_with_fresh_proofs _________[0m
+
+admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+tmp_path = PosixPath('/tmp/rpi016-native-eleventh/test_fresh_process_recovers_sa0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_fresh_process_recovers_same_operation_with_fresh_proofs[39;49;00m(admitted,tmp_path):[90m[39;49;00m
+        [94mimport[39;49;00m[90m [39;49;00m[04m[96msubprocess[39;49;00m[90m[39;49;00m
+        [94mimport[39;49;00m[90m [39;49;00m[04m[96msys[39;49;00m[90m[39;49;00m
+        state=admitted[[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m]/[33m'[39;49;00m[33msuccessor[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+        before=json.loads((state/[33m'[39;49;00m[33mtest-successor-result.json[39;49;00m[33m'[39;49;00m).read_text())[90m[39;49;00m
+        output=tmp_path/[33m'[39;49;00m[33mrestart-result.json[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+        script=[33m'''[39;49;00m[33m[39;49;00m
+    [33mimport json,sys[39;49;00m[33m[39;49;00m
+    [33mfrom pathlib import Path[39;49;00m[33m[39;49;00m
+    [33mfrom ipfs_accelerate_py.agent_supervisor.runtime import repository_successor_context as owner[39;49;00m[33m[39;49;00m
+    [33mfrom ipfs_accelerate_py.agent_supervisor.runtime import repository_behavioral_admission as gate[39;49;00m[33m[39;49;00m
+    [33mfrom ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository[39;49;00m[33m[39;49;00m
+    [33mroot=Path(sys.argv[1]);saved=json.loads((root/[39;49;00m[33m'[39;49;00m[33mnative-test-fixture.json[39;49;00m[33m'[39;49;00m[33m).read_text())[39;49;00m[33m[39;49;00m
+    [33mcontrols=saved[[39;49;00m[33m'[39;49;00m[33mcontrols[39;49;00m[33m'[39;49;00m[33m];original=json.loads(Path(controls[[39;49;00m[33m'[39;49;00m[33martifact[39;49;00m[33m'[39;49;00m[33m]).read_text())[[39;49;00m[33m'[39;49;00m[33mpayload[39;49;00m[33m'[39;49;00m[33m][39;49;00m[33m[39;49;00m
+    [33mwith IntentRepository(root/[39;49;00m[33m'[39;49;00m[33mintent.duckdb[39;49;00m[33m'[39;49;00m[33m) as intent:[39;49;00m[33m[39;49;00m
+    [33m    with gate._owners(original[[39;49;00m[33m'[39;49;00m[33mowner_roots[39;49;00m[33m'[39;49;00m[33m]) as (catalog,cache):[39;49;00m[33m[39;49;00m
+    [33m        result=owner.prepare_repository_successor_context(historical_artifact=controls[[39;49;00m[33m'[39;49;00m[33martifact[39;49;00m[33m'[39;49;00m[33m],[39;49;00m[33m[39;49;00m
+    [33m            historical_sha256=controls[[39;49;00m[33m'[39;49;00m[33mexpected_sha256[39;49;00m[33m'[39;49;00m[33m],task_cid=controls[[39;49;00m[33m'[39;49;00m[33mtask_cid[39;49;00m[33m'[39;49;00m[33m],[39;49;00m[33m[39;49;00m
+    [33m            owner_did=controls[[39;49;00m[33m'[39;49;00m[33mowner_did[39;49;00m[33m'[39;49;00m[33m],profile_id=controls[[39;49;00m[33m'[39;49;00m[33mprofile_id[39;49;00m[33m'[39;49;00m[33m],catalog=catalog,[39;49;00m[33m[39;49;00m
+    [33m            checked_cache=cache,intent=intent,state=root/[39;49;00m[33m'[39;49;00m[33msuccessor[39;49;00m[33m'[39;49;00m[33m)[39;49;00m[33m[39;49;00m
+    [33m        assert all(intent.get_task(cid)[[39;49;00m[33m'[39;49;00m[33mrevision[39;49;00m[33m'[39;49;00m[33m]==1 for cid in result[[39;49;00m[33m'[39;49;00m[33mmaterialized[39;49;00m[33m'[39;49;00m[33m][[39;49;00m[33m'[39;49;00m[33mtask_cids[39;49;00m[33m'[39;49;00m[33m])[39;49;00m[33m[39;49;00m
+    [33mPath(sys.argv[2]).write_text(json.dumps(result))[39;49;00m[33m[39;49;00m
+    [33m'''[39;49;00m[90m[39;49;00m
+        run=subprocess.run([sys.executable,[33m'[39;49;00m[33m-c[39;49;00m[33m'[39;49;00m,script,[96mstr[39;49;00m(admitted[[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m]),[96mstr[39;49;00m(output)],[90m[39;49;00m
+            capture_output=[94mTrue[39;49;00m,text=[94mTrue[39;49;00m,timeout=[94m330[39;49;00m)[90m[39;49;00m
+>       [94massert[39;49;00m run.returncode==[94m0[39;49;00m,run.stderr[90m[39;49;00m
+[1m[31mE       AssertionError: Traceback (most recent call last):[0m
+[1m[31mE           File "<string>", line 11, in <module>[0m
+[1m[31mE           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 209, in prepare_repository_successor_context[0m
+[1m[31mE             return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,[0m
+[1m[31mE                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 310, in _prepare_repository_successor_context[0m
+[1m[31mE             rechecked=recheck(checked_cache,catalog.index,head)[0m
+[1m[31mE                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 299, in recheck[0m
+[1m[31mE             checked=cache.check_and_store(owner_inputs=dict(index=index,repository=repository,expected_head=head,[0m
+[1m[31mE                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py", line 426, in check_and_store[0m
+[1m[31mE             observed, blobs, bundle_cid = self._fresh(args, report, remaining)[0m
+[1m[31mE                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py", line 377, in _fresh[0m
+[1m[31mE             observed = native.observe_finite_integer_source(**kwargs, output=Path(directory).resolve() / "native",[0m
+[1m[31mE                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py", line 405, in observe_finite_integer_source[0m
+[1m[31mE             observe()  # Publication does not authorize a result against a changed head.[0m
+[1m[31mE             ^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py", line 274, in observe[0m
+[1m[31mE             return index.observe_current(repository, expected_head=expected_head, parent_lease=lease,[0m
+[1m[31mE                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py", line 446, in observe_current[0m
+[1m[31mE             with acquire_codebase_resources([0m
+[1m[31mE           File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__[0m
+[1m[31mE             return next(self.gen)[0m
+[1m[31mE                    ^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py", line 75, in acquire_codebase_resources[0m
+[1m[31mE             lease = parent_lease.acquire_child(**request)[0m
+[1m[31mE                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 720, in acquire_child[0m
+[1m[31mE             return self._scheduler.acquire([0m
+[1m[31mE                    ^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 1502, in acquire[0m
+[1m[31mE             raise LeaseTimeoutError("timed out waiting for a resource lease")[0m
+[1m[31mE         ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease[0m
+[1m[31mE         [0m
+[1m[31mE       assert 1 == 0[0m
+[1m[31mE        +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-c', "\nimport json,sys\nfrom pathlib import Path\nfrom ipf..._py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease\n').returncode[0m
+
+[1m[31mtest/integration/test_repository_successor_context.py[0m:193: AssertionError
+-------------- generated xml file: /tmp/rpi016-eleventh-tests.xml --------------
+============================= slowest 10 durations =============================
+40.50s call     integration/test_repository_successor_context.py::test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks
+36.48s call     integration/test_repository_successor_context.py::test_fresh_process_recovers_same_operation_with_fresh_proofs
+30.82s setup    integration/test_repository_successor_context.py::test_graph_revision_changes_only_identity_references_preserving_full_population
+0.29s call     integration/test_repository_successor_context.py::test_successor_retry_source_and_request_tamper_refuse_before_checker
+0.20s call     integration/test_repository_successor_context.py::test_revised_or_incomplete_native_population_cannot_replay_materialization[validation]
+0.19s call     integration/test_repository_successor_context.py::test_revised_or_incomplete_native_population_cannot_replay_materialization[revision]
+0.16s call     integration/test_repository_successor_context.py::test_lost_materialization_reply_replays_exact_native_population
+0.09s call     integration/test_repository_successor_context.py::test_unchanged_commit_cannot_create_successor_admission
+0.01s call     integration/test_repository_successor_context.py::test_graph_revision_changes_only_identity_references_preserving_full_population
+0.01s call     integration/test_repository_successor_context.py::test_successor_state_private_lock_and_immutable_journal
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_successor_context.py::[1mtest_fresh_process_recovers_same_operation_with_fresh_proofs[0m - AssertionError: Traceback (most recent call last):
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m=================== [31m[1m1 failed[0m, [32m8 passed[0m[31m in 122.47s (0:02:02)[0m[31m ====================[0m

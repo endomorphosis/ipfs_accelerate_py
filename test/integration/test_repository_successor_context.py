@@ -1,0 +1,254 @@
+"""Original semantic lineage, fresh baseline/tasks, and cold native agreement."""
+from dataclasses import replace
+import json
+from pathlib import Path
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_successor_context as successor
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_behavioral_admission as gate
+from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import PromptGoalGraph
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+from test.integration.test_repository_behavioral_admission import admitted
+from test.api.test_finite_integer_codebase import finite_tools, finite_git
+
+
+def arguments(admitted,catalog,cache,state):
+    controls=admitted['controls']
+    return dict(historical_artifact=controls['artifact'],historical_sha256=controls['expected_sha256'],
+        task_cid=controls['task_cid'],owner_did=controls['owner_did'],profile_id=controls['profile_id'],
+        catalog=catalog,checked_cache=cache,intent=admitted['intent'],state=state)
+
+
+def test_graph_revision_changes_only_identity_references_preserving_full_population(admitted):
+    old=PromptGoalGraph.from_dict(admitted['declared']['graph'])
+    roots={name:content_identity({'successor':name}) for name in ('request_cid','scan_cid','program_root')}
+    new,ids=successor._graph_successor(old,roots,content_identity({'source':'successor'}))
+    assert len(new.tasks)==len(old.tasks) and len(new.goals)==len(old.goals)
+    for row in old.tasks:
+        revised=next(v for v in new.tasks if v.task_cid==ids['tasks'][row.task_cid])
+        assert replace(revised,task_key=row.task_key,goal_cid=row.goal_cid,
+            dependency_task_cids=row.dependency_task_cids).to_dict()==row.to_dict()
+    assert new.root_goal.objective==old.root_goal.objective
+    assert ids['tasks']==successor._graph_successor(old,roots,content_identity({'source':'successor'}))[1]['tasks']
+    with pytest.raises(ValueError):
+        successor._graph_successor(replace(old,unresolved_questions=('unresolved meaning',)),roots,roots['request_cid'])
+
+
+def test_unchanged_commit_cannot_create_successor_admission(admitted):
+    value=json.loads(open(admitted['controls']['artifact']).read())['payload']
+    with gate._owners(value['owner_roots']) as (catalog,cache):
+        state=admitted['root']/'not-successor'
+        with pytest.raises(ValueError,match='committed successor'):
+            successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))
+        assert not state.exists()
+
+
+def test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks(admitted,monkeypatch):
+    repository=admitted['repository'];old_task=admitted['controls']['task_cid']
+    original=json.loads(open(admitted['controls']['artifact']).read())['payload']
+    Path(admitted['intent'].database_path).chmod(0o600)
+    with gate._owners(original['owner_roots']) as (catalog,cache):
+        from ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead
+        from ipfs_datasets_py.logic.software_contracts.codebase_integer_profile import IntegerOffsetContract
+        query=original['behavioral_match']['fresh_match']['query']
+        positive=cache.check_and_store(owner_inputs=dict(index=catalog.index,repository=repository,
+            expected_head=CodebaseHead.from_dict(original['source_head']),
+            contract=replace(IntegerOffsetContract.from_dict(query['contract']),offset=1),
+            inputs=query['domain_inputs'],tool_policy=original['tool_policy']))
+        assert positive['status']=='positive'
+    source=repository/'calc.py';source.write_text('def increment(n: int) -> int:\n    return n + 2\n')
+    finite_git(repository,'add','calc.py');finite_git(repository,'commit','-qm','Explicit checked source successor')
+    state=admitted['root']/'successor'
+    build=successor.build_codebase_semantic_manifest
+    def interrupt(*args,**kwargs): raise RuntimeError('lost reply after durable source publication')
+    interrupt.__module__=build.__module__  # Fault injection preserves actual file provenance.
+    with monkeypatch.context() as control:
+        control.setattr(successor,'build_codebase_semantic_manifest',interrupt)
+        with gate._owners(original['owner_roots']) as (catalog,cache):
+            with pytest.raises(RuntimeError,match='lost reply'):
+                successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))
+            assert catalog.index.current(original['source_head']['repository_id']).generation==original['source_head']['generation']+1
+    assert successor.build_codebase_semantic_manifest is build
+    # Reopen all source/cache owners after the interruption. Recovery resolves
+    # the exact committed operation; no process-local source receipt survives.
+    with gate._owners(original['owner_roots']) as (catalog,cache):
+        result=successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,admitted['root']/'successor'))
+        assert cache.dependents('snapshot',original['source_head']['snapshot_cid'],limit=64)
+        admitted['successor_result']=result
+        (state/'test-successor-result.json').write_text(json.dumps(result))
+        payload=result['signed_context']['payload']
+        assert payload['retry']['source_operation_replayed']
+        assert not payload['retry']['saved_observations_reused']
+        assert {v['successor_record']['status'] for v in payload['conservative_invalidation']['rechecked']}=={'positive','refuted'}
+        assert payload['conservative_invalidation']['affected']
+        assert payload['conservative_invalidation']['old_records_retained']
+        assert payload['conservative_invalidation']['replacement_record']['status']=='positive'
+        assert payload['current_match']['satisfied_requirements']==payload['cold_match']['satisfied_requirements']
+        assert len(payload['current_match']['current_facts'])==2 and not payload['current_match']['residual_requirements']
+        assert payload['cold_semantics_agree'] and payload['full_task_population_preserved']
+        assert payload['lineage']['intent_document_json']==original['intent_document']
+        assert payload['source_text']==original['source_text']
+        assert payload['old_native_task_population']==[old_task]
+        assert old_task not in payload['new_native_task_population']
+        assert not payload['all_satisfied_tasks_automatically_dispatched']
+        assert all(payload[k] is False for k in successor.FALSE)
+        native=local.verify_local_benchmark_admission(result['admission'],initial=True)
+        assert native['manifest']['baseline_commit']==finite_git(repository,'rev-parse','HEAD')
+        assert native['graph'].root_goal.objective==original['source_text']
+        for cid in payload['new_native_task_population']:
+            assert admitted['intent'].get_task(cid)['status']=='ready'
+        assert admitted['intent'].get_task(old_task)['status']=='ready'
+    with pytest.raises(ValueError):gate.verify_behavioral_repository_handoff(**admitted['controls'])
+
+
+def test_lost_materialization_reply_replays_exact_native_population(admitted):
+    result=admitted.get('successor_result') or json.loads((admitted['root']/'successor/test-successor-result.json').read_text())
+    before={cid:dict(admitted['intent'].get_task(cid)) for cid in result['materialized']['task_cids']}
+    replay=successor._materialize_or_replay(result['admission'],admitted['intent'])
+    assert replay==result['materialized']
+    assert before=={cid:dict(admitted['intent'].get_task(cid)) for cid in before}
+
+
+def test_successor_retry_source_and_request_tamper_refuse_before_checker(admitted,monkeypatch):
+    original=json.loads(Path(admitted['controls']['artifact']).read_text())['payload']
+    state=admitted['root']/'successor';source=admitted['repository']/'calc.py';raw=source.read_bytes()
+    def forbidden(*a,**kw):pytest.fail('changed retry reached checker')
+    forbidden.__module__=successor.prepare_policy_current.__module__
+    monkeypatch.setattr(successor,'prepare_policy_current',forbidden)
+    assert successor._pins()==json.loads((state/'request.json').read_text())['producers']
+    with gate._owners(original['owner_roots']) as (catalog,cache):
+        try:
+            source.write_bytes(raw+b'# changed retry bytes\n')
+            with pytest.raises(ValueError,match='retry request differs'):
+                successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))
+        finally:source.write_bytes(raw)
+        path=state/'request.json';saved=path.read_bytes();path.chmod(0o644)
+        value=json.loads(saved);value['successor_commit']='0'*40;path.write_text(json.dumps(value));path.chmod(0o444)
+        try:
+            with pytest.raises(ValueError,match='retry request differs'):
+                successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,state))
+        finally:path.chmod(0o644);path.write_bytes(saved);path.chmod(0o444)
+
+
+def test_successor_state_private_lock_and_immutable_journal(tmp_path):
+    state=tmp_path/'state'
+    with successor._state_lock(state):
+        with pytest.raises(ValueError,match='already running'):
+            with successor._state_lock(state):pass
+        successor._journal(state/'request.json',{'exact':1})
+        successor._journal(state/'request.json',{'exact':1})
+        with pytest.raises(ValueError,match='retry request differs'):
+            successor._journal(state/'request.json',{'exact':2})
+    state.chmod(0o755)
+    with pytest.raises(ValueError,match='private canonical'):
+        with successor._state_lock(state):pass
+
+
+@pytest.mark.parametrize('mutation',['revision','validation'])
+def test_revised_or_incomplete_native_population_cannot_replay_materialization(admitted,mutation):
+    result=admitted.get('successor_result') or json.loads((admitted['root']/'successor/test-successor-result.json').read_text());intent=admitted['intent'];cid=result['materialized']['task_cids'][0]
+    # Explicit stored-row corruption controls, not worker state transitions.
+    with intent._connection(write=True) as cx:
+        if mutation=='revision':
+            cx.execute('UPDATE tasks SET revision=revision+1 WHERE task_cid=?',[cid]);before=None
+        else:
+            before=cx.execute('SELECT argv_json FROM task_validations WHERE task_cid=? AND ordinal=0',[cid]).fetchone()[0]
+            cx.execute('UPDATE task_validations SET argv_json=? WHERE task_cid=? AND ordinal=0',['[]',cid])
+    try:
+        with pytest.raises(ValueError,match='native task changed'):
+            successor._materialize_or_replay(result['admission'],intent)
+    finally:
+        with intent._connection(write=True) as cx:
+            if mutation=='revision':cx.execute('UPDATE tasks SET revision=revision-1 WHERE task_cid=?',[cid])
+            else:cx.execute('UPDATE task_validations SET argv_json=? WHERE task_cid=? AND ordinal=0',[before,cid])
+
+
+def test_fresh_process_recovers_same_operation_with_fresh_proofs(admitted,tmp_path):
+    import subprocess
+    import sys
+    state=admitted['root']/'successor'
+    before=json.loads((state/'test-successor-result.json').read_text())
+    output=tmp_path/'restart-result.json'
+    script='''
+import json,sys
+from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_successor_context as owner
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_behavioral_admission as gate
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+root=Path(sys.argv[1]);saved=json.loads((root/'native-test-fixture.json').read_text())
+controls=saved['controls'];original=json.loads(Path(controls['artifact']).read_text())['payload']
+with IntentRepository(root/'intent.duckdb') as intent:
+    with gate._owners(original['owner_roots']) as (catalog,cache):
+        result=owner.prepare_repository_successor_context(historical_artifact=controls['artifact'],
+            historical_sha256=controls['expected_sha256'],task_cid=controls['task_cid'],
+            owner_did=controls['owner_did'],profile_id=controls['profile_id'],catalog=catalog,
+            checked_cache=cache,intent=intent,state=root/'successor')
+        assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])
+Path(sys.argv[2]).write_text(json.dumps(result))
+'''
+    run=subprocess.run([sys.executable,'-c',script,str(admitted['root']),str(output)],
+        capture_output=True,text=True,timeout=330)
+    assert run.returncode==0,run.stderr
+    after=json.loads(output.read_text());left=before['signed_context']['payload'];right=after['signed_context']['payload']
+    assert before['materialized']==after['materialized'] and before['admission']==after['admission']
+    assert before['source_head']==after['source_head']
+    assert left['retry']['source_operation_id']==right['retry']['source_operation_id']
+    assert left['retry']['attempt_directory']!=right['retry']['attempt_directory']
+    assert right['retry']['source_operation_replayed'] and not right['retry']['saved_observations_reused']
+    assert right['cold_semantics_agree']
+    assert successor._semantics(left['current_match'])==successor._semantics(right['current_match'])
+    assert left['current_match']['fresh_match']['observation']['result_cid']!=right['current_match']['fresh_match']['observation']['result_cid']
+
+
+def test_missing_original_evidence_refuses_successor_before_capture(admitted,monkeypatch):
+    original=json.loads(Path(admitted['controls']['artifact']).read_text())['payload']
+    key=original['behavioral_match']['checked_cache']['request_key'];snapshot=original['source_head']['snapshot_cid']
+    def forbidden(*a,**kw):pytest.fail('missing evidence reached source capture')
+    forbidden.__module__=successor.prepare_policy_current.__module__
+    monkeypatch.setattr(successor,'prepare_policy_current',forbidden)
+    with gate._owners(original['owner_roots']) as (catalog,cache):
+        with cache._transaction() as cx:
+            cx.execute('DELETE FROM finite_checked_cache_dependencies WHERE request_key=? AND kind=? AND value=?',
+                [key,'snapshot',snapshot])
+        try:
+            with pytest.raises(ValueError,match='historical admission evidence is missing'):
+                successor.prepare_repository_successor_context(**arguments(admitted,catalog,cache,admitted['root']/'successor'))
+        finally:
+            with cache._transaction() as cx:
+                cx.execute('INSERT INTO finite_checked_cache_dependencies VALUES (?,?,?)',[key,'snapshot',snapshot])
+
+
+@pytest.mark.parametrize('mutation',['objective','goal','plan','objective_missing','goal_missing','plan_missing','competing_head','receipt_missing'])
+def test_changed_native_parent_or_head_refuses_lost_reply_replay(admitted,mutation):
+    result=admitted.get('successor_result') or json.loads((admitted['root']/'successor/test-successor-result.json').read_text());intent=admitted['intent']
+    verified=local.verify_local_benchmark_admission(result['admission'],initial=True)
+    graph=verified['graph'];receipt=verified['receipt'];plan_id=receipt['plan_id']
+    objective=content_identity(dict(manifest=receipt['manifest_cid'],objective=graph.root_goal.objective))
+    table,key,value={'objective':('objectives','objective_id',objective),
+        'goal':('goals','goal_cid',graph.root_goal.goal_cid),
+        'plan':('plans','plan_cid',plan_id)}.get(mutation.split('_')[0],('plans','plan_cid',plan_id))
+    reference=local._receipt_reference(result['admission']['receipt'],local._receipt_bytes(result['admission']['receipt']))
+    receipt_path=local._receipt_artifact_path(verified['manifest'],reference['sha256'])
+    raw=receipt_path.read_bytes()
+    with intent._connection(write=True) as cx:
+        before=cx.execute(f'SELECT * FROM {table} WHERE {key}=?',[value]).fetchone()
+        if mutation.endswith('_missing') and mutation!='receipt_missing':cx.execute(f'DELETE FROM {table} WHERE {key}=?',[value])
+        elif mutation=='competing_head':
+            cx.execute("INSERT INTO plans SELECT ?,goal_cid,?,status,created_at,updated_at,revision+1,body_json FROM plans WHERE plan_cid=?",
+                ['audit:competing-plan','AUDIT-COMPETING-PLAN',plan_id])
+        elif mutation!='receipt_missing':cx.execute(f'UPDATE {table} SET body_json=? WHERE {key}=?',[json.dumps({'unreviewed':True}),value])
+    if mutation=='receipt_missing':receipt_path.unlink()
+    try:
+        with pytest.raises((ValueError,FileNotFoundError)):
+            successor._materialize_or_replay(result['admission'],intent)
+    finally:
+        if mutation=='receipt_missing':receipt_path.write_bytes(raw);receipt_path.chmod(0o600)
+        else:
+            with intent._connection(write=True) as cx:
+                if mutation=='competing_head':cx.execute('DELETE FROM plans WHERE plan_cid=?',['audit:competing-plan'])
+                else:
+                    cx.execute(f'DELETE FROM {table} WHERE {key}=?',[value])
+                    cx.execute(f'INSERT INTO {table} VALUES ('+','.join('?' for _ in before)+')',[before[i] for i in range(len(before))])
+    assert successor._materialize_or_replay(result['admission'],intent)==result['materialized']

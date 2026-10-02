@@ -1,0 +1,19 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items / 16 deselected / 2 selected
+
+test/integration/test_repository_successor_context.py [32m.[0m[32m.[0m[32m                 [100%][0m
+
+------------ generated xml file: /tmp/rpi016-final-native-tests.xml ------------
+============================= slowest 10 durations =============================
+30.97s setup    integration/test_repository_successor_context.py::test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks
+23.58s call     integration/test_repository_successor_context.py::test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks
+20.66s call     integration/test_repository_successor_context.py::test_fresh_process_recovers_same_operation_with_fresh_proofs
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m================= [32m[1m2 passed[0m, [33m16 deselected[0m[32m in 88.67s (0:01:28)[0m[32m ==================[0m

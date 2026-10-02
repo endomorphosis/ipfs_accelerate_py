@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="9" time="122.437" timestamp="2026-10-02T09:33:09.944122+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_graph_revision_changes_only_identity_references_preserving_full_population" time="30.833" /><testcase classname="integration.test_repository_successor_context" name="test_unchanged_commit_cannot_create_successor_admission" time="0.086" /><testcase classname="integration.test_repository_successor_context" name="test_actual_successor_rechecks_affected_cache_and_independently_admits_new_tasks" time="40.505" /><testcase classname="integration.test_repository_successor_context" name="test_lost_materialization_reply_replays_exact_native_population" time="0.164" /><testcase classname="integration.test_repository_successor_context" name="test_successor_retry_source_and_request_tamper_refuse_before_checker" time="0.295" /><testcase classname="integration.test_repository_successor_context" name="test_successor_state_private_lock_and_immutable_journal" time="0.007" /><testcase classname="integration.test_repository_successor_context" name="test_revised_or_incomplete_native_population_cannot_replay_materialization[revision]" time="0.194" /><testcase classname="integration.test_repository_successor_context" name="test_revised_or_incomplete_native_population_cannot_replay_materialization[validation]" time="0.198" /><testcase classname="integration.test_repository_successor_context" name="test_fresh_process_recovers_same_operation_with_fresh_proofs" time="36.476"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 11, in &lt;module&gt;&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 209, in prepare_repository_successor_context&#10;      return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 310, in _prepare_repository_successor_context&#10;      rechecked=recheck(checked_cache,catalog.index,head)&#10;                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 299, in recheck&#10;      checked=cache.check_and_store(owner_inputs=dict(index=index,repository=repository,expected_head=head,&#10;              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py&quot;, line 426, in check_and_store&#10;      observed, blobs, bundle_cid = self._fresh(args, report, remaining)&#10;                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py&quot;, line 377, in _fresh&#10;      observed = native.observe_finite_integer_source(**kwargs, output=Path(directory).resolve() / &quot;native&quot;,&#10;                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py&quot;, line 405, in observe_finite_integer_source&#10;      observe()  # Publication does not authorize a result against a changed head.&#10;      ^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py&quot;, line 274, in observe&#10;      return index.observe_current(repository, expected_head=expected_head, parent_lease=lease,&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py&quot;, line 446, in observe_current&#10;      with acquire_codebase_resources(&#10;    File &quot;/usr/lib/python3.12/contextlib.py&quot;, line 137, in __enter__&#10;      return next(self.gen)&#10;             ^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py&quot;, line 75, in acquire_codebase_resources&#10;      lease = parent_lease.acquire_child(**request)&#10;              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py&quot;, line 720, in acquire_child&#10;      return self._scheduler.acquire(&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py&quot;, line 1502, in acquire&#10;      raise LeaseTimeoutError(&quot;timed out waiting for a resource lease&quot;)&#10;  ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-c', &quot;\nimport json,sys\nfrom pathlib import Path\nfrom ipf..._py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease\n').returncode">admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+tmp_path = PosixPath('/tmp/rpi016-native-eleventh/test_fresh_process_recovers_sa0')
+
+    def test_fresh_process_recovers_same_operation_with_fresh_proofs(admitted,tmp_path):
+        import subprocess
+        import sys
+        state=admitted['root']/'successor'
+        before=json.loads((state/'test-successor-result.json').read_text())
+        output=tmp_path/'restart-result.json'
+        script='''
+    import json,sys
+    from pathlib import Path
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_successor_context as owner
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_behavioral_admission as gate
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+    root=Path(sys.argv[1]);saved=json.loads((root/'native-test-fixture.json').read_text())
+    controls=saved['controls'];original=json.loads(Path(controls['artifact']).read_text())['payload']
+    with IntentRepository(root/'intent.duckdb') as intent:
+        with gate._owners(original['owner_roots']) as (catalog,cache):
+            result=owner.prepare_repository_successor_context(historical_artifact=controls['artifact'],
+                historical_sha256=controls['expected_sha256'],task_cid=controls['task_cid'],
+                owner_did=controls['owner_did'],profile_id=controls['profile_id'],catalog=catalog,
+                checked_cache=cache,intent=intent,state=root/'successor')
+            assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])
+    Path(sys.argv[2]).write_text(json.dumps(result))
+    '''
+        run=subprocess.run([sys.executable,'-c',script,str(admitted['root']),str(output)],
+            capture_output=True,text=True,timeout=330)
+&gt;       assert run.returncode==0,run.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 11, in &lt;module&gt;
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 209, in prepare_repository_successor_context
+E             return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 310, in _prepare_repository_successor_context
+E             rechecked=recheck(checked_cache,catalog.index,head)
+E                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 299, in recheck
+E             checked=cache.check_and_store(owner_inputs=dict(index=index,repository=repository,expected_head=head,
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py", line 426, in check_and_store
+E             observed, blobs, bundle_cid = self._fresh(args, report, remaining)
+E                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py", line 377, in _fresh
+E             observed = native.observe_finite_integer_source(**kwargs, output=Path(directory).resolve() / "native",
+E                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py", line 405, in observe_finite_integer_source
+E             observe()  # Publication does not authorize a result against a changed head.
+E             ^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py", line 274, in observe
+E             return index.observe_current(repository, expected_head=expected_head, parent_lease=lease,
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py", line 446, in observe_current
+E             with acquire_codebase_resources(
+E           File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__
+E             return next(self.gen)
+E                    ^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py", line 75, in acquire_codebase_resources
+E             lease = parent_lease.acquire_child(**request)
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 720, in acquire_child
+E             return self._scheduler.acquire(
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 1502, in acquire
+E             raise LeaseTimeoutError("timed out waiting for a resource lease")
+E         ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-c', "\nimport json,sys\nfrom pathlib import Path\nfrom ipf..._py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease\n').returncode
+
+test/integration/test_repository_successor_context.py:193: AssertionError</failure></testcase></testsuite></testsuites>

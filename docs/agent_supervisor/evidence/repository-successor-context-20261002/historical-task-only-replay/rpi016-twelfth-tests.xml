@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="47.953" timestamp="2026-10-02T09:39:08.928064+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_successor_context" name="test_fresh_process_recovers_same_operation_with_fresh_proofs" time="31.809"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 11, in &lt;module&gt;&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 209, in prepare_repository_successor_context&#10;      return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 292, in _prepare_repository_successor_context&#10;      head,semantic=capture(catalog.index,old_head,operation_id)&#10;                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py&quot;, line 282, in capture&#10;      observed=prepare_policy_current(index,repository,repository_id=old_head.repository_id,&#10;               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py&quot;, line 383, in prepare_policy_current&#10;      publication = index.prepare_current(root, repository_id=repository_id,&#10;                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py&quot;, line 299, in prepare_current&#10;      self._prepare(&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py&quot;, line 343, in _prepare&#10;      with acquire_codebase_resources(&#10;    File &quot;/usr/lib/python3.12/contextlib.py&quot;, line 137, in __enter__&#10;      return next(self.gen)&#10;             ^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py&quot;, line 78, in acquire_codebase_resources&#10;      lease = owner.acquire(**request)&#10;              ^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py&quot;, line 1502, in acquire&#10;      raise LeaseTimeoutError(&quot;timed out waiting for a resource lease&quot;)&#10;  ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-c', &quot;\nimport json,sys\nfrom pathlib import Path\nfrom ipf..._py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease\n').returncode">admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+tmp_path = PosixPath('/tmp/rpi016-native-twelfth/test_fresh_process_recovers_sa0')
+
+    def test_fresh_process_recovers_same_operation_with_fresh_proofs(admitted,tmp_path):
+        import subprocess
+        import sys
+        state=admitted['root']/'successor'
+        before=json.loads((state/'test-successor-result.json').read_text())
+        output=tmp_path/'restart-result.json'
+        script='''
+    import json,sys
+    from pathlib import Path
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_successor_context as owner
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_behavioral_admission as gate
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+    root=Path(sys.argv[1]);saved=json.loads((root/'native-test-fixture.json').read_text())
+    controls=saved['controls'];original=json.loads(Path(controls['artifact']).read_text())['payload']
+    with IntentRepository(root/'intent.duckdb') as intent:
+        with gate._owners(original['owner_roots']) as (catalog,cache):
+            result=owner.prepare_repository_successor_context(historical_artifact=controls['artifact'],
+                historical_sha256=controls['expected_sha256'],task_cid=controls['task_cid'],
+                owner_did=controls['owner_did'],profile_id=controls['profile_id'],catalog=catalog,
+                checked_cache=cache,intent=intent,state=root/'successor')
+            assert all(intent.get_task(cid)['revision']==1 for cid in result['materialized']['task_cids'])
+    Path(sys.argv[2]).write_text(json.dumps(result))
+    '''
+        run=subprocess.run([sys.executable,'-c',script,str(admitted['root']),str(output)],
+            capture_output=True,text=True,timeout=330)
+&gt;       assert run.returncode==0,run.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 11, in &lt;module&gt;
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 209, in prepare_repository_successor_context
+E             return _prepare_repository_successor_context(historical_artifact=historical_artifact,historical_sha256=historical_sha256,
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 292, in _prepare_repository_successor_context
+E             head,semantic=capture(catalog.index,old_head,operation_id)
+E                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py", line 282, in capture
+E             observed=prepare_policy_current(index,repository,repository_id=old_head.repository_id,
+E                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py", line 383, in prepare_policy_current
+E             publication = index.prepare_current(root, repository_id=repository_id,
+E                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py", line 299, in prepare_current
+E             self._prepare(
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py", line 343, in _prepare
+E             with acquire_codebase_resources(
+E           File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__
+E             return next(self.gen)
+E                    ^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py", line 78, in acquire_codebase_resources
+E             lease = owner.acquire(**request)
+E                     ^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py", line 1502, in acquire
+E             raise LeaseTimeoutError("timed out waiting for a resource lease")
+E         ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/barberb/.local/bin/python', '-c', "\nimport json,sys\nfrom pathlib import Path\nfrom ipf..._py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease\n').returncode
+
+test/integration/test_repository_successor_context.py:193: AssertionError</failure></testcase></testsuite></testsuites>

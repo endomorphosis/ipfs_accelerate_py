@@ -1,0 +1,92 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items / 9 deselected / 9 selected
+
+test/integration/test_repository_successor_context.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_changed_native_parent_or_head_refuses_lost_reply_replay[receipt_missing] _[0m
+
+admitted = {'root': PosixPath('/tmp/rpi016-native-eleventh/actual-behavioral-admission0'), 'repository': PosixPath('/tmp/rpi016-n...licy/profile', 'lifecycle_dir': '/tmp/rpi016-native-eleventh/actual-behavioral-admission0/policy/lifecycle', ...}, ...}
+mutation = 'receipt_missing'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m'[39;49;00m[33mmutation[39;49;00m[33m'[39;49;00m,[[33m'[39;49;00m[33mobjective[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mgoal[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mplan[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mobjective_missing[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mgoal_missing[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mplan_missing[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mcompeting_head[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mreceipt_missing[39;49;00m[33m'[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m[90m [39;49;00m[92mtest_changed_native_parent_or_head_refuses_lost_reply_replay[39;49;00m(admitted,mutation):[90m[39;49;00m
+        result=admitted.get([33m'[39;49;00m[33msuccessor_result[39;49;00m[33m'[39;49;00m) [95mor[39;49;00m json.loads((admitted[[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m]/[33m'[39;49;00m[33msuccessor/test-successor-result.json[39;49;00m[33m'[39;49;00m).read_text());intent=admitted[[33m'[39;49;00m[33mintent[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+        verified=local.verify_local_benchmark_admission(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m],initial=[94mTrue[39;49;00m)[90m[39;49;00m
+        graph=verified[[33m'[39;49;00m[33mgraph[39;49;00m[33m'[39;49;00m];receipt=verified[[33m'[39;49;00m[33mreceipt[39;49;00m[33m'[39;49;00m];plan_id=receipt[[33m'[39;49;00m[33mplan_id[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+        objective=content_identity([96mdict[39;49;00m(manifest=receipt[[33m'[39;49;00m[33mmanifest_cid[39;49;00m[33m'[39;49;00m],objective=graph.root_goal.objective))[90m[39;49;00m
+        table,key,value={[33m'[39;49;00m[33mobjective[39;49;00m[33m'[39;49;00m:([33m'[39;49;00m[33mobjectives[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mobjective_id[39;49;00m[33m'[39;49;00m,objective),[90m[39;49;00m
+            [33m'[39;49;00m[33mgoal[39;49;00m[33m'[39;49;00m:([33m'[39;49;00m[33mgoals[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mgoal_cid[39;49;00m[33m'[39;49;00m,graph.root_goal.goal_cid),[90m[39;49;00m
+            [33m'[39;49;00m[33mplan[39;49;00m[33m'[39;49;00m:([33m'[39;49;00m[33mplans[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mplan_cid[39;49;00m[33m'[39;49;00m,plan_id)}.get(mutation.split([33m'[39;49;00m[33m_[39;49;00m[33m'[39;49;00m)[[94m0[39;49;00m],([33m'[39;49;00m[33mplans[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mplan_cid[39;49;00m[33m'[39;49;00m,plan_id))[90m[39;49;00m
+        reference=local._receipt_reference(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mreceipt[39;49;00m[33m'[39;49;00m],local._receipt_bytes(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m][[33m'[39;49;00m[33mreceipt[39;49;00m[33m'[39;49;00m]))[90m[39;49;00m
+        receipt_path=local._receipt_artifact_path(verified[[33m'[39;49;00m[33mmanifest[39;49;00m[33m'[39;49;00m],reference[[33m'[39;49;00m[33msha256[39;49;00m[33m'[39;49;00m])[90m[39;49;00m
+        raw=receipt_path.read_bytes()[90m[39;49;00m
+        [94mwith[39;49;00m intent._connection(write=[94mTrue[39;49;00m) [94mas[39;49;00m cx:[90m[39;49;00m
+            before=cx.execute([33mf[39;49;00m[33m'[39;49;00m[33mSELECT * FROM [39;49;00m[33m{[39;49;00mtable[33m}[39;49;00m[33m WHERE [39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m=?[39;49;00m[33m'[39;49;00m,[value]).fetchone()[90m[39;49;00m
+            [94mif[39;49;00m mutation.endswith([33m'[39;49;00m[33m_missing[39;49;00m[33m'[39;49;00m):cx.execute([33mf[39;49;00m[33m'[39;49;00m[33mDELETE FROM [39;49;00m[33m{[39;49;00mtable[33m}[39;49;00m[33m WHERE [39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m=?[39;49;00m[33m'[39;49;00m,[value])[90m[39;49;00m
+            [94melif[39;49;00m mutation==[33m'[39;49;00m[33mcompeting_head[39;49;00m[33m'[39;49;00m:[90m[39;49;00m
+                cx.execute([33m"[39;49;00m[33mINSERT INTO plans SELECT ?,goal_cid,?,status,created_at,updated_at,revision+1,body_json FROM plans WHERE plan_cid=?[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                    [[33m'[39;49;00m[33maudit:competing-plan[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mAUDIT-COMPETING-PLAN[39;49;00m[33m'[39;49;00m,plan_id])[90m[39;49;00m
+            [94melif[39;49;00m mutation!=[33m'[39;49;00m[33mreceipt_missing[39;49;00m[33m'[39;49;00m:cx.execute([33mf[39;49;00m[33m'[39;49;00m[33mUPDATE [39;49;00m[33m{[39;49;00mtable[33m}[39;49;00m[33m SET revision=revision+1 WHERE [39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m=?[39;49;00m[33m'[39;49;00m,[value])[90m[39;49;00m
+        [94mif[39;49;00m mutation==[33m'[39;49;00m[33mreceipt_missing[39;49;00m[33m'[39;49;00m:receipt_path.unlink()[90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises(([96mValueError[39;49;00m,[96mFileNotFoundError[39;49;00m)):[90m[39;49;00m
+                successor._materialize_or_replay(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m],intent)[90m[39;49;00m
+        [94mfinally[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m mutation==[33m'[39;49;00m[33mreceipt_missing[39;49;00m[33m'[39;49;00m:receipt_path.write_bytes(raw);receipt_path.chmod([94m0o600[39;49;00m)[90m[39;49;00m
+            [94melse[39;49;00m:[90m[39;49;00m
+                [94mwith[39;49;00m intent._connection(write=[94mTrue[39;49;00m) [94mas[39;49;00m cx:[90m[39;49;00m
+                    [94mif[39;49;00m mutation==[33m'[39;49;00m[33mcompeting_head[39;49;00m[33m'[39;49;00m:cx.execute([33m'[39;49;00m[33mDELETE FROM plans WHERE plan_cid=?[39;49;00m[33m'[39;49;00m,[[33m'[39;49;00m[33maudit:competing-plan[39;49;00m[33m'[39;49;00m])[90m[39;49;00m
+                    [94melse[39;49;00m:[90m[39;49;00m
+                        cx.execute([33mf[39;49;00m[33m'[39;49;00m[33mDELETE FROM [39;49;00m[33m{[39;49;00mtable[33m}[39;49;00m[33m WHERE [39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m=?[39;49;00m[33m'[39;49;00m,[value])[90m[39;49;00m
+                        cx.execute([33mf[39;49;00m[33m'[39;49;00m[33mINSERT INTO [39;49;00m[33m{[39;49;00mtable[33m}[39;49;00m[33m VALUES ([39;49;00m[33m'[39;49;00m+[33m'[39;49;00m[33m,[39;49;00m[33m'[39;49;00m.join([33m'[39;49;00m[33m?[39;49;00m[33m'[39;49;00m [94mfor[39;49;00m _ [95min[39;49;00m before)+[33m'[39;49;00m[33m)[39;49;00m[33m'[39;49;00m,[before[i] [94mfor[39;49;00m i [95min[39;49;00m [96mrange[39;49;00m([96mlen[39;49;00m(before))])[90m[39;49;00m
+>       [94massert[39;49;00m successor._materialize_or_replay(result[[33m'[39;49;00m[33madmission[39;49;00m[33m'[39;49;00m],intent)==result[[33m'[39;49;00m[33mmaterialized[39;49;00m[33m'[39;49;00m][90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_successor_context.py[0m:254: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:162: in _materialize_or_replay
+    [0m[94mreturn[39;49;00m _materialize_or_replay_owned(admission,owner)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:212: in _materialize_or_replay_owned
+    [0m_require(exact(owner.get_plan(receipt[[33m'[39;49;00m[33mplan_id[39;49;00m[33m'[39;49;00m]),expected_plan),[33m'[39;49;00m[33msuccessor native plan changed before retry[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False, message = 'successor native plan changed before retry'
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_require[39;49;00m(value, message):[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m value:[90m[39;49;00m
+>           [94mraise[39;49;00m [96mValueError[39;49;00m(message)[90m[39;49;00m
+[1m[31mE           ValueError: successor native plan changed before retry[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_successor_context.py[0m:52: ValueError
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 10:00:11,733 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 10:00:11,800 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 10:00:11,881 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/rpi016-native-eleventh/actual-behavioral-admission0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------- generated xml file: /tmp/rpi016-parent-audit4-tests.xml ------------
+============================= slowest 10 durations =============================
+0.38s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[goal]
+0.37s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[objective]
+0.37s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[plan_missing]
+0.36s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[goal_missing]
+0.36s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[plan]
+0.36s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[objective_missing]
+0.36s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[competing_head]
+0.26s call     integration/test_repository_successor_context.py::test_changed_native_parent_or_head_refuses_lost_reply_replay[receipt_missing]
+0.21s call     integration/test_repository_successor_context.py::test_lost_materialization_reply_replays_exact_native_population
+0.08s setup    integration/test_repository_successor_context.py::test_lost_materialization_reply_replays_exact_native_population
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_successor_context.py::[1mtest_changed_native_parent_or_head_refuses_lost_reply_replay[receipt_missing][0m - ValueError: successor native plan changed before retry
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m================== [31m[1m1 failed[0m, [32m8 passed[0m, [33m9 deselected[0m[31m in 17.78s[0m[31m ==================[0m
