@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T09:36:56.034475+00:00",
+  "updated_at_utc": "2026-10-02T09:57:09.258416+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -292,6 +292,18 @@
     "ledger-bookkeeping-audit": {
       "path": "docs/agent_supervisor/evidence/repository-backlog-audit-20261002/manifest.json",
       "sha256": "152d9358982720805e310b429a5b431656505243c7066c6f400ca7f58a502ca8",
+      "retention": "repository_evidence"
+    },
+    "protected-pipeline-resources": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/repository-pipeline-resources-20261002/manifest.json",
+      "sha256": "9abd9c73b29c00543e9340946ca0182c74b8f1d3c7d02d7156eba89c7c846297",
+      "retention": "repository_evidence"
+    },
+    "repository-shards-resident-inference": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-repository-shards-20261002/qualification.json",
+      "sha256": "12502d36e10433ef871a72634a0f477cbb66676c1f8b153c9d36b7dc014883e7",
       "retention": "repository_evidence"
     }
   },
@@ -814,10 +826,11 @@
         "Datasets shared lease admission, nested parent preservation, pressure refusal and cancellation are qualified in the structural wrapper.",
         "Eighteen controls include actual shared-default/live-sampler two-repository admission, killed-parent lease recovery and child-process cancellation; injected telemetry controls are separately identified. The CPU bridge is reusable by native scan/training/proof consumers with one shared host authority.",
         "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
-        "Optional canonical native parent support joins the existing durable daemon disk/RSS ledger without another root reservation.154controls pass:9actual shared-host controls include token/live parent links, cancellation/release/death and a real child launched during revocation;145existing isolated-scheduler/filesystem regressions preserve default behavior. Full pipeline composition remains separate."
+        "Optional canonical native parent support joins the existing durable daemon disk/RSS ledger without another root reservation.154controls pass:9actual shared-host controls include token/live parent links, cancellation/release/death and a real child launched during revocation;145existing isolated-scheduler/filesystem regressions preserve default behavior. Full pipeline composition remains separate.",
+        "Opt-in protected pipeline adapter passes31controlled-owner tests with actual subprocesses and durable disk records under explicitly injected host telemetry. It bounds queued and retained payloads, reserves validation/cleanup compartments, retains unsafe native child reservations across scope exit and garbage collection, and recovers through protected cleanup using the same authority and disk roots. Actual-host admission remains refused by the unchanged disk watermark; this is not full-pipeline qualification."
       ],
       "remaining_work": [
-        "Bridge disk/queue accounting is local declaration plus sampling; GPU/per-device/global retained-payload queues, hard enforcement, gradual recovery and protected validation capacity within each parent remain open."
+        "Full native pipeline integration and actual-host qualification remain pending. GPU/per-device admission, host-wide retained-payload accounting, hard enforcement, gradual recovery and the complete pressure matrix remain open. Named-root disk sampling does not protect against unrelated external writers."
       ],
       "evidence": [
         "foundation-tests-log",
@@ -825,7 +838,8 @@
         "foundation-selected-port-manifest",
         "shared-host-resource-bridge",
         "resource-worker-delegation",
-        "nested-durable-resources"
+        "nested-durable-resources",
+        "protected-pipeline-resources"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -977,18 +991,20 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Additive CodebasePagedStager seals complete clean committed inventories, stages bounded deterministic source/AST shards, recovers exact cursors after native restart, and preserves deferred/opaque dispositions. Twenty-three focused tests pass, including exact byte/pin checks on parsed-cache hits, direct classifier-owner drift refusal and bounded eviction.",
-        "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim."
+        "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim.",
+        "Forty additional component controls qualify bounded complete dirty source/AST projections, immutable source-bound cursors, existing global dependency edges, cold/incremental page equality, explicit large-source deferral, optional Git batch reads preserving dirty CAS bytes, bounded watcher hints, and actual GTE/shared384 checkpoint inference with resident model reuse. Native model and parent-capacity controls use the actual default datasets scheduler; source/Git/watcher controls explicitly inject host telemetry. One local comparison loaded GTE once instead of four times and retained identical decoded rows; no timing distribution or benchmark advantage is claimed."
       ],
       "remaining_work": [
-        "Dirty-overlay paging, global cross-shard dependency resolution, source-conditioned inference shards, batched Git object acquisition, watcher orchestration, model residency/CUDA, pressure qualification and current-head promotion remain unqualified.",
-        "Complete history still receives a bounded byte walk; larger-scale incremental I/O behavior and repeated-run timing distributions remain open."
+        "Initial dirty capture remains bounded whole-generation <=256; the separately qualified clean committed stager handles resumable extraction. The new Git reader is opt-in and does not replace the frozen initial scanner.",
+        "Resident models persist for one bounded child invocation only. Compatible CUDA execution, larger dirty pipeline integration, complete pressure qualification, larger-scale incremental I/O and repeated timing distributions remain unqualified. Current complete source promotion remains with the existing native owner; derived pages do not promote heads."
       ],
       "evidence": [
         "paged-staging-tests-log",
         "paged-staging-tests-junit",
         "paged-staging-native-comparison",
         "paged-staging-native-final",
-        "paged-staging-evidence-manifest"
+        "paged-staging-evidence-manifest",
+        "repository-shards-resident-inference"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

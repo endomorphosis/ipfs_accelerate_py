@@ -203,3 +203,16 @@ had been listed as closed while022 remained open. Their native qualification
 results remain valid, but production closure now correctly waits for that
 resource prerequisite. Cross-repository evidence links also name their explicit
 repository rather than relying on a local checkout layout.
+
+Forty additional source-page and model controls qualify bounded dirty inventory
+projections, exact Git batch acquisition, global dependency pages, watcher hints,
+and actual shared384 checkpoint inference. Cold and resident modes return the
+same decoded rows; one local observation uses one model load instead of four.
+Initial dirty capture remains a bounded complete-generation operation, and CUDA
+and larger-scale pressure qualification remain open.
+
+The protected resource adapter passes31 controlled-owner tests, including actual
+subprocess cleanup, durable disk claims and retained unsafe-child ownership. Its
+host telemetry is explicitly injected in those controls. The actual-host attempt
+was refused at the unchanged disk watermark. Full pipeline integration and the
+resource prerequisite remain open.
