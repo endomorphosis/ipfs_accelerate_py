@@ -1,0 +1,52 @@
+{
+  "schema": "repository-resource-bridge-qualification/v1",
+  "profile": "cpu-shared-native-sampled@1",
+  "status": "qualified_partial_profile",
+  "final_tests": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 103.76,
+    "log": "rpi022-bridge-final-tests.log",
+    "junit": "rpi022-bridge-final-tests.xml"
+  },
+  "controls": {
+    "pure_or_injected": 15,
+    "actual_default_native_authority": 3
+  },
+  "live_assertions": [
+    "two repository parents use the same actual default shared host authority and live sampler; nested phase and consumer leases preserve parent identity",
+    "SIGKILL of a fresh process owning a root and phase is followed by native stale lease recovery",
+    "cancellation terminates an actual bounded child process and releases both native and supervisor reservations"
+  ],
+  "diagnostics": [
+    {
+      "log": "rpi022-bridge-live-tests.log",
+      "passed": 2,
+      "failed": 1,
+      "reason": "test-only ToolRunLimits timeout keyword corrected"
+    },
+    {
+      "log": "rpi022-bridge-qualified-tests.log",
+      "passed": 17,
+      "failed": 1,
+      "reason": "real supervisor host_cpu_high_watermark admission refusal; preserved safety and reran later"
+    }
+  ],
+  "limits": [
+    "global validation reserve only; siblings share their parent envelope",
+    "local declared disk budget and free-space sampling; no shared disk reservation authority",
+    "queue byte accounting covers local bridge request metadata, not arbitrary queued payloads",
+    "native admission accounting with sampled telemetry; no kernel hard limits",
+    "CPU-only; GPU/per-device/provider admission unsupported",
+    "thread environment limits require cooperating bounded consumers",
+    "crash test recovers dead-owner lease records, not arbitrary orphan subprocess trees",
+    "existing pressure backoff preserved; new gradual recovery behavior not qualified",
+    "individual phase envelopes are available but all production call sites have not yet been wired"
+  ],
+  "rpi_022_complete": false,
+  "task_execution_authority": false,
+  "completion_authority": false,
+  "proof_authority": false,
+  "hard_enforcement": false
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="94.288" timestamp="2026-10-02T07:07:28.453277+00:00" hostname="spark-b271"><testcase classname="api.test_repository_resource_bridge" name="test_live_two_repository_parents_share_actual_default_host_authority" time="78.316" /><testcase classname="api.test_repository_resource_bridge" name="test_live_killed_parent_is_reaped_by_actual_shared_owner" time="0.190" /><testcase classname="api.test_repository_resource_bridge" name="test_live_cancellation_terminates_actual_bounded_child_and_releases_owners" time="15.047"><failure message="AssertionError: bounded native child did not launch&#10;assert False&#10; +  where False = exists()&#10; +    where exists = PosixPath('/tmp/pytest-of-barberb/pytest-4647/test_live_cancellation_termina0/actual-child-ready').exists">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4647/test_live_cancellation_termina0')
+
+    def test_live_cancellation_terminates_actual_bounded_child_and_releases_owners(tmp_path):
+        from ipfs_datasets_py.logic.backends.codebase_process import BoundedToolRunner, ToolRunLimits
+        supervisor=local_supervisor()
+        results=[]
+        ready=tmp_path/'actual-child-ready'
+        def work(parent):
+            try:
+                with parent.phase(bridge.RepositoryPhaseDemand('validation')) as phase:
+                    result=BoundedToolRunner().run([str(Path(sys.executable).resolve()),'-I','-B','-c',
+                        'import pathlib,sys,time;pathlib.Path(sys.argv[1]).write_text("ready");time.sleep(120)',str(ready)],
+                        cancellation=parent.cancellation,limits=ToolRunLimits(timeout_ms=15000),
+                        environment=phase.thread_environment())
+                    results.append(result)
+            except bridge.LeaseCancelledError:
+                results.append('cancelled')
+        with pytest.raises(bridge.LeaseCancelledError):
+            with bridge.RepositoryResourceBridge(supervisor).reserve(repository_id='rpi022-live-cancel',workspace=tmp_path,
+                    budget=bridge.RepositoryResourceBudget(wall_time_ms=120000)) as parent:
+                thread=threading.Thread(target=work,args=(parent,));thread.start()
+                deadline=time.monotonic()+15
+                while not ready.exists() and time.monotonic()&lt;deadline:time.sleep(.02)
+&gt;               assert ready.exists(),'bounded native child did not launch'
+E               AssertionError: bounded native child did not launch
+E               assert False
+E                +  where False = exists()
+E                +    where exists = PosixPath('/tmp/pytest-of-barberb/pytest-4647/test_live_cancellation_termina0/actual-child-ready').exists
+
+test/api/test_repository_resource_bridge.py:206: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="18" time="1.931" timestamp="2026-10-02T07:10:30.710398+00:00" hostname="spark-b271"><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values0]" time="0.002" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values1]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values2]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values3]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values4]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values5]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values6]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values7]" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_closed_cpu_profile_refuses_unknown_or_unbounded_demands[values8]" time="0.002" /><testcase classname="api.test_repository_resource_bridge" name="test_boundary_rejects_invalid_cancellation_before_admission" time="0.001" /><testcase classname="api.test_repository_resource_bridge" name="test_injected_nested_owner_accounting_and_detached_receipts" time="0.098" /><testcase classname="api.test_repository_resource_bridge" name="test_injected_pressure_and_missing_telemetry_refuse_without_leaks[False]" time="0.135" /><testcase classname="api.test_repository_resource_bridge" name="test_injected_pressure_and_missing_telemetry_refuse_without_leaks[True]" time="0.139" /><testcase classname="api.test_repository_resource_bridge" name="test_injected_global_reserve_does_not_imply_parent_validation_capacity" time="0.107" /><testcase classname="api.test_repository_resource_bridge" name="test_injected_queue_and_phase_budget_bounds" time="0.078" /><testcase classname="api.test_repository_resource_bridge" name="test_live_two_repository_parents_share_actual_default_host_authority" time="0.243" /><testcase classname="api.test_repository_resource_bridge" name="test_live_killed_parent_is_reaped_by_actual_shared_owner" time="0.195"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 5, in &lt;module&gt;&#10;    File &quot;/usr/lib/python3.12/contextlib.py&quot;, line 137, in __enter__&#10;      return next(self.gen)&#10;             ^^^^^^^^^^^^^^&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py&quot;, line 303, in reserve&#10;      _require(local is not None and decision.admitted, &quot;supervisor lane policy refused repository envelope: &quot; + decision.reason)&#10;    File &quot;/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py&quot;, line 56, in _require&#10;      raise RepositoryResourceError(message)&#10;  ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark&#10;  &#10;assert ''">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4650/test_live_killed_parent_is_rea0')
+
+    def test_live_killed_parent_is_reaped_by_actual_shared_owner(tmp_path):
+        script=r'''
+    import json,sys,time
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge import *
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import ResourceScheduler,ResourcePolicy
+    with RepositoryResourceBridge(ResourceScheduler(ResourcePolicy(max_lanes=8))).reserve(repository_id='rpi022-crash',workspace=sys.argv[1],budget=RepositoryResourceBudget(wall_time_ms=120000)) as parent:
+     with parent.phase(RepositoryPhaseDemand('scan')) as phase:
+      print(json.dumps({'root':parent.native.lease_id,'child':phase.native.lease_id,'state':str(parent.shared.state_path)}),flush=True)
+      time.sleep(120)
+    '''
+        process=subprocess.Popen([sys.executable,'-c',script,str(tmp_path)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            import select
+            ready,_,_=select.select([process.stdout],[],[],130)
+            assert ready,'live native admission did not complete in the declared deadline'
+            line=process.stdout.readline()
+&gt;           assert line,process.stderr.read()
+E           AssertionError: Traceback (most recent call last):
+E               File "&lt;string&gt;", line 5, in &lt;module&gt;
+E               File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__
+E                 return next(self.gen)
+E                        ^^^^^^^^^^^^^^
+E               File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py", line 303, in reserve
+E                 _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)
+E               File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py", line 56, in _require
+E                 raise RepositoryResourceError(message)
+E             ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark
+E             
+E           assert ''
+
+test/api/test_repository_resource_bridge.py:173: AssertionError</failure></testcase><testcase classname="api.test_repository_resource_bridge" name="test_live_cancellation_terminates_actual_bounded_child_and_releases_owners" time="0.117" /></testsuite></testsuites>

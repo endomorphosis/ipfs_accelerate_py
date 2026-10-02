@@ -1,0 +1,62 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items
+
+test/api/test_repository_resource_bridge.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m[32m.[0m[31m           [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m___________ test_live_killed_parent_is_reaped_by_actual_shared_owner ___________[0m
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4650/test_live_killed_parent_is_rea0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_live_killed_parent_is_reaped_by_actual_shared_owner[39;49;00m(tmp_path):[90m[39;49;00m
+        script=[33mr[39;49;00m[33m'''[39;49;00m[33m[39;49;00m
+    [33mimport json,sys,time[39;49;00m[33m[39;49;00m
+    [33mfrom ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge import *[39;49;00m[33m[39;49;00m
+    [33mfrom ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import ResourceScheduler,ResourcePolicy[39;49;00m[33m[39;49;00m
+    [33mwith RepositoryResourceBridge(ResourceScheduler(ResourcePolicy(max_lanes=8))).reserve(repository_id=[39;49;00m[33m'[39;49;00m[33mrpi022-crash[39;49;00m[33m'[39;49;00m[33m,workspace=sys.argv[1],budget=RepositoryResourceBudget(wall_time_ms=120000)) as parent:[39;49;00m[33m[39;49;00m
+    [33m with parent.phase(RepositoryPhaseDemand([39;49;00m[33m'[39;49;00m[33mscan[39;49;00m[33m'[39;49;00m[33m)) as phase:[39;49;00m[33m[39;49;00m
+    [33m  print(json.dumps([39;49;00m[33m{[39;49;00m[33m'[39;49;00m[33mroot[39;49;00m[33m'[39;49;00m[33m:parent.native.lease_id,[39;49;00m[33m'[39;49;00m[33mchild[39;49;00m[33m'[39;49;00m[33m:phase.native.lease_id,[39;49;00m[33m'[39;49;00m[33mstate[39;49;00m[33m'[39;49;00m[33m:str(parent.shared.state_path)}),flush=True)[39;49;00m[33m[39;49;00m
+    [33m  time.sleep(120)[39;49;00m[33m[39;49;00m
+    [33m'''[39;49;00m[90m[39;49;00m
+        process=subprocess.Popen([sys.executable,[33m'[39;49;00m[33m-c[39;49;00m[33m'[39;49;00m,script,[96mstr[39;49;00m(tmp_path)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=[94mTrue[39;49;00m)[90m[39;49;00m
+        [94mtry[39;49;00m:[90m[39;49;00m
+            [94mimport[39;49;00m[90m [39;49;00m[04m[96mselect[39;49;00m[90m[39;49;00m
+            ready,_,_=select.select([process.stdout],[],[],[94m130[39;49;00m)[90m[39;49;00m
+            [94massert[39;49;00m ready,[33m'[39;49;00m[33mlive native admission did not complete in the declared deadline[39;49;00m[33m'[39;49;00m[90m[39;49;00m
+            line=process.stdout.readline()[90m[39;49;00m
+>           [94massert[39;49;00m line,process.stderr.read()[90m[39;49;00m
+[1m[31mE           AssertionError: Traceback (most recent call last):[0m
+[1m[31mE               File "<string>", line 5, in <module>[0m
+[1m[31mE               File "/usr/lib/python3.12/contextlib.py", line 137, in __enter__[0m
+[1m[31mE                 return next(self.gen)[0m
+[1m[31mE                        ^^^^^^^^^^^^^^[0m
+[1m[31mE               File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py", line 303, in reserve[0m
+[1m[31mE                 _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)[0m
+[1m[31mE               File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py", line 56, in _require[0m
+[1m[31mE                 raise RepositoryResourceError(message)[0m
+[1m[31mE             ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark[0m
+[1m[31mE             [0m
+[1m[31mE           assert ''[0m
+
+[1m[31mtest/api/test_repository_resource_bridge.py[0m:173: AssertionError
+---------- generated xml file: /tmp/rpi022-bridge-qualified-tests.xml ----------
+============================= slowest 10 durations =============================
+0.24s call     api/test_repository_resource_bridge.py::test_live_two_repository_parents_share_actual_default_host_authority
+0.19s call     api/test_repository_resource_bridge.py::test_live_killed_parent_is_reaped_by_actual_shared_owner
+0.12s call     api/test_repository_resource_bridge.py::test_live_cancellation_terminates_actual_bounded_child_and_releases_owners
+0.11s call     api/test_repository_resource_bridge.py::test_injected_pressure_and_missing_telemetry_refuse_without_leaks[False]
+0.11s call     api/test_repository_resource_bridge.py::test_injected_pressure_and_missing_telemetry_refuse_without_leaks[True]
+0.09s call     api/test_repository_resource_bridge.py::test_injected_global_reserve_does_not_imply_parent_validation_capacity
+0.08s call     api/test_repository_resource_bridge.py::test_injected_nested_owner_accounting_and_detached_receipts
+0.05s call     api/test_repository_resource_bridge.py::test_injected_queue_and_phase_budget_bounds
+0.02s teardown api/test_repository_resource_bridge.py::test_injected_pressure_and_missing_telemetry_refuse_without_leaks[True]
+0.01s teardown api/test_repository_resource_bridge.py::test_injected_pressure_and_missing_telemetry_refuse_without_leaks[False]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_repository_resource_bridge.py::[1mtest_live_killed_parent_is_reaped_by_actual_shared_owner[0m - AssertionError: Traceback (most recent call last):
+[31m========================= [31m[1m1 failed[0m, [32m17 passed[0m[31m in 1.98s[0m[31m =========================[0m

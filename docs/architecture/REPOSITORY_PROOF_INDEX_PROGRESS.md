@@ -1,9 +1,9 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Ten exits are closed for their declared
-profiles; 22 remain open.** Twelve individual criteria have passed qualification,
-including two still blocked by prerequisites. These results do not establish
+every original acceptance criterion. **Eleven exits are closed for their declared
+profiles; 21 remain open.** Fifteen individual criteria have passed qualification,
+including four still blocked by prerequisites. These results do not establish
 default production activation or a Terminal Bench advantage.
 
 ## Actual results
@@ -145,3 +145,21 @@ and actual conflicting source writes. It preserves separate source, model and
 corpus authorities. Its closure also closes the prerequisite for the finite
 checked-cache criterion (007). The selector reduced expensive reconstructions
 from four to one in a small measured fixture; this is not a general speedup claim.
+
+Native training lifecycle (010) adds atomic terminal fencing at the registry
+owner and an opt-in CPU job facade. Thirteen actual lifecycle tests plus93
+registry controls cover concurrent child fits, cancellation, supersession,
+attempt/checkpoint/time budgets, stale publication and lost-reply recovery.
+The source and model owners remain separate transactions. No regressed model
+was promoted.
+
+The new behavioral v2 matcher and planning snapshot passed nine and five native
+controls respectively. Exact catalog nominations, complete source inventory and
+checked proof records feed the existing compiler/planner/critic. Unsupported
+meaning stays unresolved; no signed task population is reduced. Their finite
+profile criteria are qualified while broader planning prerequisites remain open.
+
+The shared resource bridge passed18 controls, including real concurrent
+repositories and killed-process recovery. Its disk and queue accounting is
+locally declared and sampled; hard enforcement, device admission and full
+pipeline pressure qualification remain open.

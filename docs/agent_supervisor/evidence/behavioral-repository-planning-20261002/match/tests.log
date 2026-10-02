@@ -1,0 +1,95 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 9 items
+
+test/integration/test_behavioral_codebase_match.py::test_genuine_finite_behavior_keeps_counterexample_and_complete_inventory 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:13:50 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:50 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 07:13:51 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:53 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_genuine_finite_behavior_k0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 11%][0m
+test/integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[predicate] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:13:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:13:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 22%][0m
+test/integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[argument] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:14:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:14:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 33%][0m
+test/integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[modality] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:15:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea2/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:15:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_valid_but_unsupported_mea2/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 44%][0m
+test/integration/test_behavioral_codebase_match.py::test_missing_or_tampered_discovery_cannot_satisfy_a_requirement 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:15:51 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_missing_or_tampered_disco0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:15:51 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_missing_or_tampered_disco0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 55%][0m
+test/integration/test_behavioral_codebase_match.py::test_unselected_contract_does_not_trigger_hidden_fallback 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:15:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_unselected_contract_does_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:15:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_unselected_contract_does_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 66%][0m
+test/integration/test_behavioral_codebase_match.py::test_changed_source_refuses_prior_matches 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:15:59 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:15:59 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 07:16:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_changed_source_refuses_pr0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 77%][0m
+test/integration/test_behavioral_codebase_match.py::test_caller_evidence_cannot_bypass_owner_execution 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:16:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_caller_evidence_cannot_by0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_caller_evidence_cannot_by0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 88%][0m
+test/integration/test_behavioral_codebase_match.py::test_deleted_observation_rows_cannot_be_relabelled_as_complete 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 07:16:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 07:16:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:16:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4654/test_deleted_observation_rows_0/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/behavioral-codebase-match-20261002/run-01/tests.xml -
+============================= slowest 10 durations =============================
+103.11s call     integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[argument]
+5.53s call     integration/test_behavioral_codebase_match.py::test_changed_source_refuses_prior_matches
+4.84s call     integration/test_behavioral_codebase_match.py::test_deleted_observation_rows_cannot_be_relabelled_as_complete
+4.79s call     integration/test_behavioral_codebase_match.py::test_genuine_finite_behavior_keeps_counterexample_and_complete_inventory
+3.07s setup    integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[argument]
+3.07s setup    integration/test_behavioral_codebase_match.py::test_missing_or_tampered_discovery_cannot_satisfy_a_requirement
+2.99s setup    integration/test_behavioral_codebase_match.py::test_changed_source_refuses_prior_matches
+2.98s setup    integration/test_behavioral_codebase_match.py::test_deleted_observation_rows_cannot_be_relabelled_as_complete
+2.91s setup    integration/test_behavioral_codebase_match.py::test_genuine_finite_behavior_keeps_counterexample_and_complete_inventory
+2.85s setup    integration/test_behavioral_codebase_match.py::test_valid_but_unsupported_meaning_retains_every_requirement[predicate]
+[32m======================== [32m[1m9 passed[0m[32m in 162.10s (0:02:42)[0m[32m =========================[0m

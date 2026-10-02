@@ -1,0 +1,46 @@
+{
+  "criteria": [
+    "RPI-012",
+    "RPI-013"
+  ],
+  "independent_review": "concurrency_lean found no false-positive or source-head mismatch blocker; final additional current producer binding fence passed native controls",
+  "limitations": [
+    "Authored two-clause finite CNL, explicit model-off; no natural language or general Python equivalence claim.",
+    "v2 snapshot is proposal only; execution/completion/omission authority remain false.",
+    "Original native task admission remains independent; new repository-evidence runtime admission is not yet implemented.",
+    "Repeated cache verification can run checkers; no avoided-checker cost claim.",
+    "Shared default scheduler and real host pressure can add substantial wait; one unsupported-query case waited about103seconds.",
+    "Cooperative deadlines and existing per-command limits; no kernel-enforced whole-pipeline resource bound."
+  ],
+  "observed": [
+    "Exact native catalog nominates current source/contract before cache reconstruction; fresh finite Python/Lean observation owns facts.",
+    "One satisfied type requirement, one offset counterexample and all original requirements remain explicit.",
+    "Unknown predicate, changed argument and prohibited modality remain open with zero native checker calls.",
+    "Actual compiler/candidate planner/critic consume the frozen v2 snapshot; complete two-operation declaration remains present.",
+    "Corrupt selectors, changed source, wrong configuration and caller-injected facts/static roots are refused."
+  ],
+  "profile": "finite-integer-behavior-with-native-discovery@1",
+  "qualified_at_utc": "2026-10-02T07:30:03.730148+00:00",
+  "schema": "behavioral-repository-planning-qualification@1",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/planning/behavioral_codebase_match.py": "54134ae64d284b1df92063ff9e261b3b047211f8d4fce2eee9d3585b0f119fcf",
+    "ipfs_accelerate_py/agent_supervisor/planning/behavioral_repository_plan.py": "5982636bbe4ffa3589d46bd6e25cb763e8d47dd1f1cf320d504d49a490dbd1d0",
+    "test/integration/test_behavioral_codebase_match.py": "ba5300fc88177d44f22958b8fc8a6568e777521ba27da81ae51f7919091dade9",
+    "test/integration/test_behavioral_repository_plan.py": "b0ea633e4c4320ce8b567e78c2c15b2f697049f31003c9c410bcea7ee332e649"
+  },
+  "tests": {
+    "behavioral_match": {
+      "passed": 9,
+      "seconds": 162.1
+    },
+    "final_preview": {
+      "passed": 5,
+      "seconds": 61.05
+    },
+    "initial_preview": {
+      "current_producer_claim": false,
+      "passed": 5,
+      "seconds": 62.14
+    }
+  }
+}

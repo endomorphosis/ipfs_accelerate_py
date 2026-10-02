@@ -1,0 +1,55 @@
+{
+  "schema": "repository-resource-bridge-evidence-manifest/v1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1896,
+      "sha256": "b95d3929f878e09ed2199f21903ac1a15a6acfdc925cc0c2632a215f9bb240bb"
+    },
+    {
+      "path": "producer-sources.json",
+      "bytes": 1547,
+      "sha256": "ff1139d801ddf9a61fd56b3d5ad6cd4f56fd0dc183b28c58fd232366da3b1e6e"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 2164,
+      "sha256": "39748f96df537932deadac536e20193757ca69d13694b5aaeeaa09c928c39a99"
+    },
+    {
+      "path": "rpi022-bridge-controls.log",
+      "bytes": 2413,
+      "sha256": "eeb2b1c4c67573c55806086bf03d29d82536986e69f5652f3f0df99a0c3904ed"
+    },
+    {
+      "path": "rpi022-bridge-final-tests.log",
+      "bytes": 2470,
+      "sha256": "68d7a1cd03b1114a7250c703452e63b35804dd19c53067dfcb9cb6532479b8c1"
+    },
+    {
+      "path": "rpi022-bridge-final-tests.xml",
+      "bytes": 2902,
+      "sha256": "26225deef9ab1e97da11f7f2dd0b59fe01660539110e180558ec52d301ee5ae1"
+    },
+    {
+      "path": "rpi022-bridge-live-tests.log",
+      "bytes": 6844,
+      "sha256": "b7cced14f996aee3969ab2f3bc8f4048fc9914d347a17411db873a19c5fdd291"
+    },
+    {
+      "path": "rpi022-bridge-live-tests.xml",
+      "bytes": 2919,
+      "sha256": "eca28ffbc516eb221b0e429aa1f6abf948e34c99185875a275e9d0441e7d7383"
+    },
+    {
+      "path": "rpi022-bridge-qualified-tests.log",
+      "bytes": 6541,
+      "sha256": "300a6a3f8832d073b5c1968457f828907228fe55e6c0089f78fc9d41fdbffd3b"
+    },
+    {
+      "path": "rpi022-bridge-qualified-tests.xml",
+      "bytes": 6261,
+      "sha256": "3b7274c0dff3f7cac5bb1d72e5968f03aad5aa0f80ddf96c2d7d51283dc40c01"
+    }
+  ]
+}
