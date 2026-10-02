@@ -1,0 +1,30 @@
+{
+  "files": [
+    {
+      "bytes": 1216,
+      "path": "qualification.json",
+      "sha256": "82671eec769257f97806c1b6407419a5638840875de40957fcd3a4b0197262df"
+    },
+    {
+      "bytes": 12370,
+      "path": "run-01/tests.log",
+      "sha256": "ed3f529064be184bca6304f5c7ec43713bcb1e043705563a5abf9d8e5af53e97"
+    },
+    {
+      "bytes": 2526,
+      "path": "run-01/tests.xml",
+      "sha256": "29646c772098addac1730235148892372ffeaceff18b8c9922b902f5dabe6e93"
+    },
+    {
+      "bytes": 3221,
+      "path": "run-02/tests.log",
+      "sha256": "4481a7b674efacdf2b2d0022a417495d558bc231453d020fc1beadb6dfa25a6a"
+    },
+    {
+      "bytes": 415,
+      "path": "run-02/tests.xml",
+      "sha256": "458716006589f7b6fa4ab75541f80da85084521ea76d0d8efac0b0a4177e270a"
+    }
+  ],
+  "schema": "repository-evidence-files@1"
+}

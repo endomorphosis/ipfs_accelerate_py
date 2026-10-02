@@ -1,0 +1,218 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 10 items
+
+test/integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False] [31mFAILED[0m[31m [ 10%][0m
+test/integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 07:40:21 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:21 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 07:40:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 20%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes0] [32mPASSED[0m[31m [ 30%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes1] [32mPASSED[0m[31m [ 40%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes2] [32mPASSED[0m[31m [ 50%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes3] [32mPASSED[0m[31m [ 60%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes4] [32mPASSED[0m[31m [ 70%][0m
+test/integration/test_repository_benchmark_preparation.py::test_closed_arm_selection_refuses_implicit_work[changes5] [32mPASSED[0m[31m [ 80%][0m
+test/integration/test_repository_benchmark_preparation.py::test_phase_budget_refuses_boolean_and_unbounded_values [32mPASSED[0m[31m [ 90%][0m
+test/integration/test_repository_benchmark_preparation.py::test_no_regressed_child_can_be_selected [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False] _[0m
+
+prepared = (<ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xf1f6a1d38800>, PosixPath('...vzevfzngbzwtba3xhf2axxna', 'snapshot_cid': 'baguqeeraf77mvjaeu7xdjdncjrmblt4ke2sjsshqca2miwbqetis7h5aakya', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee0')
+proof = False
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m'[39;49;00m[33mproof[39;49;00m[33m'[39;49;00m, [[94mFalse[39;49;00m, [94mTrue[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[39;49;00m(prepared,finite_tools,tmp_path,proof):[90m[39;49;00m
+        index,repository,head,_=prepared[90m[39;49;00m
+        contract=IntegerOffsetContract([33m'[39;49;00m[33mcalc.py[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mincrement[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mn[39;49;00m[33m'[39;49;00m,[94m2[39;49;00m)[90m[39;49;00m
+        selection=prep.RepositoryPreparationSelection(CodebaseScanPolicy(),[90m[39;49;00m
+            proof_contracts=(contract,) [94mif[39;49;00m proof [94melse[39;49;00m (), proof_inputs=((-[94m2[39;49;00m,-[94m1[39;49;00m,[94m0[39;49;00m,[94m1[39;49;00m,[94m2[39;49;00m),) [94mif[39;49;00m proof [94melse[39;49;00m ())[90m[39;49;00m
+        supervisor=ResourceScheduler(ResourcePolicy(max_lanes=[94m8[39;49;00m))[90m[39;49;00m
+        bridge=RepositoryResourceBridge(supervisor)[90m[39;49;00m
+        [94mwith[39;49;00m bridge.reserve(repository_id=head.repository_id,workspace=tmp_path,[90m[39;49;00m
+                budget=RepositoryResourceBudget(memory_mb=[94m4096[39;49;00m,wall_time_ms=[94m180000[39;49;00m)) [94mas[39;49;00m envelope:[90m[39;49;00m
+>           result=prep.prepare_repository_benchmark(index=index,repository=repository,[90m[39;49;00m
+                repository_id=head.repository_id,expected_head=head,operation_id=[33m'[39;49;00m[33marm:[39;49;00m[33m'[39;49;00m+[96mstr[39;49;00m(proof),[90m[39;49;00m
+                selection=selection,envelope=envelope,[90m[39;49;00m
+                checked_cache=FiniteCheckedCache(FormalVerificationCache(tmp_path/[33m'[39;49;00m[33mproof[39;49;00m[33m'[39;49;00m),index.artifacts) [94mif[39;49;00m proof [94melse[39;49;00m [94mNone[39;49;00m,[90m[39;49;00m
+                tool_policy=finite_tools [94mif[39;49;00m proof [94melse[39;49;00m [94mNone[39;49;00m)[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_benchmark_preparation.py[0m:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py[0m:249: in prepare_repository_benchmark
+    [0mreport[[33m"[39;49;00m[33mpreparation_cid[39;49;00m[33m"[39;49;00m] = cid_for_structured(report)[90m[39;49;00m
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:260: in cid_for_structured
+    [0mcanonical_dag_json_bytes(obj),[90m[39;49;00m
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:191: in canonical_dag_json_bytes
+    [0mvalidate_structured_value(obj)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:155: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m.[39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:146: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m[[39;49;00m[33m{[39;49;00mindex[33m}[39;49;00m[33m][39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:155: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m.[39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 0.8903504349291325, path = '$.stages[0].elapsed_seconds'
+
+    [0m[94mdef[39;49;00m [92mvalidate_structured_value[39;49;00m(value: Any, *, path: [96mstr[39;49;00m = [33m"[39;49;00m[33m$[39;49;00m[33m"[39;49;00m) -> [94mNone[39;49;00m:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Require one reviewed structured-identity value recursively.[39;49;00m
+    [33m[39;49;00m
+    [33m    Accepted types: ``None``, ``bool``, ``int`` (non-bool), ``str``, ``list``,[39;49;00m
+    [33m    and ``dict`` with exclusively ``str`` keys.  Floats (including finite[39;49;00m
+    [33m    floats), bytes, sets, tuples, paths, host objects, and any other type are[39;49;00m
+    [33m    rejected.  Non-finite numbers are impossible for ``int``; the float check[39;49;00m
+    [33m    is kept for clear error messages if a float slips through.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        value_type = [96mtype[39;49;00m(value)[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value [95mis[39;49;00m [94mNone[39;49;00m [95mor[39;49;00m value_type [95mis[39;49;00m [96mstr[39;49;00m:[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mbool[39;49;00m:[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mint[39;49;00m:[90m[39;49;00m
+            [90m# Reject bool masquerading if called with a subclass; bool is handled.[39;49;00m[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mfloat[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m [95mnot[39;49;00m math.isfinite(value):[90m[39;49;00m
+                [94mraise[39;49;00m StructuredIdentityError([90m[39;49;00m
+                    [33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m rejects non-finite float ([39;49;00m[33m{[39;49;00mvalue[33m!r}[39;49;00m[33m)[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+>           [94mraise[39;49;00m StructuredIdentityError([90m[39;49;00m
+                [33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m rejects float; use int or encode as a reviewed string[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+            )[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string[0m
+
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:140: StructuredIdentityError
+[31m[1m_ test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True] _[0m
+
+prepared = (<ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xf1f6a1c9b7a0>, PosixPath('...cx6tn4x2pxof3rueq7c2q5ta', 'snapshot_cid': 'baguqeerai7q32nhfzpqsnauywtrubt732ueyyycabgj5lyhsiku4tv35ehna', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1')
+proof = True
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m'[39;49;00m[33mproof[39;49;00m[33m'[39;49;00m, [[94mFalse[39;49;00m, [94mTrue[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[39;49;00m(prepared,finite_tools,tmp_path,proof):[90m[39;49;00m
+        index,repository,head,_=prepared[90m[39;49;00m
+        contract=IntegerOffsetContract([33m'[39;49;00m[33mcalc.py[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mincrement[39;49;00m[33m'[39;49;00m,[33m'[39;49;00m[33mn[39;49;00m[33m'[39;49;00m,[94m2[39;49;00m)[90m[39;49;00m
+        selection=prep.RepositoryPreparationSelection(CodebaseScanPolicy(),[90m[39;49;00m
+            proof_contracts=(contract,) [94mif[39;49;00m proof [94melse[39;49;00m (), proof_inputs=((-[94m2[39;49;00m,-[94m1[39;49;00m,[94m0[39;49;00m,[94m1[39;49;00m,[94m2[39;49;00m),) [94mif[39;49;00m proof [94melse[39;49;00m ())[90m[39;49;00m
+        supervisor=ResourceScheduler(ResourcePolicy(max_lanes=[94m8[39;49;00m))[90m[39;49;00m
+        bridge=RepositoryResourceBridge(supervisor)[90m[39;49;00m
+        [94mwith[39;49;00m bridge.reserve(repository_id=head.repository_id,workspace=tmp_path,[90m[39;49;00m
+                budget=RepositoryResourceBudget(memory_mb=[94m4096[39;49;00m,wall_time_ms=[94m180000[39;49;00m)) [94mas[39;49;00m envelope:[90m[39;49;00m
+>           result=prep.prepare_repository_benchmark(index=index,repository=repository,[90m[39;49;00m
+                repository_id=head.repository_id,expected_head=head,operation_id=[33m'[39;49;00m[33marm:[39;49;00m[33m'[39;49;00m+[96mstr[39;49;00m(proof),[90m[39;49;00m
+                selection=selection,envelope=envelope,[90m[39;49;00m
+                checked_cache=FiniteCheckedCache(FormalVerificationCache(tmp_path/[33m'[39;49;00m[33mproof[39;49;00m[33m'[39;49;00m),index.artifacts) [94mif[39;49;00m proof [94melse[39;49;00m [94mNone[39;49;00m,[90m[39;49;00m
+                tool_policy=finite_tools [94mif[39;49;00m proof [94melse[39;49;00m [94mNone[39;49;00m)[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_benchmark_preparation.py[0m:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py[0m:249: in prepare_repository_benchmark
+    [0mreport[[33m"[39;49;00m[33mpreparation_cid[39;49;00m[33m"[39;49;00m] = cid_for_structured(report)[90m[39;49;00m
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:260: in cid_for_structured
+    [0mcanonical_dag_json_bytes(obj),[90m[39;49;00m
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:191: in canonical_dag_json_bytes
+    [0mvalidate_structured_value(obj)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:155: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m.[39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:146: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m[[39;49;00m[33m{[39;49;00mindex[33m}[39;49;00m[33m][39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:155: in validate_structured_value
+    [0mvalidate_structured_value(item, path=[33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m.[39;49;00m[33m{[39;49;00mkey[33m}[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 0.8320085920859128, path = '$.stages[0].elapsed_seconds'
+
+    [0m[94mdef[39;49;00m [92mvalidate_structured_value[39;49;00m(value: Any, *, path: [96mstr[39;49;00m = [33m"[39;49;00m[33m$[39;49;00m[33m"[39;49;00m) -> [94mNone[39;49;00m:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Require one reviewed structured-identity value recursively.[39;49;00m
+    [33m[39;49;00m
+    [33m    Accepted types: ``None``, ``bool``, ``int`` (non-bool), ``str``, ``list``,[39;49;00m
+    [33m    and ``dict`` with exclusively ``str`` keys.  Floats (including finite[39;49;00m
+    [33m    floats), bytes, sets, tuples, paths, host objects, and any other type are[39;49;00m
+    [33m    rejected.  Non-finite numbers are impossible for ``int``; the float check[39;49;00m
+    [33m    is kept for clear error messages if a float slips through.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        value_type = [96mtype[39;49;00m(value)[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value [95mis[39;49;00m [94mNone[39;49;00m [95mor[39;49;00m value_type [95mis[39;49;00m [96mstr[39;49;00m:[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mbool[39;49;00m:[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mint[39;49;00m:[90m[39;49;00m
+            [90m# Reject bool masquerading if called with a subclass; bool is handled.[39;49;00m[90m[39;49;00m
+            [94mreturn[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m value_type [95mis[39;49;00m [96mfloat[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m [95mnot[39;49;00m math.isfinite(value):[90m[39;49;00m
+                [94mraise[39;49;00m StructuredIdentityError([90m[39;49;00m
+                    [33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m rejects non-finite float ([39;49;00m[33m{[39;49;00mvalue[33m!r}[39;49;00m[33m)[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+>           [94mraise[39;49;00m StructuredIdentityError([90m[39;49;00m
+                [33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mpath[33m}[39;49;00m[33m rejects float; use int or encode as a reviewed string[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+            )[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string[0m
+
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py[0m:140: StructuredIdentityError
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 07:40:21,317 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:21,342 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,463 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,493 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,526 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,572 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,626 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,655 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 07:40:24,679 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1/proof/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/repository-benchmark-preparation-20261002/run-01/tests.xml -
+============================= slowest 10 durations =============================
+4.17s call     integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True]
+2.33s call     integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False]
+1.99s setup    integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False]
+1.83s setup    integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True]
+0.05s teardown integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False]
+0.04s teardown integration/test_repository_benchmark_preparation.py::test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_benchmark_preparation.py::[1mtest_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False][0m - ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: ...
+[31mFAILED[0m test/integration/test_repository_benchmark_preparation.py::[1mtest_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True][0m - ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: ...
+[31m========================= [31m[1m2 failed[0m, [32m8 passed[0m[31m in 24.23s[0m[31m =========================[0m

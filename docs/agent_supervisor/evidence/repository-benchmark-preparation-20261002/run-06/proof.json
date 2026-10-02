@@ -1,0 +1,500 @@
+{
+  "closed": {
+    "active_phase_count": 0,
+    "budget": {
+      "cpu_slots": 1,
+      "device": "cpu",
+      "disk_bytes": 67108864,
+      "enforcement": "sampled",
+      "maximum_phases": 128,
+      "maximum_queued_metadata_bytes": 65536,
+      "maximum_queued_phases": 8,
+      "memory_mb": 4096,
+      "process_slots": 1,
+      "threads_per_process": 1,
+      "wall_time_ms": 180000
+    },
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "child_lease_id": "4a0fa7da0b424b6a9f5fdddda0a77dcc",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "scan",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 881,
+        "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "queue_time_ms": 7,
+        "request_id": "fef26b2c3fec4e549cba387eb8a74168",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "3d4e3746130b48e7af2ab243ef2bd5ed",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "semantic_index",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 118,
+        "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "queue_time_ms": 7,
+        "request_id": "5ba0cdde0ecf4aa2b67038f8e9afb4b2",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "f4808df36fe0434989535cb9a163c4ff",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "sql",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 941,
+        "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "queue_time_ms": 7,
+        "request_id": "167b8d7d0c4346b09a03beec02c1b37b",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "3d89ba7349d342c8b573fb14cd0429e7",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "proof",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 1806,
+        "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "queue_time_ms": 7,
+        "request_id": "dcd97af879564fb7875aa01ccb3366cf",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "28983e8a87e04d73ab4d188071646460",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "validation",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 350,
+        "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "queue_time_ms": 8,
+        "request_id": "05f7b46c311e46c185bf4dec1f1e6864",
+        "status": "completed"
+      }
+    ],
+    "hard_enforcement": false,
+    "host_authority": {
+      "owner": "datasets.GlobalResourceScheduler",
+      "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+      "root_lease_id": "5351b3b79e024673a094849d7bf5f414",
+      "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+    },
+    "limitations": [
+      "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+      "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+      "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+      "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+      "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+      "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+      "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+    ],
+    "native_parent": {
+      "acquired_at": 1790928422.910017,
+      "cancelled": true,
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "5351b3b79e024673a094849d7bf5f414",
+      "memory_mb": 4096,
+      "owner_pid": 3258002,
+      "parent_lease_id": null,
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 6.081536412239075e-07
+    },
+    "owned_active_root_count": 0,
+    "profile": "cpu-shared-native-sampled@1",
+    "queued_metadata_bytes": 0,
+    "queued_phase_count": 0,
+    "repository_id": "repository:semantic-integration",
+    "schema": "repository-shared-host-envelope@1",
+    "shared_active_root_count": 0,
+    "supervisor_lease_id": "resource-lease:21caa9ea6b014342be51124b45ff50d2",
+    "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+    "task_execution_authority": false,
+    "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+    "validation_reserve": {
+      "cpu_slots": 2,
+      "memory_mb": 0
+    }
+  },
+  "result": {
+    "benchmark_score": false,
+    "checked_proofs": [
+      {
+        "positive_reuse_eligible": false,
+        "record_cid": "baguqeerak2rgyf5otolep5bgc6ujzm3jajdy2y34kjbtzcj6d2vakodzb3ta",
+        "request_key": "proof-cache-key:sha256:7bd25c08a0f17cabad8cb38415ad5ab57c10d25a40d629f833fdc65f34cc5dd1",
+        "scope": "exact_generated_finite_integer_table_theorems_only",
+        "status": "refuted"
+      }
+    ],
+    "complete_inventory": {
+      "ast_failed": 0,
+      "ast_ok": 2,
+      "ast_partial": 0,
+      "captured_entries": 4,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 1,
+      "declared_execution_records": 0,
+      "formalized_properties": 1,
+      "inventory_entries": 4,
+      "modeled_contracts": 1,
+      "opaque_entries": 0,
+      "semantic_symbols": 4,
+      "source_bound_models": 1,
+      "unindexed_entries": 2,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 3
+    },
+    "completion_authority": false,
+    "deadline_enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "discovery": {
+      "proof_authority": false,
+      "record_cid": "baguqeeraaomuvhe5ozwecz52c7fiqume6wivkx27etczkmefjt3k3mxh25hq",
+      "source_head": {
+        "ast_revision_id": "rev:repository:semantic-integration:snapshot:baguqeerazmsr4gal2juh4y55dwdl2hbuzi5wpaxa37ytybkc32uj63f3vu6q",
+        "generation": 2,
+        "manifest_cid": "baguqeeratic66muh773ms6bqctdt6q7i5jdbavp7wkxq5nvm42v75vdnyrgq",
+        "receipt_cid": "baguqeerav3u7t3lbpbcpizttwhpjm6lu6o3vxp5jrf2cv3t6qjxnn23d76ua",
+        "repository_id": "repository:semantic-integration",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeerazmsr4gal2juh4y55dwdl2hbuzi5wpaxa37ytybkc32uj63f3vu6q"
+      },
+      "source_observed_live": true,
+      "training_authority": false
+    },
+    "elapsed_seconds": 4.179818471893668,
+    "evaluation_population_use": {
+      "holdout_used_for_runtime_selection": false,
+      "training_holdout": "development_retention_gate",
+      "untouched_final_benchmark_test": false
+    },
+    "execution_authority": false,
+    "inference": null,
+    "model": {
+      "enabled": false,
+      "identity": "explicit-model-off@1"
+    },
+    "model_promotion_performed": false,
+    "model_provider_calls": 0,
+    "model_provider_tokens": 0,
+    "policy_receipt_cid": "baguqeera3mjsor4qkhtjis3ccnc4fcq4bwajckssulif2td3gryvb3ok6xzq",
+    "preparation_cid": "baguqeerajqwfrcn42qrodc76umherm4b6pibjcipatm2k23xzpzwi4iggceq",
+    "qualified": true,
+    "resource_receipt": {
+      "active_phase_count": 0,
+      "budget": {
+        "cpu_slots": 1,
+        "device": "cpu",
+        "disk_bytes": 67108864,
+        "enforcement": "sampled",
+        "maximum_phases": 128,
+        "maximum_queued_metadata_bytes": 65536,
+        "maximum_queued_phases": 8,
+        "memory_mb": 4096,
+        "process_slots": 1,
+        "threads_per_process": 1,
+        "wall_time_ms": 180000
+      },
+      "closed": false,
+      "completion_authority": false,
+      "events": [
+        {
+          "child_lease_id": "4a0fa7da0b424b6a9f5fdddda0a77dcc",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "scan",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 881,
+          "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+          "queue_time_ms": 7,
+          "request_id": "fef26b2c3fec4e549cba387eb8a74168",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "3d4e3746130b48e7af2ab243ef2bd5ed",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "semantic_index",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 118,
+          "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+          "queue_time_ms": 7,
+          "request_id": "5ba0cdde0ecf4aa2b67038f8e9afb4b2",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "f4808df36fe0434989535cb9a163c4ff",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "sql",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 941,
+          "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+          "queue_time_ms": 7,
+          "request_id": "167b8d7d0c4346b09a03beec02c1b37b",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "3d89ba7349d342c8b573fb14cd0429e7",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "proof",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 1806,
+          "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+          "queue_time_ms": 7,
+          "request_id": "dcd97af879564fb7875aa01ccb3366cf",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "28983e8a87e04d73ab4d188071646460",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "validation",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 350,
+          "parent_lease_id": "5351b3b79e024673a094849d7bf5f414",
+          "queue_time_ms": 8,
+          "request_id": "05f7b46c311e46c185bf4dec1f1e6864",
+          "status": "completed"
+        }
+      ],
+      "hard_enforcement": false,
+      "host_authority": {
+        "owner": "datasets.GlobalResourceScheduler",
+        "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+        "root_lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+      },
+      "limitations": [
+        "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+        "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+        "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+        "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+        "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+        "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+        "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+      ],
+      "native_parent": {
+        "acquired_at": 1790928422.910017,
+        "cancelled": false,
+        "child_process_slots": 1,
+        "cpu_slots": 1,
+        "gpu_memory_mb": 0,
+        "lane": "orchestration",
+        "lease_id": "5351b3b79e024673a094849d7bf5f414",
+        "memory_mb": 4096,
+        "owner_pid": 3258002,
+        "parent_lease_id": null,
+        "released": false,
+        "requires_gpu": false,
+        "unified_memory_mb": 0,
+        "wait_seconds": 6.081536412239075e-07
+      },
+      "owned_active_root_count": 1,
+      "profile": "cpu-shared-native-sampled@1",
+      "queued_metadata_bytes": 0,
+      "queued_phase_count": 0,
+      "repository_id": "repository:semantic-integration",
+      "schema": "repository-shared-host-envelope@1",
+      "shared_active_root_count": 1,
+      "supervisor_lease_id": "resource-lease:21caa9ea6b014342be51124b45ff50d2",
+      "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+      "task_execution_authority": false,
+      "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+      "validation_reserve": {
+        "cpu_slots": 2,
+        "memory_mb": 0
+      }
+    },
+    "schema": "repository-benchmark-preparation@1",
+    "selection": {
+      "inference_paths": [],
+      "inventory_policy": {
+        "admitted_modes": [
+          "git-clean",
+          "git-working"
+        ],
+        "capabilities": {
+          "opaque_entries": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "selection_eligible": false,
+            "structural_ast": false
+          },
+          "other_utf8_files": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "artifact_metadata_only",
+            "structural_ast": false,
+            "target_execution": false
+          },
+          "proof": "selection_references_only_no_obligation_or_evidence_admission",
+          "python_pytest": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "conservative_static_observations",
+            "structural_ast": true,
+            "target_execution": false
+          },
+          "submodules_and_nested_repositories": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "disposition": "opaque_nonregular_boundary",
+            "recursive_analysis": false
+          },
+          "training": "selection_references_only_no_label_or_sample_admission"
+        },
+        "custom_exclusions": [],
+        "dirty_overlay": "exact_head_index_disposition_and_captured_source_identity",
+        "effective_exclusions": [
+          ".eggs",
+          ".git",
+          ".hg",
+          ".mypy_cache",
+          ".nox",
+          ".pytest_cache",
+          ".ruff_cache",
+          ".semantic-index",
+          ".semantic_index",
+          ".svn",
+          ".tox",
+          ".venv",
+          "__pycache__",
+          "build",
+          "coverage",
+          "dist",
+          "env",
+          "external",
+          "htmlcov",
+          "node_modules",
+          "semantic-index-state",
+          "site-packages",
+          "third-party",
+          "third_party",
+          "vendor",
+          "venv"
+        ],
+        "exclusion_matching": "raw_path_component_or_repository_relative_subtree",
+        "external_ignore_policy": "reject_active_patterns_and_fence_configuration_and_exact_bytes",
+        "inventory": "all_nonexcluded_entries_no_training_or_proof_filter",
+        "max_entries": 256,
+        "max_file_bytes": 65536,
+        "profile": "codebase-single-root-python-structural@1",
+        "schema": "codebase-scan-policy@1",
+        "source_forest": "one_committed_git_root_with_opaque_nested_boundaries",
+        "untracked_population": "git_standard_untracked_with_captured_repository_ignore_files"
+      },
+      "model_policy": "model_off",
+      "proof_contracts": [
+        {
+          "function_name": "increment",
+          "offset": 2,
+          "parameter": "n",
+          "path": "calc.py",
+          "profile": "python-integer-offset@1",
+          "schema": "codebase-integer-offset-contract@1"
+        }
+      ],
+      "proof_inputs": [
+        [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ]
+      ],
+      "training_selections": []
+    },
+    "semantic_manifest_cid": "baguqeeraqdes3hkjvzwiyyhzeswdmptxsch5ifgywtyjuzwermzvhuwttsfq",
+    "source_head": {
+      "ast_revision_id": "rev:repository:semantic-integration:snapshot:baguqeerazmsr4gal2juh4y55dwdl2hbuzi5wpaxa37ytybkc32uj63f3vu6q",
+      "generation": 2,
+      "manifest_cid": "baguqeeratic66muh773ms6bqctdt6q7i5jdbavp7wkxq5nvm42v75vdnyrgq",
+      "receipt_cid": "baguqeerav3u7t3lbpbcpizttwhpjm6lu6o3vxp5jrf2cv3t6qjxnn23d76ua",
+      "repository_id": "repository:semantic-integration",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeerazmsr4gal2juh4y55dwdl2hbuzi5wpaxa37ytybkc32uj63f3vu6q"
+    },
+    "stages": [
+      {
+        "elapsed_seconds": 0.8892202978022397,
+        "phase": "scan",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.1265704541001469,
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.9491461371071637,
+        "phase": "sql",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 1.8142803641967475,
+        "phase": "proof",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.3597019938752055,
+        "phase": "validation",
+        "status": "completed"
+      }
+    ],
+    "training": null
+  }
+}

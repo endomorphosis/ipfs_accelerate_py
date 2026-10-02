@@ -1,0 +1,63 @@
+{
+  "actual_backends": [
+    "native DuckDB/CAS",
+    "shared native host admission",
+    "SecurityIR shared384 checkpoint and GTE-small CPU",
+    "native Python and Lean"
+  ],
+  "benchmark_score": false,
+  "diagnostics": [
+    "run01 integer-CID serializer refused native floating timing fields; fixed exact-byte report hash",
+    "run02 and05 native admission refused under actual shared host pressure; no telemetry changes",
+    "run05 cancellation test caught the body but not the expected cancelled context exit; corrected test only"
+  ],
+  "distinct_passed": 14,
+  "final_runs": [
+    {
+      "errors": 2,
+      "failed": 1,
+      "passed": 11,
+      "run": "run-05",
+      "seconds": 128.03
+    },
+    {
+      "deselected": 11,
+      "passed": 3,
+      "run": "run-06",
+      "seconds": 28.14
+    }
+  ],
+  "holdout_use": "development retention/model-selection gate; not untouched final benchmark data",
+  "limitations": [
+    "full daemon phase/deadline integration is still being qualified",
+    "sampled CPU admission is not cgroup enforcement",
+    "setup fixture owners are warm; these are correctness controls, not cold benchmark scores"
+  ],
+  "model_provider_tokens": 0,
+  "qualified_scope": "independent complete scan/index/proof/training/inference selection under actual preparation parent and phase accounting",
+  "rpi018_complete": false,
+  "schema": "repository-benchmark-preparation-qualification@1",
+  "skipped": 0,
+  "source_inventory": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "47a393010cb5f51bdefd405eee57773b35b084d55c006d00f3d697565715c956"
+    },
+    {
+      "path": "test/integration/test_repository_benchmark_preparation.py",
+      "sha256": "23edae560eb874124fe4d144a3c6e8022a4bd3a65320cef374b2b06c1f341e5b"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    }
+  ],
+  "training_retention": {
+    "child_exact": 0,
+    "child_promoted": false,
+    "optional_result": "pinned_parent_retained",
+    "parent_exact": 3,
+    "population": 3,
+    "required_result": "rejected_without_inference"
+  }
+}

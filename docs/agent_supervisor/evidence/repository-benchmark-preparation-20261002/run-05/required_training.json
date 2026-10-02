@@ -1,0 +1,426 @@
+{
+  "closed": {
+    "active_phase_count": 0,
+    "budget": {
+      "cpu_slots": 1,
+      "device": "cpu",
+      "disk_bytes": 67108864,
+      "enforcement": "sampled",
+      "maximum_phases": 128,
+      "maximum_queued_metadata_bytes": 65536,
+      "maximum_queued_phases": 8,
+      "memory_mb": 4096,
+      "process_slots": 1,
+      "threads_per_process": 1,
+      "wall_time_ms": 240000
+    },
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "child_lease_id": "8b293b554e0d4f8c9505e7f16b030537",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "scan",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 1592,
+        "parent_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+        "queue_time_ms": 10,
+        "request_id": "49c68c12a3814253b938bd111e609c09",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "5ee59964793242c389636701fa87cc87",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "semantic_index",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 184,
+        "parent_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+        "queue_time_ms": 10,
+        "request_id": "e7ac3928dade4e9fbc772ba1bf52ed41",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "9a5e6328adc84cd7a758c41f373c43cc",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "sql",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 1475,
+        "parent_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+        "queue_time_ms": 7,
+        "request_id": "d69778bba1ee41b8aaa281e492c7cf69",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "91513a3992674924a4b5daa2f9997938",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "semantic_index",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 979,
+        "parent_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+        "queue_time_ms": 10,
+        "request_id": "21997b6170c046118abc6f6f69ae644b",
+        "status": "completed"
+      },
+      {
+        "child_lease_id": "61a02653bbba47539ef24cb768ae7c9b",
+        "demand": {
+          "cpu_slots": 1,
+          "disk_bytes": 16777216,
+          "memory_mb": 4096,
+          "phase": "training",
+          "process_slots": 1,
+          "threads_per_process": 1
+        },
+        "execution_time_ms": 6691,
+        "parent_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+        "queue_time_ms": 8,
+        "request_id": "f1959836118a417682591cb836a00ea3",
+        "status": "completed"
+      }
+    ],
+    "hard_enforcement": false,
+    "host_authority": {
+      "owner": "datasets.GlobalResourceScheduler",
+      "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+      "root_lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+      "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+    },
+    "limitations": [
+      "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+      "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+      "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+      "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+      "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+      "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+      "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+    ],
+    "native_parent": {
+      "acquired_at": 1790928294.1541688,
+      "cancelled": true,
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "09a2c05022044fc4b8f58420f65ee0fc",
+      "memory_mb": 4096,
+      "owner_pid": 3189460,
+      "parent_lease_id": null,
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 5.601905286312103e-07
+    },
+    "owned_active_root_count": 0,
+    "profile": "cpu-shared-native-sampled@1",
+    "queued_metadata_bytes": 0,
+    "queued_phase_count": 0,
+    "repository_id": "repository:lifecycle384",
+    "schema": "repository-shared-host-envelope@1",
+    "shared_active_root_count": 1,
+    "supervisor_lease_id": "resource-lease:30f83030e02a46fba54a5afc668d5481",
+    "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+    "task_execution_authority": false,
+    "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+    "validation_reserve": {
+      "cpu_slots": 2,
+      "memory_mb": 0
+    }
+  },
+  "result": {
+    "benchmark_score": false,
+    "checked_proofs": [],
+    "complete_inventory": {
+      "ast_failed": 0,
+      "ast_ok": 9,
+      "ast_partial": 0,
+      "captured_entries": 9,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 0,
+      "declared_execution_records": 0,
+      "formalized_properties": 0,
+      "inventory_entries": 9,
+      "modeled_contracts": 0,
+      "opaque_entries": 0,
+      "semantic_symbols": 18,
+      "source_bound_models": 0,
+      "unindexed_entries": 0,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 9
+    },
+    "completion_authority": false,
+    "deadline_enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "discovery": {
+      "proof_authority": false,
+      "record_cid": "baguqeera53h4sr7zkxmknxllignoiuln27ujeqserzifpsi4zdi2kldhunra",
+      "source_head": {
+        "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeeraprgijjcqqdbm3mna5reo67km6bhftaefgrlkf6ad3l7o6fxsjhia",
+        "generation": 4,
+        "manifest_cid": "baguqeeraze4rd2o7p2fuq6fumhsrsflze5kkmlf3gzyydtca3uggocjbd65a",
+        "receipt_cid": "baguqeerahub4bx2mq3575cr3a4i7qjbndgcbjpqb4u63wt3gtn3c24sjxwqq",
+        "repository_id": "repository:lifecycle384",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeraprgijjcqqdbm3mna5reo67km6bhftaefgrlkf6ad3l7o6fxsjhia"
+      },
+      "source_observed_live": true,
+      "training_authority": false
+    },
+    "evaluation_population_use": {
+      "holdout_used_for_runtime_selection": true,
+      "training_holdout": "development_retention_gate",
+      "untouched_final_benchmark_test": false
+    },
+    "execution_authority": false,
+    "inference": null,
+    "model": {
+      "enabled": true,
+      "expected_head": {
+        "branch": "main",
+        "generation": 1,
+        "variant_id": "codebase-source384:d45824b91045888c0ea4dcd0acad3e6f303aed1a9cc38a30406dd3f85caeb352",
+        "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+      },
+      "fallback_reason": "child_unqualified_or_incomplete",
+      "identity": "pinned-source384-parent@1",
+      "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+    },
+    "model_promotion_performed": false,
+    "model_provider_calls": 0,
+    "model_provider_tokens": 0,
+    "policy_receipt_cid": "baguqeerave625snubpgmemfgz2avqhyoaxmfarvu5vlcmbu4bggn7ldo4eaa",
+    "qualified": false,
+    "schema": "repository-benchmark-preparation@1",
+    "selection": {
+      "inference_paths": [
+        "holdout_0.py",
+        "holdout_1.py",
+        "holdout_2.py"
+      ],
+      "inventory_policy": {
+        "admitted_modes": [
+          "git-clean",
+          "git-working"
+        ],
+        "capabilities": {
+          "opaque_entries": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "selection_eligible": false,
+            "structural_ast": false
+          },
+          "other_utf8_files": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "artifact_metadata_only",
+            "structural_ast": false,
+            "target_execution": false
+          },
+          "proof": "selection_references_only_no_obligation_or_evidence_admission",
+          "python_pytest": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "conservative_static_observations",
+            "structural_ast": true,
+            "target_execution": false
+          },
+          "submodules_and_nested_repositories": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "disposition": "opaque_nonregular_boundary",
+            "recursive_analysis": false
+          },
+          "training": "selection_references_only_no_label_or_sample_admission"
+        },
+        "custom_exclusions": [],
+        "dirty_overlay": "exact_head_index_disposition_and_captured_source_identity",
+        "effective_exclusions": [
+          ".eggs",
+          ".git",
+          ".hg",
+          ".mypy_cache",
+          ".nox",
+          ".pytest_cache",
+          ".ruff_cache",
+          ".semantic-index",
+          ".semantic_index",
+          ".svn",
+          ".tox",
+          ".venv",
+          "__pycache__",
+          "build",
+          "coverage",
+          "dist",
+          "env",
+          "external",
+          "htmlcov",
+          "node_modules",
+          "semantic-index-state",
+          "site-packages",
+          "third-party",
+          "third_party",
+          "vendor",
+          "venv"
+        ],
+        "exclusion_matching": "raw_path_component_or_repository_relative_subtree",
+        "external_ignore_policy": "reject_active_patterns_and_fence_configuration_and_exact_bytes",
+        "inventory": "all_nonexcluded_entries_no_training_or_proof_filter",
+        "max_entries": 256,
+        "max_file_bytes": 65536,
+        "profile": "codebase-single-root-python-structural@1",
+        "schema": "codebase-scan-policy@1",
+        "source_forest": "one_committed_git_root_with_opaque_nested_boundaries",
+        "untracked_population": "git_standard_untracked_with_captured_repository_ignore_files"
+      },
+      "model_policy": "required_training",
+      "proof_contracts": [],
+      "proof_inputs": [],
+      "training_selections": [
+        {
+          "group_id": "train_0.py",
+          "path": "train_0.py",
+          "role": "train"
+        },
+        {
+          "group_id": "train_1.py",
+          "path": "train_1.py",
+          "role": "train"
+        },
+        {
+          "group_id": "train_2.py",
+          "path": "train_2.py",
+          "role": "train"
+        },
+        {
+          "group_id": "validation_0.py",
+          "path": "validation_0.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "validation_1.py",
+          "path": "validation_1.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "validation_2.py",
+          "path": "validation_2.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "holdout_0.py",
+          "path": "holdout_0.py",
+          "role": "holdout"
+        },
+        {
+          "group_id": "holdout_1.py",
+          "path": "holdout_1.py",
+          "role": "holdout"
+        },
+        {
+          "group_id": "holdout_2.py",
+          "path": "holdout_2.py",
+          "role": "holdout"
+        }
+      ]
+    },
+    "semantic_manifest_cid": "baguqeeravo3fsdzhajfbizcobtfl22er3dilt4jqsu4no3jtd6hiqcz6vuzq",
+    "source_head": {
+      "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeeraprgijjcqqdbm3mna5reo67km6bhftaefgrlkf6ad3l7o6fxsjhia",
+      "generation": 4,
+      "manifest_cid": "baguqeeraze4rd2o7p2fuq6fumhsrsflze5kkmlf3gzyydtca3uggocjbd65a",
+      "receipt_cid": "baguqeerahub4bx2mq3575cr3a4i7qjbndgcbjpqb4u63wt3gtn3c24sjxwqq",
+      "repository_id": "repository:lifecycle384",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraprgijjcqqdbm3mna5reo67km6bhftaefgrlkf6ad3l7o6fxsjhia"
+    },
+    "stages": [
+      {
+        "elapsed_seconds": 1.6026094919070601,
+        "phase": "scan",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.19580856896936893,
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 1.4837785579729825,
+        "phase": "sql",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.9906592159532011,
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 6.701104918960482,
+        "phase": "training",
+        "status": "completed"
+      }
+    ],
+    "training": {
+      "current_source_verified": true,
+      "evaluation": {
+        "child_holdout": {
+          "count": 3,
+          "exact_targets": 0,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 6,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        },
+        "holdout_used_for_selection": false,
+        "parent_holdout": {
+          "count": 3,
+          "exact_targets": 3,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 12,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        },
+        "scope": "fixed_schema_source_target_reconstruction",
+        "zero_head_holdout": {
+          "count": 3,
+          "exact_targets": 1,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 10,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        }
+      },
+      "generation_version_id": "sha256:c805c532643f8ce87014fe4d875f0681b1a792a3758f665c84ae42a6ed3cf09c",
+      "historical_replay": false,
+      "job_sha256": "acd6017ca2134bb370bae605f870bde95f251417afc51086ad3fbc571545b506",
+      "native_run_id": "source384:generation:069570c0f91dc38601ac08ac7b06c15d072a1985506fe2d9d3b8d7750647fc93",
+      "numerical_child_version_id": "sha256:9f4ce2c511a6cdb2c642033999694c0c0e6f2852de3185c065707234fd85e2f0",
+      "promotion_performed": false,
+      "schema": "codebase-training-job@1",
+      "status": "completed",
+      "training_executed": true
+    }
+  }
+}

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="10" time="24.191" timestamp="2026-10-02T07:40:01.372291+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_benchmark_preparation" name="test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[False]" time="4.366"><failure message="ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string">prepared = (&lt;ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xf1f6a1d38800&gt;, PosixPath('...vzevfzngbzwtba3xhf2axxna', 'snapshot_cid': 'baguqeeraf77mvjaeu7xdjdncjrmblt4ke2sjsshqca2miwbqetis7h5aakya', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee0')
+proof = False
+
+    @pytest.mark.parametrize('proof', [False, True])
+    def test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population(prepared,finite_tools,tmp_path,proof):
+        index,repository,head,_=prepared
+        contract=IntegerOffsetContract('calc.py','increment','n',2)
+        selection=prep.RepositoryPreparationSelection(CodebaseScanPolicy(),
+            proof_contracts=(contract,) if proof else (), proof_inputs=((-2,-1,0,1,2),) if proof else ())
+        supervisor=ResourceScheduler(ResourcePolicy(max_lanes=8))
+        bridge=RepositoryResourceBridge(supervisor)
+        with bridge.reserve(repository_id=head.repository_id,workspace=tmp_path,
+                budget=RepositoryResourceBudget(memory_mb=4096,wall_time_ms=180000)) as envelope:
+&gt;           result=prep.prepare_repository_benchmark(index=index,repository=repository,
+                repository_id=head.repository_id,expected_head=head,operation_id='arm:'+str(proof),
+                selection=selection,envelope=envelope,
+                checked_cache=FiniteCheckedCache(FormalVerificationCache(tmp_path/'proof'),index.artifacts) if proof else None,
+                tool_policy=finite_tools if proof else None)
+
+test/integration/test_repository_benchmark_preparation.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py:249: in prepare_repository_benchmark
+    report["preparation_cid"] = cid_for_structured(report)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:260: in cid_for_structured
+    canonical_dag_json_bytes(obj),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:191: in canonical_dag_json_bytes
+    validate_structured_value(obj)
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:146: in validate_structured_value
+    validate_structured_value(item, path=f"{path}[{index}]")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 0.8903504349291325, path = '$.stages[0].elapsed_seconds'
+
+    def validate_structured_value(value: Any, *, path: str = "$") -&gt; None:
+        """Require one reviewed structured-identity value recursively.
+    
+        Accepted types: ``None``, ``bool``, ``int`` (non-bool), ``str``, ``list``,
+        and ``dict`` with exclusively ``str`` keys.  Floats (including finite
+        floats), bytes, sets, tuples, paths, host objects, and any other type are
+        rejected.  Non-finite numbers are impossible for ``int``; the float check
+        is kept for clear error messages if a float slips through.
+        """
+    
+        value_type = type(value)
+    
+        if value is None or value_type is str:
+            return
+    
+        if value_type is bool:
+            return
+    
+        if value_type is int:
+            # Reject bool masquerading if called with a subclass; bool is handled.
+            return
+    
+        if value_type is float:
+            if not math.isfinite(value):
+                raise StructuredIdentityError(
+                    f"{path} rejects non-finite float ({value!r})"
+                )
+&gt;           raise StructuredIdentityError(
+                f"{path} rejects float; use int or encode as a reviewed string"
+            )
+E           ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string
+
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:140: StructuredIdentityError</failure></testcase><testcase classname="integration.test_repository_benchmark_preparation" name="test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population[True]" time="6.035"><failure message="ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string">prepared = (&lt;ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xf1f6a1c9b7a0&gt;, PosixPath('...cx6tn4x2pxof3rueq7c2q5ta', 'snapshot_cid': 'baguqeerai7q32nhfzpqsnauywtrubt732ueyyycabgj5lyhsiku4tv35ehna', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4683/test_native_model_off_arms_kee1')
+proof = True
+
+    @pytest.mark.parametrize('proof', [False, True])
+    def test_native_model_off_arms_keep_complete_inventory_and_independent_proof_population(prepared,finite_tools,tmp_path,proof):
+        index,repository,head,_=prepared
+        contract=IntegerOffsetContract('calc.py','increment','n',2)
+        selection=prep.RepositoryPreparationSelection(CodebaseScanPolicy(),
+            proof_contracts=(contract,) if proof else (), proof_inputs=((-2,-1,0,1,2),) if proof else ())
+        supervisor=ResourceScheduler(ResourcePolicy(max_lanes=8))
+        bridge=RepositoryResourceBridge(supervisor)
+        with bridge.reserve(repository_id=head.repository_id,workspace=tmp_path,
+                budget=RepositoryResourceBudget(memory_mb=4096,wall_time_ms=180000)) as envelope:
+&gt;           result=prep.prepare_repository_benchmark(index=index,repository=repository,
+                repository_id=head.repository_id,expected_head=head,operation_id='arm:'+str(proof),
+                selection=selection,envelope=envelope,
+                checked_cache=FiniteCheckedCache(FormalVerificationCache(tmp_path/'proof'),index.artifacts) if proof else None,
+                tool_policy=finite_tools if proof else None)
+
+test/integration/test_repository_benchmark_preparation.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py:249: in prepare_repository_benchmark
+    report["preparation_cid"] = cid_for_structured(report)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:260: in cid_for_structured
+    canonical_dag_json_bytes(obj),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:191: in canonical_dag_json_bytes
+    validate_structured_value(obj)
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:146: in validate_structured_value
+    validate_structured_value(item, path=f"{path}[{index}]")
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:155: in validate_structured_value
+    validate_structured_value(item, path=f"{path}.{key}")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 0.8320085920859128, path = '$.stages[0].elapsed_seconds'
+
+    def validate_structured_value(value: Any, *, path: str = "$") -&gt; None:
+        """Require one reviewed structured-identity value recursively.
+    
+        Accepted types: ``None``, ``bool``, ``int`` (non-bool), ``str``, ``list``,
+        and ``dict`` with exclusively ``str`` keys.  Floats (including finite
+        floats), bytes, sets, tuples, paths, host objects, and any other type are
+        rejected.  Non-finite numbers are impossible for ``int``; the float check
+        is kept for clear error messages if a float slips through.
+        """
+    
+        value_type = type(value)
+    
+        if value is None or value_type is str:
+            return
+    
+        if value_type is bool:
+            return
+    
+        if value_type is int:
+            # Reject bool masquerading if called with a subclass; bool is handled.
+            return
+    
+        if value_type is float:
+            if not math.isfinite(value):
+                raise StructuredIdentityError(
+                    f"{path} rejects non-finite float ({value!r})"
+                )
+&gt;           raise StructuredIdentityError(
+                f"{path} rejects float; use int or encode as a reviewed string"
+            )
+E           ipfs_datasets_py.logic.software_contracts.content.StructuredIdentityError: $.stages[0].elapsed_seconds rejects float; use int or encode as a reviewed string
+
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py:140: StructuredIdentityError</failure></testcase><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes0]" time="0.001" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes1]" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes2]" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes3]" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes4]" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_closed_arm_selection_refuses_implicit_work[changes5]" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_phase_budget_refuses_boolean_and_unbounded_values" time="0.000" /><testcase classname="integration.test_repository_benchmark_preparation" name="test_no_regressed_child_can_be_selected" time="0.000" /></testsuite></testsuites>

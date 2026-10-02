@@ -1,0 +1,34 @@
+{
+  "actual_cases": [
+    "two dirty successors at unchanged Git HEAD",
+    "renamed logical source with opaque old path",
+    "independent parallel worktree views",
+    "real opaque submodule with no nested AST/proof",
+    "source race after page construction",
+    "ignore configuration change after frozen page"
+  ],
+  "benchmark_score": false,
+  "diagnostic": "Rename test initially expected removed tracked path absent. Complete dirty inventory correctly preserves it as opaque. Corrected test requires no AST/source or eligible evidence and a cache miss at the new path.",
+  "distinct_passed": 6,
+  "final_runs": [
+    {
+      "failed": 1,
+      "passed": 5,
+      "run": "run-01",
+      "seconds": 121.24
+    },
+    {
+      "deselected": 5,
+      "passed": 1,
+      "run": "run-02",
+      "seconds": 33.43
+    }
+  ],
+  "implementation_changed": false,
+  "producer_sha256": "29b0207f65257f176b45b4853a13040d407d7bbcb13f6b0717e13255491629ec",
+  "proof_authority": false,
+  "schema": "repository-code-evidence-source-matrix@1",
+  "skipped": 0,
+  "test_path": "test/integration/test_repository_code_evidence_source_matrix.py",
+  "test_sha256": "20e7962b4d2a6cedf0628be15db54c5b917afd26b6934372a8e05fc516a38de3"
+}

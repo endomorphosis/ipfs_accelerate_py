@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="6" time="121.209" timestamp="2026-10-02T08:12:18.916171+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_two_dirty_successors_at_same_git_head_never_reuse_old_rows" time="16.586" /><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_rename_changes_logical_identity_and_old_path_is_not_satisfied" time="21.655"><failure message="Failed: DID NOT RAISE ValueError">owner = (&lt;ipfs_accelerate_py.agent_supervisor.analysis.repository_code_evidence.RepositoryCodeEvidence object at 0xeac8e7a7e3c...eovkh4xqdngiahszv2tgs7beq'), 'semantic_manifest_cid': 'baguqeerauqqgebguwpsuf4g6ejmrmwbjdvet3bhtazvbqz6rtubiyd2qgqja'})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+
+    def test_rename_changes_logical_identity_and_old_path_is_not_satisfied(owner,finite_tools):
+        plane,args=owner
+        before=plane.relevant_units(query=RelevantUnitsQuery(('calc.py',)),**args)['rows'][0]
+        git(args['repository'],'mv','calc.py','renamed.py')
+        new=refresh(plane,args,'renamed',path='renamed.py')
+        after=plane.relevant_units(query=RelevantUnitsQuery(('renamed.py',)),**new)['rows'][0]
+        assert after['logical_unit_id']!=before['logical_unit_id']
+&gt;       with pytest.raises(ValueError):plane.relevant_units(query=RelevantUnitsQuery(('calc.py',)),**new)
+E       Failed: DID NOT RAISE ValueError
+
+test/integration/test_repository_code_evidence_source_matrix.py:49: Failed</failure></testcase><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_parallel_worktrees_keep_distinct_current_rows" time="16.133" /><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_real_submodule_is_retained_as_opaque_and_cannot_supply_ast_or_proof" time="41.200" /><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_source_change_after_row_construction_refuses_returned_page" time="4.727" /><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_ignore_configuration_change_refuses_frozen_page" time="5.785" /></testsuite></testsuites>
