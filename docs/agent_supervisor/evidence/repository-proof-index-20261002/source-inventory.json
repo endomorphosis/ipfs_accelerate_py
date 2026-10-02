@@ -1,0 +1,132 @@
+{
+  "schema": "repository-proof-cache-source-inventory/v1",
+  "scope": "Scoped changed files, tests and direct native owner dependencies; not a complete Python dependency closure.",
+  "files": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/canonical_cache_key_bridge.py",
+      "sha256": "76a7ed3cbfbd497f91dbba5e171dbcad3408ecd46c298f992a5730e5cbba06de",
+      "bytes": 8512
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/doctor_cache_state.py",
+      "sha256": "c06e3f1c6590d5fdb55f13b77412631600ae211e090581767c3e7d6b2dd8a732",
+      "bytes": 12067
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "sha256": "28a2f397855a97f2ab0ed0602a54fbe276c91f3635584f2f93a1d1af91fc0b9e",
+      "bytes": 80046
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "sha256": "e59250cbbe89a1a78ca024d109f4afc719e9e4d3885e0ba3e67a02c81b3b993c",
+      "bytes": 99336
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+      "bytes": 109558
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450",
+      "bytes": 74508
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+      "sha256": "14070ff04a71dd0eaee00f26e769043dcb0e88e8ef88cca9776983ae1bc8539f",
+      "bytes": 116710
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983",
+      "bytes": 90990
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py",
+      "sha256": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e",
+      "bytes": 13703
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/content_identity_bridge.py",
+      "sha256": "f9d05c5b51ef8383b8282741e1cdfa9a04e780a23c634cb5c57c389bba7aac06",
+      "bytes": 94077
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "sha256": "0626a05f2eba532bd32910999c84b9aa57ee67c3d37994aeca4897066509810a",
+      "bytes": 266210
+    },
+    {
+      "repository": "accelerate",
+      "path": "docs/agent_supervisor/doctor_cache_durable_state.md",
+      "sha256": "1c103fd3cc920f6327786a507f73630441a705f285ae35eca140ae099f348c16",
+      "bytes": 5335
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_agent_supervisor_doctor_proof_cache.py",
+      "sha256": "09dd9f551f4953dd13b9368f58a93e2d67ac99f14f69f577fe05ea97c0948356",
+      "bytes": 17827
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_doctor_cache_durable_state.py",
+      "sha256": "40f9e6c1bbe4d7eb5709936834688bbeee797161054de7fea420c51e06034783",
+      "bytes": 8034
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_agent_supervisor_formal_verification_cache.py",
+      "sha256": "4031a22e44e7ebdb64d016e3e83cb9b11ef746ad19addeda1bb7460c1f5a86ef",
+      "bytes": 19876
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_board_proof_cache_pagination.py",
+      "sha256": "c23879a942e1bbad24d62095f1b8d0afe9681f40470405de1610d8b65c2f1037",
+      "bytes": 4771
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_canonical_cache_key_bridge.py",
+      "sha256": "7ba94f8dfff6ceb339d7659eaca67a687d0b89ca03e1f557993ff8f24f16bddb",
+      "bytes": 10130
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/test_agent_supervisor_board_control_plane.py",
+      "sha256": "4420b81ce077f587ec11386dfc1393b6f7f3178799dfe73fefaff2cb8ad97d90",
+      "bytes": 18787
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "sha256": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+      "bytes": 25282
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/ir_core/axes.py",
+      "sha256": "4d65336f197a18ccbfd3dd02ce968eb401fb498aeebd2a43735d7a88ab8c6f97",
+      "bytes": 16755
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/ir_core/identity.py",
+      "sha256": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+      "bytes": 8911
+    }
+  ]
+}

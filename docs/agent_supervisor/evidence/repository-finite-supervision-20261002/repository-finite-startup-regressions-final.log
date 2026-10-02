@@ -1,0 +1,93 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 26 items
+
+test/integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:29:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:02 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:29:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:02 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:29:02 [[32m    INFO[0m] state-owner ready server_id=server:02454ba3-de23-44ee-8847-3389178d0718 listen_uri=quack:127.0.0.1:38485 (quack_state_server.py:4353)
+2026-10-02 05:29:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_actual_native_owner_child0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  3%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:29:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:07 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:29:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:07 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:29:08 [[32m    INFO[0m] state-owner ready server_id=server:7b779a88-7dcc-47d9-be46-1db6a43ee52f listen_uri=quack:127.0.0.1:45115 (quack_state_server.py:4353)
+2026-10-02 05:29:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  7%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_foreign_request_cannot_borrow_admitted_launch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:29:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_foreign_request_cannot_bo0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:09 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_foreign_request_cannot_bo0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:09 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:29:09 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_foreign_request_cannot_bo0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:09 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:29:09 [[32m    INFO[0m] state-owner ready server_id=server:60c0bc33-b1e4-4ab8-9e57-aa5236c11981 listen_uri=quack:127.0.0.1:44419 (quack_state_server.py:4353)
+2026-10-02 05:29:09 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_foreign_request_cannot_bo0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 11%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_stale_native_lease_does_not_launch_or_issue_child_grant 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:29:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_stale_native_lease_does_n0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_stale_native_lease_does_n0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:11 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:29:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_stale_native_lease_does_n0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:11 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:29:11 [[32m    INFO[0m] state-owner ready server_id=server:8c05e784-bfde-4a5f-a042-1961a4dc7944 listen_uri=quack:127.0.0.1:41081 (quack_state_server.py:4353)
+2026-10-02 05:29:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_stale_native_lease_does_n0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 15%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_changed_context_digest_is_rejected_before_launch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:29:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_changed_context_digest_is0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_changed_context_digest_is0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:12 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:29:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_changed_context_digest_is0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:29:12 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:29:12 [[32m    INFO[0m] state-owner ready server_id=server:b097b4f7-6fee-4165-9b50-f05eaed66c03 listen_uri=quack:127.0.0.1:43953 (quack_state_server.py:4353)
+2026-10-02 05:29:13 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4559/test_changed_context_digest_is0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 19%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_launch_lifetime_is_an_explicit_bounded_integer[True] [32mPASSED[0m[32m [ 23%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_launch_lifetime_is_an_explicit_bounded_integer[119] [32mPASSED[0m[32m [ 26%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_launch_lifetime_is_an_explicit_bounded_integer[601] [32mPASSED[0m[32m [ 30%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_launch_lifetime_is_an_explicit_bounded_integer[300.0] [32mPASSED[0m[32m [ 34%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_candidate_git_environment_retains_closed_configuration [32mPASSED[0m[32m [ 38%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[True-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 42%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[True-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 46%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[1999-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 50%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[1999-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 53%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30000.0-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 57%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30000.0-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 61%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30001-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 65%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30001-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 69%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[90000-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 73%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[90000-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 76%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[120000-AdmittedBenchmarkRuntime] [32mPASSED[0m[32m [ 80%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[120000-IsolatedBenchmarkRuntime] [32mPASSED[0m[32m [ 84%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_signed_git_configuration_overrides_repository_auto_maintenance[-False] [32mPASSED[0m[32m [ 88%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_signed_git_configuration_overrides_repository_auto_maintenance[-True] [32mPASSED[0m[32m [ 92%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_signed_git_configuration_overrides_repository_auto_maintenance['gc.auto'='1' 'gc.autoDetach'='true' 'maintenance.auto'='true'-False] [32mPASSED[0m[32m [ 96%][0m
+test/api/test_admitted_runtime_launch_bounds.py::test_signed_git_configuration_overrides_repository_auto_maintenance['gc.auto'='1' 'gc.autoDetach'='true' 'maintenance.auto'='true'-True] [32mPASSED[0m[32m [100%][0m
+
+============================= slowest 10 durations =============================
+3.98s call     integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop
+1.40s setup    integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop
+1.37s setup    integration/test_admitted_benchmark_runtime.py::test_foreign_request_cannot_borrow_admitted_launch
+1.31s setup    integration/test_admitted_benchmark_runtime.py::test_changed_context_digest_is_rejected_before_launch
+1.29s setup    integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+1.19s setup    integration/test_admitted_benchmark_runtime.py::test_stale_native_lease_does_not_launch_or_issue_child_grant
+0.22s teardown integration/test_admitted_benchmark_runtime.py::test_changed_context_digest_is_rejected_before_launch
+0.21s teardown integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+0.18s call     integration/test_admitted_benchmark_runtime.py::test_stale_native_lease_does_not_launch_or_issue_child_grant
+0.18s call     integration/test_admitted_benchmark_runtime.py::test_foreign_request_cannot_borrow_admitted_launch
+[32m============================= [32m[1m26 passed[0m[32m in 33.15s[0m[32m ==============================[0m

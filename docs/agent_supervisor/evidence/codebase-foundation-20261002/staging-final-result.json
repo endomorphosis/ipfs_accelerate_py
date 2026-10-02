@@ -1,0 +1,150 @@
+{
+  "schema": "codebase-paged-staging-qualification@1",
+  "qualified": true,
+  "scope": "320 committed tiny Python files staged in deterministic bounded shards; no current head or behavioral proof publication",
+  "source_files": 320,
+  "max_batch_entries": 16,
+  "batches": 20,
+  "database_reopened_mid_run": true,
+  "prepare_seconds": 7.413715955801308,
+  "elapsed_seconds": 26.82063111383468,
+  "units_per_second": 11.931113725170206,
+  "peak_owner_rss_kib": 157996,
+  "duckdb_memory_limit": "64MB",
+  "source_executed": false,
+  "provider_calls": 0,
+  "training_executed": false,
+  "inference_executed": false,
+  "final": {
+    "schema": "codebase-paged-staging@1",
+    "generation_cid": "baguqeeraf46ne2nyas5a6wby7aqxgvfrsmljyejxd3g7n6q2qrc75plehd7q",
+    "snapshot_cid": "baguqeerabficlayuzgcxblvha42wmxczc42jssep34d4r35uqs4nksojshba",
+    "population_cid": "baguqeera7qfmvappwtllaph5xfg2fc64d234uhm6lda6hhr5gwy72rgxz64a",
+    "cursor": 320,
+    "entry_count": 320,
+    "complete_inventory_staged": true,
+    "pending_entries": 0,
+    "deferred_entries": 0,
+    "disposition_counts": {
+      "captured_ast_ok": 320
+    },
+    "last_receipt_cid": "baguqeera2o26st3qn4qzfjaiasexudcw7bcpqhzvsjbrpa5cb6xlp7bfuhqa",
+    "source_observed_live": true,
+    "current_head_published": false,
+    "global_graph_resolved": false,
+    "source_semantics_verified": false,
+    "proof_authority": false,
+    "training_executed": false,
+    "inference_executed": false,
+    "execution_authority": false,
+    "completion_authority": false,
+    "replayed": false
+  },
+  "batch_times": [
+    {
+      "cursor": 16,
+      "seconds": 0.6675872760824859
+    },
+    {
+      "cursor": 32,
+      "seconds": 0.7398653631098568
+    },
+    {
+      "cursor": 48,
+      "seconds": 0.7243371941149235
+    },
+    {
+      "cursor": 64,
+      "seconds": 0.8394876921083778
+    },
+    {
+      "cursor": 80,
+      "seconds": 0.8523982409387827
+    },
+    {
+      "cursor": 96,
+      "seconds": 0.882487032096833
+    },
+    {
+      "cursor": 112,
+      "seconds": 0.8607769990339875
+    },
+    {
+      "cursor": 128,
+      "seconds": 0.8800946779083461
+    },
+    {
+      "cursor": 144,
+      "seconds": 0.8659147820435464
+    },
+    {
+      "cursor": 160,
+      "seconds": 0.9229738251306117
+    },
+    {
+      "cursor": 176,
+      "seconds": 0.9492210410535336
+    },
+    {
+      "cursor": 192,
+      "seconds": 0.8782083459664136
+    },
+    {
+      "cursor": 208,
+      "seconds": 0.8746004549320787
+    },
+    {
+      "cursor": 224,
+      "seconds": 0.9947623368352652
+    },
+    {
+      "cursor": 240,
+      "seconds": 1.0152358550112695
+    },
+    {
+      "cursor": 256,
+      "seconds": 1.0982468470465392
+    },
+    {
+      "cursor": 272,
+      "seconds": 0.9902738239616156
+    },
+    {
+      "cursor": 288,
+      "seconds": 1.1061791169922799
+    },
+    {
+      "cursor": 304,
+      "seconds": 1.1662236249540001
+    },
+    {
+      "cursor": 320,
+      "seconds": 1.1302828311454505
+    }
+  ],
+  "parsed_cache_epochs": [
+    {
+      "manifest_parses": 1,
+      "manifest_hits": 32,
+      "ast_parses": 128,
+      "ast_hits": 1344,
+      "ast_evictions": 0,
+      "ast_entries": 128,
+      "ast_bytes": 430664,
+      "ast_limit_bytes": 33554432,
+      "ast_limit_entries": 512
+    },
+    {
+      "manifest_parses": 1,
+      "manifest_hits": 48,
+      "ast_parses": 320,
+      "ast_hits": 7776,
+      "ast_evictions": 0,
+      "ast_entries": 320,
+      "ast_bytes": 1077320,
+      "ast_limit_bytes": 33554432,
+      "ast_limit_entries": 512
+    }
+  ],
+  "module_sha256": "a38dbee0effd5034ce4ba849cec34326021174ed0e8e72b4bed23fe3a8d57bb9"
+}

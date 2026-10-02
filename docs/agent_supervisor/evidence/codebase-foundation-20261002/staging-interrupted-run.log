@@ -1,0 +1,45 @@
+Traceback (most recent call last):
+  File "/tmp/run_codebase_paged_qualification_optimized.py", line 29, in <module>
+    batch_start=time.monotonic();state=stager.advance(root,generation_cid=state['generation_cid'],expected_cursor=state['cursor'],scheduler=scheduler)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_paged_staging.py", line 722, in advance
+    current = self.status(generation_cid)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_paged_staging.py", line 561, in status
+    "snapshot:" + snapshot.snapshot_cid,
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py", line 163, in snapshot_cid
+    return self.manifest_blocks()[0]
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py", line 144, in manifest_blocks
+    blob_pages = pages(({"git_object_oid": blob.git_object_oid,
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py", line 131, in pages
+    for record in records:
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py", line 145, in <genexpr>
+    "manifest_cid": put(blob.payload())} for blob in self.blobs), "blobs")
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py", line 121, in put
+    cid = cid_for_structured(payload)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py", line 259, in cid_for_structured
+    return _cid_from_digest_bytes(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/content.py", line 214, in _cid_from_digest_bytes
+    return str(CID(CID_BASE, CID_VERSION, codec, digest))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/multiformats/cid/__init__.py", line 494, in __str__
+    return self.encode()
+           ^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/multiformats/cid/__init__.py", line 414, in encode
+    return base.encode(bytes(self))
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/multiformats/multibase/__init__.py", line 237, in encode
+    return self.code+self.raw_encoder(b)
+                     ^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/bases/encoding/base.py", line 231, in encode
+    return self._encode(b)
+           ^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/bases/encoding/fixchar.py", line 395, in _encode
+    revchars.append(alphabet[d])
+KeyboardInterrupt

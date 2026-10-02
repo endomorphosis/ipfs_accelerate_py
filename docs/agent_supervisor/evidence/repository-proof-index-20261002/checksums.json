@@ -1,0 +1,50 @@
+{
+  "schema": "repository-proof-cache-evidence-checksums/v1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "9ca09502242992980586a5e55f291ee9e3b129b909b0b14e65ea92004ff6b505",
+      "bytes": 2806
+    },
+    {
+      "path": "baseline-board-loader.py",
+      "sha256": "10281ccaa0971cb2cc05a31c261c608f494131d33f2149ad1c2c6bd3af1ad034",
+      "bytes": 385
+    },
+    {
+      "path": "board-baseline-control.log",
+      "sha256": "044f6e9694c87d02109675d99733bc30cf0b8026f5e95908f1862d84443ba435",
+      "bytes": 17880
+    },
+    {
+      "path": "board-discovery-diagnostic.log",
+      "sha256": "e5e9f815ae9ac1f732ae56fc5d4284bd91ff00c0ce0d9cdf9fbdb5f4546f8524",
+      "bytes": 25523
+    },
+    {
+      "path": "provenance.json",
+      "sha256": "df0a351db604eb05c8da01149713131aaa573e6e5d3a10253e6de842e812a6f4",
+      "bytes": 2058
+    },
+    {
+      "path": "source-inventory.json",
+      "sha256": "d52a2dea960b9aead49cc3b3924e9e90944bba93dee6b2e8e723210de889ed14",
+      "bytes": 4987
+    },
+    {
+      "path": "summary.json",
+      "sha256": "5feefcb80d6a094cdb167aa352f3c594450b33bf40822ff825084625395ca37d",
+      "bytes": 1117
+    },
+    {
+      "path": "tests.log",
+      "sha256": "77e01c32edfa5ff234d1f4c4016ddd943e6f9a749206adf9558352ce5f6a7280",
+      "bytes": 168044
+    },
+    {
+      "path": "tests.xml",
+      "sha256": "7b13069e89c9e31d90e435f8a4e7a72b71e244754f9e4bf5b762377ac23c058a",
+      "bytes": 18762
+    }
+  ]
+}

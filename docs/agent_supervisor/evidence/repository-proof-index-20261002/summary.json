@@ -1,0 +1,44 @@
+{
+  "schema": "repository-proof-cache-qualification/v1",
+  "observed_at_utc": "2026-10-02T05:25:48.307616+00:00",
+  "result": "passed",
+  "tests": 120,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "warnings": 4,
+  "elapsed_seconds": 80.63,
+  "suite_counts": {
+    "doctor_existing": 17,
+    "doctor_durable_new": 14,
+    "formal_cache_existing": 22,
+    "pagination_new": 9,
+    "canonical_bridge_new": 58
+  },
+  "actual_backends": [
+    "native file-backed DuckDB",
+    "independent Python restart",
+    "native datasets canonical key"
+  ],
+  "proof_backend_executed": false,
+  "training_executed": false,
+  "provider_calls": 0,
+  "daemon_started": false,
+  "proof_authority": false,
+  "completion_authority": false,
+  "full_backlog_closed": false,
+  "known_baseline_diagnostics": {
+    "board_neighbor_suite": {
+      "passed": 19,
+      "failed": 2
+    },
+    "unchanged_HEAD_board_control": {
+      "passed": 0,
+      "failed": 2
+    },
+    "tests": [
+      "test_configured_board_common_args_isolate_shared_merge_target",
+      "test_implementation_daemons_on_sibling_boards_do_not_share_locks"
+    ]
+  }
+}

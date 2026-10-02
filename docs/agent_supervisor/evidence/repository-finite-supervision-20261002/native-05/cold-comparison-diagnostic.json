@@ -1,0 +1,45 @@
+{
+  "differing_fields": {
+    "clause_results": {
+      "cold": [
+        {
+          "predicate_id": "finite-requirement:baguqeeral6jbrlyo2gjjoyy3qukgu7sghp7pkunf6c47ltis4pmexorhkncq",
+          "reasons": [],
+          "scope": "explicit_finite_domain_only",
+          "statement_id": "finite-integer-offset-goal",
+          "status": "bounded_observed_satisfied"
+        },
+        {
+          "predicate_id": "finite-requirement:baguqeeraxyxxqnpi6jner2zo7lims7bdfvszhehqejvosjird72f5lo6n3eq",
+          "reasons": [],
+          "scope": "explicit_finite_domain_only",
+          "statement_id": "finite-integer-type-goal",
+          "status": "bounded_observed_satisfied"
+        }
+      ],
+      "successor": [
+        {
+          "predicate_id": "finite-requirement:baguqeerau5vqci4y4wkrgm7l75vcu6lilpndidfqz7t7t35ztnoez7g3drba",
+          "reasons": [],
+          "scope": "explicit_finite_domain_only",
+          "statement_id": "finite-integer-offset-goal",
+          "status": "bounded_observed_satisfied"
+        },
+        {
+          "predicate_id": "finite-requirement:baguqeeralvdm2ehcmobqpr2o5m6mo4btv3vhbs4ex63z63ue66v44732eteq",
+          "reasons": [],
+          "scope": "explicit_finite_domain_only",
+          "statement_id": "finite-integer-type-goal",
+          "status": "bounded_observed_satisfied"
+        }
+      ]
+    }
+  },
+  "head_generations": {
+    "cold": 1,
+    "successor": 2
+  },
+  "result_was_not_rewritten": true,
+  "same_source_snapshot": true,
+  "schema": "finite-cold-comparison-diagnostic@1"
+}

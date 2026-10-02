@@ -76792,6 +76792,15 @@ def main(argv: list[str] | None = None) -> None:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # This watchdog is armed only in the launched native daemon entrypoint,
+    # never when a model-hosting parent imports this module. Startup can wait
+    # inside owner RPC or portal construction before the first live heartbeat;
+    # retain its child stack without relaxing the lifecycle health deadline.
+    native_startup_watchdog = args.state_owner_bootstrap_fd != -1
+    if native_startup_watchdog:
+        import faulthandler
+        faulthandler.dump_traceback_later(10, repeat=True)
+        logger.info("Native owner startup stage: main entered")
     if args.llm_merge_resolver_command:
         os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
     if args.llm_merge_resolver_timeout_seconds is not None:
@@ -76825,7 +76834,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if use_database_daemon:
         from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: bootstrap starting")
         owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: bootstrap attached")
         authority_mode = (
             program.authority_mode
             if program is not None
@@ -76864,6 +76877,8 @@ def main(argv: list[str] | None = None) -> None:
             **owner_bootstrap,
         )
         from ..runtime.native_dispatch_drain import from_native_admission
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: database daemon constructed")
         daemon._native_dispatch_control = from_native_admission(
             admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
             repo_root=REPO_ROOT,
@@ -76877,6 +76892,8 @@ def main(argv: list[str] | None = None) -> None:
                 _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
             ),
         )
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: portal execution bound")
     else:
         if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
             raise ValueError("native owner bootstrap cannot enter the legacy daemon")
@@ -76950,6 +76967,9 @@ def main(argv: list[str] | None = None) -> None:
             credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
             state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
         ).start()
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: live heartbeat published")
+            faulthandler.cancel_dump_traceback_later()
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None

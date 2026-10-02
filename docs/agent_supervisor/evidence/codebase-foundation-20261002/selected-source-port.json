@@ -1,0 +1,63 @@
+[
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+  },
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+    "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+  },
+  {
+    "path": "ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+    "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+  },
+  {
+    "path": "tests/integration/logic/software_contracts/test_codebase_ir.py",
+    "sha256": "9ee6adceb92f2bfe8686f2f25a255a767166cb620bacd012fbbe16a1f863b081"
+  },
+  {
+    "path": "tests/unit/logic/software_contracts/test_codebase_resources.py",
+    "sha256": "fcad4e07a46acc3066d4e7553b638d76e85cc45c75568358b385d234bfd17a9d"
+  },
+  {
+    "path": "tests/unit/logic/software_contracts/test_codebase_ir_untrusted_previous.py",
+    "sha256": "d154762ee1e681b8329805ad8d3d8dbf2e226cb2a9033a0571833a9008f5a07c"
+  },
+  {
+    "path": "tests/unit/duckdb_control/test_codebase_catalog.py",
+    "sha256": "d3d212f722cfc93ebd97c0c8c10106193e6ff97aae3ce8d5d2a64c0b008107f6"
+  },
+  {
+    "path": "tests/integration/logic/software_contracts/test_codebase_current.py",
+    "sha256": "096f53549d31499b51f1dbb001063c9b487ddaa5e250ebe67ed312d2ca53f931"
+  },
+  {
+    "path": "tests/unit/logic/software_contracts/test_duckdb_ast_store_persistence.py",
+    "sha256": "08fd9d9ad0e02e89d8a586743809b2be5cfb95d82d7ba8e34c1a69947680f66a"
+  },
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+    "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3",
+    "previous_sha256": "bbfb50388daeff7864f01ba172cd6ad490f714fcf10d0dac4b6cf783ed5c407b"
+  },
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py",
+    "sha256": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+    "previous_sha256": "18cdbb15f20118d9dafea108c85064369f2b163b84f29f6b6e7b8c87778120ee"
+  },
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+    "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+    "previous_sha256": "1d08f2649fbd1d14f28907d84f54c721fd7cd474af9c0b61d3888d163deaf068"
+  },
+  {
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+    "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+    "previous_sha256": "0dd22f59cd1af93e229752194d0415506d2cf0177727da5f15cb09715297b8ba"
+  },
+  {
+    "path": "tests/unit/logic/software_contracts/test_duckdb_ingest.py",
+    "sha256": "28c88579459db0c120b4cf17cb5087dd587309a0d5b44635b11e794f3d0dccff",
+    "previous_sha256": "a6f6f5435258960df19e59b3e74f4594781121da3daf28dbf289cd4b34bde5e7"
+  }
+]

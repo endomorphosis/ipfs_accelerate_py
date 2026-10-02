@@ -1,0 +1,724 @@
+{
+  "schema": "repository-proof-index-backlog-status/v1",
+  "updated_at_utc": "2026-10-02T05:38:43.020542+00:00",
+  "scope": "Evidence ledger for the selected released integration; local controls do not close broader production criteria.",
+  "source": {
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+    "sha256": "70d8dff96130da12ee6457d4cf554bcbdfe0106bf53468afeaf89bf8d41d3957",
+    "worktree_head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7",
+    "working_source": true,
+    "table_rows": 32
+  },
+  "summary": {
+    "criteria": 32,
+    "production_closed": 0,
+    "production_open": 32
+  },
+  "evidence": {
+    "foundation-tests-log": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/foundation-tests.log",
+      "sha256": "3a4079a8e79e851a0fb298957d8cd86d542227da2939f8cca395362bf095beaf",
+      "retention": "repository_evidence"
+    },
+    "foundation-tests-junit": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/foundation-tests.xml",
+      "sha256": "9a58400717f478d7dab0986eebb978429daa64010aed89cb57ed5612961e6e76",
+      "retention": "repository_evidence"
+    },
+    "paged-staging-tests-log": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/staging-tests.log",
+      "sha256": "6518efb24349eac9e5dafd3ee99e39fe432c605ef059c75c3ce7e2334912cd5a",
+      "retention": "repository_evidence"
+    },
+    "paged-staging-tests-junit": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/staging-tests.xml",
+      "sha256": "18a68c3642a6e76fde777fe22ab0cc00475e2adcdd05d3eaf6e449b96dd53c07",
+      "retention": "repository_evidence"
+    },
+    "foundation-selected-port-manifest": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/selected-source-port.json",
+      "sha256": "a3a618a93af09015e17a7df9cb40ddc538a567eb8477dfebb2d066ebccad88a9",
+      "retention": "repository_evidence"
+    },
+    "proof-cache-tests-log": {
+      "path": "docs/agent_supervisor/evidence/repository-proof-index-20261002/tests.log",
+      "sha256": "77e01c32edfa5ff234d1f4c4016ddd943e6f9a749206adf9558352ce5f6a7280",
+      "retention": "repository_evidence"
+    },
+    "proof-cache-tests-xml": {
+      "path": "docs/agent_supervisor/evidence/repository-proof-index-20261002/tests.xml",
+      "sha256": "7b13069e89c9e31d90e435f8a4e7a72b71e244754f9e4bf5b762377ac23c058a",
+      "retention": "repository_evidence"
+    },
+    "proof-cache-source-inventory-json": {
+      "path": "docs/agent_supervisor/evidence/repository-proof-index-20261002/source-inventory.json",
+      "sha256": "d52a2dea960b9aead49cc3b3924e9e90944bba93dee6b2e8e723210de889ed14",
+      "retention": "repository_evidence"
+    },
+    "proof-cache-summary-json": {
+      "path": "docs/agent_supervisor/evidence/repository-proof-index-20261002/summary.json",
+      "sha256": "5feefcb80d6a094cdb167aa352f3c594450b33bf40822ff825084625395ca37d",
+      "retention": "repository_evidence"
+    },
+    "proof-cache-checksums-json": {
+      "path": "docs/agent_supervisor/evidence/repository-proof-index-20261002/checksums.json",
+      "sha256": "cc4f6341700a2a1d661c2de8c73b2d877db523abd476389ee7b48feaf150653c",
+      "retention": "repository_evidence"
+    },
+    "foundation-cache-tests-log": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/cache-tests.log",
+      "sha256": "df1ef2c31329b7290054f4607035499cd1bfb7a56e00cd42743543bfad9f34ba",
+      "retention": "repository_evidence"
+    },
+    "foundation-cache-tests-junit": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/cache-tests.xml",
+      "sha256": "0cac56a79d7c276fe3e6dfe621d946fa52f8b1819d14458e3ddff9b3507b70a7",
+      "retention": "repository_evidence"
+    },
+    "paged-staging-native-comparison": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/comparison.json",
+      "sha256": "b974487a9cf44d6c14f5e0b9e816127e7c1c4198b3d25fe4bc35f9c29b6a1c74",
+      "retention": "repository_evidence"
+    },
+    "paged-staging-native-final": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/staging-final-result.json",
+      "sha256": "8473f6db841faf2fc409dba84a1ecc5c29f346168de150464c60fbbe52d7da9e",
+      "retention": "repository_evidence"
+    },
+    "paged-staging-evidence-manifest": {
+      "path": "docs/agent_supervisor/evidence/codebase-foundation-20261002/manifest.json",
+      "sha256": "e125f57d65ba92f0fd99d3257b0d3934b08626a1d45f6aff666acdce61a80a3b",
+      "retention": "repository_evidence"
+    },
+    "source384-qualified-02": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/autoencoders/evidence/codebase-source384-20261002/manifest.json",
+      "sha256": "5aec1f6700af3c0ffd298a219b2d6ca133bca3ec67e9e6b61964296376acab69",
+      "retention": "repository_retained",
+      "summary": "8 passed in44.93s; actual GTE/child fit/target-free inference/Lake/zero-head/current-source/refit-free independent-process replay; local holdout parent9of9 child0of9, no promotion"
+    },
+    "finite-native-summary": {
+      "path": "docs/agent_supervisor/evidence/repository-finite-supervision-20261002/summary.json",
+      "sha256": "1ff2d712f4551beb8654632bf594ee9054dcedb08a02399898efeb688158020e",
+      "retention": "repository_evidence"
+    },
+    "finite-native-final": {
+      "path": "docs/agent_supervisor/evidence/repository-finite-supervision-20261002/native-06/result.json",
+      "sha256": "c7e1e2b11019a73e55b9c5dbfc2c9dc6ad08297d91dcde0c43de8913bbc49b88",
+      "retention": "repository_evidence"
+    },
+    "finite-native-evidence-manifest": {
+      "path": "docs/agent_supervisor/evidence/repository-finite-supervision-20261002/manifest.json",
+      "sha256": "ab1ea05955b5d56db418eb4c8d8d4b21f92fad44092ed077a64bc49d4a6ee5a4",
+      "retention": "repository_evidence"
+    },
+    "finite-native-owned-file-scope": {
+      "path": "docs/agent_supervisor/evidence/repository-finite-supervision-20261002/owned-file-scope.json",
+      "sha256": "ee1ab06c5b5c4ff4b8b4ec21bcf0de2aaa8c00f69438321d2ecc4aea67fedd3e",
+      "retention": "repository_evidence"
+    }
+  },
+  "criteria": [
+    {
+      "id": "RPI-001",
+      "owners": "Datasets semantic index; accelerate benchmark",
+      "dependencies": "None",
+      "criterion": "Freeze the repository scan profile, admitted scope, language subset, source forest and dirty-overlay identity, inventory dispositions and capability matrix. Qualify exact captured bytes, races, submodules, exclusions and nonexecuting extraction. Distinguish complete inventory from training and proof selections.",
+      "source_line": 275,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Exact bounded source capture with dirty/staged/untracked/deleted source, explicit opaque inventory and nonexecuting extraction is integrated with current structural heads."
+      ],
+      "remaining_work": [
+        "Complete submodule forest policy, full language/capability matrix and selected large-repository profile qualification remain open."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest"
+      ]
+    },
+    {
+      "id": "RPI-002",
+      "owners": "Datasets security IR and verification",
+      "dependencies": "RPI-001",
+      "criterion": "Define `codebase-ir-manifest@1` over existing ProgramIR, contracts, source correspondences, effects, dependency frontiers and evidence references. Define stable logical IDs separately from exact version IDs. Reject opaque latent values as semantic predicates; preserve unsupported regions and every coverage denominator.",
+      "source_line": 276,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Structural CodebaseIR manifests bind complete admitted source/AST inventory and preserve parse/opaque status; current manifest remains structural_only."
+      ],
+      "remaining_work": [
+        "The requested full ProgramIR/contracts/effects/dependency-frontier/evidence manifest and source-conditioned decoder integration require their separate exact qualification."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest"
+      ]
+    },
+    {
+      "id": "RPI-003",
+      "owners": "Datasets DuckDB control; accelerate state owner",
+      "dependencies": "RPI-002",
+      "criterion": "Add a separately owned `intent-codebase-catalog@1`, immutable artifact backend and typed bounded owner queries. Reference existing corpus/model IDs without altering closed catalog schemas. Define sole authorities for each state domain. Qualify actual file-backed restart hydration, schema migration, uniqueness, fences and bounded reads without warmed dictionaries.",
+      "source_line": 277,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Native file-backed structural catalog and AST transactions recover in fresh processes; exact head CAS, operation retry, ABA generations, rollback and corruption tests pass."
+      ],
+      "remaining_work": [
+        "DuckLake publication and joined numerical/proof state owners, schema migration and complete cross-domain head/root correspondence remain open."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest"
+      ]
+    },
+    {
+      "id": "RPI-004",
+      "owners": "Datasets canonical proof/cache; accelerate proof",
+      "dependencies": "RPI-002",
+      "criterion": "Implement a versioned lossless relationship between complete datasets and accelerate proof keys. Bind source/dependencies, formalization, premises, assumptions, bounds, translators, checkers, policy and environment; add model inputs when relevant. Reject missing fields, cross-environment aliases and unverified authority flags.",
+      "source_line": 278,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "A closed versioned identity bridge requires native CanonicalProofCacheKey and ProofCacheKey classes, retains every datasets dimension/schema/interface/source CID and supervisor execution field, and rejects missing fields, cross-environment requests and authority-marker tampering in 58 focused tests."
+      ],
+      "remaining_work": [
+        "Positive cross-package proof reuse remains unsupported: a separate verified obligation-linking owner must establish source/premise/translator/checker correspondence. The identity-only envelope intentionally cannot admit a proof receipt; relevant model/dependency material must already be bound by its native key owner."
+      ],
+      "evidence": [
+        "proof-cache-tests-log",
+        "proof-cache-tests-xml",
+        "proof-cache-source-inventory-json",
+        "proof-cache-summary-json",
+        "proof-cache-checksums-json"
+      ]
+    },
+    {
+      "id": "RPI-005",
+      "owners": "Datasets semantic lowering and verification",
+      "dependencies": "RPI-002, RPI-028",
+      "criterion": "Qualify one pure Python arithmetic or reviewed contract profile. Derive a source-bound typed model and explicit verification conditions with reviewed runtime assumptions. Check premise satisfiability and request-domain coverage; reject contradictory assumptions, unexplained type refinements and overly narrow preconditions as requirement satisfaction. Reject unsupported effects, changed literals, missing contracts and wrong source correspondence. A model theorem retains its stated scope.",
+      "source_line": 279,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-006",
+      "owners": "Datasets checker/proof repository; accelerate proof gate",
+      "dependencies": "RPI-004, RPI-005",
+      "criterion": "Produce actual checker execution receipts and independently replay their complete bindings. Replace marker-only acceptance on this route. Classify proved, refuted, unknown, timeout, disagreement and unsupported results without upgrading solver evidence to kernel evidence. Qualify forged markers, caller flags, wrong bodies, stale premises and source-inapplicable countermodels.",
+      "source_line": 280,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-007",
+      "owners": "Datasets proof repository; accelerate proof query",
+      "dependencies": "RPI-003, RPI-006",
+      "criterion": "Persist canonical cache entries, artifact bodies, checked evidence, reverse dependencies and bounded exact proof lookup. Route hits through existing trust-aware reconstruction. Qualify a fresh-process cache/index roundtrip, complete keys, corrupt/missing bodies, duplicate rows and explicit negative-cache status.",
+      "source_line": 281,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Doctor reuse controls persist canonical keys, reverse root dependencies, root revocations, tombstones, quarantine and observed receipt identities in the existing FormalVerificationCache database; migration, restart and malformed state fail-closed controls pass. Existing receipt reconstruction remains required."
+      ],
+      "remaining_work": [
+        "The current Quack snapshot transport lacks the required atomic read/write/read owner command and is refused. Complete datasets proof-artifact/CodeEvidencePlane projections and independently executed checker qualification remain open; diagnostics remain process-local."
+      ],
+      "evidence": [
+        "proof-cache-tests-log",
+        "proof-cache-tests-xml",
+        "proof-cache-source-inventory-json",
+        "proof-cache-summary-json",
+        "proof-cache-checksums-json"
+      ]
+    },
+    {
+      "id": "RPI-008",
+      "owners": "Datasets corpus and autoencoder training",
+      "dependencies": "RPI-001, RPI-002",
+      "criterion": "Add a codebase corpus frontend with exact enumerated source samples and independent syntax, semantic and checked-property targets. Freeze split and connected-lineage deduplication before fitting. Record teacher/label provenance, missing labels and transductive use. Reject desired intent or unchecked model predictions as correctness labels.",
+      "source_line": 282,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Source-owned 384D corpus enumerates exact captured files and independent reviewed AST/ProgramIR labels, fixes train/validation/holdout roles, and rejects exact/AST-clone/group/numerical split overlap. Complete structural inventory remains separate from the selected corpus."
+      ],
+      "remaining_work": [
+        "Connected semantic/rename lineage grouping, richer syntax/semantic/checked-property objectives, independent parent pretraining leakage audit and large repository corpus coverage remain open."
+      ],
+      "evidence": [
+        "source384-qualified-02"
+      ]
+    },
+    {
+      "id": "RPI-009",
+      "owners": "Datasets autoencoder registry and training",
+      "dependencies": "RPI-008",
+      "criterion": "Define `codebase-model-generation@1` and child-adaptation APIs for supported trainers. Bind parent, corpus, source, actual weight/codebook bytes, implementation, numerical layout, seed and environment. Demonstrate real numerical work under immutable child ownership and expected head compare-and-swap. Keep fixed semantic definitions outside learned latent space.",
+      "source_line": 283,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Real bounded numerical fitting creates immutable registry children of the exact retained shared SecurityIR artifact. Replay checks original bytes, compatibility, complete source head, corpus/target manifests, producer, parent/projection/vocabulary and native run completion."
+      ],
+      "remaining_work": [
+        "Qualified model-head promotion/CAS policy, complete source-model generation schema beyond this scalar profile and child comparisons under independent canaries remain open. This fixture regresses9of9 to0of9 on local holdouts; no promotion occurred."
+      ],
+      "evidence": [
+        "source384-qualified-02"
+      ]
+    },
+    {
+      "id": "RPI-010",
+      "owners": "Datasets registry; accelerate training runtime",
+      "dependencies": "RPI-009, RPI-022",
+      "criterion": "Add explicit wall-time, memory, sample/byte, optimizer-step, checkpoint-size and retry budgets plus cooperative cancellation and bounded process termination. Version terminal cancelled/superseded states with atomic lease/fence updates; stale workers cannot complete, publish or promote them. Qualify source changes, concurrent children, lost replies and parent retention. No training in read/replay paths.",
+      "source_line": 284,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Explicit CPU process fitting has overall deadlines, input/output/checkpoint bounds, sampled RSS, shared scheduler admission, cancellation hooks, native run leases and source checks before completion. Historical replay and inference do not fit."
+      ],
+      "remaining_work": [
+        "Complete cancelled/superseded terminal state, lost-response/concurrent-child/stale-worker acceptance matrix and supervisor parent-to-child training ownership remain open; sampled RSS is not a hard kernel limit."
+      ],
+      "evidence": [
+        "source384-qualified-02"
+      ]
+    },
+    {
+      "id": "RPI-011",
+      "owners": "Datasets formula decoder and semantic lowering",
+      "dependencies": "RPI-006, RPI-009, RPI-010, RPI-027",
+      "criterion": "Join actual pinned decoder inference to typed formalization and independent source alignment. Extend the current v1/v2 boundary explicitly. Retain unsupported candidates and exact model dependencies. Qualify wrong-source/codebook checks, teacher-substitution controls, model-off/zero-head controls and narrow semantic checking.",
+      "source_line": 285,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Actual pinned384D child inference emits unchanged typed candidates from target-free GTE source embeddings. Three arithmetic examples align with source and compile with Lake; zero-head controls yield three rejected source mismatches."
+      ],
+      "remaining_work": [
+        "Richer source decoder grammar, source-dependent semantic obligations beyond syntax/type checks, source/model index publication and unified learned-evidence native admission remain open. The native finite repair route is independently model-off."
+      ],
+      "evidence": [
+        "source384-qualified-02"
+      ]
+    },
+    {
+      "id": "RPI-012",
+      "owners": "Datasets IntentIR; accelerate planning",
+      "dependencies": "RPI-002, RPI-007; TIP-002 and TIP-003 ledger/operation contracts",
+      "criterion": "Implement behavioral `intent-codebase-match@2`, preserving conditional `@1`: exact retrieval and optional learned retrieval nominate; deterministic typed matching resolves symbols, scope, guards, quantifiers, polarity, effects and properties. Independently qualify full instruction meaning and theorem-domain coverage before behavioral satisfaction. Preserve ambiguity and unknown results. Match one genuine satisfied requirement and one qualified residual/counterexample; reject missing rows as satisfaction and absence of a retrieved violation as proof of a prohibition.",
+      "source_line": 286,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Exact complete two-clause finite CNL matching over current native source returns one checked type fact and one offset counterexample/residual; full native run repairs that residual and obtains two fresh satisfied finite clauses. Unsupported source/query, dirty/stale source and missing/corrupt native evidence remain refusal cases."
+      ],
+      "remaining_work": [
+        "Only the explicit finite one-argument integer-offset profile is qualified. General behavioral intent-codebase-match@2, natural-language meaning qualification, broader symbols/guards/quantifiers/effects and independent theorem-domain coverage remain open."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-013",
+      "owners": "Accelerate planning and proof",
+      "dependencies": "RPI-007, RPI-012, RPI-023; TIP-007 complete planning materials",
+      "criterion": "Add the strict behavioral repository adapter and `repository-proof-planning-snapshot@2`, including explicit model-off identity; preserve conditional/indexed `@1` meanings. Extend/wire service materials for code obligations, query plans and proof results. Require nonempty exact roots for each eligible current fact and mandatory owner-backed live observation; allow no facts when evidence is unavailable. Demonstrate one genuine fact and one residual in the qualification fixture. Join reviewed producers, tasks and residuals; independently reconstruct proof/premise/effect closure through existing compiler, candidate planner and critic. Refuse synthetic `proof:<concept>` and forged authority labels.",
+      "source_line": 287,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Ported strict PlanCreateService live-root enforcement as opt-in with legacy default preserved. Scoped finite service binds current native source/head, exact complete intent/query/tool policies, reviewed operations and independent signed task roots. Existing planner/compiler/critic consumes one current fact and one residual; forged/stale/missing evidence controls pass."
+      ],
+      "remaining_work": [
+        "General repository-proof-planning-snapshot@2 across richer behavioral obligations, cross-domain proof/premise/effect closure and learned interpretations remains open. Finite observation authority remains explicitly bounded and separate from worker execution authority."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-014",
+      "owners": "Accelerate preview and admission",
+      "dependencies": "RPI-013; TIP-005 and TIP-008 admission/symbolic route",
+      "criterion": "Add a new repository-evidence admission profile across preview, signed admission, native storage and launch; the current administrative gate cannot accept it unchanged. Replay frozen exact facts, receipts, source/model/index roots and root correspondences without fitting or reinterpretation. Preserve required frozen inference in the current validators; qualify authenticated receipt-only numerical replay separately before optimizing it away. Require live observation and reject static shadowing. Initially preserve the complete signed task population. Qualify source/model changes between stages and wrong or omitted material bindings.",
+      "source_line": 288,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused."
+      ],
+      "remaining_work": [
+        "This evidence handoff preserves the existing independent administrative admission and full signed population; it does not implement the general new behavioral repository-evidence admission profile. Frozen learned inference/receipt-only replay and model-change admission controls remain open."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-015",
+      "owners": "Accelerate worker context and native runtime",
+      "dependencies": "RPI-014; TIP-009 worker/observation route",
+      "criterion": "Deliver relevant source units, assumptions, checked evidence, counterexamples and residuals after semantic encoding while retaining original instruction. Qualify public replay without owner keys and actual owner-backed claim/check/publication. Keep output existence, public checks, proof status and official reward distinct.",
+      "source_line": 289,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Actual native-06 run used semantic task context plus public owner-signed finite facts/counterexample/candidate evidence, retained the exact original instruction in an immutable signed input, and dispatched a real allocated native worker without owner private keys. Owner-backed claim, independent public validation, merge publication and completion reached revision 4; STOP fenced all native processes."
+      ],
+      "remaining_work": [
+        "Broader source/assumption selection after learned encoding, generic worker handoff and benchmark official reward remain unqualified. This model-off fixture has no vector retrieval or autoencoder inference and does not establish universal source proof."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-016",
+      "owners": "Datasets semantic index; accelerate proof scope/reproof",
+      "dependencies": "RPI-007, RPI-015",
+      "criterion": "Capture successor source generations, compute conservative dependency invalidation, reprove affected obligations and rebuild matches/materials. Require active eligible evidence and residuals to agree with a cold rebuild. Retain original semantic intent lineage and historical receipts/models while allowing a new runtime admission revision. Add a successor-context API with newly signed baseline and independent admission; old context may replay historically but cannot dispatch after publication.",
+      "source_line": 290,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "After actual publication, native context/world capsules refresh and a reopened durable source index captures generation 2. Fresh Python/Lean finite observations satisfy both original clauses with no residual; independent cold rebuild agrees on exact source snapshot, complete query, domain, outcomes, tool policy and bounded scope. Original evidence-index access and old candidate dispatch are rejected after publication; historical receipts remain distinct."
+      ],
+      "remaining_work": [
+        "Conservative repository-wide dependency invalidation, affected-obligation scheduling and a new independently signed successor task/admission revision are not implemented by this fixture. Published vector retrieval remains unavailable; task completion does not close goal contracts."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-017",
+      "owners": "Datasets DuckLake sinks and publication",
+      "dependencies": "RPI-003",
+      "criterion": "Add immutable history tables and reuse journal/outbox delivery to actual native DuckLake snapshots. Resolve response loss against exact operation ID, command and canonical payload. Qualify crash windows, stale owners, duplicates, lag reporting, retained snapshot pins and artifact garbage collection. Do not invent distributed atomicity or lake uniqueness constraints.",
+      "source_line": 291,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-018",
+      "owners": "Accelerate benchmark orchestration and runtime",
+      "dependencies": "RPI-010, RPI-014, RPI-022",
+      "criterion": "Integrate independent scan/index/proof/training selections and complete phase accounting under the trial deadline. Freeze model/index before admission. Qualify declared optional-parent retention versus required-training rejection, cancellation and demand-driven proof selection without dropping inventory entries or silently changing planning strategy.",
+      "source_line": 292,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero."
+      ],
+      "remaining_work": [
+        "Public benchmark scan/index/proof/training selection matrix, one overarching trial deadline with complete phase accounting, optional-parent/required-adaptation policies and cancellation are still open. This opt-in fixture does not join the separate Codebase384 training run."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-019",
+      "owners": "Datasets and accelerate qualification",
+      "dependencies": "RPI-011, RPI-016, RPI-017, RPI-018, RPI-023, RPI-024, RPI-027, RPI-028, RPI-032; RPI-029/030/031 for the selected scale/federation profile",
+      "criterion": "Run the full source/model/proof/storage/lifecycle acceptance matrix with actual numerical/checker/native backends for their respective claims. Keep stub, unavailable and deployed results distinct. Include restart and lost-response recovery, cold/incremental equivalence and genuine publication/reproof before successor admission. Record source/runtime/artifact generations.",
+      "source_line": 293,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-020",
+      "owners": "Benchmark evaluation and release",
+      "dependencies": "RPI-019, RPI-025; TIP-001, TIP-012, TIP-013 and TIP-014 baseline/held-out evaluation",
+      "criterion": "Predeclare correctness and cost gates; run matched direct, administrative-symbolic, repository-facts, checked-proof and learned-repository arms plus the native Codex comparator. Fix reasoning/tools/attempts/concurrency and disclose independent contract/review costs. Compare frozen shared, fresh repository and immutable shared-to-repository children; measure raw versus constrained decoding and mask contribution. Retain model controls, eligible cold/warm distinctions, failed trials, all costs and official outcomes without solution/hidden-test/reward leakage into adaptation or warm artifacts.",
+      "source_line": 294,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-021",
+      "owners": "Datasets IntentIR; accelerate generic admission",
+      "dependencies": "RPI-014, RPI-016; TIP-010 and TIP-011 generic task contracts",
+      "criterion": "Separately qualify conditional/alternative/prohibition semantics, zero-edit and reduced task populations under a new explicit profile. Preserve older rejection behavior. Prove complete requirement coverage and independent scope/task-population authorization before allowing evidence to eliminate signed tasks.",
+      "source_line": 295,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Already-satisfied finite requirements return no handoff and leave the independently signed native task ready; no task omission or proof-based completion is admitted. Full original finite instruction and exact signed population are retained in the nonempty native run."
+      ],
+      "remaining_work": [
+        "Conditional/alternative/prohibition semantics, explicit zero-edit admission and independently authorized reduced task populations remain open under a separate future profile."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-022",
+      "owners": "Datasets scheduler; accelerate runtime",
+      "dependencies": "RPI-002",
+      "criterion": "Join supervisor parent reservations to datasets child leases under one host admission authority. Account scan/SQL/Parquet, inference, training, search and validation against CPU/RAM/process/disk/per-device budgets. Bound internal threads, queues and queued bytes; preserve validation/cleanup capacity; add pressure backoff, gradual recovery and missing-telemetry behavior. Qualify concurrent repositories, no duplicate whole-host budget, cancellation/crash reaping and hard-limit versus sampled enforcement modes.",
+      "source_line": 296,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Datasets shared lease admission, nested parent preservation, pressure refusal and cancellation are qualified in the structural wrapper."
+      ],
+      "remaining_work": [
+        "Cross-package host owner, all phase/queue/disk/device budgets, concurrent repositories and hard enforcement versus sampling require full qualification."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest"
+      ]
+    },
+    {
+      "id": "RPI-023",
+      "owners": "Datasets snapshot/AST/cache; accelerate evidence adapter",
+      "dependencies": "RPI-001, RPI-004, RPI-007",
+      "criterion": "Project canonical captured bytes into AST ingestion and `CodeEvidencePlane`; repair dirty-overlay and parser/config cache identities. Carry source/dependency/environment identities through stage caches, exact proof lookup, matches and planning materials. Qualify different dirty states at unchanged HEAD, submodules, parallel worktrees, renames, parser changes, source races and fresh-process persistent lookup. Independently checked deterministic proofs survive model changes only when their complete keys remain eligible.",
+      "source_line": 297,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Captured dirty-overlay bytes at unchanged Git HEAD, distinct worktree views, renames and parser-context shard reuse are integrated and tested; old snapshots retain immutable history.",
+        "The full canonical bridge preserves exact source/dependency/environment identity without equivalence inference. Doctor invalidation survives restart and refuses unseen-root late registration, concurrent equivocation and stale positives detected before cache return."
+      ],
+      "remaining_work": [
+        "Full CodeEvidencePlane/cache/matcher/planner source-dependency-environment joins and selective independently checked proof reuse remain open.",
+        "Automatic source-change observation, submodule/dependency invalidation closure and source/model eligibility propagation through matching/admission are not added by these cache controls."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest",
+        "proof-cache-tests-log",
+        "proof-cache-tests-xml",
+        "proof-cache-source-inventory-json",
+        "proof-cache-summary-json",
+        "proof-cache-checksums-json"
+      ]
+    },
+    {
+      "id": "RPI-024",
+      "owners": "Datasets tactician/family backends; accelerate proof",
+      "dependencies": "RPI-005, RPI-006, RPI-007, RPI-022",
+      "criterion": "Reuse the typed obligation DAG and AND/OR plans; execute independent nodes and compatible per-node portfolios under shared leases. Bind families, operations, semantic lowering, assumptions, bounds and assurance; add explicit cross-family bridge obligations. Qualify Lean/Rocq/Isabelle reconstruction, SMT and TLA+ routes only for supported fixtures. Test single flight, unavailable tools, solver disagreement, dependent invalidation and cancellation that preserves required validation.",
+      "source_line": 298,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-025",
+      "owners": "Joint benchmark and runtime qualification",
+      "dependencies": "RPI-019, RPI-022, RPI-023, RPI-024",
+      "criterion": "Run the complete scan/adapt/check/cache/restart/match/plan/edit/reprove path under bounded external CPU/RAM/I/O pressure and GPU pressure where available. Predeclare RSS/VRAM/temp-disk/queue/overshoot/cancellation/recovery limits. Compare 1/2/4/8 and larger eligible core allocations, cold/warm/delta work and model-off/frozen/fresh/delta-training arms. Retain failures and unavailable capabilities; distinguish telemetry injection, actual competition and kernel-enforced limits.",
+      "source_line": 299,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-026",
+      "owners": "Accelerate public preparation; datasets runtime",
+      "dependencies": "RPI-020, RPI-025; RPI-013 through RPI-015",
+      "criterion": "Enable qualified incremental inventory/index, exact evidence reuse and demand-driven proof by default in repository task preparation. Keep resource safety/backoff on. Declare frozen/optional bounded/required adaptation, freeze choices before preview, and record deferred work or retained parent. Test public entrypoints, repeated preparation, cold/warm operation and explicit opt-out; no fitting in admission replay, with measured frozen inference or a separately qualified authenticated receipt-only profile. Default preparation does not authorize reduced signed task populations.",
+      "source_line": 300,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Opt-in finite preparation uses the native durable full structural index and historical evidence tables while requiring fresh current-source observations for eligibility. New native driver retains actual shared scheduler admission/backoff and reports run-owned cleanup; signed run-local orchestration state fixes the diagnosed ambient legacy scan before heartbeat without relaxing 30s health limits."
+      ],
+      "remaining_work": [
+        "No production default was changed. Generic public preparation defaults, repeated warm evidence reuse, demand-driven proof, adaptation controls, cold/warm measured inference and explicit opt-out matrix remain open."
+      ],
+      "evidence": [
+        "finite-native-summary",
+        "finite-native-final",
+        "finite-native-evidence-manifest",
+        "finite-native-owned-file-scope"
+      ]
+    },
+    {
+      "id": "RPI-027",
+      "owners": "Datasets modality/runtime registry and incremental trainer",
+      "dependencies": "RPI-008, RPI-009, RPI-010",
+      "criterion": "Register versioned `codebase_ir` source/target/decoder/validator/resume contracts with separate feature, structured and property objectives. Compose existing RepositoryState/SemanticStateBundle/ProgramIR artifacts. Declare partial inheritance, full-parent weight initialization/new optimizer, or exact optimizer resume independently. Reuse immutable microbatches and durable progress for changed symbols plus replay; require complete ancestral split roles and fixed canaries. Use ordered continuation per child or independently qualified lane heads; bind topology and reject implicit merges. Compare children before atomic promotion; rejected/cancelled children cannot change checked semantics. Qualify actual continuation, literal/guard feature-collision controls, forgetting and exact model-dependent index rebuilds.",
+      "source_line": 301,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Additive codebase_ir/source_conditioned_384_v1 envelope reuses the unchanged shared SecurityIR structured runtime and sufficient-statistics ridge head fit. Exact original weights, fixed cohort roles, numerical parent relationships and source-target manifest joins are retained;8D and384D protocols stay separate."
+      ],
+      "remaining_work": [
+        "Full modality/runtime registration, microbatch continuation/replay objectives, independent canary promotion and forgetting mitigation remain open. Current384profile refits a frozen-vocabulary head; it does not resume an optimizer or recover parent training data from weights."
+      ],
+      "evidence": [
+        "source384-qualified-02"
+      ]
+    },
+    {
+      "id": "RPI-028",
+      "owners": "Datasets source adapters and software verification",
+      "dependencies": "RPI-001, RPI-002",
+      "criterion": "Integrate the current revision-forwarding, UTF-8 span and explicit-sort rejection repairs with captured snapshots, typed models, full proof keys and matching. Qualify unsupported type/operation refinements before semantic admission, including runtime/domain assumptions behind annotations. Retain multibyte identifiers/literals/comments, CRLF/CR/Unicode separators, multiline spans, dirty revisions at unchanged HEAD, unknown/float/any types and numeric-operation fixtures. Require exact source selectors and refusal of silently narrowed integer theorems throughout the joined route.",
+      "source_line": 302,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Current structural foundation retains exact bytes and native AST source provenance; separate scoped typing/source-grounding ports are under parallel integration."
+      ],
+      "remaining_work": [
+        "The complete Unicode/type/numeric/source selector matrix through proof keys and behavioral matching requires the joined verification lane."
+      ],
+      "evidence": [
+        "foundation-tests-log",
+        "foundation-tests-junit",
+        "foundation-selected-port-manifest"
+      ]
+    },
+    {
+      "id": "RPI-029",
+      "owners": "Datasets snapshots/index; accelerate resource orchestration",
+      "dependencies": "RPI-001, RPI-022, RPI-023",
+      "criterion": "Add sealed full inventory plus deterministic bounded source/AST/inference shards, resumable cursors and explicit deferred/opaque dispositions. Pin workspace/artifact/vendor/cache exclusions and global cross-shard dependency resolution. Qualify cold/incremental equivalence, resumed versus new snapshots, entry-cap rejection, large files, memory/backpressure, batched Git object acquisition and bounded watcher triggers. Benchmark batching/model residency and compatible CUDA inference with opt-out; retain the existing CPU feature trainer until a device implementation is qualified. No silent truncation or learned-rank omission.",
+      "source_line": 303,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Additive CodebasePagedStager seals complete clean committed inventories, stages bounded deterministic source/AST shards, recovers exact cursors after native restart, and preserves deferred/opaque dispositions. Twenty-three focused tests pass, including exact byte/pin checks on parsed-cache hits, direct classifier-owner drift refusal and bounded eviction.",
+        "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim."
+      ],
+      "remaining_work": [
+        "Dirty-overlay paging, global cross-shard dependency resolution, source-conditioned inference shards, batched Git object acquisition, watcher orchestration, model residency/CUDA, pressure qualification and current-head promotion remain unqualified.",
+        "Complete history still receives a bounded byte walk; larger-scale incremental I/O behavior and repeated-run timing distributions remain open."
+      ],
+      "evidence": [
+        "paged-staging-tests-log",
+        "paged-staging-tests-junit",
+        "paged-staging-native-comparison",
+        "paged-staging-native-final",
+        "paged-staging-evidence-manifest"
+      ]
+    },
+    {
+      "id": "RPI-030",
+      "owners": "Datasets CodebaseIR trainer/reducer/registry; accelerate workers",
+      "dependencies": "RPI-009, RPI-010, RPI-022, RPI-027",
+      "criterion": "Extend the bounded source-bound 8D adapter to qualified production worker dispatch using existing sample-weighted reduction and binary update artifacts; preserve its explicit aggregate Adam reset and source/count contracts. Keep separate 8D/384D lineages and repository-private heads where mappings differ. Freeze common parent, feature/token/target semantics, parameter layout, producer/objective and approved source/corpus digests/counts. Preseal sparse key union; reject unknown keys, independently learned latent mappings, wrong parents/corpora, duplicate updates and stale fences. Demonstrate actual codebase local training, deterministic aggregate materialization and parent/child canary qualification before owner CAS. Do not average proof metadata or optimizer histories.",
+      "source_line": 304,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-031",
+      "owners": "Accelerate task transport; datasets training sync contract; MCP++ integration",
+      "dependencies": "RPI-010, RPI-022, RPI-030",
+      "criterion": "Carry scoped round/worker/attempt/fence/source/model/bucket bindings and exact SHA-256/CID artifact references through existing task/proof-context transport. Qualify lost responses, duplicate delivery, unavailable peers and stale completion. Initially run federation only. Future gradient mode requires injected collective backend plus deployment verifier, fixed membership/step/bucket ordering, declared reduction/scaling and resource/device accounting; failure aborts without fallback to FedAvg. Transport receipts never certify numerical work or proof authority.",
+      "source_line": 305,
+      "production_acceptance": "open",
+      "local_status": "pending_verification",
+      "locally_qualified_portions": [],
+      "remaining_work": [
+        "The complete criterion above has not been qualified in the released integration."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "RPI-032",
+      "owners": "Datasets native proof/index queries; accelerate matching/service",
+      "dependencies": "RPI-004, RPI-007, RPI-012, RPI-013",
+      "criterion": "Specify bounded typed relevant-unit, unit-evidence, intent-resolution and residual-obligation queries with root-bound cursors and exact consumed record/receipt commitments. Register reverse source/contract/premise/tool/model dependencies at publication. Reuse durable accelerate FormalVerificationCache through the full-key adapter; persist or deterministically rebuild datasets proof/CodeEvidencePlane projections. Qualify fresh-process replay, incomplete pages/frontiers, model-only versus source edits, formatting span rebinding, wrong assumptions, revoked/missing evidence and freeze-to-admission races. Required service gates cannot depend on optional context hooks.",
+      "source_line": 306,
+      "production_acceptance": "open",
+      "local_status": "partial_local_qualification",
+      "locally_qualified_portions": [
+        "Historical proof-cache discovery uses bounded keyset pages, continuation keys and explicit omissions; the compatibility scanner walks beyond 512 rows and persists reports. Exact source locator plus full key prevents basename/truncated-key collisions."
+      ],
+      "remaining_work": [
+        "Pages explicitly lack cross-call snapshot consistency; complete root-bound service queries and consumed-record commitments remain open. The automatic filename inventory retains its 16-file cap. Discovery rows never grant proof/completion authority, and the identity bridge still lacks a verified positive-receipt obligation link."
+      ],
+      "evidence": [
+        "proof-cache-tests-log",
+        "proof-cache-tests-xml",
+        "proof-cache-source-inventory-json",
+        "proof-cache-summary-json",
+        "proof-cache-checksums-json"
+      ]
+    }
+  ]
+}

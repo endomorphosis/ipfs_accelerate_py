@@ -1,0 +1,724 @@
+{
+  "after_stop": {
+    "captured_at_ms": 1790919289701,
+    "completion_authority": false,
+    "configuration_root": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+    "healthy": false,
+    "native_heartbeat": null,
+    "process_tree": {
+      "captured_at_ms": 1790919289701,
+      "members": [],
+      "profile_id": "sha256:44dc409eb9023350bf69a53a2aab08b3b9bbb1e4c4f31e2dd3c5b30a9efd5ef3",
+      "run_id": "admitted-0c79a488dfdc4bc38efbb30c3dbfd275",
+      "schema": "ipfs_accelerate_py/agent-supervisor/process-tree@1",
+      "tree_id": "sha256:8aaf552f71abbf08a97495781d2f5f0c56755b8c0d1c9cdc3f12101007c91f98"
+    },
+    "production_activation": false,
+    "provider_dispatch_allowed": true,
+    "published_context": [
+      {
+        "completion_authority": false,
+        "context_bundle": {
+          "artifact": ".runtime/published-context/admitted-0c79a488dfdc4bc38efbb30c3dbfd275/1-sha256:e272f7e011ca3e48047ee757e014a9b4f3f06e196ea9298a7c950510d7599f16/context-bundle.json",
+          "sha256": "924318b66cc866c9dfe372697835a840fd98826d3cbb6928c35df9c022e48ef6"
+        },
+        "goal_progress": {
+          "canonical_state_mutated": false,
+          "capture_cid": "baguqeeraf7bu6i54dnyhajf37ghu3gi4klwjrexh7c7hmadra5yyt336qzna",
+          "completion_authority": false,
+          "completion_projection_cid": "baguqeeralb53bdkvhoheytqlheq6teufhd6whwlfdavr5ggu2ixcivfqmlqa",
+          "declared_goal_edges": [],
+          "event_watermark": 5,
+          "execution_authority": false,
+          "goal_completion_authority": "unresolved",
+          "goal_contracts_evaluated": false,
+          "goals": [
+            {
+              "child_goal_cids": [],
+              "completion_authority": false,
+              "direct_task_cids": [
+                "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+              ],
+              "goal_alias": "LOCAL-GOAL",
+              "goal_cid": "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona",
+              "goal_completion_authority": "unresolved",
+              "goal_contracts_evaluated": false,
+              "observed_counts": {
+                "completed_with_current_receipt": 1,
+                "current_completion_receipts": 1,
+                "observed_descendant_tasks": 1,
+                "observed_status_counts": {
+                  "completed": 1
+                }
+              },
+              "parent_goal_cid": "",
+              "revision": 1,
+              "status": "open",
+              "title": "Under python-integer-offset-finite@1, calc.py::increment(n) must return an exact int for inputs [-2,-1,0,1,2]. Under python-integer-offset-finite@1, calc.py::increment(n) must return n + 2 for inputs [-2,-1,0,1,2].",
+              "title_truncated": false
+            }
+          ],
+          "live_freshness_verified_here": false,
+          "parent_edges": [],
+          "plan_projection_cid": "baguqeerahvukwm7nhrjlxcn2mfvrndxwq5offdmnf4mym5mqkbxoy3morz2q",
+          "population_scope": "selected-tasks",
+          "progress_cid": "baguqeerawqie4dfyu6btou4sajt6m2q24xigiqgfsgdhrgxw5pkmri5o3rjq",
+          "roots": [
+            "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona"
+          ],
+          "schema": "supervisor-observed-intent-progress@1",
+          "status": "observed",
+          "task_population_complete": false,
+          "tasks": [
+            {
+              "completion_authority": false,
+              "current_completion_receipt": {
+                "attempt_id": "",
+                "claim_cid": "",
+                "evidence_digest": "baguqeeraoc6rmda47e3o5afhqznmojxsgtmlqw5l4z6mjfetm7wyzigrb4sa",
+                "fencing_token": 0,
+                "receipt_cid": "baguqeera7avxy33cso7hulace2yhl64mzgzt5ao3wqtxiwjfcaj2wu22r7bq",
+                "validation_run_id": ""
+              },
+              "dependencies": [],
+              "goal_cid": "baguqeera4zf33igj5v7rdtemirpmt36ob5orrwy2ayv5avi6w6bzhblmtona",
+              "revision": 4,
+              "status": "completed",
+              "task_alias": "LOCAL-TASK",
+              "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq"
+            }
+          ],
+          "unavailable_reasons": [],
+          "world_snapshot_cid": "sha256:565d394e60f63b4208aabe14e97f4abce90fa57ee248ac0a353d8bf6ac07fcee"
+        },
+        "refresh_artifact": ".runtime/published-context/admitted-0c79a488dfdc4bc38efbb30c3dbfd275/1-sha256:e272f7e011ca3e48047ee757e014a9b4f3f06e196ea9298a7c950510d7599f16/result.json",
+        "refresh_sha256": "7e8ae1034c5e4c1b87579443141389c1c38fb9b852ec15405b5d746e8f3a0f8c",
+        "retrieval_status": "unavailable",
+        "semantic_root_cid": "baguqeera2wpuyo5dwjxe2laa6joi6e7gd7ve6egpxqubowcrncrngyzrl5aq",
+        "source_scope": {
+          "accepted_source_tree_includes_declared_outputs": true,
+          "declared_outputs_outside_index_scope": [],
+          "preserved_paths": [
+            "calc.py",
+            "instruction.txt",
+            "public_check.py"
+          ],
+          "scope_expanded": false
+        },
+        "status": "refreshed",
+        "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+        "task_revision": 4,
+        "world_snapshot_cid": "sha256:565d394e60f63b4208aabe14e97f4abce90fa57ee248ac0a353d8bf6ac07fcee"
+      }
+    ],
+    "published_context_observation_seconds": 1.8103326661512256,
+    "schema": "isolated-supervisor-observation@1",
+    "task_admission_authority": false
+  },
+  "baseline_commit": "1f9930a0a8699a6b1e3a621f79a906b2f5b6b10a",
+  "benchmark_result": false,
+  "bootstrap_errors": [],
+  "captured_paths": [
+    "calc.py",
+    "decoy.py",
+    "instruction.txt",
+    "public_check.py",
+    "unsupported.py"
+  ],
+  "cold_successor_agrees": true,
+  "context_bundle": {
+    "artifact": ".runtime/context-bundle.json",
+    "sha256": "83ea2650165b8ff1c9f402214c6b93a2a0ae8a8696080b9ec862c5d619f95b12"
+  },
+  "final_public_check_exit_code": 0,
+  "handoff_sha256": "5e6c2dc491d82c4219b69cfbbd3f3c153968c2f67e2812bd29718405452241ca",
+  "index_query": {
+    "cache_authority": "historical_candidate_only",
+    "completion_authority": false,
+    "counts": {
+      "clauses": 2,
+      "facts": 1,
+      "observations": 5
+    },
+    "current_facts": [],
+    "execution_authority": false,
+    "fresh_observation_required": true,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa",
+      "generation": 1,
+      "manifest_cid": "baguqeera7kkuphvrrgcao4rc6pags7lqtertptnl6wf3j3tkxmauncgwkv6q",
+      "receipt_cid": "baguqeeraokdug4bun6vlfycpzzlffszk7n7rdtcvhbshqhnzdqeduyf5slxq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa"
+    },
+    "historical_fact_ids": [
+      "finite-observation:baguqeera7wgbrseeez5ye4nq4bxo3jtchz6qqllh5gqnms7mlbx6uf5paqgq"
+    ],
+    "live_source_checked_before_and_after": true,
+    "manifest_id": "sha256:21d08401227ce3a6a1db304c04cc6c152803cb260076769897adadafbca12baa",
+    "match_sha256": "sha256:5f6dc43e61a980ff034c138e6498a65dab4cf82d3c948c9d1859dfb33f4a21e8",
+    "proof_authority": false,
+    "schema": "terminal-codebase-finite-evidence-query@1"
+  },
+  "initial_fact_count": 1,
+  "initial_head": {
+    "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa",
+    "generation": 1,
+    "manifest_cid": "baguqeera7kkuphvrrgcao4rc6pags7lqtertptnl6wf3j3tkxmauncgwkv6q",
+    "receipt_cid": "baguqeeraokdug4bun6vlfycpzzlffszk7n7rdtcvhbshqhnzdqeduyf5slxq",
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa"
+  },
+  "initial_public_check_exit_code": 1,
+  "initial_residuals": [
+    "finite-integer-offset-goal"
+  ],
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "native_diagnostics": {
+    "admitted_database_daemon_pass_heartbeat.json": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1",
+      "selection_idle_reason": ""
+    },
+    "admitted_native_owner_heartbeat.json": {
+      "schema": "native-typed-owner-live-observation@1"
+    },
+    "admitted_supervisor_status.json": {
+      "daemon_pid": null,
+      "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
+      "status": "stopped",
+      "supervisor_pid": 251583
+    },
+    "exception_types": [],
+    "git_dubious_ownership": false,
+    "logs": [
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 0,
+        "path": "supervisor-process.log",
+        "tail_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "traceback_frames": []
+      },
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 31498,
+        "path": "run/admitted_managed_daemon_20261002T053441Z.log",
+        "tail_sha256": "aad56867b9ebfb65ccc1c181f1222f960444cf3c826da7489e3b3ce8bbd8d821",
+        "traceback_frames": []
+      }
+    ],
+    "schema": "native-supervisor-diagnostics@1",
+    "traceback_frames": []
+  },
+  "observations": [
+    {
+      "revision": 3,
+      "seconds": 14.6949602519162,
+      "status": "in_progress"
+    },
+    {
+      "revision": 4,
+      "seconds": 20.51508024893701,
+      "status": "completed"
+    }
+  ],
+  "owned_remaining_leases": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "published_commit": "6982eb69154b26a21d7ed4463ddf0f04665bf301",
+  "published_source_matches_checked_candidate": true,
+  "qualified": true,
+  "remaining_processes": 0,
+  "resource_state": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "allocated_child_process_slots": 0,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 57,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 57,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "lanes": {
+      "snapshot_evaluation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 45,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 45,
+          "wait_seconds_max": 6.880145519971848e-07,
+          "wait_seconds_mean": 3.9751951893170673e-07,
+          "wait_seconds_total": 1.7888378351926804e-05
+        }
+      },
+      "validation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 2,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 12,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 12,
+          "wait_seconds_max": 5.760230123996735e-07,
+          "wait_seconds_mean": 3.9068982005119324e-07,
+          "wait_seconds_total": 4.688277840614319e-06
+        }
+      }
+    },
+    "proof_backoff": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 0,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "wait_time_seconds": {
+      "count": 57,
+      "max": 6.880145519971848e-07,
+      "mean": 3.9608168758844074e-07,
+      "p50": 4.00003045797348e-07,
+      "p95": 5.760230123996735e-07,
+      "p99": 6.880145519971848e-07,
+      "total": 2.2576656192541122e-05
+    },
+    "waiting_request_count": 0
+  },
+  "retained_preview_execution_debt": {
+    "admitted": false,
+    "admitted_width": 0,
+    "assignments": [],
+    "capacity_snapshot_id": "baguqeerao3zxmaejo6eauczwdbyc27rmtjdoi4l4s4mkwy6n5lgwq4lfq4oa",
+    "conflict_graph": {
+      "blocking_pairs": [],
+      "edges": [],
+      "task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "conflict_width": 1,
+    "conflicts": [],
+    "critical_path": [
+      "task:finite:offset"
+    ],
+    "critical_path_duration_ms": 1000,
+    "dependency_edges": [],
+    "dependency_graph": {
+      "critical_path": [
+        "task:finite:offset"
+      ],
+      "critical_path_duration_ms": 1000,
+      "edges": [],
+      "estimated_makespan_ms": 1000,
+      "ready_waves": [
+        {
+          "conflict_free_lanes": [
+            [
+              "task:finite:offset"
+            ]
+          ],
+          "conflict_width": 1,
+          "dependency_wave": 0,
+          "graph_ready_task_ids": [
+            "task:finite:offset"
+          ],
+          "graph_width": 1
+        }
+      ]
+    },
+    "deterministic_replay": {
+      "capacity_snapshot_id": "baguqeerao3zxmaejo6eauczwdbyc27rmtjdoi4l4s4mkwy6n5lgwq4lfq4oa",
+      "compiler_interface": "ParallelPlanCompiler@1",
+      "input_digest": "parallel-plan-input:sha256:a2be9cfe24f2d9904ae18ec9f5abf2a1cf8ba4a231036f597bdfcbb207683b4b",
+      "plan_id": "parallel-execution-plan:sha256:c176c7304c1c74fcf20a3110d362ad6ea2b3a6eec5088c31e40109e79881ec87",
+      "provider_snapshot_ids": [],
+      "repository_tree_id": "baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa"
+    },
+    "estimated_makespan_ms": 1000,
+    "execution_waves": [],
+    "graph_width": 1,
+    "input_digest": "parallel-plan-input:sha256:a2be9cfe24f2d9904ae18ec9f5abf2a1cf8ba4a231036f597bdfcbb207683b4b",
+    "interface": "ParallelExecutionPlan@1",
+    "issues": [
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "capacity snapshot has no executable CPU/process slot",
+        "task_ids": []
+      },
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "task task:finite:offset cannot fit available host/provider resources",
+        "task_ids": [
+          "task:finite:offset"
+        ]
+      },
+      {
+        "code": "stale_capacity",
+        "evidence": [
+          "observed_at_ms=0",
+          "current_time_ms=0",
+          "fresh_until_ms=0"
+        ],
+        "message": "host capacity snapshot is missing freshness evidence or is stale",
+        "task_ids": []
+      }
+    ],
+    "leaf_producer_closure": {
+      "closed": true,
+      "producer_by_leaf_id": {
+        "finite-effect:baguqeerazgmzim745d3mkbmkzhp4bqa6c237efalusvt4vgbd45iubnh2uva": "task:finite:offset",
+        "terminal:task:finite:offset": "task:finite:offset"
+      },
+      "required_leaf_ids": [
+        "terminal:task:finite:offset"
+      ],
+      "terminal_task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "merge_order": [],
+    "outcome": "rejected",
+    "plan_id": "parallel-execution-plan:sha256:c176c7304c1c74fcf20a3110d362ad6ea2b3a6eec5088c31e40109e79881ec87",
+    "provider_snapshot_ids": [],
+    "ready": false,
+    "ready_waves": [
+      {
+        "conflict_free_lanes": [
+          [
+            "task:finite:offset"
+          ]
+        ],
+        "conflict_width": 1,
+        "dependency_wave": 0,
+        "graph_ready_task_ids": [
+          "task:finite:offset"
+        ],
+        "graph_width": 1
+      }
+    ],
+    "repository_tree_id": "baguqeerasj63drq4ujnehgqjk7kf2lnihp5mx22jy3i5cnztgzpcag4g6uoa",
+    "requested_width": 1,
+    "resource_feasibility": {
+      "available_host": {
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "process_slots": 0
+      },
+      "context_feasible": true,
+      "cost_feasible": true,
+      "feasible": false,
+      "freshness_proved": false,
+      "host_feasible": false,
+      "provider_by_task_id": {
+        "task:finite:offset": ""
+      },
+      "provider_feasible": true,
+      "required_totals": {
+        "context_tokens": 0,
+        "cost_micros": 0,
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "output_tokens": 0,
+        "process_slots": 1,
+        "quota_units": 0
+      },
+      "token_feasible": true
+    },
+    "resource_width": 0,
+    "schema": "ipfs_accelerate_py/agent-supervisor/parallel-execution-plan@1",
+    "widths": {
+      "admitted_width": 0,
+      "conflict_width": 1,
+      "graph_width": 1,
+      "requested_width": 1,
+      "resource_width": 0
+    }
+  },
+  "run_owner_pid": 246748,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 27.114164429949597,
+  "selected_operations": [
+    "task:finite:offset"
+  ],
+  "stale_dispatch_refused": true,
+  "stale_index_refused": true,
+  "start": {
+    "audit_receipt_id": "sha256:93e8e2a3d5a8063ed1fe5a97d7fb36d08487351ab7ee770ddfd9a695c8542142",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6Mkn98Gjq4LcFAmCXmHtZzYZ5ZRppX4a1BRynEeWijbctGa",
+    "contract_version": 1,
+    "data": {
+      "health_window_ms": 500,
+      "new_process_identity": {
+        "argv": [
+          "/home/barberb/.local/bin/python",
+          "-P",
+          "-m",
+          "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+          "--todo-path",
+          "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/intent.duckdb",
+          "--state-dir",
+          "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/launch/state/run",
+          "--state-prefix",
+          "admitted",
+          "--task-prefix",
+          "##",
+          "--task-source-kind",
+          "duckdb",
+          "--authority-mode",
+          "quack",
+          "--quack-endpoint",
+          "quack:127.0.0.1:33187",
+          "--endpoint-secret-handle",
+          "handle:quack-token:[REDACTED]",
+          "--state-store-id",
+          "native-quack-qualification-v1",
+          "--state-store-generation",
+          "1",
+          "--state-schema-revision",
+          "5",
+          "--state-owner-bootstrap-fd",
+          "12",
+          "--state-owner-client-id",
+          "database-implementation-daemon:admitted-0c79a488dfdc4bc38efbb30c3dbfd275",
+          "--check-interval",
+          "0.25",
+          "--daemon-interval",
+          "0.25",
+          "--max-restarts",
+          "1",
+          "--max-task-attempts",
+          "1",
+          "--strict-task-sharding",
+          "--no-worktree-reconciliation",
+          "--no-retry-budget-guardrail",
+          "--no-dependency-guardrail",
+          "--no-reconciliation-guardrail",
+          "--no-objective-task-janitor",
+          "--no-objective-goal-refinement",
+          "--no-objective-goal-completion-reconcile",
+          "--no-objective-goal-migration",
+          "--no-objective-ast-dataset",
+          "--no-objective-todo-vector-index",
+          "--merge-target-branch",
+          "master",
+          "--merge-queue-dir",
+          "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/launch/state/merge_queue",
+          "--worktree-root",
+          "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/worktrees",
+          "--execution-slice-task-cid",
+          "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+          "--execution-slice-task-id",
+          "LOCAL-TASK",
+          "--task-context-bundle-artifact",
+          ".runtime/context-bundle.json",
+          "--task-context-bundle-sha256",
+          "83ea2650165b8ff1c9f402214c6b93a2a0ae8a8696080b9ec862c5d619f95b12",
+          "--implement",
+          "--implementation-command",
+          "/home/barberb/.local/bin/python -B -P -m ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_runner --artifact /home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/repository/.runtime/repository-finite-handoffs/5e6c2dc491d82c4219b69cfbbd3f3c153968c2f67e2812bd29718405452241ca.json --sha256 5e6c2dc491d82c4219b69cfbbd3f3c153968c2f67e2812bd29718405452241ca --task-cid baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq --owner-did did:key:z6Mkn98Gjq4LcFAmCXmHtZzYZ5ZRppX4a1BRynEeWijbctGa --profile-id 48f518ac8b2aaf9ed02a7baa7351474d"
+        ],
+        "boot_id": "f4a3b80a-e3df-4702-8d03-86c19f69b2a9",
+        "configuration_root": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+        "cwd": "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/repository",
+        "executable": "/usr/bin/python3.12",
+        "fencing_epoch": 1,
+        "identity_id": "sha256:5be698546762656213db8cd53d0d519f5776b479cb694fecd572418842ce7530",
+        "parent_pid": 246748,
+        "pid": 251583,
+        "process_group_id": 251583,
+        "profile_id": "sha256:44dc409eb9023350bf69a53a2aab08b3b9bbb1e4c4f31e2dd3c5b30a9efd5ef3",
+        "repository_root": "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/repository",
+        "run_id": "admitted-0c79a488dfdc4bc38efbb30c3dbfd275",
+        "run_root": "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/launch/state/run",
+        "schema": "ipfs_accelerate_py/agent-supervisor/process-identity@1",
+        "session_id": 251583,
+        "start_time_ticks": 148758757,
+        "state_root": "/home/barberb/lift_coding/artifacts/repository-finite-supervision-20261002/native-06/launch/state",
+        "target_id": "baguqeeraymtcsarndy5ogjvjemcpx62nxrnc25jqv2p42mnfyepdauj5juya"
+      },
+      "old_tree_fenced": false,
+      "receipt_id": "sha256:bd04aae790f8e3cbabd6d6e9106585bf35a38747b3140b43807ad184c4a7596d",
+      "transition_artifact_sha256": "sha256:ccf537b70647251aec916636b8c450c667082f1aa36135a6765b4e1feacff317",
+      "transition_id": "sha256:41448e240a07d1c226a31b437a6f476912d6ed2645a1baf925109bc14c03b8af"
+    },
+    "effects": [
+      {
+        "applied": true,
+        "authority": "mutation",
+        "content_id": "baguqeera5ibyd2ybxfpbozuidlzxxuw5xob4kefqmguzbirqqt4k5mzvx5qq",
+        "contract_version": 1,
+        "effect_id": "start:isolated-process-tree",
+        "kind": "lifecycle_transition",
+        "paths": [
+          "lifecycle-transitions.jsonl",
+          "run"
+        ],
+        "receipt_id": "sha256:93e8e2a3d5a8063ed1fe5a97d7fb36d08487351ab7ee770ddfd9a695c8542142",
+        "resource": "baguqeeraymtcsarndy5ogjvjemcpx62nxrnc25jqv2p42mnfyepdauj5juya",
+        "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+      }
+    ],
+    "error": null,
+    "idempotency_key": "admitted-0c79a488dfdc4bc38efbb30c3dbfd275:start:0",
+    "objective_id": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+    "operation": "start",
+    "policy_id": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+    "preview": null,
+    "repository_id": "baguqeeraymtcsarndy5ogjvjemcpx62nxrnc25jqv2p42mnfyepdauj5juya",
+    "request_id": "baguqeerae4kpnv7ciwxrzd4f5wtmt2r32ix35slwajboy5hch4suh7qbi6ra",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "succeeded",
+    "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65"
+  },
+  "stop": {
+    "audit_receipt_id": "sha256:b0a56a0df8c76662063d9872ba17d1c3e1c2102556d01a18646cdc9f6a1d1c50",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6Mkn98Gjq4LcFAmCXmHtZzYZ5ZRppX4a1BRynEeWijbctGa",
+    "contract_version": 1,
+    "data": {
+      "health_window_ms": 500,
+      "new_process_identity": null,
+      "old_tree_fenced": true,
+      "receipt_id": "sha256:3d7d1473001b2ac3d10fe6d71bfdf24a675155e040134313ab169e38b9fe85b5",
+      "transition_artifact_sha256": "sha256:213643df9e0ac8868e070c1cc474b89be74411a16302ef95b7a3884f34bb47ab",
+      "transition_id": "sha256:b240c450bf447aa7c924d69e0533727b20abf9f6f33d34806428c37717a8ac11"
+    },
+    "effects": [
+      {
+        "applied": true,
+        "authority": "mutation",
+        "content_id": "baguqeerahsfamd5bvuh3ooiblfvs5jt6xhcchkinjv24d4flihlx47hylrka",
+        "contract_version": 1,
+        "effect_id": "stop:isolated-process-tree",
+        "kind": "lifecycle_transition",
+        "paths": [
+          "lifecycle-transitions.jsonl",
+          "run"
+        ],
+        "receipt_id": "sha256:b0a56a0df8c76662063d9872ba17d1c3e1c2102556d01a18646cdc9f6a1d1c50",
+        "resource": "baguqeeraymtcsarndy5ogjvjemcpx62nxrnc25jqv2p42mnfyepdauj5juya",
+        "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+      }
+    ],
+    "error": null,
+    "idempotency_key": "admitted-0c79a488dfdc4bc38efbb30c3dbfd275:stop:1",
+    "objective_id": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+    "operation": "stop",
+    "policy_id": "sha256:c6c717b9641eb6e8691258cca870c702cd5c572c62cb5d64c276b3d9f445111c",
+    "preview": null,
+    "repository_id": "baguqeeraymtcsarndy5ogjvjemcpx62nxrnc25jqv2p42mnfyepdauj5juya",
+    "request_id": "baguqeeraslty6kelo34ceqgol6v3xxpt3ik3vdly34wjj6fm7c7dpmkrc5ma",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "succeeded",
+    "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65"
+  },
+  "successor": {
+    "fact_count": 2,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeera7cmuvm2atuou6jbsg7rcbwq2tw2ygli4jyfjrmslrfqsy25a44ba",
+      "generation": 2,
+      "manifest_cid": "baguqeeraqcggsfa3cxpsf2bvhoy2otla3bqkc3cwncq6xxe2aeiqgwbqurka",
+      "receipt_cid": "baguqeera7lwza2xs7qzjfzvuo3ds3kazatxxhdhsnngjdbtstje4puacpfmq",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeera7cmuvm2atuou6jbsg7rcbwq2tw2ygli4jyfjrmslrfqsy25a44ba"
+    },
+    "observation_cid": "baguqeeraoq75jft3zfaboahk3o5do457fweaz4w27ugzm23aftygo55mpmbq",
+    "residuals": []
+  },
+  "task": {
+    "revision": 4,
+    "status": "completed"
+  },
+  "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+  "training_steps": 0
+}

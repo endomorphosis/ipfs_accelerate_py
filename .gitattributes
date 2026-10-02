@@ -3,3 +3,9 @@
 
 *.sh text eol=lf
 *.service text eol=lf
+
+# Retained qualification evidence is byte-addressed. Preserve original log
+# whitespace so diagnostics continue to match the published manifest hashes.
+docs/agent_supervisor/evidence/codebase-foundation-20261002/** -whitespace
+docs/agent_supervisor/evidence/repository-finite-supervision-20261002/** -whitespace
+docs/agent_supervisor/evidence/repository-proof-index-20261002/** -whitespace

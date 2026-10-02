@@ -1,0 +1,39 @@
+{
+  "schema": "repository-proof-cache-qualification-provenance/v1",
+  "accelerate_base_commit": "6ab718bf96126c0f78d60d322cf86c6de74eac72",
+  "datasets_base_commit": "c9446bd44cef1603c1461242e6c577e26af45ad8",
+  "source_authority": "Exact working files listed in source-inventory.json; base commits alone do not identify uncommitted additions.",
+  "historical_neighbor_source_observation": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "fc62ea913a79b903e941d40d6a78200ebdd175aee5327096f0b84cbfb4477cc1",
+      "bytes": 3183311
+    }
+  ],
+  "historical_neighbor_note": "The independent planner owner changed implementation_daemon.py during final cache tests to add child startup diagnostics; the earlier observed hash is contextual history, not part of the final scoped source inventory.",
+  "command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q",
+    "test/api/test_agent_supervisor_doctor_proof_cache.py",
+    "test/api/test_doctor_cache_durable_state.py",
+    "test/api/test_agent_supervisor_formal_verification_cache.py",
+    "test/api/test_board_proof_cache_pagination.py",
+    "test/api/test_canonical_cache_key_bridge.py",
+    "--junitxml=/tmp/rpi-cache-release-tests.xml"
+  ],
+  "environment": {
+    "PYTHONPATH": "/tmp/ir-release-accelerate-20261001:/tmp/ir-release-datasets-20261001:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/rpi-cache-release-seal-20261002.duckdb"
+  },
+  "baseline_control": {
+    "commit": "6ab718bf96126c0f78d60d322cf86c6de74eac72",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+    "git_blob": "3662b3544469484194700ea5a054afebb6d3c2dc",
+    "sha256": "6fb26dfb137f996f731da62b84bf9887f5e5b21579f6272a63d17baf8e474b29",
+    "loader": "baseline-board-loader.py",
+    "method": "pytest import finder loaded git-show HEAD module at a temporary path; production files were not swapped."
+  }
+}

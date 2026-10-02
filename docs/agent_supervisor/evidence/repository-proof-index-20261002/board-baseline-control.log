@@ -1,0 +1,165 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+test/api/test_agent_supervisor_board_control_plane.py::test_configured_board_common_args_isolate_shared_merge_target [31mFAILED[0m[31m [ 50%][0m
+test/api/test_agent_supervisor_board_control_plane.py::test_implementation_daemons_on_sibling_boards_do_not_share_locks 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-02 05:06:37 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:06:37 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:06:37 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:06:37 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m________ test_configured_board_common_args_isolate_shared_merge_target _________[0m
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4503/test_configured_board_common_a0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_configured_board_common_args_isolate_shared_merge_target[39;49;00m([90m[39;49;00m
+        tmp_path: Path,[90m[39;49;00m
+    ) -> [94mNone[39;49;00m:[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mconfigured_board_scheduler[39;49;00m[90m [39;49;00m[94mimport[39;49;00m ([90m[39;49;00m
+            configured_board_common_args,[90m[39;49;00m
+            configured_board_launch_plan,[90m[39;49;00m
+            load_configured_board,[90m[39;49;00m
+        )[90m[39;49;00m
+    [90m[39;49;00m
+        repo = _seed_git_repository(tmp_path / [33m"[39;49;00m[33mrepo[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mdocs[39;49;00m[33m"[39;49;00m).mkdir()[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mdocs/tasks.md[39;49;00m[33m"[39;49;00m).write_text([33m"[39;49;00m[33m# Tasks[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mdocs/objectives.md[39;49;00m[33m"[39;49;00m).write_text([33m"[39;49;00m[33m# Objectives[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mdocs/plan.md[39;49;00m[33m"[39;49;00m).write_text([33m"[39;49;00m[33mplan[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mscripts/ops/agent_supervisor[39;49;00m[33m"[39;49;00m).mkdir(parents=[94mTrue[39;49;00m)[90m[39;49;00m
+        (repo / [33m"[39;49;00m[33mscripts/validate_board.py[39;49;00m[33m"[39;49;00m).write_text([33m"[39;49;00m[33mprint([39;49;00m[33m'[39;49;00m[33mok[39;49;00m[33m'[39;49;00m[33m)[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        ([90m[39;49;00m
+            repo / [33m"[39;49;00m[33mscripts/ops/agent_supervisor/implementation_supervisor_entry.py[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        ).write_text([33m"[39;49;00m[33mraise SystemExit(0)[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        config = repo / [33m"[39;49;00m[33mconfig/scheduler.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        config.parent.mkdir()[90m[39;49;00m
+        config.write_text([90m[39;49;00m
+    [90m        [39;49;00m[33m"""[39;49;00m
+    [33m{[39;49;00m
+    [33m  "schema": "ipfs_accelerate_py.agent_supervisor.configured_board_test.scheduler_config@1",[39;49;00m
+    [33m  "taskboard_path": "docs/tasks.md",[39;49;00m
+    [33m  "objectives_path": "docs/objectives.md",[39;49;00m
+    [33m  "plan_path": "docs/plan.md",[39;49;00m
+    [33m  "validator_path": "scripts/validate_board.py",[39;49;00m
+    [33m  "task_prefix": "TEST-",[39;49;00m
+    [33m  "goal_prefix": "TEST-G",[39;49;00m
+    [33m  "board_namespace": "configured-board-test",[39;49;00m
+    [33m  "merge_target_branch": "main",[39;49;00m
+    [33m  "source_binding": {[39;49;00m
+    [33m    "accelerator_required_ancestor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",[39;49;00m
+    [33m    "accelerator_required_branch": "main",[39;49;00m
+    [33m    "dependency_submodule_path": "docs",[39;49;00m
+    [33m    "dependency_planning_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"[39;49;00m
+    [33m  },[39;49;00m
+    [33m  "max_lanes": 1,[39;49;00m
+    [33m  "lanes": [{"index": 0, "name": "lane-0", "strict_shard_remainder": 0}],[39;49;00m
+    [33m  "strict_task_sharding": true,[39;49;00m
+    [33m  "exit_when_all_tracks_terminal": true,[39;49;00m
+    [33m  "objective_refill_enabled": false,[39;49;00m
+    [33m  "codebase_refill_enabled": false,[39;49;00m
+    [33m  "poll_interval_seconds": 5,[39;49;00m
+    [33m  "daemon_interval_seconds": 60,[39;49;00m
+    [33m  "check_interval_seconds": 30,[39;49;00m
+    [33m  "stale_seconds": 1800,[39;49;00m
+    [33m  "watchdog_startup_grace_seconds": 30,[39;49;00m
+    [33m  "implementation_timeout_seconds": 60,[39;49;00m
+    [33m  "implementation_max_timeout_seconds": 120,[39;49;00m
+    [33m  "implementation_log_stall_seconds": 30,[39;49;00m
+    [33m  "max_restarts": 1,[39;49;00m
+    [33m  "max_task_attempts": 1,[39;49;00m
+    [33m  "implementation_retry_budget": 1,[39;49;00m
+    [33m  "validation_retry_budget": 1,[39;49;00m
+    [33m  "merge_retry_budget": 1,[39;49;00m
+    [33m  "worktree_submodule_paths": [],[39;49;00m
+    [33m  "protected_paths": ["config/scheduler.json"],[39;49;00m
+    [33m  "runtime_paths": {[39;49;00m
+    [33m    "root": "workspace/agent-supervisor",[39;49;00m
+    [33m    "state": "workspace/agent-supervisor/state",[39;49;00m
+    [33m    "worktrees": "workspace/agent-supervisor/worktrees",[39;49;00m
+    [33m    "merge_queue": "workspace/agent-supervisor/merge-queue",[39;49;00m
+    [33m    "logs": "workspace/agent-supervisor/logs"[39;49;00m
+    [33m  },[39;49;00m
+    [33m  "provider": {"provider_id": "codex", "model_id": "test-model", "max_concurrency": 1}[39;49;00m
+    [33m}[39;49;00m
+    [33m"""[39;49;00m.strip()[90m[39;49;00m
+            + [33m"[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+        )[90m[39;49;00m
+        board = load_configured_board(config, repo_root=repo)[90m[39;49;00m
+        args = configured_board_common_args(board, implement=[94mFalse[39;49;00m)[90m[39;49;00m
+>       [94massert[39;49;00m [33m"[39;49;00m[33m--board-namespace[39;49;00m[33m"[39;49;00m [95min[39;49;00m args[90m[39;49;00m
+[1m[31mE       AssertionError: assert '--board-namespace' in ('--todo-path', '/tmp/pytest-of-barberb/pytest-4503/test_configured_board_common_a0/repo/docs/tasks.md', '--task-prefix', '## TEST-', '--worktree-root', '/tmp/pytest-of-barberb/pytest-4503/test_configured_board_common_a0/repo/workspace/agent-supervisor/worktrees', ...)[0m
+
+[1m[31mtest/api/test_agent_supervisor_board_control_plane.py[0m:484: AssertionError
+[31m[1m_______ test_implementation_daemons_on_sibling_boards_do_not_share_locks _______[0m
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_implementation_daemons_on_sibling_boards_do_not_share_locks[39;49;00m([90m[39;49;00m
+        tmp_path: Path,[90m[39;49;00m
+    ) -> [94mNone[39;49;00m:[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mtodo_daemon[39;49;00m[04m[96m.[39;49;00m[04m[96mimplementation_daemon[39;49;00m[90m [39;49;00m[94mimport[39;49;00m ([90m[39;49;00m
+            PortalImplementationDaemon,[90m[39;49;00m
+        )[90m[39;49;00m
+    [90m[39;49;00m
+        repo = _seed_git_repository(tmp_path / [33m"[39;49;00m[33mrepo[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        lcr_todo = repo / [33m"[39;49;00m[33mlegal_corpora_reindex.todo.md[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        slr_todo = repo / [33m"[39;49;00m[33mstate_laws_reindex.todo.md[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        lcr_todo.write_text([33m"[39;49;00m[33m## LCR-001[39;49;00m[33m\n[39;49;00m[33m- Status: ready[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        slr_todo.write_text([33m"[39;49;00m[33m## SLR-001[39;49;00m[33m\n[39;49;00m[33m- Status: ready[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m, encoding=[33m"[39;49;00m[33mutf-8[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        state = tmp_path / [33m"[39;49;00m[33mstate[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        state.mkdir()[90m[39;49;00m
+    [90m[39;49;00m
+        lcr = PortalImplementationDaemon([90m[39;49;00m
+            todo_path=lcr_todo,[90m[39;49;00m
+            state_path=state / [33m"[39;49;00m[33mlcr_task_state.json[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            strategy_path=state / [33m"[39;49;00m[33mlcr_strategy.json[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            events_path=state / [33m"[39;49;00m[33mlcr_events.jsonl[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            repo_root=repo,[90m[39;49;00m
+            task_header_prefix=[33m"[39;49;00m[33m## LCR-[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            merge_target_branch=[33m"[39;49;00m[33mmain[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+        )[90m[39;49;00m
+        slr = PortalImplementationDaemon([90m[39;49;00m
+            todo_path=slr_todo,[90m[39;49;00m
+            state_path=state / [33m"[39;49;00m[33mslr_task_state.json[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            strategy_path=state / [33m"[39;49;00m[33mslr_strategy.json[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            events_path=state / [33m"[39;49;00m[33mslr_events.jsonl[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            repo_root=repo,[90m[39;49;00m
+            task_header_prefix=[33m"[39;49;00m[33m## SLR-[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            merge_target_branch=[33m"[39;49;00m[33mmain[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+        )[90m[39;49;00m
+    [90m[39;49;00m
+>       [94massert[39;49;00m lcr.board_namespace == [33m"[39;49;00m[33mlegal_corpora_reindex[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+[1m[31mE       AssertionError: assert '' == 'legal_corpora_reindex'[0m
+[1m[31mE         [0m
+[1m[31mE         [0m[91m- legal_corpora_reindex[39;49;00m[90m[39;49;00m[0m
+
+[1m[31mtest/api/test_agent_supervisor_board_control_plane.py[0m:535: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 05:06:37,261 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:06:37,306 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:06:37,395 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:06:37,405 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4503/test_implementation_daemons_on0/agent-orchestration/63bc8d94758f043b7a2e/agent-merge-trains/main-459786bc967855557e97/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+============================= slowest 10 durations =============================
+0.30s call     api/test_agent_supervisor_board_control_plane.py::test_implementation_daemons_on_sibling_boards_do_not_share_locks
+0.22s call     api/test_agent_supervisor_board_control_plane.py::test_configured_board_common_args_isolate_shared_merge_target
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_agent_supervisor_board_control_plane.py::[1mtest_configured_board_common_args_isolate_shared_merge_target[0m - AssertionError: assert '--board-namespace' in ('--todo-path', '/tmp/pytest-...
+[31mFAILED[0m test/api/test_agent_supervisor_board_control_plane.py::[1mtest_implementation_daemons_on_sibling_boards_do_not_share_locks[0m - AssertionError: assert '' == 'legal_corpora_reindex'
+[31m============================== [31m[1m2 failed[0m[31m in 13.61s[0m[31m ==============================[0m

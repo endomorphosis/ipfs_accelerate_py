@@ -1,0 +1,151 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 129 items
+
+test/api/test_structural_codebase_context.py::test_native_observation_freezes_body_free_materials_without_facts [32mPASSED[0m[32m [  0%][0m
+test/api/test_structural_codebase_context.py::test_entry_source_drift_rejects_before_build [32mPASSED[0m[32m [  1%][0m
+test/api/test_structural_codebase_context.py::test_context_observations_never_prepare_or_parse [32mPASSED[0m[32m [  2%][0m
+test/api/test_structural_codebase_context.py::test_exit_source_drift_withholds_build_result [32mPASSED[0m[32m [  3%][0m
+test/api/test_structural_codebase_context.py::test_head_replacement_during_build_rejects_original_context [32mPASSED[0m[32m [  3%][0m
+test/api/test_structural_codebase_context.py::test_explicit_stale_head_never_substitutes_successor [32mPASSED[0m[32m [  4%][0m
+test/api/test_structural_codebase_context.py::test_cancellation_during_build_prevents_result_return [32mPASSED[0m[32m [  5%][0m
+test/api/test_structural_codebase_context.py::test_overall_deadline_includes_local_build_time [32mPASSED[0m[32m [  6%][0m
+test/api/test_structural_codebase_context.py::test_exit_observation_honors_pressure_and_does_not_leak [32mPASSED[0m[32m [  6%][0m
+test/api/test_structural_codebase_context.py::test_wrong_view_and_missing_head_reject_without_build [32mPASSED[0m[32m [  7%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls0] [32mPASSED[0m[32m [  8%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls1] [32mPASSED[0m[32m [  9%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls2] [32mPASSED[0m[32m [ 10%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls3] [32mPASSED[0m[32m [ 10%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls4] [32mPASSED[0m[32m [ 11%][0m
+test/api/test_structural_codebase_context.py::test_invalid_inputs_reject_before_owner_access[controls5] [32mPASSED[0m[32m [ 12%][0m
+test/api/test_repository_plan_preview.py::test_native_preview_compiles_declared_tasks_and_binds_current_structural_input[1] [32mPASSED[0m[32m [ 13%][0m
+test/api/test_repository_plan_preview.py::test_native_preview_compiles_declared_tasks_and_binds_current_structural_input[2] [32mPASSED[0m[32m [ 13%][0m
+test/api/test_repository_plan_preview.py::test_wrong_selected_source_roots_reject_before_planning[repository_root_cid] [32mPASSED[0m[32m [ 14%][0m
+test/api/test_repository_plan_preview.py::test_wrong_selected_source_roots_reject_before_planning[dirty_worktree_root] [32mPASSED[0m[32m [ 15%][0m
+test/api/test_repository_plan_preview.py::test_wrong_selected_source_roots_reject_before_planning[program_root] [32mPASSED[0m[32m [ 16%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[current_roots] [32mPASSED[0m[32m [ 17%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[current_facts] [32mPASSED[0m[32m [ 17%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[obligation_graph] [32mPASSED[0m[32m [ 18%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[evidence_bundle] [32mPASSED[0m[32m [ 19%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[admission_materials] [32mPASSED[0m[32m [ 20%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[model_provider] [32mPASSED[0m[32m [ 20%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[scan] [32mPASSED[0m[32m [ 21%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[evidence_adapters] [32mPASSED[0m[32m [ 22%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[evidence_queries] [32mPASSED[0m[32m [ 23%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[parallel_request] [32mPASSED[0m[32m [ 24%][0m
+test/api/test_repository_plan_preview.py::test_caller_authority_and_model_inputs_cannot_enter_repository_route[parallel_tasks] [32mPASSED[0m[32m [ 24%][0m
+test/api/test_repository_plan_preview.py::test_caller_cannot_shadow_frozen_request_or_owner_context[candidate_context-request_cid] [32mPASSED[0m[32m [ 25%][0m
+test/api/test_repository_plan_preview.py::test_caller_cannot_shadow_frozen_request_or_owner_context[candidate_context-scope_paths] [32mPASSED[0m[32m [ 26%][0m
+test/api/test_repository_plan_preview.py::test_caller_cannot_shadow_frozen_request_or_owner_context[candidate_context-structural_codebase_context_cid] [32mPASSED[0m[32m [ 27%][0m
+test/api/test_repository_plan_preview.py::test_caller_cannot_shadow_frozen_request_or_owner_context[extra-structural_codebase] [32mPASSED[0m[32m [ 27%][0m
+test/api/test_repository_plan_preview.py::test_preview_observation_never_reprepares_or_parses_repository [32mPASSED[0m[32m [ 28%][0m
+test/api/test_repository_plan_preview.py::test_authored_goal_must_reference_selected_snapshot[intent] [32mPASSED[0m[32m [ 29%][0m
+test/api/test_repository_plan_preview.py::test_authored_goal_must_reference_selected_snapshot[frozen_goal] [32mPASSED[0m[32m [ 30%][0m
+test/api/test_repository_plan_preview.py::test_changed_checkout_rejects_even_when_policy_observer_returns_static_expected_roots [32mPASSED[0m[32m [ 31%][0m
+test/api/test_repository_plan_preview.py::test_policy_observer_cannot_hide_source_edit_during_observation [32mPASSED[0m[32m [ 31%][0m
+test/api/test_repository_plan_preview.py::test_source_edit_after_real_candidate_work_cannot_persist_or_cache [32mPASSED[0m[32m [ 32%][0m
+test/api/test_repository_plan_preview.py::test_policy_change_during_real_candidate_work_prevents_persistence [32mPASSED[0m[32m [ 33%][0m
+test/api/test_repository_plan_preview.py::test_stale_selected_generation_is_not_replaced_by_current_head [32mPASSED[0m[32m [ 34%][0m
+test/api/test_repository_plan_preview.py::test_native_successor_changes_frozen_metadata_and_planner_identity [32mPASSED[0m[32m [ 34%][0m
+test/api/test_repository_plan_preview.py::test_cancelled_repository_preview_returns_no_result_or_cache[before_entry] [32mPASSED[0m[32m [ 35%][0m
+test/api/test_repository_plan_preview.py::test_cancelled_repository_preview_returns_no_result_or_cache[during_policy_observation] [32mPASSED[0m[32m [ 36%][0m
+test/api/test_repository_plan_preview.py::test_expired_overall_deadline_prevents_service_work [32mPASSED[0m[32m [ 37%][0m
+test/api/test_repository_plan_preview.py::test_missing_live_policy_observer_and_wrong_repository_locator_reject [32mPASSED[0m[32m [ 37%][0m
+test/api/test_repository_plan_preview.py::test_owner_controls_are_frozen_and_native_owner_is_required [32mPASSED[0m[32m [ 38%][0m
+test/api/test_finite_integer_codebase.py::test_exact_cnl_native_ast_and_complete_clause_spans_are_source_aligned [32mPASSED[0m[32m [ 39%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[duplicate] [32mPASSED[0m[32m [ 40%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[bool] [32mPASSED[0m[32m [ 41%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[unsorted] [32mPASSED[0m[32m [ 41%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[empty] [32mPASSED[0m[32m [ 42%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[different_domains] [32mPASSED[0m[32m [ 43%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[spaces] [32mPASSED[0m[32m [ 44%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[trailing] [32mPASSED[0m[32m [ 44%][0m
+test/api/test_finite_integer_codebase.py::test_cnl_rejects_nonclosed_or_changed_request_domains[universal] [32mPASSED[0m[32m [ 45%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[hash] [32mPASSED[0m[32m [ 46%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[span_outside] [32mPASSED[0m[32m [ 47%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[identity] [32mPASSED[0m[32m [ 48%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[statement] [32mPASSED[0m[32m [ 48%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[span_shift] [32mPASSED[0m[32m [ 49%][0m
+test/api/test_finite_integer_codebase.py::test_native_intent_tampering_cannot_create_supported_clause[missing_clause] [32mPASSED[0m[32m [ 50%][0m
+test/api/test_finite_integer_codebase.py::test_real_native_observation_yields_one_finite_fact_and_one_residual [32mPASSED[0m[32m [ 51%][0m
+test/api/test_finite_integer_codebase.py::test_canonical_predicate_order_cannot_discharge_the_unsatisfied_offset_clause [32mPASSED[0m[32m [ 51%][0m
+test/api/test_finite_integer_codebase.py::test_authorized_successor_requires_new_capture_and_satisfies_both_finite_clauses [32mPASSED[0m[32m [ 52%][0m
+test/api/test_finite_integer_codebase.py::test_new_requested_domain_gets_a_distinct_trace_and_no_reused_fact [32mPASSED[0m[32m [ 53%][0m
+test/api/test_finite_integer_codebase.py::test_valid_but_unsupported_native_intent_retains_every_goal_without_execution [32mPASSED[0m[32m [ 54%][0m
+test/api/test_finite_integer_codebase.py::test_forged_observer_return_cannot_create_current_facts[wrong_domain] [32mPASSED[0m[32m [ 55%][0m
+test/api/test_finite_integer_codebase.py::test_forged_observer_return_cannot_create_current_facts[authority] [32mPASSED[0m[32m [ 55%][0m
+test/api/test_finite_integer_codebase.py::test_forged_observer_return_cannot_create_current_facts[trace] [32mPASSED[0m[32m [ 56%][0m
+test/api/test_finite_integer_codebase.py::test_forged_observer_return_cannot_create_current_facts[wrong_output] [32mPASSED[0m[32m [ 57%][0m
+test/api/test_finite_integer_codebase.py::test_forged_observer_return_cannot_create_current_facts[type_alias] [32mPASSED[0m[32m [ 58%][0m
+test/api/test_finite_integer_codebase.py::test_cancelled_or_expired_match_has_no_native_execution_or_lease[cancel] [32mPASSED[0m[32m [ 58%][0m
+test/api/test_finite_integer_codebase.py::test_cancelled_or_expired_match_has_no_native_execution_or_lease[deadline] [32mPASSED[0m[32m [ 59%][0m
+test/api/test_finite_integer_codebase.py::test_structural_exit_fence_rejects_edit_after_valid_observation [32mPASSED[0m[32m [ 60%][0m
+test/api/test_finite_integer_codebase.py::test_public_api_has_no_caller_evidence_or_receipt_bypass [32mPASSED[0m[32m [ 61%][0m
+test/api/test_finite_integer_plan_preview.py::test_one_current_finite_fact_selects_only_the_reviewed_offset_operation [32mPASSED[0m[32m [ 62%][0m
+test/api/test_finite_integer_plan_preview.py::test_newly_captured_successor_has_two_facts_and_an_explicit_empty_plan [32mPASSED[0m[32m [ 62%][0m
+test/api/test_finite_integer_plan_preview.py::test_fresh_repeat_runs_the_native_observer_again_and_never_recovers_facts_from_history [32mPASSED[0m[32m [ 63%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[prompt] [32mPASSED[0m[32m [ 64%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[intent] [32mPASSED[0m[32m [ 65%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[catalog] [32mPASSED[0m[32m [ 65%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[repository_root] [32mPASSED[0m[32m [ 66%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[dirty_root] [32mPASSED[0m[32m [ 67%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[program] [32mPASSED[0m[32m [ 68%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[locator] [32mPASSED[0m[32m [ 68%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[scope] [32mPASSED[0m[32m [ 69%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[model_budget] [32mPASSED[0m[32m [ 70%][0m
+test/api/test_finite_integer_plan_preview.py::test_wrong_request_binding_cannot_run_an_observer_or_create_a_proposal[task_budget] [32mPASSED[0m[32m [ 71%][0m
+test/api/test_finite_integer_plan_preview.py::test_reviewed_catalog_cannot_retarget_a_clause[path-other.py] [32mPASSED[0m[32m [ 72%][0m
+test/api/test_finite_integer_plan_preview.py::test_reviewed_catalog_cannot_retarget_a_clause[function_name-different] [32mPASSED[0m[32m [ 72%][0m
+test/api/test_finite_integer_plan_preview.py::test_reviewed_catalog_cannot_retarget_a_clause[parameter-other] [32mPASSED[0m[32m [ 73%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[missing_clause] [32mPASSED[0m[32m [ 74%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[duplicate_requirement] [32mPASSED[0m[32m [ 75%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[duplicate_task] [32mPASSED[0m[32m [ 75%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[duplicate_producer] [32mPASSED[0m[32m [ 76%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[unknown_requirement] [32mPASSED[0m[32m [ 77%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[unreviewed] [32mPASSED[0m[32m [ 78%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_requires_two_distinct_reviewed_bounded_operations[wrong_operation] [32mPASSED[0m[32m [ 79%][0m
+test/api/test_finite_integer_plan_preview.py::test_catalog_identity_is_frozen_and_reflects_reviewed_operation_identity [32mPASSED[0m[32m [ 79%][0m
+test/api/test_finite_integer_plan_preview.py::test_prompt_and_ir_have_distinct_dag_json_roles_binding_exact_native_bytes [32mPASSED[0m[32m [ 80%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[observation] [32mPASSED[0m[32m [ 81%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[current_facts] [32mPASSED[0m[32m [ 82%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[materials] [32mPASSED[0m[32m [ 82%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[service_factory] [32mPASSED[0m[32m [ 83%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[evidence_bundle] [32mPASSED[0m[32m [ 84%][0m
+test/api/test_finite_integer_plan_preview.py::test_public_route_accepts_no_caller_evidence_or_stage_injection[receipt] [32mPASSED[0m[32m [ 85%][0m
+test/api/test_finite_integer_plan_preview.py::test_unsupported_captured_module_creates_no_service_proposal_or_native_process [32mPASSED[0m[32m [ 86%][0m
+test/api/test_finite_integer_plan_preview.py::test_valid_ir_with_different_clause_meaning_cannot_borrow_the_full_prompt [32mPASSED[0m[32m [ 86%][0m
+test/api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_candidate-source] [32mPASSED[0m[32m [ 87%][0m
+test/api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_critique-source] [32mPASSED[0m[32m [ 88%][0m
+test/api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_candidate-trace] [32mPASSED[0m[32m [ 89%][0m
+test/api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_critique-lean] [32mPASSED[0m[32m [ 89%][0m
+test/api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_candidate-tool] [32mPASSED[0m[32m [ 90%][0m
+test/api/test_finite_integer_plan_preview.py::test_independent_policy_callback_cannot_shadow_current_owner_or_full_roots[partial_roots] [32mPASSED[0m[32m [ 91%][0m
+test/api/test_finite_integer_plan_preview.py::test_independent_policy_callback_cannot_shadow_current_owner_or_full_roots[stale_policy] [32mPASSED[0m[32m [ 92%][0m
+test/api/test_finite_integer_plan_preview.py::test_independent_policy_callback_cannot_shadow_current_owner_or_full_roots[source_drift] [32mPASSED[0m[32m [ 93%][0m
+test/api/test_finite_integer_plan_preview.py::test_policy_callback_tampering_with_fresh_certificate_is_rechecked_after_callback [32mPASSED[0m[32m [ 93%][0m
+test/api/test_finite_integer_plan_preview.py::test_final_inner_native_exit_rechecks_artifacts_before_service_publication [32mPASSED[0m[32m [ 94%][0m
+test/api/test_finite_integer_plan_preview.py::test_final_outer_native_exit_cannot_return_a_proposal_with_changed_artifacts [32mPASSED[0m[32m [ 95%][0m
+test/api/test_finite_integer_plan_preview.py::test_same_byte_new_head_generation_rejects_old_owner_without_execution [32mPASSED[0m[32m [ 96%][0m
+test/api/test_finite_integer_plan_preview.py::test_cancellation_cannot_return_or_publish_a_finite_plan[entry] [32mPASSED[0m[32m [ 96%][0m
+test/api/test_finite_integer_plan_preview.py::test_cancellation_cannot_return_or_publish_a_finite_plan[candidate] [32mPASSED[0m[32m [ 97%][0m
+test/api/test_finite_integer_plan_preview.py::test_expired_overall_budget_cannot_start_native_execution [32mPASSED[0m[32m [ 98%][0m
+test/api/test_finite_integer_plan_preview.py::test_deadline_after_actual_candidate_work_prevents_receipt_publication [32mPASSED[0m[32m [ 99%][0m
+test/api/test_finite_integer_plan_preview.py::test_output_directory_cannot_reuse_a_prior_positive_observation [32mPASSED[0m[32m [100%][0m
+
+============================= slowest 10 durations =============================
+3.80s call     api/test_finite_integer_plan_preview.py::test_fresh_repeat_runs_the_native_observer_again_and_never_recovers_facts_from_history
+3.67s call     api/test_finite_integer_plan_preview.py::test_newly_captured_successor_has_two_facts_and_an_explicit_empty_plan
+1.78s call     api/test_finite_integer_plan_preview.py::test_one_current_finite_fact_selects_only_the_reviewed_offset_operation
+1.76s call     api/test_finite_integer_plan_preview.py::test_final_outer_native_exit_cannot_return_a_proposal_with_changed_artifacts
+1.74s call     api/test_finite_integer_plan_preview.py::test_output_directory_cannot_reuse_a_prior_positive_observation
+1.73s call     api/test_finite_integer_codebase.py::test_authorized_successor_requires_new_capture_and_satisfies_both_finite_clauses
+1.66s call     api/test_finite_integer_plan_preview.py::test_final_inner_native_exit_rechecks_artifacts_before_service_publication
+1.64s call     api/test_finite_integer_codebase.py::test_new_requested_domain_gets_a_distinct_trace_and_no_reused_fact
+1.29s call     api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_critique-source]
+1.24s call     api/test_finite_integer_plan_preview.py::test_live_service_fences_refuse_source_artifact_or_tool_drift_before_publication[_stage_candidate-trace]
+[32m======================== [32m[1m129 passed[0m[32m in 97.91s (0:01:37)[0m[32m ========================[0m

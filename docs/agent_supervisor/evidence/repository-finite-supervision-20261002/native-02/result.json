@@ -1,0 +1,406 @@
+{
+  "baseline_commit": "e5e1d6cbf5019bc2c27a5822db0cfb43b8239717",
+  "benchmark_result": false,
+  "bootstrap_errors": [],
+  "captured_paths": [
+    "calc.py",
+    "decoy.py",
+    "instruction.txt",
+    "public_check.py",
+    "unsupported.py"
+  ],
+  "context_bundle": {
+    "artifact": ".runtime/context-bundle.json",
+    "sha256": "a9e4d117110f3d04749db5bd9360f4265aee026e262a81c5562e6e11f228d3c3"
+  },
+  "error": {
+    "message": "native START failed",
+    "type": "RuntimeError"
+  },
+  "handoff_sha256": "ab35c7733e479c980e4b8f1b341f02f6a5908bcf7d42054e50c8a6641e289122",
+  "index_query": {
+    "cache_authority": "historical_candidate_only",
+    "completion_authority": false,
+    "counts": {
+      "clauses": 2,
+      "facts": 1,
+      "observations": 5
+    },
+    "current_facts": [],
+    "execution_authority": false,
+    "fresh_observation_required": true,
+    "head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq",
+      "generation": 1,
+      "manifest_cid": "baguqeerahz7tptufkpxq3b6km3ubrlmb6lnuvlmisiqtlcz5xpqqu26zvjva",
+      "receipt_cid": "baguqeeralmrblwth42emqvampt2isuxtd4nn5lpryzox4ekk6iz3h4zosbja",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq"
+    },
+    "historical_fact_ids": [
+      "finite-observation:baguqeeral3sakuq73hdbufzabxmvb6fpv4c74pqh5nmxcqxy5q3jkiftczxa"
+    ],
+    "live_source_checked_before_and_after": true,
+    "manifest_id": "sha256:36747fc151d336baa79000f9b5c554496d767b1c1d0c79d59aa8b8574c04db00",
+    "match_sha256": "sha256:63615c85e7be2485138334dbe83dd3923ff6f606b6fd605fac08673f997c1f2c",
+    "proof_authority": false,
+    "schema": "terminal-codebase-finite-evidence-query@1"
+  },
+  "initial_fact_count": 1,
+  "initial_head": {
+    "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq",
+    "generation": 1,
+    "manifest_cid": "baguqeerahz7tptufkpxq3b6km3ubrlmb6lnuvlmisiqtlcz5xpqqu26zvjva",
+    "receipt_cid": "baguqeeralmrblwth42emqvampt2isuxtd4nn5lpryzox4ekk6iz3h4zosbja",
+    "repository_id": "repository:finite-native-qualification",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq"
+  },
+  "initial_public_check_exit_code": 1,
+  "initial_residuals": [
+    "finite-integer-offset-goal"
+  ],
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "native_diagnostics": {
+    "admitted_supervisor_status.json": {
+      "daemon_pid": 4122010,
+      "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
+      "status": "running",
+      "supervisor_pid": 4121804
+    },
+    "exception_types": [],
+    "git_dubious_ownership": false,
+    "logs": [
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 0,
+        "path": "supervisor-process.log",
+        "tail_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "traceback_frames": []
+      },
+      {
+        "exception_types": [],
+        "git_dubious_ownership": false,
+        "log_bytes": 0,
+        "path": "run/admitted_managed_daemon_20261002T051814Z.log",
+        "tail_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "traceback_frames": []
+      }
+    ],
+    "schema": "native-supervisor-diagnostics@1",
+    "traceback_frames": []
+  },
+  "observations": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "qualified": false,
+  "remaining_processes": 0,
+  "retained_preview_execution_debt": {
+    "admitted": false,
+    "admitted_width": 0,
+    "assignments": [],
+    "capacity_snapshot_id": "baguqeerao3zxmaejo6eauczwdbyc27rmtjdoi4l4s4mkwy6n5lgwq4lfq4oa",
+    "conflict_graph": {
+      "blocking_pairs": [],
+      "edges": [],
+      "task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "conflict_width": 1,
+    "conflicts": [],
+    "critical_path": [
+      "task:finite:offset"
+    ],
+    "critical_path_duration_ms": 1000,
+    "dependency_edges": [],
+    "dependency_graph": {
+      "critical_path": [
+        "task:finite:offset"
+      ],
+      "critical_path_duration_ms": 1000,
+      "edges": [],
+      "estimated_makespan_ms": 1000,
+      "ready_waves": [
+        {
+          "conflict_free_lanes": [
+            [
+              "task:finite:offset"
+            ]
+          ],
+          "conflict_width": 1,
+          "dependency_wave": 0,
+          "graph_ready_task_ids": [
+            "task:finite:offset"
+          ],
+          "graph_width": 1
+        }
+      ]
+    },
+    "deterministic_replay": {
+      "capacity_snapshot_id": "baguqeerao3zxmaejo6eauczwdbyc27rmtjdoi4l4s4mkwy6n5lgwq4lfq4oa",
+      "compiler_interface": "ParallelPlanCompiler@1",
+      "input_digest": "parallel-plan-input:sha256:e3f59ef330ce626db745db73e04d3b9089f8a3ba19841f0915ffaa27ac97fba8",
+      "plan_id": "parallel-execution-plan:sha256:945eb11e040fc18e5396283b056616ad0dc63efa65635ebc6b5ee83343cd0ccc",
+      "provider_snapshot_ids": [],
+      "repository_tree_id": "baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq"
+    },
+    "estimated_makespan_ms": 1000,
+    "execution_waves": [],
+    "graph_width": 1,
+    "input_digest": "parallel-plan-input:sha256:e3f59ef330ce626db745db73e04d3b9089f8a3ba19841f0915ffaa27ac97fba8",
+    "interface": "ParallelExecutionPlan@1",
+    "issues": [
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "capacity snapshot has no executable CPU/process slot",
+        "task_ids": []
+      },
+      {
+        "code": "resource_infeasible",
+        "evidence": [],
+        "message": "task task:finite:offset cannot fit available host/provider resources",
+        "task_ids": [
+          "task:finite:offset"
+        ]
+      },
+      {
+        "code": "stale_capacity",
+        "evidence": [
+          "observed_at_ms=0",
+          "current_time_ms=0",
+          "fresh_until_ms=0"
+        ],
+        "message": "host capacity snapshot is missing freshness evidence or is stale",
+        "task_ids": []
+      }
+    ],
+    "leaf_producer_closure": {
+      "closed": true,
+      "producer_by_leaf_id": {
+        "finite-effect:baguqeeraxbgmvje2s2wp5aylpqn2rvtdbzbkhvtsvussvavommxwwkerdtqa": "task:finite:offset",
+        "terminal:task:finite:offset": "task:finite:offset"
+      },
+      "required_leaf_ids": [
+        "terminal:task:finite:offset"
+      ],
+      "terminal_task_ids": [
+        "task:finite:offset"
+      ]
+    },
+    "merge_order": [],
+    "outcome": "rejected",
+    "plan_id": "parallel-execution-plan:sha256:945eb11e040fc18e5396283b056616ad0dc63efa65635ebc6b5ee83343cd0ccc",
+    "provider_snapshot_ids": [],
+    "ready": false,
+    "ready_waves": [
+      {
+        "conflict_free_lanes": [
+          [
+            "task:finite:offset"
+          ]
+        ],
+        "conflict_width": 1,
+        "dependency_wave": 0,
+        "graph_ready_task_ids": [
+          "task:finite:offset"
+        ],
+        "graph_width": 1
+      }
+    ],
+    "repository_tree_id": "baguqeeraeecf2nwqsizqhryqt27mxoqbko2pczhjtuv4cjc3igvw3ltjxqaq",
+    "requested_width": 1,
+    "resource_feasibility": {
+      "available_host": {
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "process_slots": 0
+      },
+      "context_feasible": true,
+      "cost_feasible": true,
+      "feasible": false,
+      "freshness_proved": false,
+      "host_feasible": false,
+      "provider_by_task_id": {
+        "task:finite:offset": ""
+      },
+      "provider_feasible": true,
+      "required_totals": {
+        "context_tokens": 0,
+        "cost_micros": 0,
+        "cpu_slots": 1,
+        "disk_bytes": 0,
+        "gpu_memory_bytes": 0,
+        "memory_bytes": 0,
+        "output_tokens": 0,
+        "process_slots": 1,
+        "quota_units": 0
+      },
+      "token_feasible": true
+    },
+    "resource_width": 0,
+    "schema": "ipfs_accelerate_py/agent-supervisor/parallel-execution-plan@1",
+    "widths": {
+      "admitted_width": 0,
+      "conflict_width": 1,
+      "graph_width": 1,
+      "requested_width": 1,
+      "resource_width": 0
+    }
+  },
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 42.927314213011414,
+  "selected_operations": [
+    "task:finite:offset"
+  ],
+  "start": {
+    "audit_receipt_id": "sha256:4ed3f422f5d5be5145b1bfe1657c3b3da5dd3a847e06ad762b8f47092c28a1f1",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6Mkjbdb5oBF7Q8Mt6xqjubUeKfncaBuaZ9DXMfcc4RzWzsB",
+    "contract_version": 1,
+    "data": {
+      "transaction": {
+        "applied_effect_ids": [],
+        "caller": "did:key:z6Mkjbdb5oBF7Q8Mt6xqjubUeKfncaBuaZ9DXMfcc4RzWzsB",
+        "contract_version": 1,
+        "effect_ids": [
+          "start:isolated-process-tree"
+        ],
+        "failure_code": "conflict",
+        "fencing_epoch": 1,
+        "idempotency_key": "admitted-eb91ab19284243d19cf0d952e823ae04:start:0",
+        "lease_id": "lease:c98de978edba409281cc473036f2bed4",
+        "objective_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "objective_revision": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "operation": "start",
+        "phase": "repair_required",
+        "policy_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "policy_revision": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "recovery_action": "repair",
+        "repository_id": "baguqeera2e25pnqbg3hysymiadqkgejywvsywh465fsfbx2cnpajduitjbja",
+        "request_id": "baguqeerajxl5m6egofv7rzk4kuwj5n4k4qxzs6p5uifikzi5gprguugermmq",
+        "result": null,
+        "revision": 2,
+        "schema": "ipfs_accelerate_py/agent-supervisor/control-mutation-transaction@1",
+        "transaction_id": "sha256:17bcec8e58f7defdbd648ec0e46c487ba79929127493a4f2cb4ff235edeaac6e",
+        "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65",
+        "updated_at_ms": 1790918293674
+      }
+    },
+    "effects": [],
+    "error": {
+      "code": "conflict",
+      "content_id": "baguqeeracj6jbv42owxrjyho5vcd4gvymt4qv3w5vg726nrv4ymfsue3op3q",
+      "contract_version": 1,
+      "details": {
+        "exception_type": "PartialMutationError"
+      },
+      "field": "",
+      "message": "startup did not prove sustained health before its deadline",
+      "retryable": false,
+      "schema": "ipfs_accelerate_py/agent-supervisor/operation-error@1"
+    },
+    "idempotency_key": "admitted-eb91ab19284243d19cf0d952e823ae04:start:0",
+    "objective_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+    "operation": "start",
+    "policy_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+    "preview": null,
+    "repository_id": "baguqeera2e25pnqbg3hysymiadqkgejywvsywh465fsfbx2cnpajduitjbja",
+    "request_id": "baguqeerajxl5m6egofv7rzk4kuwj5n4k4qxzs6p5uifikzi5gprguugermmq",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "conflict",
+    "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65"
+  },
+  "stop": {
+    "audit_receipt_id": "sha256:504299e04658f5d6d201988102ad02036479045c93b309c80e94557c55b48884",
+    "authority": "mutation",
+    "bounds": {
+      "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+      "contract_version": 1,
+      "max_depth": 8,
+      "max_effects": 64,
+      "max_items": 256,
+      "max_paths": 128,
+      "max_serialized_bytes": 262144,
+      "max_text_bytes": 8192,
+      "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+      "timeout_ms": 30000
+    },
+    "caller": "did:key:z6Mkjbdb5oBF7Q8Mt6xqjubUeKfncaBuaZ9DXMfcc4RzWzsB",
+    "contract_version": 1,
+    "data": {
+      "transaction": {
+        "applied_effect_ids": [],
+        "caller": "did:key:z6Mkjbdb5oBF7Q8Mt6xqjubUeKfncaBuaZ9DXMfcc4RzWzsB",
+        "contract_version": 1,
+        "effect_ids": [
+          "stop:isolated-process-tree"
+        ],
+        "failure_code": "conflict",
+        "fencing_epoch": 1,
+        "idempotency_key": "admitted-eb91ab19284243d19cf0d952e823ae04:stop:0",
+        "lease_id": "lease:c98de978edba409281cc473036f2bed4",
+        "objective_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "objective_revision": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "operation": "stop",
+        "phase": "repair_required",
+        "policy_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "policy_revision": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+        "recovery_action": "repair",
+        "repository_id": "baguqeera2e25pnqbg3hysymiadqkgejywvsywh465fsfbx2cnpajduitjbja",
+        "request_id": "baguqeerarbscpdwszajtlefmfuj5xm6tszojdclrjpv6yahvmdborbyxlnna",
+        "result": null,
+        "revision": 2,
+        "schema": "ipfs_accelerate_py/agent-supervisor/control-mutation-transaction@1",
+        "transaction_id": "sha256:00d783d55f7fb0a7af2d34e2312c1b19698b376e2341fd28eeba3228985fb131",
+        "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65",
+        "updated_at_ms": 1790918323761
+      }
+    },
+    "effects": [],
+    "error": {
+      "code": "conflict",
+      "content_id": "baguqeerazig6ujw3rsou4ec7vkfbi3a5u4zspdt2zkpukc7asdh7f6nxb4aa",
+      "contract_version": 1,
+      "details": {
+        "exception_type": "TransactionConflictError"
+      },
+      "field": "",
+      "message": "another lifecycle transition is still active",
+      "retryable": false,
+      "schema": "ipfs_accelerate_py/agent-supervisor/operation-error@1"
+    },
+    "idempotency_key": "admitted-eb91ab19284243d19cf0d952e823ae04:stop:0",
+    "objective_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+    "operation": "stop",
+    "policy_id": "sha256:5a5161cb4147ccfc45e5c0aa7b77326c8d92c80b20ad6a82448bff57301271db",
+    "preview": null,
+    "repository_id": "baguqeera2e25pnqbg3hysymiadqkgejywvsywh465fsfbx2cnpajduitjbja",
+    "request_id": "baguqeerarbscpdwszajtlefmfuj5xm6tszojdclrjpv6yahvmdborbyxlnna",
+    "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+    "status": "conflict",
+    "tree_id": "196b46f4cb3758473e701b64f155712c4a9bfd65"
+  },
+  "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+  "training_steps": 0
+}

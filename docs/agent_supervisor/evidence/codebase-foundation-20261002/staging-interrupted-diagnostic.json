@@ -1,0 +1,6 @@
+{
+  "qualification_completed": false,
+  "status": "interrupted_for_redundant_manifest_root_fix",
+  "reason": "snapshot.snapshot_cid rebuilds the full manifest and was called per unit; use the already verified root from the request",
+  "module_sha256": "e15fadf35ce597a9391b1dd9f8c7c421b61fc7f7abbdaccfcd0d44e48e643fb7"
+}

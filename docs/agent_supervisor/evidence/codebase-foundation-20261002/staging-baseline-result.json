@@ -1,0 +1,126 @@
+{
+  "schema": "codebase-paged-staging-qualification@1",
+  "qualified": true,
+  "scope": "320 committed tiny Python files staged in deterministic bounded shards; no current head or behavioral proof publication",
+  "source_files": 320,
+  "max_batch_entries": 16,
+  "batches": 20,
+  "database_reopened_mid_run": true,
+  "prepare_seconds": 7.213962140958756,
+  "elapsed_seconds": 670.1969937200192,
+  "units_per_second": 0.4774715538841746,
+  "peak_owner_rss_kib": 189404,
+  "duckdb_memory_limit": "64MB",
+  "source_executed": false,
+  "provider_calls": 0,
+  "training_executed": false,
+  "inference_executed": false,
+  "final": {
+    "schema": "codebase-paged-staging@1",
+    "generation_cid": "baguqeeravnrdicswepl7i66byzuoh6zrng7ethriazwdt2xrqt33icy2hznq",
+    "snapshot_cid": "baguqeeravhik4lbmtdumnngj7qljqo7iu4hskid7hu4k4meshijps7cjwkma",
+    "population_cid": "baguqeera6hgylpmgrpieixblvmfnjfbjsbw5q5vfzbcqviup6kal5dasgsma",
+    "cursor": 320,
+    "entry_count": 320,
+    "complete_inventory_staged": true,
+    "pending_entries": 0,
+    "deferred_entries": 0,
+    "disposition_counts": {
+      "captured_ast_ok": 320
+    },
+    "last_receipt_cid": "baguqeera4neihfilzjffwzbenfq43gjqu7cc6isxzkjth32bawpgeyygnc6q",
+    "source_observed_live": true,
+    "current_head_published": false,
+    "global_graph_resolved": false,
+    "source_semantics_verified": false,
+    "proof_authority": false,
+    "training_executed": false,
+    "inference_executed": false,
+    "execution_authority": false,
+    "completion_authority": false,
+    "replayed": false
+  },
+  "batch_times": [
+    {
+      "cursor": 16,
+      "seconds": 6.043339801952243
+    },
+    {
+      "cursor": 32,
+      "seconds": 8.834176674950868
+    },
+    {
+      "cursor": 48,
+      "seconds": 11.55134999891743
+    },
+    {
+      "cursor": 64,
+      "seconds": 14.346210710005835
+    },
+    {
+      "cursor": 80,
+      "seconds": 17.168328104075044
+    },
+    {
+      "cursor": 96,
+      "seconds": 20.015670334221795
+    },
+    {
+      "cursor": 112,
+      "seconds": 22.748010389041156
+    },
+    {
+      "cursor": 128,
+      "seconds": 25.64311537705362
+    },
+    {
+      "cursor": 144,
+      "seconds": 28.30802358011715
+    },
+    {
+      "cursor": 160,
+      "seconds": 31.087685925187543
+    },
+    {
+      "cursor": 176,
+      "seconds": 34.593752023996785
+    },
+    {
+      "cursor": 192,
+      "seconds": 37.355938545195386
+    },
+    {
+      "cursor": 208,
+      "seconds": 39.62837995914742
+    },
+    {
+      "cursor": 224,
+      "seconds": 42.38463201303966
+    },
+    {
+      "cursor": 240,
+      "seconds": 45.076046193018556
+    },
+    {
+      "cursor": 256,
+      "seconds": 48.47499121003784
+    },
+    {
+      "cursor": 272,
+      "seconds": 50.953042241046205
+    },
+    {
+      "cursor": 288,
+      "seconds": 53.493794199079275
+    },
+    {
+      "cursor": 304,
+      "seconds": 56.96701060212217
+    },
+    {
+      "cursor": 320,
+      "seconds": 60.20671175606549
+    }
+  ],
+  "module_sha256": "3fde230b01079497ba83757213c98b0e708affdc06154731df031fa419a4d29b"
+}

@@ -346,7 +346,16 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         argv = (sys.executable, "-P", "-m",
                 "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor", *options)
         pythonpath = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[3]), os.environ.get("PYTHONPATH", ""))))
-        environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"))
+        from ..task_sources.board_control_plane import ORCHESTRATION_DIR_ENV
+        # Derived execution/coordination sidecars belong to this signed run.
+        # An unconfigured lookup also migrates every legacy account catalog;
+        # that unrelated recursive scan must not precede the first heartbeat
+        # of an isolated admitted daemon. Override ambient account settings in
+        # the signed child environment, without altering production defaults.
+        orchestration = runtime.state / "orchestration"
+        orchestration.mkdir(mode=0o700)
+        environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
+                       (ORCHESTRATION_DIR_ENV, str(orchestration)))
         environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
         if candidate_runner is not None:
             environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)
@@ -544,6 +553,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("native execution route changed")
         self._verify_tasks(verified)
         self._verify_context(verified)
+        if dict(self.profile.environment) != dict(self.manifest["environment"]):
+            raise ValueError("admitted launch environment changed")
         if (_digest(self.manifest) != self.manifest_id
                 or list(self.profile.argv) != self.manifest["argv"]
                 or os.fstat(self._listener.fileno()).st_ino != self.manifest["bootstrap_listener_inode"]):

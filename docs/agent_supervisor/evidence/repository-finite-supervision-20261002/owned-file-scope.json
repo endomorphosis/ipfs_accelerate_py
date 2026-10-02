@@ -1,0 +1,187 @@
+{
+  "accelerate": {
+    "files": [
+      {
+        "bytes": 110040,
+        "path": "ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+        "sha256": "5f0d119aaa46cd12705cbaeecff64fc5cee250341ecc5230291c901d2cf67a4d"
+      },
+      {
+        "bytes": 52334,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+        "sha256": "e8febd272886025ebd19ea8221bc02f23d3ed11bcc9a365e9bbc835bdc85db49"
+      },
+      {
+        "bytes": 3184494,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "bfbbdb6d827cbf9e6a8ff258d7e3f7bfcea259926591afe3cb910a337fe76fb8"
+      },
+      {
+        "bytes": 9491,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+        "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+      },
+      {
+        "bytes": 9927,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/repository_plan_preview.py",
+        "sha256": "f150d648d1d4b7fa9c20f17e91973f2ea8bdc87193c0a50a7ed59208df0c6c6b"
+      },
+      {
+        "bytes": 28822,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/finite_integer_codebase.py",
+        "sha256": "18be1fa7562fc60f2ecb1814f289db8ea5f5e376339376c04d0fb73cc573a226"
+      },
+      {
+        "bytes": 19336,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_preview.py",
+        "sha256": "537401aff19067c0d0462b30b1878e164596d1508d81e3bb43340589ebed7a56"
+      },
+      {
+        "bytes": 23125,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_service.py",
+        "sha256": "7fdda757d6cdb600a78d4dacf3df5e379e46ae6433df979eea6a0a26594262a7"
+      },
+      {
+        "bytes": 16165,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_handoff.py",
+        "sha256": "4ba2ed025b0449b5e7ed01051a01815dd135840ee064b1acdbee1cebac351eb5"
+      },
+      {
+        "bytes": 9845,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_runner.py",
+        "sha256": "f2184097707f77eece598b78e96683239b777907db3f6b4a6c78dd73fae02689"
+      },
+      {
+        "bytes": 10960,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_index.py",
+        "sha256": "a9a277ccf82e3089dc01b04f0014dda51f3e480d0884a941ec6decc2f16ddc06"
+      },
+      {
+        "bytes": 22077,
+        "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+        "sha256": "c0f4479f51639a4950b47272b0b81be2c618e70d54620ba9e0c35921f4410262"
+      },
+      {
+        "bytes": 10746,
+        "path": "test/api/test_structural_codebase_context.py",
+        "sha256": "fbde7ec29fd10a939ea76a9dc5d7e6d73668dcbad9645ecfd28a1633b191626c"
+      },
+      {
+        "bytes": 18525,
+        "path": "test/api/test_repository_plan_preview.py",
+        "sha256": "29366f7e14c31b10acb37ff2b5acc9493298613cd951867c95be2b7c0027d84d"
+      },
+      {
+        "bytes": 19022,
+        "path": "test/api/test_finite_integer_codebase.py",
+        "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+      },
+      {
+        "bytes": 30211,
+        "path": "test/api/test_finite_integer_plan_preview.py",
+        "sha256": "57d7d04388dfebb8e36bd957457960cda0777ecda9e6f81b401165d1c5974b6d"
+      },
+      {
+        "bytes": 14614,
+        "path": "test/api/test_finite_integer_plan_service.py",
+        "sha256": "d4d9ee67d7ac8c5e52c0c367992728b6664e94bb3bb21e6624eb7c52ab05dd68"
+      },
+      {
+        "bytes": 8375,
+        "path": "test/api/test_plan_create_live_root_observation.py",
+        "sha256": "b987e8235208def1ec76093e33a6684e3a06095dae28d01d3e11fba9deb07797"
+      },
+      {
+        "bytes": 7559,
+        "path": "test/api/test_terminal_codebase_finite_index.py",
+        "sha256": "32234a30846021ea0d28497c188fe4faf3683349df2f840e9b1ca38fffe1410a"
+      },
+      {
+        "bytes": 8303,
+        "path": "test/api/test_repository_finite_handoff.py",
+        "sha256": "6555e9e3208e6a881ebecd5763d1cd8c2b07e8bee8a48ef1ce96ef0611e4d8bc"
+      },
+      {
+        "bytes": 2884,
+        "path": "test/api/test_native_repository_finite_supervision.py",
+        "sha256": "012deaa4c188ad0e1bc2ce10a1044bb1363de17478a4eb2b8a6050d639d709d6"
+      },
+      {
+        "bytes": 5349,
+        "path": "test/integration/test_repository_finite_handoff_native.py",
+        "sha256": "8fd54185dfabd0c90998ee1ac5902fe90d682f06aadf94478c4cf1d42fe87155"
+      },
+      {
+        "bytes": 8640,
+        "path": "test/integration/test_admitted_benchmark_runtime.py",
+        "sha256": "bb0b80fcccb2d555bd05e16d4c49ef404865f542f7a317c3ca8bde7e6bbc9f79"
+      }
+    ],
+    "repository": "/tmp/ir-release-accelerate-20261001"
+  },
+  "datasets": {
+    "files": [
+      {
+        "bytes": 25921,
+        "path": "ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+        "sha256": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee"
+      },
+      {
+        "bytes": 41341,
+        "path": "ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py",
+        "sha256": "cf02386ea8de8e35b6f8d88451c047928258ae128525cf0c63eaed3c85dbb883"
+      },
+      {
+        "bytes": 71146,
+        "path": "ipfs_datasets_py/logic/software_verification/codebase_source_adapters.py",
+        "sha256": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2"
+      },
+      {
+        "bytes": 63933,
+        "path": "ipfs_datasets_py/logic/software_verification/codebase_pipeline.py",
+        "sha256": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030"
+      },
+      {
+        "bytes": 54671,
+        "path": "ipfs_datasets_py/logic/backends/codebase_process.py",
+        "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+      },
+      {
+        "bytes": 14363,
+        "path": "tests/unit/logic/software_contracts/test_codebase_integer_profile.py",
+        "sha256": "b95e8e223b250f029bfc14e77ce2efeb7dbc01f2842958830121a7536c45eee1"
+      },
+      {
+        "bytes": 17010,
+        "path": "tests/integration/logic/software_contracts/test_codebase_finite_integer_observation.py",
+        "sha256": "ef19e9b1c3e6c37a48fffe0c0a45a1b3842addab1f424bf70097faf3dbf0607d"
+      },
+      {
+        "bytes": 4336,
+        "path": "tests/unit/logic/backends/test_codebase_process_parallel_limits.py",
+        "sha256": "0bbef24243f90410480c501042a2eceba5e5c33944236589d1426de78570a8a1"
+      },
+      {
+        "bytes": 9465,
+        "path": "tests/integration/logic/software_verification/test_codebase_source_adapter_snapshot_grounding.py",
+        "sha256": "baeaf66d1c8804f8fc5024f6c2627b390b9781190c678831423302c127bcbded"
+      },
+      {
+        "bytes": 9391,
+        "path": "tests/integration/logic/software_verification/test_codebase_source_vc_smt_type_boundaries.py",
+        "sha256": "23c7211b15547d6658af1f40865bc78d1b52e698a394fe2bf923fc94b62fb934"
+      },
+      {
+        "bytes": 12065,
+        "path": "tests/integration/logic/software_verification/test_codebase_source_vc_smt_direct_ir_boundaries.py",
+        "sha256": "0156854153995d1f3ac90338c0d13b48965e94a184d2cff1ab28195314b2250e"
+      },
+      {
+        "bytes": 5088,
+        "path": "tests/integration/logic/software_verification/test_codebase_source_vc_smt_soundness_boundaries.py",
+        "sha256": "00f3d81444595ac406d745b7c96e1cce241681eeae9c3c9367afcfe5ea0d2014"
+      }
+    ],
+    "repository": "/tmp/ir-release-datasets-20261001"
+  }
+}

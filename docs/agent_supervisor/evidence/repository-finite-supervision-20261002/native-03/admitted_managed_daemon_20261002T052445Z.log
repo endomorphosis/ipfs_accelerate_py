@@ -1,0 +1,26 @@
+2026-10-02 05:24:45,360 INFO ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon: Native owner startup stage: main entered
+2026-10-02 05:24:45,417 INFO ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon: Native owner startup stage: bootstrap starting
+2026-10-02 05:24:45,560 INFO ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon: Native owner startup stage: bootstrap attached
+Timeout (0:00:10)!
+Thread 0x0000fffedbaaa720 (most recent call first):
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 444 in adopt_legacy_platform_databases
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 504 in orchestration_state_root
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 622 in repo_resident_duckdb
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 69372 in _checkout_sidecar_duckdb
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 69711 in __init__
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 76852 in main
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 77875 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main
+Timeout (0:00:10)!
+Thread 0x0000fffedbaaa720 (most recent call first):
+  File "<frozen os>", line 373 in walk
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 437 in adopt_legacy_platform_databases
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 504 in orchestration_state_root
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py", line 622 in repo_resident_duckdb
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 69372 in _checkout_sidecar_duckdb
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 69711 in __init__
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 76852 in main
+  File "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 77875 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main

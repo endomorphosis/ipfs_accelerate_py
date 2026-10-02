@@ -25,7 +25,7 @@ import json
 import math
 import threading
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
-from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -102,6 +102,8 @@ MAX_SEMANTIC_MATERIAL_NODES: Final[int] = 100_000
 PLAN_CREATE_MATERIALS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-create-materials@1"
 )
+LIVE_ROOT_OBSERVATION_PROFILE: Final[str] = "repository-live-root-observation@1"
+ROOT_OBSERVATION_PROFILE_FIELD: Final[str] = "root_observation_profile"
 
 # Existing workflow preview remains a canonical compatibility alias for create.
 WORKFLOW_PREVIEW_COMPATIBILITY_ALIAS: Final[str] = "workflow_preview"
@@ -1227,10 +1229,13 @@ class PlanCreateService:
         parallel_compiler: ParallelPlanCompiler | None = None,
         scanner: Any | None = None,
         root_observer: Callable[..., Mapping[str, Any]] | None = None,
+        require_live_root_observation: bool = False,
         receipt_store: MutableMapping[str, Mapping[str, Any]] | Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         workflow_supervisor: Any | None = None,
     ) -> None:
+        if type(require_live_root_observation) is not bool:
+            raise PlanCreateServiceError("require_live_root_observation must be an exact bool")
         self.analysis_factory = analysis_factory
         self.optional_analysis = optional_analysis
         if (
@@ -1254,6 +1259,7 @@ class PlanCreateService:
         self.parallel_compiler = parallel_compiler or ParallelPlanCompiler()
         self.scanner = scanner
         self.root_observer = root_observer
+        self.require_live_root_observation = require_live_root_observation
         self.receipt_store = receipt_store
         self._clock_ms = clock_ms or (lambda: 0)
         self.workflow_supervisor = workflow_supervisor
@@ -1337,6 +1343,16 @@ class PlanCreateService:
         materials: PlanCreateMaterials,
     ) -> None:
         expected = request.roots
+        if self.require_live_root_observation:
+            if not callable(self.root_observer):
+                raise PlanCreateStaleRootError("strict root observation requires a callable live observer")
+            observed = self.root_observer(request)
+            # Static materials are an additional binding, never a substitute
+            # for reading the current source/policy through the live owner.
+            if materials.current_roots is not None:
+                self._require_complete_root_match(materials.current_roots, expected)
+            self._require_complete_root_match(observed, expected)
+            return
         observed = materials.current_roots
         if observed is None and self.root_observer is not None:
             observed = self.root_observer(request)
@@ -1357,6 +1373,35 @@ class PlanCreateService:
             raise PlanCreateStaleRootError(
                 "policy root is stale relative to the create request"
             )
+
+    @staticmethod
+    def _require_complete_root_match(observed: Any, expected: PlanAuthorityRoots) -> None:
+        if type(observed) is not PlanAuthorityRoots:
+            required = {member.name for member in fields(PlanAuthorityRoots)}
+            if not isinstance(observed, Mapping) or not required.issubset(observed):
+                raise PlanCreateStaleRootError("strict live observation requires complete authority roots")
+        try:
+            roots = _coerce_roots(observed)
+            if roots is None:
+                raise PlanCreateStaleRootError("strict live observation requires complete authority roots")
+            roots.require_current(expected)
+        except (PlanRevisionStaleRootError, ValueError, TypeError) as exc:
+            raise PlanCreateStaleRootError("stale root/policy or invalid complete live observation") from exc
+
+    def _bind_root_observation_profile(self, materials: PlanCreateMaterials) -> PlanCreateMaterials:
+        if not self.require_live_root_observation:
+            if isinstance(materials.extra, Mapping) and ROOT_OBSERVATION_PROFILE_FIELD in materials.extra:
+                raise PlanCreateServiceError("repository live-root materials require the strict service policy")
+            return materials
+        if not isinstance(materials.extra, Mapping):
+            raise PlanCreateServiceError("planning materials extra must be a mapping")
+        reserved = ROOT_OBSERVATION_PROFILE_FIELD in materials.extra
+        if reserved and materials.extra[ROOT_OBSERVATION_PROFILE_FIELD] != LIVE_ROOT_OBSERVATION_PROFILE:
+            raise PlanCreateServiceError("unsupported repository root observation profile")
+        # Bind the trusted service policy into semantic input/cache identity
+        # without mutating caller-owned material fields or legacy snapshots.
+        return replace(materials, extra={**materials.extra,
+            ROOT_OBSERVATION_PROFILE_FIELD: LIVE_ROOT_OBSERVATION_PROFILE})
 
     def _stage_scan(
         self,
@@ -2256,7 +2301,7 @@ class PlanCreateService:
 
         typed_request = _coerce_request(request)
         typed_mode = _coerce_mode(mode)
-        typed_materials = _coerce_materials(materials)
+        typed_materials = self._bind_root_observation_profile(_coerce_materials(materials))
 
         # Freeze inputs/bounds before any mode-specific work so deterministic
         # and model-assisted paths share exact bindings.
@@ -2277,6 +2322,9 @@ class PlanCreateService:
                 # regenerate against a different observation.
                 self._require_current_roots(typed_request, typed_materials)
                 require_frozen_materials()
+                if self.require_live_root_observation:
+                    self._require_current_roots(typed_request, typed_materials)
+                    require_frozen_materials()
                 return cached
 
             self._require_current_roots(typed_request, typed_materials)
@@ -2332,6 +2380,9 @@ class PlanCreateService:
             )
             # Keep stage order authority as declared even though parallel is
             # compiled before the admission join below.
+            if self.require_live_root_observation:
+                self._require_current_roots(typed_request, typed_materials)
+                require_frozen_materials()
             admission_result, admission = self._stage_admission(
                 typed_request,
                 typed_materials,
@@ -2411,6 +2462,8 @@ class PlanCreateService:
                 wrote_effects=(),
                 compatibility_alias=compatibility_alias,
             )
+            if self.require_live_root_observation:
+                self._require_current_roots(typed_request, typed_materials)
             require_frozen_materials()
             self._persist(receipt)
             if reuse_supported:
@@ -2514,6 +2567,7 @@ def create_default_plan_create_service(
     workflow_supervisor: Any | None = None,
     receipt_store: MutableMapping[str, Mapping[str, Any]] | Any | None = None,
     root_observer: Callable[..., Mapping[str, Any]] | None = None,
+    require_live_root_observation: bool = False,
     clock_ms: Callable[[], int] | None = None,
     build_analysis_factory: bool = True,
 ) -> PlanCreateService:
@@ -2539,6 +2593,7 @@ def create_default_plan_create_service(
         workflow_supervisor=workflow_supervisor,
         receipt_store=receipt_store,
         root_observer=root_observer,
+        require_live_root_observation=require_live_root_observation,
         clock_ms=clock_ms,
     )
     if factory is not None:
@@ -2562,6 +2617,8 @@ __all__ = [
     "PLAN_CREATE_SERVICE_INTERFACE",
     "PLAN_CREATE_SERVICE_VERSION",
     "PLAN_CREATE_STAGE_RESULT_SCHEMA",
+    "LIVE_ROOT_OBSERVATION_PROFILE",
+    "ROOT_OBSERVATION_PROFILE_FIELD",
     "WORKFLOW_PREVIEW_COMPATIBILITY_ALIAS",
     "PlanCreateBodyError",
     "PlanCreateInputSnapshot",

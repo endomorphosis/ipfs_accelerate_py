@@ -1,0 +1,96 @@
+{
+  "evidence_retention": "Only public result/observation/proof source and logs are copied. No private profile keys, bootstrap credentials, raw databases or owner state directories.",
+  "limits": [
+    "Finite Python observations plus Lean recorded-table arithmetic are not universal source-semantics proofs and do not run lake build.",
+    "No learned interpretation or autoencoder inference/training in this model-off native fixture; typed Codebase384 qualification remains separate.",
+    "Existing signed complete native task population is preserved; no proof-based completion, zero-edit admission or task omission.",
+    "New generic behavioral repository-evidence admission profile, successor signed re-admission, conditional/alternative/prohibition coverage and production default entrypoint remain open.",
+    "No Terminal-Bench score, native Codex ablation, speedup claim or vector retrieval activation from this fixture."
+  ],
+  "model_calls": 0,
+  "native_outcome": {
+    "independent_cold_semantics_equal": true,
+    "initial_current_facts": 1,
+    "initial_residual_clauses": [
+      "finite-integer-offset-goal"
+    ],
+    "native_stop_remaining_processes": 0,
+    "owned_remaining_resource_leases": 0,
+    "published_context_status": "refreshed",
+    "published_task_status": "completed",
+    "published_vector_retrieval_status": "unavailable",
+    "stale_dispatch_refused": true,
+    "stale_index_refused": true,
+    "successor_current_facts": 2,
+    "successor_residual_clauses": []
+  },
+  "nonoverlapping_test_groups": {
+    "admitted_runtime_and_launch_bounds": 26,
+    "cold_semantic_comparison": 10,
+    "finite_native_observer": 40,
+    "native_finite_evidence_index": 18,
+    "native_handoff_and_worker": 28,
+    "scoped_source_adapters_pipeline_process_integer_profile": 229,
+    "strict_live_roots_semantic_identity_finite_service": 109,
+    "structural_context_and_finite_match_preview": 129
+  },
+  "nonoverlapping_tests_passed": 589,
+  "official_benchmark_result": false,
+  "production_acceptance": "open",
+  "provider_calls": 0,
+  "qualified_run": "native-06/result.json",
+  "retained_attempts": {
+    "native-01": "Complete original multiline instruction could not enter printable task title; fixed by exact immutable signed instruction input plus normalized task title.",
+    "native-02": "START exceeded unchanged 30s health deadline before owner heartbeat.",
+    "native-03": "Child-only watchdog located ambient unbounded legacy database os.walk before heartbeat. Fixed by signed run-scoped orchestration directory; production defaults unchanged.",
+    "native-04": "Actual global resource admission refused source capture under memory PSI; retained, no threshold bypass.",
+    "native-05": "Worker/publication/completion/successor succeeded. Qualification comparison incorrectly compared generation-bound predicate IDs and unrelated global leases. Kept result unchanged; diagnostics retained.",
+    "native-06": "All corrected native qualification gates passed."
+  },
+  "schema": "repository-finite-native-qualification-evidence@1",
+  "scope": "Local explicit finite CNL one-argument integer-offset source profile; original exact prompt, signed task, native source observations and separate worker authority.",
+  "seconds": 27.114164429949597,
+  "validation_batches": [
+    {
+      "scope": "strict live roots, semantic identity and finite plan service; tool-output summary retained in conversation, no standalone log captured",
+      "seconds": 26.02,
+      "tests": 109
+    },
+    {
+      "log": "codebase-scoped-profiles-tests.log",
+      "seconds": 6.5,
+      "tests": 229
+    },
+    {
+      "log": "codebase-finite-observer-tests.log",
+      "seconds": 25.44,
+      "tests": 40
+    },
+    {
+      "log": "codebase-native-planning-tests.log",
+      "seconds": 97.91,
+      "tests": 129
+    },
+    {
+      "log": "repository-finite-native-handoff-tests-rerun2.log",
+      "note": "18 native index cases plus earlier version of one real handoff case; overlaps final28",
+      "seconds": 45.42,
+      "tests": 19
+    },
+    {
+      "log": "repository-finite-final-tests.log",
+      "seconds": 51.09,
+      "tests": 28
+    },
+    {
+      "log": "repository-finite-startup-regressions-final.log",
+      "seconds": 33.15,
+      "tests": 26
+    },
+    {
+      "log": "repository-finite-comparison-tests.log",
+      "seconds": 13.13,
+      "tests": 10
+    }
+  ]
+}

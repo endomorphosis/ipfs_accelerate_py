@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_polic
 @pytest.fixture
 def admitted(tmp_path, monkeypatch):
     monkeypatch.setattr(profile_authority, '_LIFECYCLE_REGISTRY_ROOT_OVERRIDE', tmp_path / 'account')
+    monkeypatch.setenv('IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR', str(tmp_path / 'ambient-unrelated-state'))
     prepared = prepare_local_planning_qualification(tmp_path / 'task')
     verified = verify_local_benchmark_admission(prepared['admission'])
     from pathlib import Path
@@ -80,6 +81,28 @@ def test_actual_native_owner_child_start_heartbeat_and_stop(admitted):
     assert runtime.observe()['process_tree']['members'] == []
     assert not runtime.observe()['healthy']
     assert owner.source.get_task(prepared['task_cid']) == original
+
+
+def test_signed_run_owns_orchestration_path_without_legacy_account_scan(admitted, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
+    runtime, _owner, _prepared = admitted
+    expected = str(runtime.state / 'orchestration')
+    environment = dict(runtime.profile.environment)
+    assert environment[board.ORCHESTRATION_DIR_ENV] == expected
+    assert dict(runtime.manifest['environment'])[board.ORCHESTRATION_DIR_ENV] == expected
+    assert (runtime.state / 'orchestration').stat().st_mode & 0o777 == 0o700
+    monkeypatch.setenv(board.ORCHESTRATION_DIR_ENV, environment[board.ORCHESTRATION_DIR_ENV])
+    def forbidden_scan():
+        raise AssertionError('isolated native startup must not scan or migrate ambient account state')
+    monkeypatch.setattr(board, 'adopt_legacy_platform_databases', forbidden_scan)
+    assert str(board.orchestration_state_root()) == expected
+    runtime._verify()
+    # Environment changes cannot borrow the signed launch after preparation.
+    runtime.profile = replace(runtime.profile, profile_id="", environment=tuple(
+        (key, '/tmp/unrelated-orchestration') if key == board.ORCHESTRATION_DIR_ENV else (key, value)
+        for key, value in runtime.profile.environment))
+    with pytest.raises(ValueError, match='launch environment'):
+        runtime._verify()
 
 
 def test_foreign_request_cannot_borrow_admitted_launch(admitted):

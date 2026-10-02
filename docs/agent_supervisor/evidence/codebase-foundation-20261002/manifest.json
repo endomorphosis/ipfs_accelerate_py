@@ -1,0 +1,115 @@
+{
+  "schema": "codebase-foundation-evidence-manifest@1",
+  "files": [
+    {
+      "path": "cache-tests.log",
+      "sha256": "df1ef2c31329b7290054f4607035499cd1bfb7a56e00cd42743543bfad9f34ba",
+      "bytes": 997
+    },
+    {
+      "path": "cache-tests.xml",
+      "sha256": "0cac56a79d7c276fe3e6dfe621d946fa52f8b1819d14458e3ddff9b3507b70a7",
+      "bytes": 2263
+    },
+    {
+      "path": "comparison.json",
+      "sha256": "b974487a9cf44d6c14f5e0b9e816127e7c1c4198b3d25fe4bc35f9c29b6a1c74",
+      "bytes": 1303
+    },
+    {
+      "path": "foundation-tests.log",
+      "sha256": "3a4079a8e79e851a0fb298957d8cd86d542227da2939f8cca395362bf095beaf",
+      "bytes": 2525
+    },
+    {
+      "path": "foundation-tests.xml",
+      "sha256": "9a58400717f478d7dab0986eebb978429daa64010aed89cb57ed5612961e6e76",
+      "bytes": 33817
+    },
+    {
+      "path": "selected-source-port.json",
+      "sha256": "a3a618a93af09015e17a7df9cb40ddc538a567eb8477dfebb2d066ebccad88a9",
+      "bytes": 2792
+    },
+    {
+      "path": "staging-baseline-driver.py",
+      "sha256": "e8c5814057b0fbc4bde60b6e21eeb9a74c2cb9e729c2c724c904246c63621607",
+      "bytes": 4152
+    },
+    {
+      "path": "staging-baseline-implementation.py",
+      "sha256": "3fde230b01079497ba83757213c98b0e708affdc06154731df031fa419a4d29b",
+      "bytes": 25668
+    },
+    {
+      "path": "staging-baseline-result.json",
+      "sha256": "b0365b87ac27744518f9335014281fbb71651a8710132c01d80bd395a2ce7963",
+      "bytes": 3049
+    },
+    {
+      "path": "staging-baseline-run.log",
+      "sha256": "bdae178baf8400284478136732b306ca6e48a871c5c9c33be8b2a95ba3d30389",
+      "bytes": 199
+    },
+    {
+      "path": "staging-final-driver.py",
+      "sha256": "42693aa89e756254bd1f6c5861e6a73beb012c0b5541ea123b0bf235f6329fa0",
+      "bytes": 4282
+    },
+    {
+      "path": "staging-final-implementation.py",
+      "sha256": "a38dbee0effd5034ce4ba849cec34326021174ed0e8e72b4bed23fe3a8d57bb9",
+      "bytes": 29982
+    },
+    {
+      "path": "staging-final-result.json",
+      "sha256": "8473f6db841faf2fc409dba84a1ecc5c29f346168de150464c60fbbe52d7da9e",
+      "bytes": 3614
+    },
+    {
+      "path": "staging-final-run.log",
+      "sha256": "37bc75a9c84ae242c6b27f11581d0b11d1082886f55b62eebab22721d9e7e715",
+      "bytes": 199
+    },
+    {
+      "path": "staging-interrupted-diagnostic.json",
+      "sha256": "833f2688308709888e3f9851be3793d0e5132196852a08daae627383972c9235",
+      "bytes": 321
+    },
+    {
+      "path": "staging-interrupted-implementation.py",
+      "sha256": "e15fadf35ce597a9391b1dd9f8c7c421b61fc7f7abbdaccfcd0d44e48e643fb7",
+      "bytes": 29860
+    },
+    {
+      "path": "staging-interrupted-run.log",
+      "sha256": "7d889493ac646df5c30dc40367ca98790cf51dc1f311ae4e7f26f6fd07888f60",
+      "bytes": 3286
+    },
+    {
+      "path": "staging-optimized-previous-driver.py",
+      "sha256": "88f7bbd547b9ad680d8ef51de05b10e955ab1302a091e2f89f373f7cfbe01b0e",
+      "bytes": 4282
+    },
+    {
+      "path": "staging-optimized-previous-result.json",
+      "sha256": "53bfaf454fb13fa066e192fcff31f255ff006c6dbfc00c2478a78954f3ecb47c",
+      "bytes": 3614
+    },
+    {
+      "path": "staging-optimized-previous-run.log",
+      "sha256": "537d07c4aa893d7fb681345f560f47ac350140f0ca7957612f93b7300705ca2d",
+      "bytes": 200
+    },
+    {
+      "path": "staging-tests.log",
+      "sha256": "6518efb24349eac9e5dafd3ee99e39fe432c605ef059c75c3ce7e2334912cd5a",
+      "bytes": 1080
+    },
+    {
+      "path": "staging-tests.xml",
+      "sha256": "18a68c3642a6e76fde777fe22ab0cc00475e2adcdd05d3eaf6e449b96dd53c07",
+      "bytes": 4250
+    }
+  ]
+}

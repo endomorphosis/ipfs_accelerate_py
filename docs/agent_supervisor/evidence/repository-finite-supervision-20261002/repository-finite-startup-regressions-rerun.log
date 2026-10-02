@@ -1,0 +1,136 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 26 items
+
+test/integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:28:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:10 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:28:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_actual_native_owner_child0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:10 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:28:11 [[32m    INFO[0m] state-owner ready server_id=server:d9102677-8bb8-4473-a79a-0c2e455ba4c2 listen_uri=quack:127.0.0.1:33131 (quack_state_server.py:4353)
+2026-10-02 05:28:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_actual_native_owner_child0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  3%][0m
+test/integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-02 05:28:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:16 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-02 05:28:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:28:16 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-02 05:28:16 [[32m    INFO[0m] state-owner ready server_id=server:c5c94f2b-cbae-48df-85e7-70e11871893f listen_uri=quack:127.0.0.1:44085 (quack_state_server.py:4353)
+2026-10-02 05:28:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [  7%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_____ test_signed_run_owns_orchestration_path_without_legacy_account_scan ______[0m
+
+admitted = (<ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime.AdmittedBenchmarkRuntime object at 0xee81...ile', 'lifecycle_dir': '/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/state/lifecycle', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xee81fdbcd0d0>
+
+    [0m[94mdef[39;49;00m [92mtest_signed_run_owns_orchestration_path_without_legacy_account_scan[39;49;00m(admitted, monkeypatch):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_sources[39;49;00m [94mimport[39;49;00m board_control_plane [94mas[39;49;00m board[90m[39;49;00m
+        runtime, _owner, _prepared = admitted[90m[39;49;00m
+        expected = [96mstr[39;49;00m(runtime.state / [33m'[39;49;00m[33morchestration[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+        environment = [96mdict[39;49;00m(runtime.profile.environment)[90m[39;49;00m
+        [94massert[39;49;00m environment[board.ORCHESTRATION_DIR_ENV] == expected[90m[39;49;00m
+        [94massert[39;49;00m [96mdict[39;49;00m(runtime.manifest[[33m'[39;49;00m[33menvironment[39;49;00m[33m'[39;49;00m])[board.ORCHESTRATION_DIR_ENV] == expected[90m[39;49;00m
+        [94massert[39;49;00m (runtime.state / [33m'[39;49;00m[33morchestration[39;49;00m[33m'[39;49;00m).stat().st_mode & [94m0o777[39;49;00m == [94m0o700[39;49;00m[90m[39;49;00m
+        monkeypatch.setenv(board.ORCHESTRATION_DIR_ENV, environment[board.ORCHESTRATION_DIR_ENV])[90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden_scan[39;49;00m():[90m[39;49;00m
+            [94mraise[39;49;00m [96mAssertionError[39;49;00m([33m'[39;49;00m[33misolated native startup must not scan or migrate ambient account state[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(board, [33m'[39;49;00m[33madopt_legacy_platform_databases[39;49;00m[33m'[39;49;00m, forbidden_scan)[90m[39;49;00m
+        [94massert[39;49;00m [96mstr[39;49;00m(board.orchestration_state_root()) == expected[90m[39;49;00m
+        runtime._verify()[90m[39;49;00m
+        [90m# Environment changes cannot borrow the signed launch after preparation.[39;49;00m[90m[39;49;00m
+>       runtime.profile = replace(runtime.profile, environment=[96mtuple[39;49;00m([90m[39;49;00m
+            (key, [33m'[39;49;00m[33m/tmp/unrelated-orchestration[39;49;00m[33m'[39;49;00m) [94mif[39;49;00m key == board.ORCHESTRATION_DIR_ENV [94melse[39;49;00m (key, value)[90m[39;49;00m
+            [94mfor[39;49;00m key, value [95min[39;49;00m runtime.profile.environment))[90m[39;49;00m
+
+[1m[31mtest/integration/test_admitted_benchmark_runtime.py[0m:101: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/dataclasses.py[0m:1581: in replace
+    [0m[94mreturn[39;49;00m obj.[91m__class__[39;49;00m(**changes)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m<string>[0m:15: in __init__
+    [0m[04m[91m?[39;49;00m[04m[91m?[39;49;00m[04m[91m?[39;49;00m[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = LifecycleProfile(target_id='baguqeeraafe5fegr2igcqzjwthw37dlk255q4nvmzgtmizbrfsniowwyoc2a', run_id='admitted-02e17710c...atus.json', health_stale_ms=5000, profile_id='sha256:d7d8032a85956c0a84b34dc0c4f2d9bc03db266ba758344949bfc7eb784636f9')
+
+    [0m[94mdef[39;49;00m [92m__post_init__[39;49;00m([96mself[39;49;00m) -> [94mNone[39;49;00m:[90m[39;49;00m
+        [94mfor[39;49;00m name [95min[39;49;00m ([33m"[39;49;00m[33mtarget_id[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrun_id[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mconfiguration_root[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+            [96mobject[39;49;00m.[92m__setattr__[39;49;00m([96mself[39;49;00m, name, _text([96mgetattr[39;49;00m([96mself[39;49;00m, name), name))[90m[39;49;00m
+        [94mfor[39;49;00m name [95min[39;49;00m ([33m"[39;49;00m[33mrepository_root[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mstate_root[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrun_root[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcwd[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+            [96mobject[39;49;00m.[92m__setattr__[39;49;00m([96mself[39;49;00m, name, _absolute([96mgetattr[39;49;00m([96mself[39;49;00m, name), name))[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m _under([96mself[39;49;00m.cwd, [96mself[39;49;00m.repository_root):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mprofile cwd must be inside repository_root[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m _under([96mself[39;49;00m.run_root, [96mself[39;49;00m.state_root):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mprofile run_root must be inside state_root[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        argv = [96mtuple[39;49;00m([96mstr[39;49;00m(item) [94mfor[39;49;00m item [95min[39;49;00m [96mself[39;49;00m.argv)[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m argv [95mor[39;49;00m [96mlen[39;49;00m(argv) > [94m512[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33margv must contain between 1 and 512 items[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96many[39;49;00m([95mnot[39;49;00m item [95mor[39;49;00m [33m"[39;49;00m[33m\x00[39;49;00m[33m"[39;49;00m [95min[39;49;00m item [94mfor[39;49;00m item [95min[39;49;00m argv):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33margv item must be non-empty[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [96mobject[39;49;00m.[92m__setattr__[39;49;00m([96mself[39;49;00m, [33m"[39;49;00m[33margv[39;49;00m[33m"[39;49;00m, argv)[90m[39;49;00m
+        environment = [96mtuple[39;49;00m([90m[39;49;00m
+            [96msorted[39;49;00m([90m[39;49;00m
+                ([90m[39;49;00m
+                    _text(name, [33m"[39;49;00m[33menvironment name[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+                    [96mstr[39;49;00m(value),[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mfor[39;49;00m name, value [95min[39;49;00m [96mself[39;49;00m.environment[90m[39;49;00m
+            )[90m[39;49;00m
+        )[90m[39;49;00m
+        names = [name [94mfor[39;49;00m name, _value [95min[39;49;00m environment][90m[39;49;00m
+        [94mif[39;49;00m [96mlen[39;49;00m(names) != [96mlen[39;49;00m([96mset[39;49;00m(names)):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33menvironment names must be unique[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96mset[39;49;00m(names).intersection(_MARKER_NAMES):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mprofile environment cannot override lifecycle markers[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [96mobject[39;49;00m.[92m__setattr__[39;49;00m([96mself[39;49;00m, [33m"[39;49;00m[33menvironment[39;49;00m[33m"[39;49;00m, environment)[90m[39;49;00m
+        health_path = [96mstr[39;49;00m([96mself[39;49;00m.health_path).strip()[90m[39;49;00m
+        [94mif[39;49;00m health_path:[90m[39;49;00m
+            health_path = _absolute(health_path, [33m"[39;49;00m[33mhealth_path[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m [95mnot[39;49;00m _under(health_path, [96mself[39;49;00m.state_root):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mhealth_path must be inside state_root[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [96mobject[39;49;00m.[92m__setattr__[39;49;00m([96mself[39;49;00m, [33m"[39;49;00m[33mhealth_path[39;49;00m[33m"[39;49;00m, health_path)[90m[39;49;00m
+        _positive_int([96mself[39;49;00m.health_stale_ms, [33m"[39;49;00m[33mhealth_stale_ms[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        expected = _canonical_id([96mself[39;49;00m._payload())[90m[39;49;00m
+        [94mif[39;49;00m [96mself[39;49;00m.profile_id [95mand[39;49;00m [96mself[39;49;00m.profile_id != expected:[90m[39;49;00m
+>           [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mprofile_id does not match launch configuration[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ValueError: profile_id does not match launch configuration[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py[0m:217: ValueError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-02 05:28:15,936 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:28:16,499 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:28:16,779 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+2026-10-02 05:28:16,780 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-02 05:28:16,891 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-02 05:28:16,990 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:c5c94f2b-cbae-48df-85e7-70e11871893f listen_uri=quack:127.0.0.1:44085
+2026-10-02 05:28:17,128 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 control-plane schema migration complete before ready
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 state-owner ready server_id=server:c5c94f2b-cbae-48df-85e7-70e11871893f listen_uri=quack:127.0.0.1:44085
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4556/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+============================= slowest 10 durations =============================
+4.16s call     integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop
+1.45s setup    integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop
+1.38s setup    integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+0.26s teardown integration/test_admitted_benchmark_runtime.py::test_actual_native_owner_child_start_heartbeat_and_stop
+0.24s teardown integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+0.05s call     integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_admitted_benchmark_runtime.py::[1mtest_signed_run_owns_orchestration_path_without_legacy_account_scan[0m - ValueError: profile_id does not match launch configuration
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m========================= [31m[1m1 failed[0m, [32m1 passed[0m[31m in 28.85s[0m[31m =========================[0m

@@ -1,0 +1,19 @@
+{
+  "benchmark_result": false,
+  "error": {
+    "message": "timed out waiting for a resource lease",
+    "type": "LeaseTimeoutError"
+  },
+  "initial_public_check_exit_code": 1,
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "observations": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "qualified": false,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 30.3843498500064,
+  "training_steps": 0
+}
