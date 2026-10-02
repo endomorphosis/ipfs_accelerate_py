@@ -1,0 +1,626 @@
+{
+  "adapter_version": "software-verification-source-adapter/v1.0.1",
+  "backend_requests": [
+    {
+      "attributes": {
+        "fake_success_forbidden": true,
+        "function_id": "function:increment",
+        "program_id": "bafkreibaq3h4tvmrhajq5ue2jskzpvjmzp2m5amsqviqgzgj6n5ajenxp4",
+        "requires_canonical_backend": true
+      },
+      "goal_kind": "verification_condition",
+      "logic_family": "smt",
+      "obligation_statement": "Establish the admitted contract obligations for function 'increment' via the shared SMT compiler; do not treat adapter success as a proof.",
+      "request_id": "backend-request:function:increment.contract",
+      "schema": "ipfs_datasets_py/logic/software-verification/canonical-backend-request@1",
+      "source_ref_ids": [
+        "source:calc.py"
+      ],
+      "subject_ids": [
+        "function:increment"
+      ],
+      "theory_tags": [
+        "equality",
+        "qf_lia"
+      ]
+    }
+  ],
+  "diagnostics": [],
+  "document": {
+    "artifacts": [
+      {
+        "artifact_id": "artifact:calc.py",
+        "config_id": "",
+        "content_cid": "",
+        "content_sha256": "d3060732c25355bf99e9970a6420ca098d86f4c4b8ffb475809d41a78062c952",
+        "license_expression": "",
+        "media_type": "text/x-python",
+        "metadata": {
+          "language": "python"
+        },
+        "parent_artifact_ids": [],
+        "path": "calc.py",
+        "producer_id": "",
+        "review_status": "",
+        "role": "input",
+        "schema_id": "software-verification-source",
+        "schema_version": "v1",
+        "size": 47,
+        "trust_decision": ""
+      }
+    ],
+    "assumptions": [
+      {
+        "assumption_id": "assumption:python.language-semantics",
+        "expression": {
+          "adapter": "software-verification-source-adapter/v1.0.1",
+          "subset": "v1"
+        },
+        "extensions": {},
+        "kind": "semantic",
+        "schema_version": "verification-assumption/v1",
+        "source_ref_ids": [],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "statement": "Only the admitted python subset is given executable ProgramIR semantics; other features stay observational.",
+        "subject_ids": [
+          "decl:function.increment"
+        ]
+      },
+      {
+        "assumption_id": "assumption:python.memory",
+        "expression": {
+          "memory_model": "abstract_objects"
+        },
+        "extensions": {},
+        "kind": "modeling",
+        "schema_version": "verification-assumption/v1",
+        "source_ref_ids": [],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "statement": "python memory is modeled as abstract object identity without a precise heap graph in this adapter version.",
+        "subject_ids": [
+          "decl:function.increment"
+        ]
+      },
+      {
+        "assumption_id": "assumption:python.runtime",
+        "expression": {
+          "concurrency": "sequential",
+          "language": "python"
+        },
+        "extensions": {},
+        "kind": "platform",
+        "schema_version": "verification-assumption/v1",
+        "source_ref_ids": [],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "statement": "python runtime is sequential, single-threaded for the admitted subset; the GIL or event-loop concurrency is not modeled.",
+        "subject_ids": [
+          "decl:function.increment"
+        ]
+      },
+      {
+        "assumption_id": "assumption:python.undefined-behavior",
+        "expression": {
+          "undefined_behavior_policy": "retain_unsupported"
+        },
+        "extensions": {},
+        "kind": "semantic",
+        "schema_version": "verification-assumption/v1",
+        "source_ref_ids": [],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "statement": "Undefined or implementation-defined python behavior is not silently executed; unsupported constructs are retained as diagnostics.",
+        "subject_ids": [
+          "decl:function.increment"
+        ]
+      }
+    ],
+    "bounds": [
+      {
+        "bound_id": "bound:python.source-bytes",
+        "description": "Adapter admission bound for source size.",
+        "extensions": {},
+        "kind": "resource_bounded",
+        "limits": {
+          "max_source_bytes": 2097152
+        },
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": []
+      }
+    ],
+    "declarations": [
+      {
+        "declaration_id": "decl:function.increment",
+        "depends_on": [],
+        "extensions": {},
+        "kind": "function",
+        "name": "increment",
+        "payload": {
+          "complete_lowering": true,
+          "function_id": "function:increment",
+          "language": "python",
+          "parameter_symbol_ids": [
+            "symbol:increment.n.parameter"
+          ],
+          "return_type": "Any"
+        },
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:function.increment.1"
+        ]
+      }
+    ],
+    "diagnostics": [],
+    "document_id": "bafkreidewgblvccbtf4wfkti77sqwnsehqmejnj52jhlex3jtwpiswlrf4",
+    "extensions": {
+      "lfv.source_adapter.version": "software-verification-source-adapter/v1.0.1"
+    },
+    "metadata": {
+      "adapter": "SourceSoftwareVerificationAdapter@1",
+      "language": "python",
+      "path": "calc.py"
+    },
+    "observations": {
+      "adapter_version": "software-verification-source-adapter/v1.0.1",
+      "backend_requests": [
+        {
+          "attributes": {
+            "fake_success_forbidden": true,
+            "function_id": "function:increment",
+            "program_id": "bafkreibaq3h4tvmrhajq5ue2jskzpvjmzp2m5amsqviqgzgj6n5ajenxp4",
+            "requires_canonical_backend": true
+          },
+          "goal_kind": "verification_condition",
+          "logic_family": "smt",
+          "obligation_statement": "Establish the admitted contract obligations for function 'increment' via the shared SMT compiler; do not treat adapter success as a proof.",
+          "request_id": "backend-request:function:increment.contract",
+          "schema": "ipfs_datasets_py/logic/software-verification/canonical-backend-request@1",
+          "source_ref_ids": [
+            "source:calc.py"
+          ],
+          "subject_ids": [
+            "function:increment"
+          ],
+          "theory_tags": [
+            "equality",
+            "qf_lia"
+          ]
+        }
+      ],
+      "interface": "SourceSoftwareVerificationAdapter@1",
+      "unsupported_constructs": []
+    },
+    "properties": [
+      {
+        "assumption_ids": [
+          "assumption:python.language-semantics",
+          "assumption:python.memory",
+          "assumption:python.runtime",
+          "assumption:python.undefined-behavior"
+        ],
+        "bound_ids": [],
+        "expression": {
+          "function_id": "function:increment",
+          "purity": "pure"
+        },
+        "extensions": {},
+        "kind": "safety",
+        "logic_family": "software_verification",
+        "property_id": "property:function:increment.safety",
+        "schema_version": "verification-property/v1",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "statement": "Function increment respects its admitted control-flow and effect summary under the declared language assumptions.",
+        "subject_ids": [
+          "decl:function.increment"
+        ]
+      }
+    ],
+    "schema_version": "software-verification-ir/v1",
+    "sources": [
+      {
+        "container_sha256": "",
+        "container_uri": "",
+        "content_cid": "",
+        "content_sha256": "d3060732c25355bf99e9970a6420ca098d86f4c4b8ffb475809d41a78062c952",
+        "license_expression": "",
+        "metadata": {
+          "byte_length": 47,
+          "language": "python",
+          "path": "calc.py"
+        },
+        "ref_id": "source:calc.py",
+        "review_status": "unreviewed",
+        "source_id": "calc.py",
+        "source_revision": "snapshot:baguqeera2txjreqoygpky2geywc52zkhmwnhakuiftsqtz57pcj2p3itulwq",
+        "source_uri": "file:///calc.py"
+      }
+    ],
+    "spans": [
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:function.increment.1",
+        "start_byte": 0,
+        "start_char": null,
+        "start_column": 1,
+        "start_line": 1
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.4",
+        "start_byte": 41,
+        "start_char": null,
+        "start_column": 12,
+        "start_line": 2
+      },
+      {
+        "end_byte": 42,
+        "end_char": null,
+        "end_column": 12,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.5",
+        "start_byte": 41,
+        "start_char": null,
+        "start_column": 12,
+        "start_line": 2
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.7",
+        "start_byte": 45,
+        "start_char": null,
+        "start_column": 16,
+        "start_line": 2
+      },
+      {
+        "end_byte": 20,
+        "end_char": null,
+        "end_column": 20,
+        "end_line": 1,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.param.n.2",
+        "start_byte": 14,
+        "start_char": null,
+        "start_column": 15,
+        "start_line": 1
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.stmt.3",
+        "start_byte": 34,
+        "start_char": null,
+        "start_column": 5,
+        "start_line": 2
+      }
+    ]
+  },
+  "evidence": null,
+  "fake_backend_success": false,
+  "interface": "SourceSoftwareVerificationAdapter@1",
+  "language": "python",
+  "path": "calc.py",
+  "program": {
+    "commands": [
+      {
+        "attributes": {},
+        "command_id": "command:10",
+        "effects": {
+          "allocates": [],
+          "deallocates": [],
+          "nondeterministic": false,
+          "performs_io": false,
+          "raises": [],
+          "reads": [],
+          "synchronizes": false,
+          "writes": []
+        },
+        "evaluation_order": [
+          "expr:9"
+        ],
+        "expression_ids": [
+          "expr:9"
+        ],
+        "kind": "return",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:increment.stmt.3"
+        ],
+        "target_symbol_ids": [],
+        "undefined_behavior": []
+      }
+    ],
+    "expressions": [
+      {
+        "attributes": {},
+        "evaluation_order": [],
+        "expression_id": "expr:6",
+        "kind": "symbol",
+        "operand_ids": [],
+        "operator": "",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:increment.expr.5"
+        ],
+        "symbol_ids": [
+          "symbol:increment.n.parameter"
+        ],
+        "type_ref": "any"
+      },
+      {
+        "attributes": {
+          "value": 1
+        },
+        "evaluation_order": [],
+        "expression_id": "expr:8",
+        "kind": "literal",
+        "operand_ids": [],
+        "operator": "",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:increment.expr.7"
+        ],
+        "symbol_ids": [],
+        "type_ref": "int"
+      },
+      {
+        "attributes": {},
+        "evaluation_order": [
+          "expr:6",
+          "expr:8"
+        ],
+        "expression_id": "expr:9",
+        "kind": "binary",
+        "operand_ids": [
+          "expr:6",
+          "expr:8"
+        ],
+        "operator": "add",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:increment.expr.4"
+        ],
+        "symbol_ids": [],
+        "type_ref": "any"
+      }
+    ],
+    "functions": [
+      {
+        "cfg": {
+          "blocks": [
+            {
+              "block_id": "block:entry",
+              "command_ids": [
+                "command:10"
+              ],
+              "source_ref_ids": [
+                "source:calc.py"
+              ],
+              "span_ids": [
+                "span:function.increment.1"
+              ]
+            }
+          ],
+          "edges": [],
+          "entry_block_id": "block:entry",
+          "exceptional_exit_block_ids": [],
+          "graph_id": "cfg:increment",
+          "normal_exit_block_ids": [
+            "block:entry"
+          ]
+        },
+        "declared_exceptions": [],
+        "effects": {
+          "allocates": [],
+          "deallocates": [],
+          "nondeterministic": false,
+          "performs_io": false,
+          "raises": [],
+          "reads": [
+            "symbol:increment.n.parameter"
+          ],
+          "synchronizes": false,
+          "writes": []
+        },
+        "exception_symbol_ids": [],
+        "function_id": "function:increment",
+        "local_symbol_ids": [],
+        "name": "increment",
+        "parameter_symbol_ids": [
+          "symbol:increment.n.parameter"
+        ],
+        "purity": "pure",
+        "result_symbol_id": "symbol:increment.result.result",
+        "return_type": "Any",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:function.increment.1"
+        ]
+      }
+    ],
+    "global_symbol_ids": [],
+    "metadata": {
+      "adapter": "SourceSoftwareVerificationAdapter@1",
+      "language": "python",
+      "path": "calc.py"
+    },
+    "program_id": "bafkreibaq3h4tvmrhajq5ue2jskzpvjmzp2m5amsqviqgzgj6n5ajenxp4",
+    "schema_version": "program-ir/v1",
+    "sources": [
+      {
+        "container_sha256": "",
+        "container_uri": "",
+        "content_cid": "",
+        "content_sha256": "d3060732c25355bf99e9970a6420ca098d86f4c4b8ffb475809d41a78062c952",
+        "license_expression": "",
+        "metadata": {
+          "byte_length": 47,
+          "language": "python",
+          "path": "calc.py"
+        },
+        "ref_id": "source:calc.py",
+        "review_status": "unreviewed",
+        "source_id": "calc.py",
+        "source_revision": "snapshot:baguqeera2txjreqoygpky2geywc52zkhmwnhakuiftsqtz57pcj2p3itulwq",
+        "source_uri": "file:///calc.py"
+      }
+    ],
+    "spans": [
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:function.increment.1",
+        "start_byte": 0,
+        "start_char": null,
+        "start_column": 1,
+        "start_line": 1
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.4",
+        "start_byte": 41,
+        "start_char": null,
+        "start_column": 12,
+        "start_line": 2
+      },
+      {
+        "end_byte": 42,
+        "end_char": null,
+        "end_column": 12,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.5",
+        "start_byte": 41,
+        "start_char": null,
+        "start_column": 12,
+        "start_line": 2
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.expr.7",
+        "start_byte": 45,
+        "start_char": null,
+        "start_column": 16,
+        "start_line": 2
+      },
+      {
+        "end_byte": 20,
+        "end_char": null,
+        "end_column": 20,
+        "end_line": 1,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.param.n.2",
+        "start_byte": 14,
+        "start_char": null,
+        "start_column": 15,
+        "start_line": 1
+      },
+      {
+        "end_byte": 46,
+        "end_char": null,
+        "end_column": 16,
+        "end_line": 2,
+        "metadata": {},
+        "source_ref_id": "source:calc.py",
+        "span_id": "span:increment.stmt.3",
+        "start_byte": 34,
+        "start_char": null,
+        "start_column": 5,
+        "start_line": 2
+      }
+    ],
+    "symbols": [
+      {
+        "attributes": {},
+        "kind": "parameter",
+        "name": "n",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:increment.param.n.2"
+        ],
+        "symbol_id": "symbol:increment.n.parameter",
+        "type_ref": "Any"
+      },
+      {
+        "attributes": {},
+        "kind": "result",
+        "name": "result",
+        "source_ref_ids": [
+          "source:calc.py"
+        ],
+        "span_ids": [
+          "span:function.increment.1"
+        ],
+        "symbol_id": "symbol:increment.result.result",
+        "type_ref": "Any"
+      }
+    ]
+  },
+  "schema": "ipfs_datasets_py/logic/software-verification/source-adapter-result@1",
+  "status": "success",
+  "unsupported_constructs": []
+}

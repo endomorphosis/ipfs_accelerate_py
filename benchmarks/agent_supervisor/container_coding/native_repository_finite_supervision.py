@@ -119,7 +119,7 @@ def prepare_request(*, index, head, repository, intent, declared, tools, schedul
         operation_catalog=catalog, tool_policy=tools, policy_observer=policy_observer)
 
 
-def qualify(*, output: Path, python: Path, lean: Path):
+def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = False):
     import duckdb
     from ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation import seal_finite_integer_tools
     from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import get_global_resource_scheduler
@@ -183,6 +183,12 @@ def qualify(*, output: Path, python: Path, lean: Path):
                 _write(output / "candidate-result.json", candidate)
                 if candidate["status"] != "candidate_ready":
                     raise RuntimeError("native repository plan did not select a checked candidate")
+                public_context = None
+                if public_evidence:
+                    from ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_public_context import publish_finite_public_context
+                    public_context = publish_finite_public_context(candidate=candidate,
+                        admission=declared["admission"], instruction=INSTRUCTION)
+                    report["public_context"] = public_context
                 historical = persist_finite_evidence_index(match=candidate["preview"]["match"], output=output / "finite-index")
                 report["index_query"] = query_finite_evidence_index(index=index, repository=repository,
                     expected_head=head, expected=historical, scheduler=scheduler)
@@ -199,10 +205,14 @@ def qualify(*, output: Path, python: Path, lean: Path):
                     retained_preview_execution_debt=candidate["preview"]["execution_plan"],
                     context_bundle=bundle, handoff_sha256=candidate["handoff_sha256"])
         binding = candidate["signed_evidence"]["binding"]
-        command = shlex.join([sys.executable, "-B", "-P", "-m",
-            "ipfs_accelerate_py.agent_supervisor.runtime.repository_finite_runner",
+        runner_module = "repository_finite_public_context" if public_evidence else "repository_finite_runner"
+        command_args = [sys.executable, "-B", "-P", "-m",
+            "ipfs_accelerate_py.agent_supervisor.runtime." + runner_module,
             "--artifact", candidate["handoff_path"], "--sha256", candidate["handoff_sha256"],
-            "--task-cid", cid, "--owner-did", binding["identity"], "--profile-id", binding["profile_id"]])
+            "--task-cid", cid, "--owner-did", binding["identity"], "--profile-id", binding["profile_id"]]
+        if public_context is not None:
+            command_args += ["--public-context", public_context["artifact"], "--public-context-sha256", public_context["sha256"]]
+        command = shlex.join(command_args)
         worktrees = output / "worktrees"; worktrees.mkdir(mode=0o750)
         with open_existing_native_owner(database=output / "intent.duckdb", checkout=repository,
                 state_dir=output / "owner", repository_id=declared["manifest"]["payload"]["repository_cid"],
@@ -239,6 +249,30 @@ def qualify(*, output: Path, python: Path, lean: Path):
                         report["after_stop"] = runtime.observe()
                 finally:
                     runtime.close()
+        if public_context is not None:
+            receipts = []
+            logs = list((output / "launch/state/run").glob(
+                "admitted_database_portal_attempts/*/implementation-logs/*attempt-*.log"))
+            if len(logs) > 4:
+                raise RuntimeError("unexpected worker attempt population")
+            for path in logs:
+                with path.open("rb") as stream:
+                    raw = stream.read(1_000_001)
+                if len(raw) > 1_000_000:
+                    raise RuntimeError("worker log exceeds evidence bound")
+                for line in raw.decode().splitlines():
+                    if not line.startswith('{"artifact_cid":'):
+                        continue
+                    value = json.loads(line)
+                    if value.get("schema") == "native-repository-finite-materialization@1":
+                        receipts.append(value)
+            if (len(receipts) != 1 or receipts[0]["task_cid"] != cid
+                    or receipts[0]["public_context"]["sha256"] != public_context["sha256"]
+                    or receipts[0]["public_context"]["integrity_replayed"] is not True
+                    or receipts[0]["public_context"]["owner_keys_used"] is not False
+                    or receipts[0]["public_context"]["injected_after_semantic_encoding"] is not True):
+                raise RuntimeError("native worker public context delivery did not verify")
+            report["public_context_worker_receipt"] = receipts[0]
         report["final_public_check_exit_code"] = subprocess.run(check, cwd=repository,
             capture_output=True, timeout=10).returncode
         report["published_commit"] = _git(repository, "rev-parse", "HEAD")
@@ -320,6 +354,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--python", required=True, type=Path)
     parser.add_argument("--lean", required=True, type=Path)
+    parser.add_argument("--public-evidence", action="store_true")
     result = qualify(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("qualified", "seconds", "provider_calls")}))
     return 0 if result["qualified"] else 1

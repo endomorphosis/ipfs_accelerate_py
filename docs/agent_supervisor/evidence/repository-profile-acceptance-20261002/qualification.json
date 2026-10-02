@@ -1,0 +1,73 @@
+{
+  "actual_execution": [
+    "Durable Git/DuckDB/CAS capture and native owner close/reopen",
+    "Z3 and CVC5 premise SAT, negated total-integer-domain UNSAT, source-bound witness SAT and conditional refutation",
+    "Native CPython observation over every requested finite input",
+    "Native Lean compilation of the exact captured finite observation table",
+    "CPython bool/float calls demonstrate unenforced int annotations"
+  ],
+  "adversarial_injection_scope": "Unknown, disagreement and timeout verdicts are explicitly injected classification controls after retaining actual native process results. They are not claimed as naturally occurring results of these decidable native obligations.",
+  "attempts": {
+    "attempt-01": "Harness basetemp parent directory absent; no positive claim.",
+    "attempt-02": "Actual proof memory-pressure admission timeout; no positive checker claim.",
+    "attempt-03": "38 passed; zero skips."
+  },
+  "frozen_source_modules_modified": false,
+  "ledger_modified": false,
+  "old_native_receipts_modified": false,
+  "privacy": "Only public source/proof/observation/control receipts and logs retained; no source databases, private owner state, credentials or scheduler files.",
+  "production_acceptance": "open",
+  "profiles": [
+    "python-integer-offset@1",
+    "python-integer-offset-finite@1"
+  ],
+  "proposed_criterion_acceptance": {
+    "RPI-005": {
+      "blocking_dependencies": [
+        "RPI-002",
+        "RPI-028"
+      ],
+      "mapping": {
+        "premise_satisfiability_and_domain_coverage": "Both native solvers check SAT body premises and UNSAT negation of forall Int input / exists Int result body. The owner compiler admits only the reconstructed body equation with no caller narrowing assumptions; contradictory and n=0-only extra assumptions fail.",
+        "refusal_matrix": "Changed literal, bool sort refinement, wrong revision, unsupported effects/types/operators, missing contract, absent/wrong exact selector, invalid finite domains and wrong source receipt all fail before eligibility.",
+        "reviewed_runtime_assumptions": "Exact-int excluding bool/subclasses, unbounded arithmetic under resource exclusions, direct sequential call and module/rebinding/concurrency exclusions are retained. Actual CPython bool/float invocation plus finite-domain rejection demonstrates no annotation enforcement claim.",
+        "source_bound_typed_model_and_vcs": "Native captured source feeds reconstructed typed Int ProgramIR, exact body/goal correspondence and postcondition VC. Existing native profile matrices exercise supported positive/negative integer literals and explicit solver status.",
+        "theorem_scope": "Conditional SMT remains kernel_checked=false and behavior_authority=false. Lean kernel checking certifies only the exact recorded finite table."
+      },
+      "status": "qualified_for_declared_profile"
+    },
+    "RPI-006": {
+      "blocking_dependencies": [
+        "RPI-004",
+        "RPI-005"
+      ],
+      "mapping": {
+        "actual_checker_receipts_and_replay": "Actual current-source Python/Lean receipts, exact tools/limits/compiled source/query/domain/trace/Lean source/artifact bytes and all fact-provenance identities are checked; durable source is independently reopened.",
+        "countermodel_applicability": "Both native SMT tools confirm the exact captured body witness n=0/result=1; actual CPython and Lean table confirm that requested finite counterexample. Same-named decoy source is separately satisfied; old source counterexample and wrong source receipts cannot apply after dirty same-HEAD successor capture.",
+        "marker_only_acceptance": "This route obtains fresh owner execution; marker-only JSON, caller authority, a changed source model or omitted domain row cannot substitute.",
+        "result_classification": "Existing native profile tests cover actual proved/refuted and unavailable/error; new controls separately classify unknown/disagreement/timeout without kernel or source behavior authority. Unsupported source remains unresolved with no facts or execution."
+      },
+      "status": "qualified_for_declared_profile"
+    },
+    "RPI-028": {
+      "blocking_dependencies": [
+        "RPI-001",
+        "RPI-002"
+      ],
+      "mapping": {
+        "remaining_independent_join": "Concurrence agent additive finite cache-correspondence key test must be independently reviewed to qualify the full proof-key wording; no arbitrary Unicode semantic support is inferred.",
+        "retained_matrix": "Multibyte identifiers/literals/comments, CRLF, CR, Unicode separators inside literals, multiline literals, unannotated/float/Any/bool types and division/floor/power/call operators are byte-preserved and refused by the strict semantic profile with no native execution or facts.",
+        "revision_utf8_type_repairs_joined": "Exact durable captures at unchanged Git HEAD flow into adapter source revision/hash and typed model/span checks, then into match eligibility or explicit refusal.",
+        "source_selectors_and_refinements": "Absent paths, wrong function selectors, same-named decoy symbols, missing contracts, injected boolean sort and narrowed assumptions are refused; exact source/domain/tool/certificate/compilation provenance remains bound in supported facts."
+      },
+      "status": "qualified_except_independent_full_cache_key_join"
+    }
+  },
+  "resource_admission": "Real shared global scheduler and host pressure sampler; no fake capacity, disabled safety or threshold override. Attempt02 refused at memory PSI before native SMT execution.",
+  "schema": "repository-profile-acceptance-qualification@1",
+  "scope": "One closed one-argument integer-offset model with explicit exact-int runtime assumptions and complete explicitly enumerated finite observation domains. No arbitrary Python, annotation-as-runtime-enforcement, universal CPython source proof or task authority.",
+  "seconds": 55.27,
+  "test_file": "test/integration/test_repository_profile_acceptance.py",
+  "test_sha256": "3803da1e3ab20484351fad9afabe203e45784c260e3e832bf3257ba11999f4a2",
+  "tests": 38
+}

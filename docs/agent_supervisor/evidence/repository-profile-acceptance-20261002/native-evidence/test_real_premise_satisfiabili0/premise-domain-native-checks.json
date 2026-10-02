@@ -1,0 +1,159 @@
+{
+  "cvc5": {
+    "complete_integer_domain": {
+      "executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+      "executable_sha256": "cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+          "--lang=smt2"
+        ],
+        "elapsed_ms": 20,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "unsat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(assert (not (forall ((n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)) (exists ((result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)) (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1))))))\n(check-sat)\n"
+    },
+    "premise_sat": {
+      "executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+      "executable_sha256": "cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+          "--lang=smt2"
+        ],
+        "elapsed_ms": 31,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "sat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)))\n(check-sat)\n"
+    },
+    "source_bound_witness_zero": {
+      "executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+      "executable_sha256": "cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+          "--lang=smt2"
+        ],
+        "elapsed_ms": 20,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "sat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)))\n(assert (= n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 0))\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 1))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n"
+    }
+  },
+  "z3": {
+    "complete_integer_domain": {
+      "executable": "/home/barberb/.local/bin/z3",
+      "executable_sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/bin/z3",
+          "-in",
+          "-smt2"
+        ],
+        "elapsed_ms": 31,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "unsat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(assert (not (forall ((n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)) (exists ((result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)) (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1))))))\n(check-sat)\n"
+    },
+    "premise_sat": {
+      "executable": "/home/barberb/.local/bin/z3",
+      "executable_sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/bin/z3",
+          "-in",
+          "-smt2"
+        ],
+        "elapsed_ms": 32,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "sat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)))\n(check-sat)\n"
+    },
+    "source_bound_witness_zero": {
+      "executable": "/home/barberb/.local/bin/z3",
+      "executable_sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+      "result": {
+        "cancelled": false,
+        "command": [
+          "/home/barberb/.local/bin/z3",
+          "-in",
+          "-smt2"
+        ],
+        "elapsed_ms": 31,
+        "error": "",
+        "interface_version": "universal-bounded-tool-lifecycle/v1",
+        "output_truncated": false,
+        "process_tree_terminated": false,
+        "resource_exhausted": false,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "sat\n",
+        "termination_reason": "completed",
+        "timed_out": false,
+        "unavailable": false,
+        "workspace_cleaned": true
+      },
+      "script": "(set-logic ALL)\n(declare-const n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 Int)\n(declare-const result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 Int)\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 1)))\n(assert (= n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 0))\n(assert (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 1))\n(assert (not (= result_f340316b8b8cce7a90310d228aa9482f052b49aca2a70fb4f3df644b4540f4e2 (+ n_5913a884de0ba97eba8b4515add2d5c5a2850cdaba27800418b191f12963f185 2))))\n(check-sat)\n"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "bounded_type_facts": 1,
+  "completion_authority": false,
+  "execution_authority": false,
+  "finite_counterexamples": 5,
+  "finite_inputs": 5,
+  "fresh_Python_and_Lean_observation": true,
+  "fresh_process_key_replay": true,
+  "key_preparation_scope": {
+    "checker_execution_performed": false,
+    "completion_authority": false,
+    "contract_satisfaction_checked": false,
+    "execution_authority": false,
+    "inference_executed": false,
+    "proof_authority": false,
+    "receipt_admission_supported": false,
+    "source_execution_performed": false,
+    "training_executed": false
+  },
+  "model_mode": "off",
+  "native_dimensions": 16,
+  "profile": "python-integer-offset-finite@1",
+  "proof_authority": false,
+  "schema": "finite-cache-correspondence-qualification/v1",
+  "scope": "key identity and explicit finite observation join; no positive proof admission",
+  "source_and_receipt_joins": {
+    "compilation": true,
+    "contract": true,
+    "head": true,
+    "inputs": true,
+    "source_cid": true,
+    "source_sha256": true,
+    "tool_policy": true
+  },
+  "source_provenance": "authored fixture",
+  "status": "qualified_selected_profile"
+}

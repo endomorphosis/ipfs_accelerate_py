@@ -1,0 +1,10 @@
+{
+  "key_ids": [
+    "canonical-proof-cache-key:sha256:d2eb39984dd123c7ff36012df7b5670e2bef60a839b6134148474ef6bd84f1cd",
+    "proof-cache-key:sha256:9e9254c40489e7d994f515aeeb3ad0eb88c1af01d87e67a6f330f2b2912e3e75",
+    "proof-cache-key:sha256:4748f78f33cd4946c2832b2a8da882bc30e952085a8e3276f6cf8255ae6ac060"
+  ],
+  "positive_proof_admission": false,
+  "process_id": 921919,
+  "reopened_durable_DuckDB_and_CAS": true
+}

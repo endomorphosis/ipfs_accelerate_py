@@ -1,0 +1,52 @@
+{
+  "bounded_type_facts": 1,
+  "completion_authority": false,
+  "execution_authority": false,
+  "finite_counterexamples": 5,
+  "finite_inputs": 5,
+  "fresh_Python_and_Lean_observation": true,
+  "fresh_process_key_replay": true,
+  "key_preparation_scope": {
+    "checker_execution_performed": false,
+    "completion_authority": false,
+    "contract_satisfaction_checked": false,
+    "execution_authority": false,
+    "inference_executed": false,
+    "proof_authority": false,
+    "receipt_admission_supported": false,
+    "source_execution_performed": false,
+    "training_executed": false
+  },
+  "model_mode": "off",
+  "native_dimensions": 16,
+  "original_run": "/home/barberb/lift_coding/artifacts/repository-finite-cache-correspondence-20261002/run-01",
+  "profile": "python-integer-offset-finite@1",
+  "proof_authority": false,
+  "qualification_script": "reproduce.py",
+  "receipt_scope": "historical evidence; replay requires current native owners; no live proof handle serialized",
+  "schema": "finite-cache-correspondence-qualification/v1",
+  "scope": "key identity and explicit finite observation join; no positive proof admission",
+  "source_and_receipt_joins": {
+    "compilation": true,
+    "contract": true,
+    "head": true,
+    "inputs": true,
+    "source_cid": true,
+    "source_sha256": true,
+    "tool_policy": true
+  },
+  "source_provenance": "authored fixture",
+  "status": "qualified_selected_profile",
+  "tests": {
+    "existing_bridge_tests": 58,
+    "failed": 0,
+    "junit": "tests.xml",
+    "log": "tests.log",
+    "log_transformation": "ANSI CSI codes removed; trailing line whitespace removed",
+    "new_correspondence_tests": 46,
+    "passed": 104,
+    "raw_log_sha256": "4664494729ee0af1eae2a5efd3702407440cd2c7df21f8ad93c12b2298d21bdd",
+    "seconds": 54.71,
+    "skipped": 0
+  }
+}

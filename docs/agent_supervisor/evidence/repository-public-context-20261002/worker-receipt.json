@@ -1,0 +1,86 @@
+{
+  "artifact_cid": "baguqeerajiwdcjdu5erogrmbozbxzlj3cfnvzp7wcglo3q44izpgnu6acj3q",
+  "baseline_commit": "e2fa7fe80d54cd6bf3d07344897bf1b11da91e68",
+  "changed_paths": [
+    "calc.py"
+  ],
+  "completion_authority": false,
+  "evidence": {
+    "candidate_observation_cid": "baguqeeraqc43fr2mwq7gdekxw275glpk7obfftfxvpix373ylz35gsay3uuq",
+    "complete_requirements": [
+      "finite-integer-offset-goal",
+      "finite-integer-type-goal"
+    ],
+    "initial_observation_cid": "baguqeeraypktia3p5kd6bm52lblrnbnaqo4fecwbqf4dge2pozvyfgo3e6tq",
+    "input_sha256": "306df20dd5b2a7ba67e38dd9460ef14447205b34074126adba92bd1e61eabac1",
+    "inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "preview_cid": "baguqeera6eafxp5awnrm5ymkxprxf5aemt6ogypoqq67ws42dnfmteui44wa",
+    "query_cid": "baguqeeraxhfr6dxvzlpnevkxfthorjgdiefomsdbea6ghjvjcjwxa3zke6pa",
+    "scope": "exact integer observations over the complete explicitly enumerated input domain",
+    "selected_operation": {
+      "function_name": "increment",
+      "operation": "update",
+      "parameter": "n",
+      "path": "calc.py",
+      "producer_id": "producer:task:finite:offset",
+      "requirement_id": "finite-integer-offset-goal",
+      "review_ref": "authored:bounded-offset-operation@1",
+      "task_id": "task:finite:offset"
+    },
+    "source_head": {
+      "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeerai7ykyckbyq7g3n7frba3quc7ycp2miq4ogquovfitwk5z2ynxewq",
+      "generation": 1,
+      "manifest_cid": "baguqeerabd4qepzbqpihm7uppoiu5iokqf67s5uknrmu3gwwkgsug5lb2idq",
+      "receipt_cid": "baguqeeraps6j2axh4ex2dhvkussgl5pntbeq43rpirbzhmxau7nowawd4k2q",
+      "repository_id": "repository:finite-native-qualification",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeerai7ykyckbyq7g3n7frba3quc7ycp2miq4ogquovfitwk5z2ynxewq"
+    }
+  },
+  "execution_authority": false,
+  "model_inference_used": false,
+  "omission_authority": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_context": {
+    "assumptions_count": 3,
+    "checker_execution_performed": false,
+    "completion_authority": false,
+    "counterexample": {
+      "input": -2,
+      "observed_output": -1,
+      "required_output": 0
+    },
+    "execution_authority": false,
+    "expanded_prompt_sha256": "08c75f79b5fbfc6e98171974be7404374678cd6091e595c6e2c0b780ce3e6fed",
+    "injected_after_semantic_encoding": true,
+    "integrity_replayed": true,
+    "model_inference_used": false,
+    "omission_authority": false,
+    "original_instruction_sha256": "b36f7e3f7a3d06e1afbbcc03ced8394752263af7cbc3ce0ddbb887a1f87e1c09",
+    "original_prompt_sha256": "8e05587a064b6201cd40d385d1170ee2e14f1276e761687b1f2570345f207859",
+    "owner_keys_used": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "residual_requirements": [
+      "finite-integer-offset-goal"
+    ],
+    "sha256": "67c9402d9caa5b4202a40280602487d123c75ac01a5449eebaaa85248b2e8d7a",
+    "source_semantics_verified": false,
+    "whole_program_semantics_verified": false
+  },
+  "publication_authority": false,
+  "schema": "native-repository-finite-materialization@1",
+  "source_after_sha256": "1bb8a12dda6534f7f57e518628b96ffc166f72bc33c9d3f5cfd3a0f8d710453d",
+  "source_semantics_verified": false,
+  "status": "candidate_materialized",
+  "task_cid": "baguqeerawg7xd7s7btu45gngmalvmg3lnx46dcshvk2zvzokvi6lfnzhijnq",
+  "whole_program_semantics_verified": false,
+  "write_mode": "atomic_replace"
+}

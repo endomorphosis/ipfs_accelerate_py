@@ -1,0 +1,143 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 104 items
+
+test/api/test_finite_cache_correspondence.py::test_native_owners_derive_all_sixteen_dimensions_and_replay PASSED [  0%]
+test/api/test_finite_cache_correspondence.py::test_semantic_premises_bounds_and_operational_limits_stay_distinct PASSED [  1%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[source] PASSED [  2%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[expression] PASSED [  3%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[formalization] PASSED [  4%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[slice] PASSED [  5%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[obligation] PASSED [  6%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[assumptions] PASSED [  7%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[bounds] PASSED [  8%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[translation] PASSED [  9%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[provider] PASSED [ 10%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[environment] PASSED [ 11%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[policy] PASSED [ 12%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[schema] PASSED [ 13%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[checker] PASSED [ 14%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[network_policy] PASSED [ 15%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[evidence_kind] PASSED [ 16%]
+test/api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[authority_ceiling] PASSED [ 17%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[missing_dimension] PASSED [ 18%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[unknown_field] PASSED [ 19%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[missing_mapping] PASSED [ 20%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[wrong_mapping] PASSED [ 21%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[model_dependency] PASSED [ 22%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[authority] PASSED [ 23%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[derived_key] PASSED [ 24%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[scope] PASSED [ 25%]
+test/api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[report_hash] PASSED [ 25%]
+test/api/test_finite_cache_correspondence.py::test_no_source_solver_or_checker_execution_and_no_positive_cache_admission
+-------------------------------- live log call ---------------------------------
+2026-10-02 06:08:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_no_source_solver_or_check0/proof-cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_no_source_solver_or_check0/proof-cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_no_source_solver_or_check0/proof-cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_no_source_solver_or_check0/proof-cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_no_source_solver_or_check0/proof-cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 26%]
+test/api/test_finite_cache_correspondence.py::test_changed_source_or_current_head_refuses_old_key_then_derives_new_key PASSED [ 27%]
+test/api/test_finite_cache_correspondence.py::test_open_source_dependencies_cannot_claim_closed_profile[import os\ndef increment(n: int) -> int:\n    return n + 1\n] PASSED [ 28%]
+test/api/test_finite_cache_correspondence.py::test_open_source_dependencies_cannot_claim_closed_profile[def increment(n: int) -> int:\n    return n + global_offset\n] PASSED [ 29%]
+test/api/test_finite_cache_correspondence.py::test_open_source_dependencies_cannot_claim_closed_profile[def increment(n: int) -> int:\n    return external(n)\n] PASSED [ 30%]
+test/api/test_finite_cache_correspondence.py::test_replay_requires_exact_cas_source_not_warm_owner_state[missing] PASSED [ 31%]
+test/api/test_finite_cache_correspondence.py::test_replay_requires_exact_cas_source_not_warm_owner_state[changed] PASSED [ 32%]
+test/api/test_finite_cache_correspondence.py::test_changed_native_tool_or_cross_environment_is_not_accepted PASSED [ 33%]
+test/api/test_finite_cache_correspondence.py::test_producer_inventory_binds_native_owners_and_rejects_inflight_drift PASSED [ 34%]
+test/api/test_finite_cache_correspondence.py::test_current_lowering_interpreter_and_inflight_source_are_bound PASSED [ 35%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs0] PASSED [ 36%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs1] PASSED [ 37%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs2] PASSED [ 38%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs3] PASSED [ 39%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs4] PASSED [ 40%]
+test/api/test_finite_cache_correspondence.py::test_native_domain_bounds_are_closed[bad_inputs5] PASSED [ 41%]
+test/api/test_finite_cache_correspondence.py::test_cancellation_and_expired_shared_admission_leave_no_key PASSED [ 42%]
+test/api/test_finite_cache_correspondence.py::test_fresh_process_reopens_native_duckdb_and_cas_and_rederives_exact_keys PASSED [ 43%]
+test/api/test_finite_cache_correspondence.py::test_fresh_matcher_fact_and_counterexample_join_exact_key_materials PASSED [ 44%]
+test/api/test_canonical_cache_key_bridge.py::test_roundtrip_retains_exact_native_payload_and_all_execution_fields PASSED [ 45%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[source] PASSED [ 46%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[expression] PASSED [ 47%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[formalization] PASSED [ 48%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[slice] PASSED [ 49%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[obligation] PASSED [ 50%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[assumptions] PASSED [ 50%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[bounds] PASSED [ 51%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[translation] PASSED [ 52%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[provider] PASSED [ 53%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[environment] PASSED [ 54%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[policy] PASSED [ 55%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[schema] PASSED [ 56%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[checker] PASSED [ 57%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[network_policy] PASSED [ 58%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[evidence_kind] PASSED [ 59%]
+test/api/test_canonical_cache_key_bridge.py::test_every_semantic_dimension_changes_cache_identity_and_rejects_stale_request[authority_ceiling] PASSED [ 60%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[source] PASSED [ 61%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[expression] PASSED [ 62%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[formalization] PASSED [ 63%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[slice] PASSED [ 64%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[obligation] PASSED [ 65%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[assumptions] PASSED [ 66%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[bounds] PASSED [ 67%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[translation] PASSED [ 68%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[provider] PASSED [ 69%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[environment] PASSED [ 70%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[policy] PASSED [ 71%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[schema] PASSED [ 72%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[checker] PASSED [ 73%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[network_policy] PASSED [ 74%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[evidence_kind] PASSED [ 75%]
+test/api/test_canonical_cache_key_bridge.py::test_missing_native_dimension_cannot_be_recovered_from_other_context[authority_ceiling] PASSED [ 75%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[obligation] PASSED [ 76%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[premises] PASSED [ 77%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[translator] PASSED [ 78%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[solver] PASSED [ 79%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[kernel] PASSED [ 80%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[toolchain] PASSED [ 81%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[theorem_registry] PASSED [ 82%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[policy] PASSED [ 83%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[resource_budget] PASSED [ 84%]
+test/api/test_canonical_cache_key_bridge.py::test_every_declared_execution_dimension_stays_distinct_and_must_match[candidate_tree] PASSED [ 85%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[interface] PASSED [ 86%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[key_id] PASSED [ 87%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[schema_absent] PASSED [ 88%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[source_cid] PASSED [ 89%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[correspondence] PASSED [ 90%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[scope] PASSED [ 91%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[canonical_id] PASSED [ 92%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[execution_id] PASSED [ 93%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[added_obligation_id] PASSED [ 94%]
+test/api/test_canonical_cache_key_bridge.py::test_closed_envelope_rejects_ignored_metadata_and_identity_or_authority_tampering[missing_scope] PASSED [ 95%]
+test/api/test_canonical_cache_key_bridge.py::test_exact_native_types_required_not_dictionary_or_structural_lookalikes PASSED [ 96%]
+test/api/test_canonical_cache_key_bridge.py::test_native_candidate_as_kernel_guard_remains_active PASSED [ 97%]
+test/api/test_canonical_cache_key_bridge.py::test_byte_budget_and_nested_bridges_refused PASSED [ 98%]
+test/api/test_canonical_cache_key_bridge.py::test_returned_values_do_not_alias_caller_or_stored_payload PASSED [ 99%]
+test/api/test_canonical_cache_key_bridge.py::test_actual_cache_never_promotes_identity_envelope_or_checker_markers
+-------------------------------- live log call ---------------------------------
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 06:08:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4594/test_actual_cache_never_promot0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+-- generated xml file: /tmp/rpi004-finite-correspondence-qualified-tests.xml ---
+============================= slowest 10 durations =============================
+1.79s call     api/test_finite_cache_correspondence.py::test_fresh_matcher_fact_and_counterexample_join_exact_key_materials
+1.11s call     api/test_finite_cache_correspondence.py::test_fresh_process_reopens_native_duckdb_and_cas_and_rederives_exact_keys
+0.89s call     api/test_finite_cache_correspondence.py::test_changed_source_or_current_head_refuses_old_key_then_derives_new_key
+0.76s call     api/test_finite_cache_correspondence.py::test_changed_native_tool_or_cross_environment_is_not_accepted
+0.64s call     api/test_finite_cache_correspondence.py::test_semantic_premises_bounds_and_operational_limits_stay_distinct
+0.51s call     api/test_finite_cache_correspondence.py::test_each_full_key_material_is_owner_derived_not_a_caller_assertion[policy]
+0.51s call     api/test_finite_cache_correspondence.py::test_closed_replay_refuses_omissions_aliases_and_promotion[report_hash]
+0.49s call     api/test_finite_cache_correspondence.py::test_no_source_solver_or_checker_execution_and_no_positive_cache_admission
+0.48s call     api/test_finite_cache_correspondence.py::test_current_lowering_interpreter_and_inflight_source_are_bound
+0.44s call     api/test_finite_cache_correspondence.py::test_native_owners_derive_all_sixteen_dimensions_and_replay
+============================= 104 passed in 54.71s =============================

@@ -1,0 +1,199 @@
+{
+  "actual_native_processes": [
+    {
+      "cancelled": false,
+      "command": [
+        "/home/barberb/.local/bin/z3",
+        "-version"
+      ],
+      "elapsed_ms": 22,
+      "error": "",
+      "interface_version": "universal-bounded-tool-lifecycle/v1",
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "Z3 version 4.15.4 - 64 bit\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true
+    },
+    {
+      "cancelled": false,
+      "command": [
+        "/home/barberb/.local/bin/z3",
+        "-in",
+        "-smt2"
+      ],
+      "elapsed_ms": 32,
+      "error": "",
+      "interface_version": "universal-bounded-tool-lifecycle/v1",
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "sat\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true
+    },
+    {
+      "cancelled": false,
+      "command": [
+        "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+        "--version"
+      ],
+      "elapsed_ms": 22,
+      "error": "",
+      "interface_version": "universal-bounded-tool-lifecycle/v1",
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]\ncompiled with GCC version 11.4.0\non Feb 26 2026 01:24:28\n\nCopyright (c) 2009-2025 by the authors and their institutional\naffiliations listed at https://cvc5.github.io/people.html\n\ncvc5 is open-source and is covered by the BSD license (modified).\n\nTHIS SOFTWARE IS PROVIDED AS-IS, WITHOUT ANY WARRANTIES.\nUSE AT YOUR OWN RISK.\n\nThis version of cvc5 is linked against the following non-(L)GPL'ed\nthird party libraries.\n\n  CaDiCaL - Simplified Satisfiability Solver\n  See https://github.com/arminbiere/cadical for copyright information.\n\n  Editline Library\n  See https://thrysoee.dk/editline\n  for copyright information.\n\n  SymFPU - The Symbolic Floating Point Unit\n  See https://github.com/martin-cs/symfpu/tree/CVC4 for copyright information.\n\nThis version of cvc5 is linked against the following third party\nlibraries covered by the LGPLv3 license.\nSee licenses/lgpl-3.0.txt for more information.\n\n  GMP - Gnu Multi Precision Arithmetic Library\n  See http://gmplib.org for copyright information.\n\n  LibPoly polynomial library\n  See https://github.com/SRI-CSL/libpoly for copyright and\n  licensing information.\n\ncvc5 is statically linked against these libraries. To recompile\nthis version of cvc5 with different versions of these libraries\nfollow the instructions on https://github.com/cvc5/cvc5/blob/main/INSTALL.md\n\nSee the file COPYING (distributed with the source code, and with\nall binaries) for the full cvc5 copyright, licensing, and (lack of)\nwarranty information.\n\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true
+    },
+    {
+      "cancelled": false,
+      "command": [
+        "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+        "--lang=smt2",
+        "--produce-models"
+      ],
+      "elapsed_ms": 32,
+      "error": "",
+      "interface_version": "universal-bounded-tool-lifecycle/v1",
+      "output_truncated": false,
+      "process_tree_terminated": false,
+      "resource_exhausted": false,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "sat\n",
+      "termination_reason": "completed",
+      "timed_out": false,
+      "unavailable": false,
+      "workspace_cleaned": true
+    }
+  ],
+  "classification": {
+    "assumptions": [
+      "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+      "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+      "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+    ],
+    "behavior_authority": false,
+    "bounds": {
+      "cpu_seconds": 10,
+      "max_ast_nodes": 64,
+      "max_input_bytes": 65536,
+      "max_literal_bits": 64,
+      "max_output_bytes": 65536,
+      "max_source_bytes": 65536,
+      "max_workspace_bytes": 65536,
+      "memory_control": "per-process address-space cap and sampled process-tree RSS guard",
+      "rss_sampling_ms": 100,
+      "sequential_solvers": 2,
+      "solver_cpu_slots": 1,
+      "solver_memory_mb": 256,
+      "solver_process_slots": 1,
+      "termination_grace_ms": 250,
+      "total_timeout_ms": 10000
+    },
+    "checker_identity": {
+      "dependency_scope": "selected Python implementation files and native executables; ambient shared libraries are not attested",
+      "environment": {
+        "HOME": "private-workspace",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+        "TEMP": "private-workspace",
+        "TMP": "private-workspace",
+        "TMPDIR": "private-workspace"
+      },
+      "implementation": "cpython",
+      "machine": "aarch64",
+      "parser": "cpython-312",
+      "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+      "release": "6.17.0-1014-nvidia",
+      "resource_helper": {
+        "kind": "linux-prlimit",
+        "sha256": "2a479939c95a886fb8b52244381639816f8cf1f68eee713a9227d0c5d257c805"
+      },
+      "solvers": [
+        {
+          "executable_sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+          "launcher_sha256": "",
+          "solver": "z3",
+          "version": "Z3 version 4.15.4 - 64 bit"
+        },
+        {
+          "executable_sha256": "cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb",
+          "launcher_sha256": "85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419",
+          "solver": "cvc5",
+          "version": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]\ncompiled with GCC version 11.4.0\non Feb 26 2026 01:24:28\n\nCopyright (c) 2009-2025 by the authors and their institutional\naffiliations listed at https://cvc5.github.io/people.html\n\ncvc5 is open-source and is covered by the BSD license (modified).\n\nTHIS SOFTWARE IS PROVIDED AS-IS, WITHOUT ANY WARRANTIES.\nUSE AT YOUR OWN RISK.\n\nThis version of cvc5 is linked against the following non-(L)GPL'ed\nthird party libraries.\n\n  CaDiCaL - Simplified Satisfiability Solver\n  See https://github.com/arminbiere/cadical for copyright information.\n\n  Editline Library\n  See https://thrysoee.dk/editline\n  for copyright information.\n\n  SymFPU - The Symbolic Floating Point Unit\n  See https://github.com/martin-cs/symfpu/tree/CVC4 for copyright information.\n\nThis version of cvc5 is linked against the following third party\nlibraries covered by the LGPLv3 license.\nSee licenses/lgpl-3.0.txt for more information.\n\n  GMP - Gnu Multi Precision Arithmetic Library\n  See http://gmplib.org for copyright information.\n\n  LibPoly polynomial library\n  See https://github.com/SRI-CSL/libpoly for copyright and\n  licensing information.\n\ncvc5 is statically linked against these libraries. To recompile\nthis version of cvc5 with different versions of these libraries\nfollow the instructions on https://github.com/cvc5/cvc5/blob/main/INSTALL.md\n\nSee the file COPYING (distributed with the source code, and with\nall binaries) for the full cvc5 copyright, licensing, and (lack of)\nwarranty information."
+        }
+      ],
+      "source_sha256": {
+        "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+        "ipfs_datasets_py.logic.backends.smt.compiler": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+        "ipfs_datasets_py.logic.backends.smt.differential": "a1df37ffd82c35e9bb89e2541238bc9e481c4515512571cee7fba411e36dbf2e",
+        "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile": "361aa7884b2d625709b22429ef96c562ab7f32264c937ee7a5b57d09165b21ee",
+        "ipfs_datasets_py.logic.software_verification.codebase_pipeline": "9e9b4c6f611e0a4d1a282959a4ef32d976b4a79fcbfbf16bb8d74a8d3fe54030",
+        "ipfs_datasets_py.logic.software_verification.codebase_source_adapters": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+        "ipfs_datasets_py.logic.software_verification.vc": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9"
+      },
+      "system": "Linux"
+    },
+    "compiled_cid": "baguqeerambru725hsop6dyobvjdkdqpglrel6ju2nkrfpuml4pgweogdgq4q",
+    "contract_cid": "baguqeerav3dyrfrdxobfehhks4w7r7z5ivjewcffhdampdmto73jjsthrhla",
+    "evidence_kind": "conditional_smt",
+    "kernel_checked": false,
+    "model_checked_against_runtime": false,
+    "profile": "python-integer-offset@1",
+    "query_cid": "bafkreiflyfmjv5ggeixsmz6ffwdaf6dr5p4qoswln2zdne42d2srml5b34",
+    "revision": "snapshot:baguqeerath3qv35zpyyuooi2v35qzg6233mgugf3kbe2i3qd46xhcitpsaoa",
+    "schema": "codebase-integer-offset-result@1",
+    "solvers": [
+      {
+        "elapsed_ms": 54,
+        "executable": "/home/barberb/.local/bin/z3",
+        "executable_sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+        "launcher_sha256": "",
+        "model_text": "",
+        "solver": "z3",
+        "status": "unknown",
+        "stderr": "",
+        "stdout": "unknown\n",
+        "verdict": "unknown",
+        "version": "Z3 version 4.15.4 - 64 bit",
+        "workspace_cleaned": true
+      },
+      {
+        "elapsed_ms": 54,
+        "executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/cvc5-1.3.3-linux-aarch64/cvc5-Linux-arm64-static/bin/cvc5",
+        "executable_sha256": "cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb",
+        "launcher_sha256": "85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419",
+        "model_text": "",
+        "solver": "cvc5",
+        "status": "unknown",
+        "stderr": "",
+        "stdout": "unknown\n",
+        "verdict": "unknown",
+        "version": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]\ncompiled with GCC version 11.4.0\non Feb 26 2026 01:24:28\n\nCopyright (c) 2009-2025 by the authors and their institutional\naffiliations listed at https://cvc5.github.io/people.html\n\ncvc5 is open-source and is covered by the BSD license (modified).\n\nTHIS SOFTWARE IS PROVIDED AS-IS, WITHOUT ANY WARRANTIES.\nUSE AT YOUR OWN RISK.\n\nThis version of cvc5 is linked against the following non-(L)GPL'ed\nthird party libraries.\n\n  CaDiCaL - Simplified Satisfiability Solver\n  See https://github.com/arminbiere/cadical for copyright information.\n\n  Editline Library\n  See https://thrysoee.dk/editline\n  for copyright information.\n\n  SymFPU - The Symbolic Floating Point Unit\n  See https://github.com/martin-cs/symfpu/tree/CVC4 for copyright information.\n\nThis version of cvc5 is linked against the following third party\nlibraries covered by the LGPLv3 license.\nSee licenses/lgpl-3.0.txt for more information.\n\n  GMP - Gnu Multi Precision Arithmetic Library\n  See http://gmplib.org for copyright information.\n\n  LibPoly polynomial library\n  See https://github.com/SRI-CSL/libpoly for copyright and\n  licensing information.\n\ncvc5 is statically linked against these libraries. To recompile\nthis version of cvc5 with different versions of these libraries\nfollow the instructions on https://github.com/cvc5/cvc5/blob/main/INSTALL.md\n\nSee the file COPYING (distributed with the source code, and with\nall binaries) for the full cvc5 copyright, licensing, and (lack of)\nwarranty information.",
+        "workspace_cleaned": true
+      }
+    ],
+    "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq",
+    "status": "unknown"
+  },
+  "control": "unknown",
+  "injected_classification": true
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "repository-public-context-qualification@1",
+  "base_accelerate_commit": "171259c7f8ace21385a6b3070cde3128ec03a774",
+  "datasets_commit": "2e3567a5e43f6a8ddb350799a67badc3d8cce159",
+  "source": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_finite_public_context.py": "7b7e980cadb1ed7f000381103470b9f04d67715c0b067d03bde8ab06e7b5134c",
+    "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py": "06142a4f8d312df00ed8c93d3b30f9307032bc7187edc9d1ae3239647932beac",
+    "test/integration/test_repository_finite_public_context.py": "a3cb7842c52a182e410ca48a1c4a330ab8d440e678e8ecfbd4902946528099c9"
+  },
+  "evidence": {
+    "native-01-result.json": "ac901539d33eabd3b54a7f44706b286cdc9fbe78224092cdd828bd1677e2fa59",
+    "native-01-successor-semantic-comparison.json": "e12f8dd30c2c951edcaa52a7f81c411945578b8ff70644bffd8453a31236cef8",
+    "native-01.log": "fb6742f5205f915f242776801cb2e69367aca7d307fb6baf4d0823dee04983ef",
+    "public-bundle.json": "67c9402d9caa5b4202a40280602487d123c75ac01a5449eebaaa85248b2e8d7a",
+    "tests-01-diagnostic.json": "feb6fcb5a8c51d5fd9507c657b841d1a1acd553ab4c00814fac5c84794168103",
+    "tests-02.log": "15511af9cd51e3f94038e5b4a6a2012312a24f9853fa8ec6687fb41e4409b706",
+    "tests-02.xml": "6afc707b48331a4ff4b71b3dc75798728d94d23633701049af74fd2893fde0b1",
+    "worker-receipt.json": "6784995a7a5b8d1a84680eb2cd0d0bb1ee635a29bef1b60995ac549e558ab61b",
+    "comparison-tests.log": "769d4b064d18370b7638f096c6c8d2bcb529f7e7cbfc8f19250173ff1c35d768"
+  },
+  "official_benchmark": false,
+  "model_inference": false,
+  "proof_authority": false,
+  "tests": {
+    "passed": 3,
+    "failed": 0,
+    "seconds": 27.38
+  },
+  "native": {
+    "qualified": true,
+    "seconds": 28.831376487854868,
+    "provider_calls": 0,
+    "task_status": "completed",
+    "run_owned_processes": 0,
+    "run_owned_leases": 0
+  },
+  "comparison_tests": {
+    "passed": 10,
+    "failed": 0
+  }
+}

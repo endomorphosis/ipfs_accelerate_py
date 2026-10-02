@@ -1,15 +1,17 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **All 32 production exits remain open.**
-The changes below qualify useful bounded parts of those criteria; they do not
-establish full production activation or a Terminal Bench advantage.
+every original acceptance criterion. **Six exits are closed for their declared
+profiles; 26 remain open.** Eight individual criteria have passed qualification,
+including two still blocked by prerequisites. These results do not establish
+default production activation or a Terminal Bench advantage.
 
 ## Actual results
 
 | Qualification | Result | Scope |
 | --- | --- | --- |
 | Indexed native supervisor | 27.114 seconds, zero LLM calls | Authored finite Python repair; real START, worker, validation, publication, completion, successor observation and STOP |
+| Public evidence native supervisor | 28.831 seconds, zero LLM calls | Complete source, assumptions, checked records, counterexample and residuals reach the actual worker after semantic context encoding; public artifact replay needs no owner private keys |
 | Source staging, 320 files | 670.197 → 26.821 seconds | Paired local structural fixture, 20 shards, native database reopen at 128 files; approximately 25× faster |
 | Learned source IR | Three source-aligned arithmetic outputs passed `lake build`; three zero-head outputs were rejected | Actual shared checkpoint and GTE inference; compilation establishes syntax/typing within the declared source profile |
 | Repository-round holdouts | Parent 9/9; adapted child 0/9 | Retention regression in a small training corpus; no model promoted; independence from all parent pretraining data is not asserted |
@@ -62,9 +64,36 @@ result is preserved and blocks any claim of an improved repository model.
 
 ## Evidence and remaining work
 
+RPI-001 and RPI-002 now freeze the scan policy and complete semantic manifest.
+Their 44 and 28 native tests cover source/configuration fences, opaque boundaries,
+complete denominators, typed artifact reconstruction and independent-process
+historical replay. This closes the prerequisites for the qualified key
+correspondence (004), narrow semantic lowering (005), actual checker receipts
+(006), and source/type repair integration (028). Their closure applies to the
+explicit integer and finite observation profiles, not arbitrary Python.
+
+The finite key owner derives both package keys from the same captured source,
+contract, domain and environment; 104 tests include real Python/Lean observations
+and fresh-process reconstruction. A further 38 profile controls exercise actual
+SMT/Python/Lean behavior. Injected unknown, disagreement and timeout cases are
+identified as classification tests. Fourteen additional actual checkpoint tests
+cover wrong-source/codebook rejection, teacher leakage boundaries, unchanged
+unsupported candidates, zero-head inference and a separate model-off baseline.
+The learned-inference criterion (011) remains blocked by training prerequisites.
+
+The public context route passes three integrity/replay tests and the complete
+native worker run above; ten existing semantic-comparison controls also pass.
+It can replay after private observation directories are unavailable, but still
+requires native tools at their sealed paths. Delivery criterion 015 is qualified;
+generic repository-evidence admission remains open. Historical execution
+manifests retain the exact sources used at the recorded revision.
+
 - [Native supervisor attempts, source/checker receipts and test logs](../agent_supervisor/evidence/repository-finite-supervision-20261002/manifest.json).
 - [Structural foundation, staging controls and paired timings](../agent_supervisor/evidence/codebase-foundation-20261002/README.md).
 - [Doctor/cache/key bridge verification](../agent_supervisor/evidence/repository-proof-index-20261002/README.md).
+- [Owner-derived finite key correspondence](../agent_supervisor/evidence/finite-cache-correspondence-20261002/manifest.json).
+- [Native semantic profile acceptance](../agent_supervisor/evidence/repository-profile-acceptance-20261002/qualification.json).
+- [Public worker evidence and native run](../agent_supervisor/evidence/repository-public-context-20261002/manifest.json).
 - [Datasets source384 implementation and qualification](https://github.com/endomorphosis/ipfs_datasets_py/blob/659278b8e2b05135b2c58475cc62e5b7c22d0c51/docs/autoencoders/codebase_source384.md).
 
 Focused suites passed for the source/catalog foundation and staging (239 cases),
@@ -74,9 +103,12 @@ groups), proof/cache/discovery (120), and actual source384 training/inference
 are retained. These are local results; GitHub CI is a separate status.
 
 The remaining release gates include positive cross-package proof admission,
-DuckLake history/recovery, a full semantic codebase manifest, richer and
+DuckLake history/recovery, durable semantic/evidence discovery, richer and
 nonregressing source adaptation, generic intent/task-population semantics,
 mixed-family obligations, distributed CodebaseIR training, host-pressure scaling,
 and matched native Codex/no-index/indexed benchmark arms. The ledger records the
 remaining conditions per task; none is closed merely because a narrow fixture
-passes.
+passes. Three concurrent upstream criterion revisions (003, 029, 032) are
+recorded separately in the ledger; frozen acceptance text is not silently
+rewritten. GitHub Actions could not start because the account is locked by a
+billing issue; local verification is not reported as passing hosted CI.

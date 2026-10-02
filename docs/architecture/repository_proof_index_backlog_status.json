@@ -1,7 +1,7 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T05:38:43.020542+00:00",
-  "scope": "Evidence ledger for the selected released integration; local controls do not close broader production criteria.",
+  "updated_at_utc": "2026-10-02T06:27:43.519337+00:00",
+  "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
     "sha256": "70d8dff96130da12ee6457d4cf554bcbdfe0106bf53468afeaf89bf8d41d3957",
@@ -11,8 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 0,
-    "production_open": 32
+    "production_closed": 6,
+    "production_open": 26,
+    "criteria_qualified_for_declared_profile": 8
   },
   "evidence": {
     "foundation-tests-log": {
@@ -116,6 +117,55 @@
       "path": "docs/agent_supervisor/evidence/repository-finite-supervision-20261002/owned-file-scope.json",
       "sha256": "ee1ab06c5b5c4ff4b8b4ec21bcf0de2aaa8c00f69438321d2ecc4aea67fedd3e",
       "retention": "repository_evidence"
+    },
+    "profile-acceptance-qualification": {
+      "path": "docs/agent_supervisor/evidence/repository-profile-acceptance-20261002/qualification.json",
+      "sha256": "c7bf83feacf5a7294dab199ccf85e0c5edfaf597293f0731eda9d49c2caec500",
+      "retention": "repository_evidence"
+    },
+    "profile-acceptance-manifest": {
+      "path": "docs/agent_supervisor/evidence/repository-profile-acceptance-20261002/manifest.json",
+      "sha256": "d0feba7344bf3959a4958ee33bee7f57c450e314ad77d0d2d777066ae2de26c6",
+      "retention": "repository_evidence"
+    },
+    "public-context-manifest": {
+      "path": "docs/agent_supervisor/evidence/repository-public-context-20261002/manifest.json",
+      "sha256": "b6d347a66dcaf7616f99e86927e1b62284ee67e9fa61c1582bac2cd5ed2cfacd",
+      "retention": "repository_evidence"
+    },
+    "public-context-native": {
+      "path": "docs/agent_supervisor/evidence/repository-public-context-20261002/native-01-result.json",
+      "sha256": "ac901539d33eabd3b54a7f44706b286cdc9fbe78224092cdd828bd1677e2fa59",
+      "retention": "repository_evidence"
+    },
+    "scan-policy-manifest": {
+      "path": "docs/software_contracts/evidence/codebase-scan-policy-20261002/manifest.json",
+      "repository": "ipfs_datasets_py",
+      "sha256": "19672909c2940a1291a4d5dfbe031f82827975e368bc2c1cacb1ffca57a7e757",
+      "retention": "repository_evidence"
+    },
+    "finite-cache-correspondence-manifest": {
+      "path": "docs/agent_supervisor/evidence/finite-cache-correspondence-20261002/manifest.json",
+      "sha256": "3d8f20c7967c915296312f497a2c0c3b87c35ba0dccb5790dcbfbda00084b195",
+      "retention": "repository_evidence"
+    },
+    "semantic-manifest-qualification": {
+      "path": "docs/software_contracts/evidence/codebase-semantic-manifest-20261002/qualification.json",
+      "repository": "ipfs_datasets_py",
+      "sha256": "c502cd6456ce79cea587a7c38832d71d1b21a3d7924a9b84a456b0fc9ab4c987",
+      "retention": "repository_evidence"
+    },
+    "semantic-manifest-evidence": {
+      "path": "docs/software_contracts/evidence/codebase-semantic-manifest-20261002/manifest.json",
+      "repository": "ipfs_datasets_py",
+      "sha256": "bf2cfd89986579d4fdaabfcc3d061b0bf254115de1dc57aeab16afe0a00510f3",
+      "retention": "repository_evidence"
+    },
+    "source384-acceptance": {
+      "path": "docs/autoencoders/evidence/codebase-source384-acceptance-20261002/manifest.json",
+      "repository": "ipfs_datasets_py",
+      "sha256": "5496c7585a741526c27d7d7529510a865e562a707d14ad60d58f5fefca549907",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -125,18 +175,24 @@
       "dependencies": "None",
       "criterion": "Freeze the repository scan profile, admitted scope, language subset, source forest and dirty-overlay identity, inventory dispositions and capability matrix. Qualify exact captured bytes, races, submodules, exclusions and nonexecuting extraction. Distinguish complete inventory from training and proof selections.",
       "source_line": 275,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Exact bounded source capture with dirty/staged/untracked/deleted source, explicit opaque inventory and nonexecuting extraction is integrated with current structural heads."
+        "Exact bounded source capture with dirty/staged/untracked/deleted source, explicit opaque inventory and nonexecuting extraction is integrated with current structural heads.",
+        "A frozen opt-in policy binds all admitted inventory, scope, capabilities, external ignore inputs, exact captured overlays and independent candidate selections. Forty-four native controls include real clean/dirty/staged submodules as opaque boundaries, source races, nonexecution, invalid/ignored rule inputs and independent-process replay."
       ],
-      "remaining_work": [
-        "Complete submodule forest policy, full language/capability matrix and selected large-repository profile qualification remain open."
-      ],
+      "remaining_work": [],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
-        "foundation-selected-port-manifest"
+        "foundation-selected-port-manifest",
+        "scan-policy-manifest"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [],
+      "qualified_profile": "codebase-single-root-python-structural@1",
+      "out_of_profile_extensions": [
+        "Recursive submodule content analysis, active external ignore patterns, larger-repository scaling and default benchmark activation are not capabilities of this frozen profile."
       ]
     },
     {
@@ -145,19 +201,23 @@
       "dependencies": "RPI-001",
       "criterion": "Define `codebase-ir-manifest@1` over existing ProgramIR, contracts, source correspondences, effects, dependency frontiers and evidence references. Define stable logical IDs separately from exact version IDs. Reject opaque latent values as semantic predicates; preserve unsupported regions and every coverage denominator.",
       "source_line": 276,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Structural CodebaseIR manifests bind complete admitted source/AST inventory and preserve parse/opaque status; current manifest remains structural_only."
+        "Structural CodebaseIR manifests bind complete admitted source/AST inventory and preserve parse/opaque status; current manifest remains structural_only.",
+        "The complete codebase-ir-manifest@1 envelope retains every admitted unit and joins existing ProgramIR, contract, source, effects/CFG, VC, compilation and conservative dependency-frontier artifacts. Stable logical IDs and exact versions are distinct; opaque/unsupported/missing-contract rows remain in coverage. Twenty-eight native controls passed including independent-process historical replay and actual SMT reference linkage; references do not confer checked-proof authority."
       ],
-      "remaining_work": [
-        "The requested full ProgramIR/contracts/effects/dependency-frontier/evidence manifest and source-conditioned decoder integration require their separate exact qualification."
-      ],
+      "remaining_work": [],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
-        "foundation-selected-port-manifest"
-      ]
+        "foundation-selected-port-manifest",
+        "semantic-manifest-qualification",
+        "semantic-manifest-evidence"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "codebase-ir/python-integer-offset-artifacts@1",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-003",
@@ -171,13 +231,14 @@
         "Native file-backed structural catalog and AST transactions recover in fresh processes; exact head CAS, operation retry, ABA generations, rollback and corruption tests pass."
       ],
       "remaining_work": [
-        "DuckLake publication and joined numerical/proof state owners, schema migration and complete cross-domain head/root correspondence remain open."
+        "Explicit schema migration and bounded cross-domain owner/root correspondence remain open. DuckLake delivery is tracked separately under RPI-017."
       ],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
         "foundation-selected-port-manifest"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-004",
@@ -185,21 +246,23 @@
       "dependencies": "RPI-002",
       "criterion": "Implement a versioned lossless relationship between complete datasets and accelerate proof keys. Bind source/dependencies, formalization, premises, assumptions, bounds, translators, checkers, policy and environment; add model inputs when relevant. Reject missing fields, cross-environment aliases and unverified authority flags.",
       "source_line": 278,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "A closed versioned identity bridge requires native CanonicalProofCacheKey and ProofCacheKey classes, retains every datasets dimension/schema/interface/source CID and supervisor execution field, and rejects missing fields, cross-environment requests and authority-marker tampering in 58 focused tests."
+        "A closed versioned identity bridge requires native CanonicalProofCacheKey and ProofCacheKey classes, retains every datasets dimension/schema/interface/source CID and supervisor execution field, and rejects missing fields, cross-environment requests and authority-marker tampering in 58 focused tests.",
+        "The additive finite source owner derives and independently reconstructs both full key representations from one captured ProgramIR/VC/contract/domain/tool/environment binding, including explicit model-off and current compiler-interpreter identity.104 controls passed, with fresh-process replay and actual Python/Lean observation linkage."
       ],
-      "remaining_work": [
-        "Positive cross-package proof reuse remains unsupported: a separate verified obligation-linking owner must establish source/premise/translator/checker correspondence. The identity-only envelope intentionally cannot admit a proof receipt; relevant model/dependency material must already be bound by its native key owner."
-      ],
+      "remaining_work": [],
       "evidence": [
         "proof-cache-tests-log",
         "proof-cache-tests-xml",
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
-        "proof-cache-checksums-json"
-      ]
+        "proof-cache-checksums-json",
+        "finite-cache-correspondence-manifest"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-005",
@@ -207,13 +270,19 @@
       "dependencies": "RPI-002, RPI-028",
       "criterion": "Qualify one pure Python arithmetic or reviewed contract profile. Derive a source-bound typed model and explicit verification conditions with reviewed runtime assumptions. Check premise satisfiability and request-domain coverage; reject contradictory assumptions, unexplained type refinements and overly narrow preconditions as requirement satisfaction. Reject unsupported effects, changed literals, missing contracts and wrong source correspondence. A model theorem retains its stated scope.",
       "source_line": 279,
-      "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
-      "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
+      "locally_qualified_portions": [
+        "The closed native integer-offset model has independently executed premise satisfiability and full mathematical-integer input-domain coverage checks, complete finite source observations, explicit runtime assumptions, and contradictory/narrowed/source/type refusal controls."
       ],
-      "evidence": []
+      "remaining_work": [],
+      "evidence": [
+        "profile-acceptance-qualification",
+        "profile-acceptance-manifest",
+        "finite-native-evidence-manifest"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-006",
@@ -221,13 +290,19 @@
       "dependencies": "RPI-004, RPI-005",
       "criterion": "Produce actual checker execution receipts and independently replay their complete bindings. Replace marker-only acceptance on this route. Classify proved, refuted, unknown, timeout, disagreement and unsupported results without upgrading solver evidence to kernel evidence. Qualify forged markers, caller flags, wrong bodies, stale premises and source-inapplicable countermodels.",
       "source_line": 280,
-      "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
-      "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
+      "locally_qualified_portions": [
+        "The fresh-owner route retains actual native Python/Lean and SMT execution with independently reconstructed bindings, source-applicable witnesses and stale/forged evidence rejection. Unknown/disagreement/timeout classification controls are explicitly injected, not mislabeled native outcomes."
       ],
-      "evidence": []
+      "remaining_work": [],
+      "evidence": [
+        "profile-acceptance-qualification",
+        "profile-acceptance-manifest",
+        "finite-native-evidence-manifest"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-007",
@@ -249,7 +324,8 @@
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
         "proof-cache-checksums-json"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-008",
@@ -267,7 +343,8 @@
       ],
       "evidence": [
         "source384-qualified-02"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-009",
@@ -281,11 +358,12 @@
         "Real bounded numerical fitting creates immutable registry children of the exact retained shared SecurityIR artifact. Replay checks original bytes, compatibility, complete source head, corpus/target manifests, producer, parent/projection/vocabulary and native run completion."
       ],
       "remaining_work": [
-        "Qualified model-head promotion/CAS policy, complete source-model generation schema beyond this scalar profile and child comparisons under independent canaries remain open. This fixture regresses9of9 to0of9 on local holdouts; no promotion occurred."
+        "Explicit generation schema compatibility and owner expected-head compare-and-swap qualification remain open. The measured child retention failure prevents quality/promotion claims but does not negate completed numerical work."
       ],
       "evidence": [
         "source384-qualified-02"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-010",
@@ -303,7 +381,8 @@
       ],
       "evidence": [
         "source384-qualified-02"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-011",
@@ -312,15 +391,24 @@
       "criterion": "Join actual pinned decoder inference to typed formalization and independent source alignment. Extend the current v1/v2 boundary explicitly. Retain unsupported candidates and exact model dependencies. Qualify wrong-source/codebook checks, teacher-substitution controls, model-off/zero-head controls and narrow semantic checking.",
       "source_line": 285,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Actual pinned384D child inference emits unchanged typed candidates from target-free GTE source embeddings. Three arithmetic examples align with source and compile with Lake; zero-head controls yield three rejected source mismatches."
+        "Actual pinned384D child inference emits unchanged typed candidates from target-free GTE source embeddings. Three arithmetic examples align with source and compile with Lake; zero-head controls yield three rejected source mismatches.",
+        "Fourteen additional actual checkpoint/GTE/Lake controls passed: wrong-source and changed-codebook refusal, six teacher/target/source-contract injection boundaries, actual zero-head mismatches, unsupported candidate retention and explicit deterministic model-off comparison. Sixty archived source/model files remained unchanged; no fit or promotion occurred."
       ],
       "remaining_work": [
-        "Richer source decoder grammar, source-dependent semantic obligations beyond syntax/type checks, source/model index publication and unified learned-evidence native admission remain open. The native finite repair route is independently model-off."
+        "The selected scalar inference criterion is qualified. Production closure depends on the listed corpus, generation, lifecycle and modality prerequisites; this is not held-out reconstruction improvement."
       ],
       "evidence": [
-        "source384-qualified-02"
+        "source384-qualified-02",
+        "source384-acceptance"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "codebase_ir/source_conditioned_384_v1",
+      "blocking_dependencies": [
+        "RPI-009",
+        "RPI-010",
+        "RPI-027"
       ]
     },
     {
@@ -342,7 +430,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-013",
@@ -363,7 +452,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-014",
@@ -384,7 +474,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-015",
@@ -393,18 +484,26 @@
       "criterion": "Deliver relevant source units, assumptions, checked evidence, counterexamples and residuals after semantic encoding while retaining original instruction. Qualify public replay without owner keys and actual owner-backed claim/check/publication. Keep output existence, public checks, proof status and official reward distinct.",
       "source_line": 289,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Actual native-06 run used semantic task context plus public owner-signed finite facts/counterexample/candidate evidence, retained the exact original instruction in an immutable signed input, and dispatched a real allocated native worker without owner private keys. Owner-backed claim, independent public validation, merge publication and completion reached revision 4; STOP fenced all native processes."
+        "Actual native-06 run used semantic task context plus public owner-signed finite facts/counterexample/candidate evidence, retained the exact original instruction in an immutable signed input, and dispatched a real allocated native worker without owner private keys. Owner-backed claim, independent public validation, merge publication and completion reached revision 4; STOP fenced all native processes.",
+        "The public finite evidence bundle retains all source/receipt bodies, assumptions, counterexamples and residuals, replays without owner private state in a fresh process, and is consumed after semantic encoding in an actual native28.831s worker/publication/completion run. Native executable paths remain part of its declared local tool policy."
       ],
       "remaining_work": [
-        "Broader source/assumption selection after learned encoding, generic worker handoff and benchmark official reward remain unqualified. This model-off fixture has no vector retrieval or autoencoder inference and does not establish universal source proof."
+        "The declared-profile delivery exit is qualified; general repository-evidence admission and the frozen TIP-009 prerequisite remain separate release gates. Official benchmark reward remains unmeasured."
       ],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
-        "finite-native-owned-file-scope"
+        "finite-native-owned-file-scope",
+        "public-context-manifest",
+        "public-context-native"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [
+        "RPI-014",
+        "TIP-009"
       ]
     },
     {
@@ -426,7 +525,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-017",
@@ -440,7 +540,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-018",
@@ -461,7 +562,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-019",
@@ -475,7 +577,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-020",
@@ -489,7 +592,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-021",
@@ -510,7 +614,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-022",
@@ -530,7 +635,8 @@
         "foundation-tests-log",
         "foundation-tests-junit",
         "foundation-selected-port-manifest"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-023",
@@ -557,7 +663,8 @@
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
         "proof-cache-checksums-json"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-024",
@@ -571,7 +678,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-025",
@@ -585,7 +693,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-026",
@@ -606,7 +715,8 @@
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-027",
@@ -624,7 +734,8 @@
       ],
       "evidence": [
         "source384-qualified-02"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-028",
@@ -632,19 +743,23 @@
       "dependencies": "RPI-001, RPI-002",
       "criterion": "Integrate the current revision-forwarding, UTF-8 span and explicit-sort rejection repairs with captured snapshots, typed models, full proof keys and matching. Qualify unsupported type/operation refinements before semantic admission, including runtime/domain assumptions behind annotations. Retain multibyte identifiers/literals/comments, CRLF/CR/Unicode separators, multiline spans, dirty revisions at unchanged HEAD, unknown/float/any types and numeric-operation fixtures. Require exact source selectors and refusal of silently narrowed integer theorems throughout the joined route.",
       "source_line": 302,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
-        "Current structural foundation retains exact bytes and native AST source provenance; separate scoped typing/source-grounding ports are under parallel integration."
+        "Current structural foundation retains exact bytes and native AST source provenance; separate scoped typing/source-grounding ports are under parallel integration.",
+        "Thirty-eight joined source/profile cases retain Unicode/newline/dirty/type/operation inputs or explicitly refuse unsupported semantic lowering; the independently reviewed finite cache-correspondence run joins actual facts to full source/head/contract/domain/compilation/tool keys. Arbitrary Unicode semantics are not advertised."
       ],
-      "remaining_work": [
-        "The complete Unicode/type/numeric/source selector matrix through proof keys and behavioral matching requires the joined verification lane."
-      ],
+      "remaining_work": [],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
-        "foundation-selected-port-manifest"
-      ]
+        "foundation-selected-port-manifest",
+        "finite-cache-correspondence-manifest",
+        "profile-acceptance-qualification",
+        "profile-acceptance-manifest"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-029",
@@ -668,7 +783,8 @@
         "paged-staging-native-comparison",
         "paged-staging-native-final",
         "paged-staging-evidence-manifest"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-030",
@@ -682,7 +798,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-031",
@@ -696,7 +813,8 @@
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": []
+      "evidence": [],
+      "criterion_acceptance": "not_yet_qualified"
     },
     {
       "id": "RPI-032",
@@ -718,7 +836,33 @@
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
         "proof-cache-checksums-json"
-      ]
+      ],
+      "criterion_acceptance": "not_yet_qualified"
     }
-  ]
+  ],
+  "source_revision_observation": {
+    "sha256": "3b96b6721219ac730501a4ad44244cfa798f4e3a1692a48da2b63af222f0e273",
+    "observed_at_utc": "2026-10-02T06:00:15.321924+00:00",
+    "criterion_changes": [
+      {
+        "id": "RPI-003",
+        "source_line": 314,
+        "frozen_criterion": "Add a separately owned `intent-codebase-catalog@1`, immutable artifact backend and typed bounded owner queries. Reference existing corpus/model IDs without altering closed catalog schemas. Define sole authorities for each state domain. Qualify actual file-backed restart hydration, schema migration, uniqueness, fences and bounded reads without warmed dictionaries.",
+        "observed_criterion": "Reuse existing structural/model/corpus owners and CodebaseVerificationCatalog evidence projections. Add `intent-codebase-catalog@1` only as a derived discovery/planning projection when measured joins require it, with immutable artifact references and typed bounded owner queries. It cannot create a competing source head, model lease/promotion or proof eligibility authority. Preserve closed schemas through explicit versioned migrations. Qualify actual file-backed restart hydration, uniqueness, fences and bounded reads without warmed dictionaries."
+      },
+      {
+        "id": "RPI-029",
+        "source_line": 340,
+        "frozen_criterion": "Add sealed full inventory plus deterministic bounded source/AST/inference shards, resumable cursors and explicit deferred/opaque dispositions. Pin workspace/artifact/vendor/cache exclusions and global cross-shard dependency resolution. Qualify cold/incremental equivalence, resumed versus new snapshots, entry-cap rejection, large files, memory/backpressure, batched Git object acquisition and bounded watcher triggers. Benchmark batching/model residency and compatible CUDA inference with opt-out; retain the existing CPU feature trainer until a device implementation is qualified. No silent truncation or learned-rank omission.",
+        "observed_criterion": "Add sealed full inventory plus deterministic bounded source/AST/inference shards, resumable root-bound cursors, a final completeness manifest and explicit deferred/opaque dispositions. Preserve cohort-bound inference and add a versioned resident/batched whole-inventory scanner; qualify authenticated lower-level source/extractor/schema reuse before structural-wrapper adoption. Pin workspace/artifact/vendor/cache exclusions and global cross-shard dependency resolution. Qualify cold/incremental equivalence, resumed versus new snapshots, entry-cap rejection, large files, memory/backpressure, batched Git object acquisition and bounded watcher triggers. Benchmark cold/warm batching/model residency and compatible CUDA inference with opt-out; retain the existing CPU feature trainer until a device implementation is qualified. No silent truncation or learned-rank omission."
+      },
+      {
+        "id": "RPI-032",
+        "source_line": 343,
+        "frozen_criterion": "Specify bounded typed relevant-unit, unit-evidence, intent-resolution and residual-obligation queries with root-bound cursors and exact consumed record/receipt commitments. Register reverse source/contract/premise/tool/model dependencies at publication. Reuse durable accelerate FormalVerificationCache through the full-key adapter; persist or deterministically rebuild datasets proof/CodeEvidencePlane projections. Qualify fresh-process replay, incomplete pages/frontiers, model-only versus source edits, formatting span rebinding, wrong assumptions, revoked/missing evidence and freeze-to-admission races. Required service gates cannot depend on optional context hooks.",
+        "observed_criterion": "Specify bounded typed relevant-unit, unit-evidence, intent-resolution and residual-obligation queries with root-bound cursors and exact consumed record/receipt commitments. Version native normalized proof-key membership/reverse-dependency projections and measure hot exact selector indexes; a discovery join cannot grant eligibility. Register reverse source/contract/premise/tool/model dependencies at publication. Reuse durable accelerate FormalVerificationCache through the full-key adapter; persist or deterministically rebuild datasets proof/CodeEvidencePlane projections. Qualify fresh-process replay, incomplete pages/frontiers, model-only versus source edits, formatting span rebinding, wrong assumptions, revoked/missing evidence and freeze-to-admission races. Required service gates cannot depend on optional context hooks."
+      }
+    ],
+    "policy": "Frozen acceptance criteria remain unchanged; concurrent source revisions are retained for review, not silently applied to completion decisions."
+  }
 }

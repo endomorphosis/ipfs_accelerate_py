@@ -1,0 +1,32 @@
+{
+  "actual_native_process": {
+    "cancelled": false,
+    "command": [
+      "/usr/bin/python3.12",
+      "-I",
+      "-S",
+      "-c",
+      "import sys; exec(sys.stdin.read())"
+    ],
+    "elapsed_ms": 30,
+    "error": "",
+    "interface_version": "universal-bounded-tool-lifecycle/v1",
+    "output_truncated": false,
+    "process_tree_terminated": false,
+    "resource_exhausted": false,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "[[\"bool\", \"int\", 2], [\"float\", \"float\", 1.5]]\n",
+    "termination_reason": "completed",
+    "timed_out": false,
+    "unavailable": false,
+    "workspace_cleaned": true
+  },
+  "assumptions": [
+    "The argument is an exact built-in Python int, excluding bool and subclasses; source annotations do not enforce this.",
+    "Integer arithmetic uses the unbounded mathematical model; allocation failure, resource exhaustion and asynchronous interruption are excluded from modeled execution.",
+    "The captured function is called directly with one supplied argument in sequential execution; module loading, rebinding and concurrent code changes are outside the model."
+  ],
+  "outside_domain_satisfaction_authorized": false,
+  "source_cid": "bafkreig2whzodbawj5uf6jnxwuklau7dypg4y7o76drwhcihfoxilmvtvq"
+}

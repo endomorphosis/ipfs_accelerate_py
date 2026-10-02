@@ -1,0 +1,7 @@
+{
+  "status": "1_failed_2_passed",
+  "seconds": 29.6,
+  "retention": "console output only; summary retained here",
+  "failure": "The isolated test child omitted the installed user site containing multiformats. Explicit installed dependency roots corrected the test launcher.",
+  "code_failure": false
+}

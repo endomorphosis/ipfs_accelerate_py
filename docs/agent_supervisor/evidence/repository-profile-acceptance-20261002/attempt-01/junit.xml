@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="15.651" timestamp="2026-10-02T05:55:13.846269+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_profile_acceptance" name="test_real_premise_satisfiability_total_integer_domain_and_source_applicable_counterexample" time="0.001"><error message="failed on setup with &quot;FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/lift_coding/artifacts/repository-profile-acceptance-20261002/attempt-01/test-state'&quot;">fixturedef = &lt;FixtureDef argname='tmp_path' scope='function' baseid=''&gt;
+request = &lt;SubRequest 'tmp_path' for &lt;Function test_real_premise_satisfiability_total_integer_domain_and_source_applicable_counterexample&gt;&gt;
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -&gt; object | None:
+        if (
+            fixturedef.argname == "event_loop_policy"
+            and fixturedef.func.__module__ != __name__
+        ):
+            warnings.warn(
+                PytestDeprecationWarning(_EVENT_LOOP_POLICY_FIXTURE_DEPRECATION_WARNING),
+            )
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+&gt;               return (yield)
+                        ^^^^^
+
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:924: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/barberb/lift_coding/artifacts/repository-profile-acceptance-20261002/attempt-01/test-state')
+mode = 448, parents = False, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/barberb/lift_coding/artifacts/repository-profile-acceptance-20261002/attempt-01/test-state'
+
+/usr/lib/python3.12/pathlib.py:1313: FileNotFoundError</error></testcase></testsuite></testsuites>

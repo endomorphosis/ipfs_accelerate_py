@@ -1,0 +1,74 @@
+{
+  "contract": {
+    "function_name": "increment",
+    "offset": 2,
+    "parameter": "n",
+    "path": "calc.py",
+    "profile": "python-integer-offset@1",
+    "schema": "codebase-integer-offset-contract@1"
+  },
+  "head": {
+    "ast_revision_id": "rev:repository:rpi004-authored-finite:snapshot:baguqeerayeqzcmh2nq2icquvterrtyvqpcywlpjpl7hwzt3nlscrx4pvpazq",
+    "generation": 1,
+    "manifest_cid": "baguqeeracigw2sdbmuya2wdpf67klfcv4bsua6vds7hoh3ynuobclk4a7m3q",
+    "receipt_cid": "baguqeera42s2mywd63varf3a24225c2kvgdrl7bavjgdbotg7ifj54be426a",
+    "repository_id": "repository:rpi004-authored-finite",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeerayeqzcmh2nq2icquvterrtyvqpcywlpjpl7hwzt3nlscrx4pvpazq"
+  },
+  "inputs": [
+    -2,
+    -1,
+    0,
+    1,
+    2
+  ],
+  "instruction": "Under python-integer-offset-finite@1, calc.py::increment(n) must return an exact int for inputs [-2,-1,0,1,2].\nUnder python-integer-offset-finite@1, calc.py::increment(n) must return n + 2 for inputs [-2,-1,0,1,2].",
+  "source_provenance": "authored qualification fixture",
+  "source_sha256": "dab1f2e184164f685f25b7b514b053e3c3cdcc7ddff0e36389072bae85b2b3ac",
+  "tool_policy": {
+    "dependency_scope": "Exact selected native executable bytes; ambient shared libraries, Python standard library and Lean compiled imports are not transitively attested.",
+    "environment": {
+      "LANG": "C",
+      "LC_ALL": "C",
+      "LEAN_NUM_THREADS": "1",
+      "LEAN_STACK_SIZE_KB": "8192",
+      "PATH": "/usr/bin:/bin"
+    },
+    "lean": {
+      "path": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+      "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+      "size_bytes": 13824
+    },
+    "policy_cid": "baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq",
+    "process_limits": {
+      "lean": {
+        "address_space_bytes": 4294967296,
+        "resident_memory_bytes": 536870912
+      },
+      "lean_arguments": [
+        "-j",
+        "1",
+        "-o",
+        "FiniteInteger.olean",
+        "FiniteInteger.lean"
+      ],
+      "max_input_bytes": 262144,
+      "max_output_bytes": 262144,
+      "max_output_files": 8,
+      "max_workspace_bytes": 4194304,
+      "memory_control": "Per-process virtual-address cap and sampled process-tree RSS guard; shared admission reserves 512 MiB per child; this is not a kernel aggregate cgroup limit.",
+      "python": {
+        "address_space_bytes": 536870912,
+        "resident_memory_bytes": 536870912
+      }
+    },
+    "profile": "python-integer-offset-finite@1",
+    "python": {
+      "path": "/usr/bin/python3.12",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+      "size_bytes": 7845032
+    },
+    "schema": "codebase-finite-integer-tools@1"
+  }
+}

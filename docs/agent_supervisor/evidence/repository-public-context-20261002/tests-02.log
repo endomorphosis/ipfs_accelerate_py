@@ -1,0 +1,58 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+test/integration/test_repository_finite_public_context.py::test_public_replay_and_worker_without_owner_state 
+-------------------------------- live log setup --------------------------------
+2026-10-02 05:58:36 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:37 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:37 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:37 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:39 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:40 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:40 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:40 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:40 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_public_replay_and_worker_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 33%]
+test/integration/test_repository_finite_public_context.py::test_signed_context_tampering_and_cross_task_controls 
+-------------------------------- live log setup --------------------------------
+2026-10-02 05:58:42 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:42 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:43 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:43 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:45 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_signed_context_tampering_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 66%]
+test/integration/test_repository_finite_public_context.py::test_corrupt_export_cannot_be_published 
+-------------------------------- live log setup --------------------------------
+2026-10-02 05:58:47 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:51 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:52 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:52 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-02 05:58:52 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-4576/test_corrupt_export_cannot_be_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/repository-public-context-20261002/tests-02.xml -
+============================= slowest 10 durations =============================
+5.21s setup    integration/test_repository_finite_public_context.py::test_signed_context_tampering_and_cross_task_controls
+5.14s setup    integration/test_repository_finite_public_context.py::test_corrupt_export_cannot_be_published
+4.96s setup    integration/test_repository_finite_public_context.py::test_public_replay_and_worker_without_owner_state
+0.88s call     integration/test_repository_finite_public_context.py::test_public_replay_and_worker_without_owner_state
+0.18s call     integration/test_repository_finite_public_context.py::test_signed_context_tampering_and_cross_task_controls
+0.06s teardown integration/test_repository_finite_public_context.py::test_corrupt_export_cannot_be_published
+0.05s teardown integration/test_repository_finite_public_context.py::test_public_replay_and_worker_without_owner_state
+0.05s teardown integration/test_repository_finite_public_context.py::test_signed_context_tampering_and_cross_task_controls
+0.03s call     integration/test_repository_finite_public_context.py::test_corrupt_export_cannot_be_published
+============================== 3 passed in 27.38s ==============================
