@@ -1,9 +1,9 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Eleven exits are closed for their declared
-profiles; 21 remain open.** Fifteen individual criteria have passed qualification,
-including four still blocked by prerequisites. These results do not establish
+every original acceptance criterion. **Thirteen exits are closed for their declared
+profiles; 19 remain open.** Sixteen individual criteria have passed qualification,
+including three still blocked by prerequisites. These results do not establish
 default production activation or a Terminal Bench advantage.
 
 ## Actual results
@@ -102,8 +102,8 @@ The finite checked-cache criterion (007) has 42 passing native tests and a
 separate fresh-process reproducer, plus 126 unchanged cache/key regressions.
 It stores all native artifact bodies and explicit refuted/error statuses in the
 existing FormalVerificationCache/CAS owners. Positive reuse reconstructs the
-complete finite-table proof and reruns Python/Lean. Its production closure still
-depends on 003. No checker-call savings are claimed.
+complete finite-table proof and reruns Python/Lean. Its current production closure includes the native catalog prerequisite003.
+No checker-call savings are claimed.
 
 The combined semantic/cache supervisor run above reopens the owners, publishes
 the checked repair and agrees with a cold rebuild on complete semantic unit
@@ -163,3 +163,11 @@ The shared resource bridge passed18 controls, including real concurrent
 repositories and killed-process recovery. Its disk and queue accounting is
 locally declared and sampled; hard enforcement, device admission and full
 pipeline pressure qualification remain open.
+
+The native DuckLake history profile now passes37 controls, including actual
+crash recovery, retained snapshot reads and managed-artifact garbage collection.
+A separate120-test audit qualifies the bounded requirement-ledger, reviewed
+operation and complete planning-material prerequisites. Behavioral matching012
+is closed for the exact finite controlled-language profile. The new28-control
+typed code-evidence facade remains a partial023/032 qualification until the
+remaining source/model and admission-race matrix is complete.

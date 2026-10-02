@@ -1,0 +1,77 @@
+{
+  "schema": "repository-code-evidence-sources/v1",
+  "sources": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/repository_code_evidence.py",
+      "sha256": "29b0207f65257f176b45b4853a13040d407d7bbcb13f6b0717e13255491629ec"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/integration/test_repository_code_evidence.py",
+      "sha256": "06bbef335ccd996dd9b315f0e300a5f172ae5c7622bc9c0c034e3f9bdd387b83"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+      "sha256": "4266c764807902adb59a0af4ea34609b980d8a1107842bc91dc93e2ab7f58bfb"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+      "sha256": "479537d87f7578617b367e5008564a091e1340e16689f80841ef2e21bd012a17"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/behavioral_codebase_match.py",
+      "sha256": "54134ae64d284b1df92063ff9e261b3b047211f8d4fce2eee9d3585b0f119fcf"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/duckdb_control/intent_codebase_catalog.py",
+      "sha256": "12a95d9d73b6156497ff5860bfb720bb89ae6e499b6c38f8250a3ec266edca39"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+      "sha256": "79a8e1b92365264bfafb511f1689a321d7d742046101199aca253da97726aec2"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+      "sha256": "8c43bc1b97a94c5100815447130a549266b9ccdc266574e2b8b224a3ea82aef5"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/duckdb_impact.py",
+      "sha256": "ea4301d903cdb49573cd86fed7aeaf106a1130db531841c8edccab74e9a55dbc"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/knowledge_graphs/adapters/duckdb_code_evidence.py",
+      "sha256": "6fb6a243f783d738d9d204abce1087a013589aa011812f45fea44f8707adff97"
+    }
+  ],
+  "before_native_domain_cap_hardening": [
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/repository_code_evidence.py",
+      "sha256": "bac85d48e94fd7a6fb97224cf0367bbabeb271df88200bc21a9edbc1c5afba97"
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/integration/test_repository_code_evidence.py",
+      "sha256": "dfc402d2a348a54af5b9430dc0f8f004b6b826d6c4d63849a192e69d538165ec"
+    }
+  ]
+}

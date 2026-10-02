@@ -1,0 +1,29 @@
+{
+  "benchmark_score": false,
+  "broader_tip_items_closed": false,
+  "dependencies_qualified": [
+    "TIP-002 ledger contract for controlled-language complete finite instructions",
+    "TIP-003 reviewed finite-operation contract",
+    "TIP-007 exact complete planning-material identity contract"
+  ],
+  "general_instruction_interpretation_qualified": false,
+  "passed": 120,
+  "schema": "repository-planning-prerequisite-qualification@1",
+  "scope": "Existing bounded native intent requirement ledger, reviewed operation contracts, complete semantic planning materials and independent native launch controls",
+  "seconds": 58.16,
+  "skipped": 0,
+  "source_inventory": [
+    {
+      "path": "test/api/test_intent_plan_coverage.py",
+      "sha256": "a9eea8dc16fd524afc7056f5bbde26dfb6a71fbcf02bc95ffa45307d1baeab7c"
+    },
+    {
+      "path": "test/api/test_intent_symbolic_planning.py",
+      "sha256": "a6383c7153cc96a9340e1082888429d3b05954ce051047d9aca8659a09762939"
+    },
+    {
+      "path": "test/api/test_plan_create_semantic_input_identity.py",
+      "sha256": "0ba2ed5d63ce5b43f4b6a5575d175dd285fe1228b8e704c47d88e71965c33b29"
+    }
+  ]
+}

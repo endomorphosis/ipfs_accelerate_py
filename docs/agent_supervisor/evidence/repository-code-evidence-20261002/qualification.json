@@ -1,0 +1,43 @@
+{
+  "schema": "repository-code-evidence-qualification/v1",
+  "distinct_passed": 28,
+  "skipped": 0,
+  "source_unchanged_between_final_and_retry": true,
+  "final_suite": {
+    "passed": 25,
+    "errors": 2,
+    "seconds": 208.58,
+    "reason": "real shared host admission timed out during two fixture setups"
+  },
+  "retry": {
+    "passed": 2,
+    "seconds": 29.6,
+    "scope": "only the two admission-refused setup cases"
+  },
+  "diagnostic_first": {
+    "passed": 23,
+    "failed": 2,
+    "seconds": 131.44,
+    "reason": "test expected 16 rather than 16 dimensions plus metadata; missing CAS body correctly raised FileNotFoundError outside overly narrow test exception tuple"
+  },
+  "profile": "bounded local typed source/evidence references plus separately fresh finite table cache eligibility",
+  "actual_checkers": [
+    "isolated native Python",
+    "Lean4 kernel"
+  ],
+  "fresh_process_replay": true,
+  "proof_authority": false,
+  "source_equivalence_proved": false,
+  "dqp_release_verified": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "rpi_023_complete": false,
+  "rpi_032_complete": false,
+  "final_hardening": {
+    "change": "UnitEvidenceQuery upper bound tightened from 64 to native 32 inputs",
+    "tests_passed": 1,
+    "seconds": 16.18,
+    "broad_rerun": false,
+    "reason": "Other successful cases are within the unchanged accepted domain"
+  }
+}

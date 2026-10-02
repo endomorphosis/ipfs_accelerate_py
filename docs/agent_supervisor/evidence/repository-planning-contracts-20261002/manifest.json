@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "bytes": 1147,
+      "path": "qualification.json",
+      "sha256": "1a2991d242983a9653fc94a5dfd0f3d3c36d57f418b617483745263fb7a16da3"
+    },
+    {
+      "bytes": 52127,
+      "path": "tests.log",
+      "sha256": "a82421133dbe71af55f6943448fa6d7a43a4db3c4936efe3b3bde08194d9c833"
+    },
+    {
+      "bytes": 19522,
+      "path": "tests.xml",
+      "sha256": "929e4fa952b02557212330d2508087f77b3fd690d8a71d8314d82049290a8351"
+    }
+  ],
+  "schema": "repository-evidence-files@1"
+}

@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T07:43:04.686335+00:00",
+  "updated_at_utc": "2026-10-02T08:08:03.817375+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -11,9 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 11,
-    "production_open": 21,
-    "criteria_qualified_for_declared_profile": 15
+    "production_closed": 13,
+    "production_open": 19,
+    "criteria_qualified_for_declared_profile": 16
   },
   "evidence": {
     "foundation-tests-log": {
@@ -207,6 +207,21 @@
       "repository": "ipfs_accelerate_py",
       "path": "docs/agent_supervisor/evidence/repository-resource-bridge-20261002/manifest.json",
       "sha256": "07d2a195fff55742ebbc6e67d83ddb313d8110b5822dd3f76940378155518fcb",
+      "retention": "repository_evidence"
+    },
+    "native-ducklake-history": {
+      "path": "../ipfs_datasets/docs/software_contracts/evidence/codebase-ducklake-history-20261002/manifest.json",
+      "sha256": "37bd7dec3b8d3524a8f48a1b9ed494dd59c6342d67b89e1242448ae78fe1136f",
+      "retention": "datasets_repository_evidence"
+    },
+    "planning-contract-prerequisites": {
+      "path": "docs/agent_supervisor/evidence/repository-planning-contracts-20261002/manifest.json",
+      "sha256": "5f5d21c58d682fda79a889e3c342db97a82f3f8989d8e930a6bba57c8cf912d6",
+      "retention": "repository_evidence"
+    },
+    "typed-code-evidence": {
+      "path": "docs/agent_supervisor/evidence/repository-code-evidence-20261002/manifest.json",
+      "sha256": "024273e3f26bf49d9d5ae1bef4ca2e0a463ec05caec5a8b0cb0141547a812d7a",
       "retention": "repository_evidence"
     }
   },
@@ -470,7 +485,6 @@
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "codebase_ir/source_conditioned_384_v1",
       "blocking_dependencies": [
-        "RPI-010",
         "RPI-027"
       ]
     },
@@ -480,31 +494,28 @@
       "dependencies": "RPI-002, RPI-007; TIP-002 and TIP-003 ledger/operation contracts",
       "criterion": "Implement behavioral `intent-codebase-match@2`, preserving conditional `@1`: exact retrieval and optional learned retrieval nominate; deterministic typed matching resolves symbols, scope, guards, quantifiers, polarity, effects and properties. Independently qualify full instruction meaning and theorem-domain coverage before behavioral satisfaction. Preserve ambiguity and unknown results. Match one genuine satisfied requirement and one qualified residual/counterexample; reject missing rows as satisfaction and absence of a retrieved violation as proof of a prohibition.",
       "source_line": 286,
-      "production_acceptance": "open",
+      "production_acceptance": "closed",
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Exact complete two-clause finite CNL matching over current native source returns one checked type fact and one offset counterexample/residual; full native run repairs that residual and obtains two fresh satisfied finite clauses. Unsupported source/query, dirty/stale source and missing/corrupt native evidence remain refusal cases.",
         "Nine actual v2 matching controls join exact catalog nominations, complete inventory, canonical checked cache and fresh source observations; typed full-clause alignment includes exact symbols, nonempty quantified domain, positive polarity and closed pure effects. Unsupported predicate/argument/prohibition meaning remains open; missing selector rows cannot satisfy any requirement."
       ],
-      "remaining_work": [
-        "The declared finite profile is qualified; production closure waits for the recorded planning and evidence prerequisites."
-      ],
+      "remaining_work": [],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
-        "behavioral-v2-planning"
+        "behavioral-v2-planning",
+        "planning-contract-prerequisites"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "explicit finite two-clause controlled-language integer source profile",
-      "blocking_dependencies": [
-        "TIP-002",
-        "TIP-003"
-      ],
+      "blocking_dependencies": [],
       "out_of_profile_extensions": [
         "General natural-language interpretation, conditional/alternative/prohibition admission and unbounded source equivalence are not qualified by this explicit profile."
-      ]
+      ],
+      "dependency_scope": "TIP-002 ledger and TIP-003 reviewed operation contracts are qualified for the complete finite controlled-language profile by120 existing native contract tests; broader generic TIP tasks are not marked closed."
     },
     {
       "id": "RPI-013",
@@ -519,7 +530,7 @@
         "Five native v2 planning controls pass exact code obligations, query/discovery records, proof results and nonempty current-fact provenance roots through the actual compiler/planner/critic. Current source, catalog, proof artifacts and producer/configuration identity are observed across callbacks. One fact and one residual remain bound; both declared operations are retained. Static roots and caller facts have no input route."
       ],
       "remaining_work": [
-        "The declared finite profile is qualified; production closure waits for the recorded planning and evidence prerequisites."
+        "Full RPI-023 source/evidence plane controls are still required for production closure. The bounded TIP-007 complete materials contract is independently qualified."
       ],
       "evidence": [
         "finite-native-summary",
@@ -527,14 +538,13 @@
         "finite-native-evidence-manifest",
         "finite-native-owned-file-scope",
         "semantic-supervision",
-        "behavioral-v2-planning"
+        "behavioral-v2-planning",
+        "planning-contract-prerequisites"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "explicit finite two-clause controlled-language integer source profile",
       "blocking_dependencies": [
-        "RPI-012",
-        "RPI-023",
-        "TIP-007"
+        "RPI-023"
       ],
       "out_of_profile_extensions": [
         "Learned interpretations and richer behavioral profiles remain separate; this snapshot has no signed task-omission or execution authority."
@@ -622,14 +632,17 @@
       "dependencies": "RPI-003",
       "criterion": "Add immutable history tables and reuse journal/outbox delivery to actual native DuckLake snapshots. Resolve response loss against exact operation ID, command and canonical payload. Qualify crash windows, stale owners, duplicates, lag reporting, retained snapshot pins and artifact garbage collection. Do not invent distributed atomicity or lake uniqueness constraints.",
       "source_line": 291,
-      "production_acceptance": "open",
-      "local_status": "pending_verification",
-      "locally_qualified_portions": [],
-      "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
+      "locally_qualified_portions": [
+        "Thirty-seven native controls qualify immutable source metadata through the existing registry/outbox/journal to actual DuckLake snapshots, response-loss and process-crash recovery, stale owner refusal, lag, persistent snapshot pins and explicit garbage collection of registered unpinned managed history envelopes. Generic shared/source/proof CAS sweeping and native lake snapshot expiration are outside this declared profile."
       ],
-      "evidence": [],
-      "criterion_acceptance": "not_yet_qualified"
+      "remaining_work": [],
+      "evidence": [
+        "native-ducklake-history"
+      ],
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": []
     },
     {
       "id": "RPI-018",
@@ -739,11 +752,11 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Captured dirty-overlay bytes at unchanged Git HEAD, distinct worktree views, renames and parser-context shard reuse are integrated and tested; old snapshots retain immutable history.",
-        "The full canonical bridge preserves exact source/dependency/environment identity without equivalence inference. Doctor invalidation survives restart and refuses unseen-root late registration, concurrent equivocation and stale positives detected before cache return."
+        "The full canonical bridge preserves exact source/dependency/environment identity without equivalence inference. Doctor invalidation survives restart and refuses unseen-root late registration, concurrent equivocation and stale positives detected before cache return.",
+        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases."
       ],
       "remaining_work": [
-        "Full CodeEvidencePlane/cache/matcher/planner source-dependency-environment joins and selective independently checked proof reuse remain open.",
-        "Automatic source-change observation, submodule/dependency invalidation closure and source/model eligibility propagation through matching/admission are not added by these cache controls."
+        "Complete declared source/configuration/model and freeze-to-admission matrix remains open beyond the qualified bounded local facade. DQP-backed cross-process service and generic model-dependent projections are unsupported in this profile."
       ],
       "evidence": [
         "foundation-tests-log",
@@ -753,7 +766,8 @@
         "proof-cache-tests-xml",
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
-        "proof-cache-checksums-json"
+        "proof-cache-checksums-json",
+        "typed-code-evidence"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -916,17 +930,19 @@
       "production_acceptance": "open",
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
-        "Historical proof-cache discovery uses bounded keyset pages, continuation keys and explicit omissions; the compatibility scanner walks beyond 512 rows and persists reports. Exact source locator plus full key prevents basename/truncated-key collisions."
+        "Historical proof-cache discovery uses bounded keyset pages, continuation keys and explicit omissions; the compatibility scanner walks beyond 512 rows and persists reports. Exact source locator plus full key prevents basename/truncated-key collisions.",
+        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases."
       ],
       "remaining_work": [
-        "Pages explicitly lack cross-call snapshot consistency; complete root-bound service queries and consumed-record commitments remain open. The automatic filename inventory retains its 16-file cap. Discovery rows never grant proof/completion authority, and the identity bridge still lacks a verified positive-receipt obligation link."
+        "Complete declared source/configuration/model and freeze-to-admission matrix remains open beyond the qualified bounded local facade. DQP-backed cross-process service and generic model-dependent projections are unsupported in this profile."
       ],
       "evidence": [
         "proof-cache-tests-log",
         "proof-cache-tests-xml",
         "proof-cache-source-inventory-json",
         "proof-cache-summary-json",
-        "proof-cache-checksums-json"
+        "proof-cache-checksums-json",
+        "typed-code-evidence"
       ],
       "criterion_acceptance": "not_yet_qualified"
     }

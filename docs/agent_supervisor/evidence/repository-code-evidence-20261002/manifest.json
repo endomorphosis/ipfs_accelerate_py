@@ -1,0 +1,60 @@
+{
+  "schema": "repository-code-evidence-manifest/v1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2398,
+      "sha256": "33a22e15ef0e2ba351579b98fef6da5dfd8741252db82adb984fdc15c13e8156"
+    },
+    {
+      "path": "producer-sources.json",
+      "bytes": 3069,
+      "sha256": "5c8bcab25b0e425729a871e5dfb7bb6e168089166463dd2f017ba9a5ace4160c"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 1395,
+      "sha256": "2a8eae4a1eb5fef819f469bff7b3f7d7f4a8a4663de60804981aa3d51ba9b052"
+    },
+    {
+      "path": "rpi023-evidence-bound-tests.log",
+      "bytes": 1204,
+      "sha256": "8f7030e0d1d4a0fc539c8a19be920ba1ece97f894e1391aa2db01c10a403718d"
+    },
+    {
+      "path": "rpi023-evidence-bound-tests.xml",
+      "bytes": 388,
+      "sha256": "6a831941676ff3df47dc837fbc4c73a3c834318490f75855c6cd489280797f0d"
+    },
+    {
+      "path": "rpi023-evidence-final-tests.log",
+      "bytes": 64037,
+      "sha256": "183ded303bc2ad6008129b969549d7608e7f103261f3cf3ae643a1dd660d71fc"
+    },
+    {
+      "path": "rpi023-evidence-final-tests.xml",
+      "bytes": 36106,
+      "sha256": "716f3c985714d37697cf57c5bcbb0de7380bb0967ad65c633d3daa03eeea2806"
+    },
+    {
+      "path": "rpi023-evidence-first-tests.log",
+      "bytes": 37827,
+      "sha256": "c80dd85e88fc70463cdfa455411b7030e6067365dc5d8ec0577f3eb9fb423b66"
+    },
+    {
+      "path": "rpi023-evidence-first-tests.xml",
+      "bytes": 9774,
+      "sha256": "e018e1a052b2dcc6ff284fa9d8331646e53c8f35d02ad3fd37200b93ef78f796"
+    },
+    {
+      "path": "rpi023-evidence-retry-tests.log",
+      "bytes": 1829,
+      "sha256": "75bd7b5bee3794bf48afb18fc6e0e37a8145d8bb5425a5ea66cde5a4c97b8965"
+    },
+    {
+      "path": "rpi023-evidence-retry-tests.xml",
+      "bytes": 524,
+      "sha256": "5962e92536bf438fefcfb19147960a7de2069914a1efd41d002d1f09099dab11"
+    }
+  ]
+}
