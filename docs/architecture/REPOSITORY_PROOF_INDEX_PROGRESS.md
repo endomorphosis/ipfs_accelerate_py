@@ -225,3 +225,25 @@ source-publication interruption and separate-process recovery. Replay checks the
 exact objective, goals, tasks, plan, active head and planning receipt; altered or
 missing parents cannot inherit a successful task-only replay. The earlier10
 controls remain attached to their historical producer.
+
+The opt-in `--pipeline-resources` finite driver now joins managed preparation,
+phase-local proof parents, protected public checks and a private v2 worker grant.
+The protected worker lease remains active through STOP; cleanup failures retain
+the primary error and diagnostic output. Thirty-three controlled helper/driver
+checks and eight legacy guards pass. The fresh actual-host attempt is refused
+before work at `host_disk_high_watermark` in0.066511 seconds. Its result is an
+admission diagnostic, not a supervisor success or benchmark score.
+
+The six-family source portfolio is implemented but awaits final native
+qualification. Twelve current-source controls pass. Historical individual Lean,
+Z3, CVC5, Rocq, Isabelle and TLC smoke observations retain generated source/tool
+identities, but lack the wrapper hashes needed to qualify the final joined path.
+They are explicitly preserved as historical component evidence.
+
+The new reviewed population profile passes27 controlled-host cases with actual
+Python/Lean proofs and native source/Intent owners. One atomic policy/source/owner
+choice prevents accumulation of conflicting task subsets; proof-elided source
+files remain protected, and zero-task decisions remain inert. Lost replies and
+interrupted public artifact staging recover exact prior choices. Both actual
+default-host attempts refused admission under memory-stall backoff. RPI-021 stays
+open, together with its generic TIP-010/TIP-011 prerequisites.
