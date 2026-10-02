@@ -1,0 +1,21 @@
+{
+  "accelerate": {
+    "base_commit": "8cdcd732b2e5038577e23ad6e697efad3e942705",
+    "files": {
+      "benchmarks/agent_supervisor/container_coding/native_scalar_supervision.py": "46106c4475245b2783241024f3ba9554aeda93d494bf91d93019b53cb0aa69af",
+      "ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_handoff.py": "8fdee577702b425d18ed6c2e733bf82f749ab69a3a51c77adbb6897d42286b61",
+      "ipfs_accelerate_py/agent_supervisor/runtime/scalar_candidate_runner.py": "9fc4f2eab28b13d9a3f9006b206fac319ec6b300ceec8b7bbaf42bc05f034aa1",
+      "ipfs_accelerate_py/agent_supervisor/runtime/scalar_repair_advisor.py": "538247172c3cb3d655f6e14d5588a344dca49ae0e711e34a82a722dba8ffa69b",
+      "test/api/semantic_state/test_scalar_repair_advisor.py": "031f60fe32ba708c883d5132b38f6bb4a885eef10369650070e1ec87ecf36b97",
+      "test/api/test_scalar_candidate_handoff.py": "cb7d7ee1f4d8c9a126c17eb4b0783bed4f3a12b55f6c17d7622b60eee0654c81"
+    }
+  },
+  "datasets": {
+    "base_commit": "1c2d9a42d65f718298fe245ad0f492349e99a9c4",
+    "files": {
+      "ipfs_datasets_py/logic/formalization/autoencoder/security/source_scalar_repair.py": "800a898c70a188692a4cff159dff35c42545b96f9b4f9e315521f4555b65d337",
+      "tests/unit/logic/formalization/autoencoder/test_security_source_scalar_repair.py": "50ebb1ebc9793245d020c33aa8f370d2d227b471dc7c01d22b23e8f326a68b04"
+    },
+    "release_commit": "c9446bd44cef1603c1461242e6c577e26af45ad8"
+  }
+}

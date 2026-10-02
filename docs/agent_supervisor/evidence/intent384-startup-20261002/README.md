@@ -86,3 +86,8 @@ reuse and refresh do not yet automatically select its code/action mappings.
 Counterexample-driven arithmetic proposal generation, fresh post-repair
 inference, and native Doctor admission remain a separate integration gap.
 No new native-Codex comparison, token score, or Terminal-Bench success is claimed.
+
+The subsequent [bounded scalar repair qualification](../scalar-repair-supervision-20261002/README.md)
+adds counterexample-driven proposals, fresh candidate inference/Lake checks,
+and a separate owner handoff through native daemon validation and publication.
+It retains the authored-task and finite-domain limits of this earlier work.

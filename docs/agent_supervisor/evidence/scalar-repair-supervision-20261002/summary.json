@@ -1,0 +1,102 @@
+{
+  "artifact_archive_identities": {
+    "candidate-result.json.gz": {
+      "uncompressed_bytes": 3170149,
+      "uncompressed_sha256": "c024f027a95648973d4a59693fafa22b1459af067c8f604a63017ff50dd4fe37"
+    },
+    "result.json.gz": {
+      "uncompressed_bytes": 1006622,
+      "uncompressed_sha256": "2e1db5d3b59786d33df48edd68e60aa1935068d8eb6f783c0be09d3a21f514ff"
+    }
+  },
+  "baseline_commit": "2030ba8cad877f257a2e11664def1f1b8e4326be",
+  "benchmark_result": false,
+  "bootstrap_errors": [],
+  "candidate_status": "candidate_ready",
+  "candidates": [
+    {
+      "bounded_effects_satisfied": false,
+      "effect_status": "refuted",
+      "enabled_case_count": 3,
+      "id": "scalar-operator:3a09a37b5f3771375d507b0e9002afa9cf91b8b2655f2952b563d8025f9f7566",
+      "live_build_verified": true,
+      "source_sha256": "4c304b2034397b686dff882ff00607a4433c93ce9100ae49635bb2eb59facea4",
+      "source_text": "def derive(capacity: int, threshold: int) -> int:\n    return capacity - threshold\n",
+      "status": "checked_candidate"
+    },
+    {
+      "bounded_effects_satisfied": true,
+      "effect_status": "satisfied",
+      "enabled_case_count": 3,
+      "id": "scalar-operator:f5a0280c596e896458ff38062c34f15e8f1c4119e7d69ccf8dddd46f70e65a24",
+      "live_build_verified": true,
+      "source_sha256": "2ea3b1c944e63ec7747a72a8e2978c436f62cfc19fa392d906f6e13e13e0aade",
+      "source_text": "def derive(capacity: int, threshold: int) -> int:\n    return capacity * threshold\n",
+      "status": "checked_candidate"
+    }
+  ],
+  "configuration_and_weights_unchanged": true,
+  "final_public_check_exit_code": 0,
+  "initial": {
+    "counterexample_kernel_checked": true,
+    "effect_status": "refuted",
+    "enabled_case_count": 3,
+    "live_build_verified": true,
+    "source_sha256": "0b09b6c6dc7c6f7e324dd5ff17e5e48eac1690a84e899c06d1d8cc7b8b2459d9"
+  },
+  "initial_public_check_exit_code": 1,
+  "input_pins_rechecked": true,
+  "observations": [
+    {
+      "revision": 3,
+      "seconds": 29.319565862882882,
+      "status": "in_progress"
+    },
+    {
+      "revision": 4,
+      "seconds": 35.51678800606169,
+      "status": "completed"
+    }
+  ],
+  "original_source_unchanged": true,
+  "preplanning": {
+    "before_goal_decomposition": true,
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "numerical_replay_verified": true,
+    "seconds": 3.737371824,
+    "selection": {
+      "config_path": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json",
+      "config_sha256": "55d31c015d31b2aea8623ca0a3ec347f7265f33282074b83f1c9833614b8ca5d",
+      "enabled": true,
+      "schema": "supervisor-intent-action-384-selection/v1"
+    },
+    "status": "semantic_candidate_advice"
+  },
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "published_commit": "80aa799abd2d57361393f37b5e31b89af29cf4d1",
+  "published_context": [
+    {
+      "retrieval_status": "current",
+      "status": "refreshed"
+    }
+  ],
+  "published_source_matches_checked_candidate": true,
+  "published_source_sha256": "2ea3b1c944e63ec7747a72a8e2978c436f62cfc19fa392d906f6e13e13e0aade",
+  "qualified": true,
+  "remaining_processes": 0,
+  "repair_advice_status": "candidate_evidence",
+  "repair_selection": "live bounded Intent counterexample and fresh candidate inference/Lake",
+  "schema": "native-scalar-supervision-qualification/v1",
+  "seconds": 38.52111692586914,
+  "security_advisor_calls": 3,
+  "start_status": "succeeded",
+  "stop_status": "succeeded",
+  "task": {
+    "revision": 4,
+    "status": "completed"
+  },
+  "task_cid": "baguqeerabotsfjzymoxsfw3ti5odameistxb46hgwigecxkxezamareaxv7q",
+  "task_decomposition": "independently authored local goal and task",
+  "token_savings": null
+}

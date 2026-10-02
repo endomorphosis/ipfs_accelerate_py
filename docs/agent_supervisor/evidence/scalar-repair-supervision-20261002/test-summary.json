@@ -1,0 +1,38 @@
+{
+  "failed": 0,
+  "fresh_supervisor_seal_catalogs": true,
+  "native_checkpoint_inference": "separate native-05 qualification",
+  "skipped": 0,
+  "suites": [
+    {
+      "kind": "datasets proposals",
+      "lake": "actual",
+      "log": "datasets-tests.log",
+      "numerical_predictions": "authored controls",
+      "passed": 37,
+      "seconds": 93.25
+    },
+    {
+      "kind": "consumer",
+      "lake": "actual",
+      "log": "consumer-tests.log",
+      "numerical_predictions": "authored controls",
+      "passed": 22,
+      "seconds": 83.15
+    },
+    {
+      "kind": "handoff and worker",
+      "log": "handoff-tests.log",
+      "passed": 30,
+      "seconds": 37.57
+    },
+    {
+      "kind": "neighbor Doctor and admission regression",
+      "lean_and_z3": "actual",
+      "log": "neighbor-tests.log",
+      "passed": 53,
+      "seconds": 70.46
+    }
+  ],
+  "total_passed": 142
+}

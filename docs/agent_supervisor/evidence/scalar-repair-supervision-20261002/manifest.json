@@ -1,0 +1,100 @@
+{
+  "files": [
+    {
+      "bytes": 6202,
+      "path": "README.md",
+      "sha256": "21e765f1069643fb1c991d6c188b906b891a40c61ee25290bfcd152b837041c1"
+    },
+    {
+      "bytes": 328705,
+      "path": "candidate-result.json.gz",
+      "sha256": "bfa6db3d6554b2cf1eff87ef6f3af59a9a0c809056fe13c14eb63bb565d048e9"
+    },
+    {
+      "bytes": 1037,
+      "path": "command.json",
+      "sha256": "b8b1a501439374c595cd06fdd4fba6a735c607bcaf323845c11276e9197693ec"
+    },
+    {
+      "bytes": 6057,
+      "path": "consumer-tests.log",
+      "sha256": "dab25f156bec1b7909aab304cbe931d9214ce9e7a5b9f5725d0a6f0216ea1cf2"
+    },
+    {
+      "bytes": 1006,
+      "path": "datasets-tests.log",
+      "sha256": "5b530aa9038578f3c553244be36f8d807c02b613e579183577099ffaf1acee3b"
+    },
+    {
+      "bytes": 366,
+      "path": "docs-checks.log",
+      "sha256": "c8ed6a06e710f53a6ef2315cf60411e320553e68c59455e8e1209f6a8c9b7b6d"
+    },
+    {
+      "bytes": 1458,
+      "path": "failed-diagnostic.log.gz",
+      "sha256": "70e5b78b14941b770906e21a05a58dc597f5828397d3843fff5728fd9f711830"
+    },
+    {
+      "bytes": 3846,
+      "path": "failed-validation-worker.log",
+      "sha256": "0ec7948a653d73f243385e253942442a1d482e55559e6c752e9f721c459e21a5"
+    },
+    {
+      "bytes": 71372,
+      "path": "handoff-tests.log",
+      "sha256": "b6f1ffecfd020b36a12b2ba9ffe02914ca96941a46efc8abfde8d341005667b9"
+    },
+    {
+      "bytes": 3011,
+      "path": "inputs.json",
+      "sha256": "f4b0c83679093657f58d216e0b590841ded8b98da0156c0bc6ca1ee2c7185146"
+    },
+    {
+      "bytes": 55197,
+      "path": "intent-advice.json",
+      "sha256": "77a9431c30e95320ae5aa135ccf5ca28113d4d4756946347f7ab4b08aa52a500"
+    },
+    {
+      "bytes": 29779,
+      "path": "native-supervision.log",
+      "sha256": "3c7b148a193636203380f456e2d2b12693b68ff7fa11ace2c3567d98ba5399b7"
+    },
+    {
+      "bytes": 79195,
+      "path": "neighbor-tests.log",
+      "sha256": "7bee2dcad0af52b84a250c5fa31a0079749c17312b51be51ce22dd3be5fd27cd"
+    },
+    {
+      "bytes": 111509,
+      "path": "result.json.gz",
+      "sha256": "9b2d1f205cd7fc9993c86cbbeab77b4ecdb54ca2acd8d6b8526bda89c2b58243"
+    },
+    {
+      "bytes": 2256,
+      "path": "run-history.json",
+      "sha256": "6db694572b5216797480197bca5e5b9236f83289633172bfe6aa6ab8cb52fa1a"
+    },
+    {
+      "bytes": 1440,
+      "path": "source-identity.json",
+      "sha256": "b13d979705702cb094325b764bf31a0e02417dff5f32a1c3112385aef2b1313c"
+    },
+    {
+      "bytes": 3761,
+      "path": "summary.json",
+      "sha256": "67aac0697ebba1fb56afbff2f9d27396b869993ca3b8833856fad7b64d3ad2c7"
+    },
+    {
+      "bytes": 888,
+      "path": "test-summary.json",
+      "sha256": "93da378a134ee38ce86510543ac1110f6a2fe15f4004bda3e19144cc28db1d9b"
+    },
+    {
+      "bytes": 5361,
+      "path": "vector-result.json",
+      "sha256": "9d0abcbd392e347fb45b1866c6c90c1d4be87be18d33b8542af117d8f7d8f3f6"
+    }
+  ],
+  "schema": "scalar-repair-evidence-manifest/v1"
+}

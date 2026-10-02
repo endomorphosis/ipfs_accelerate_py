@@ -1,0 +1,128 @@
+{
+  "schema": "native-lexical-vector-qualification@1",
+  "status": "qualified",
+  "source_sha256": {
+    "source.py": "0b09b6c6dc7c6f7e324dd5ff17e5e48eac1690a84e899c06d1d8cc7b8b2459d9"
+  },
+  "index_id": "code-symbol-vector-index:sha256:8fd1f95178b9633bb984da14e1862df2b8d4843b85ca9689bcd1ed880a21f3fa",
+  "symbols": 1,
+  "complete_permitted_scope": true,
+  "native_fact_rows_replayed": 1,
+  "input_statuses": {
+    "source.py": "success"
+  },
+  "aggregated_native_fact_references": 0,
+  "model": "lexical TF-IDF over qualified symbol names; no learned embedding model",
+  "query": "derive capacity threshold",
+  "hits": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/code-vector-result@1",
+    "query": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/code-vector-query@1",
+      "forest_id": "baguqeeraiqdgireyf5wwwypeoonef7azux5gji7meo7t4nqulrmiqimctk7a",
+      "tree_id": "baguqeeraiqdgireyf5wwwypeoonef7azux5gji7meo7t4nqulrmiqimctk7a",
+      "index_id": "code-symbol-vector-index:sha256:8fd1f95178b9633bb984da14e1862df2b8d4843b85ca9689bcd1ed880a21f3fa",
+      "config_id": "code-vector-config:sha256:80318b1821e5a2372f93687333ef93a915349bab11ef49207e669514faaa7cfd",
+      "dimensions": 2,
+      "metric": "cosine",
+      "query_vector": [
+        1.0,
+        0.0
+      ],
+      "max_results": 5,
+      "semantic_authority": false,
+      "query_id": "code-vector-query:sha256:765fd651ef1d5f0e13a671fdc6a384c15e7d7034895a52680186a1434efd9835"
+    },
+    "index_id": "code-symbol-vector-index:sha256:8fd1f95178b9633bb984da14e1862df2b8d4843b85ca9689bcd1ed880a21f3fa",
+    "hits": [
+      {
+        "schema": "ipfs_accelerate_py/agent-supervisor/code-vector-hit@1",
+        "row": {
+          "schema": "ipfs_accelerate_py/agent-supervisor/code-symbol-vector-row@1",
+          "path": "source.py",
+          "symbol": "derive",
+          "qualified_symbol": "source.derive",
+          "line_start": 1,
+          "line_end": 2,
+          "sidecar": {
+            "ast_record_id": "ast-sha256:4000ec2666d84fce21149edd1931b06de548b2548890fae2ebc55a279c812cb0",
+            "blob_identity": "sha256:0b09b6c6dc7c6f7e324dd5ff17e5e48eac1690a84e899c06d1d8cc7b8b2459d9",
+            "call_refs": [],
+            "documentation_refs": [],
+            "effect_refs": [],
+            "error_refs": [],
+            "ownership_refs": [],
+            "schema": "ipfs_accelerate_py/agent-supervisor/code-symbol-ast-sidecar@1",
+            "signature_refs": [
+              "derive:def derive(capacity: int, threshold: int) -> int"
+            ],
+            "source_sha256": "sha256:0b09b6c6dc7c6f7e324dd5ff17e5e48eac1690a84e899c06d1d8cc7b8b2459d9",
+            "symbol_hash": "sha256:465bb14736b9e28cda5845edd8e0005443c041bb83ed09b3dfb6e3e62d8abd60",
+            "test_refs": [],
+            "sidecar_id": "code-symbol-ast-sidecar:sha256:571e31cc6638ed1796808d588fb41573982505649290d76cc3bed105ec2a4fee"
+          },
+          "embedding": [
+            0.7071067811865475,
+            0.7071067811865475
+          ],
+          "metadata_refs": [],
+          "lineage_ids": [],
+          "row_id": "code-symbol-vector-row:sha256:c10f34019475fbc789e6af8fc78287da85f17b81a4ffdffbd3406685cbaa6581"
+        },
+        "index_id": "code-symbol-vector-index:sha256:8fd1f95178b9633bb984da14e1862df2b8d4843b85ca9689bcd1ed880a21f3fa",
+        "query_id": "code-vector-query:sha256:765fd651ef1d5f0e13a671fdc6a384c15e7d7034895a52680186a1434efd9835",
+        "score": 0.7071067811865475,
+        "rank": 1,
+        "semantic_authority": false,
+        "hit_id": "code-vector-hit:sha256:87ac4542f9f2f09c1634258cc4e990b4fd1b096a1945e54dcec1662ddc8a8b87"
+      }
+    ],
+    "complete": true,
+    "searched_row_count": 1,
+    "semantic_authority": false,
+    "result_id": "code-vector-result:sha256:bba9eac5e7a030fa2f8975e9746ae05fa13652e4721235fd85a3631fcb917d2d"
+  },
+  "ducklake": {
+    "status": "projected",
+    "stored_catalogs": 1,
+    "stored_links": 1,
+    "stored_bindings": 0,
+    "completion_authority": false,
+    "authoritative": false
+  },
+  "metadata_retrieval": {
+    "source.py": {
+      "schema": "ipfs_accelerate_py/supervisor-meta-index@1",
+      "interface": "SupervisorMetaIndex@1",
+      "subject_kind": "path",
+      "subject_ref": "source.py",
+      "linked": [
+        {
+          "subject_kind": "path",
+          "subject_ref": "source.py",
+          "record_kind": "code_symbol",
+          "record_ref": "code-symbol-vector-row:sha256:c10f34019475fbc789e6af8fc78287da85f17b81a4ffdffbd3406685cbaa6581",
+          "freshness_mtime_ns": null,
+          "catalog_kind": "vector",
+          "catalog_id": "catalog:vector:bafkreicufj2kao2xdulhjsdzh47jlrk4kq5d7sz6zbatj4vohimmjrtn44",
+          "locator_ref": "/home/barberb/lift_coding/artifacts/scalar-repair-supervision-20261002/native-05/vectors/vectors.duckdb",
+          "attach_permitted": true,
+          "exclusive_owner": "",
+          "recorded_at": "2026-10-02T04:26:01.250226+00:00"
+        }
+      ],
+      "n": 1,
+      "completion_authority": false,
+      "decision_authority": false,
+      "ducklake_authoritative": false,
+      "event_driven_qualified": true
+    }
+  },
+  "seconds": {
+    "build": 0.0014276839792728424,
+    "reopen_replay_query": 0.29775432497262955
+  },
+  "semantic_authority": false,
+  "full_system_qualified": false,
+  "provider_calls": 0,
+  "token_savings": null
+}

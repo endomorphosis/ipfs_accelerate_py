@@ -1,0 +1,67 @@
+{
+  "checkpoint_sha256": {
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+  },
+  "effect_config": {
+    "contracts": [
+      {
+        "action_id": "action",
+        "id": "declared-return",
+        "input_domains": {
+          "capacity": {
+            "lower": -1,
+            "upper": 1
+          },
+          "threshold": {
+            "lower": -1,
+            "upper": 1
+          }
+        },
+        "input_parameter_mapping": {
+          "left": "capacity",
+          "right": "threshold"
+        },
+        "source_id": "source.py"
+      }
+    ],
+    "lake": {
+      "executable": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lake",
+      "timeout_seconds": 60
+    },
+    "schema": "supervisor-intent-code-effect-config/v2"
+  },
+  "instruction": "the runner must compute result; requires left > 0; ensures result = old(right) * old(left) and returned.",
+  "intent_config": {
+    "checkpoint_path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "embedding_snapshot_path": null,
+    "schema": "supervisor-intent-action-384-config/v1"
+  },
+  "public_validation": "from source import derive; observed = [derive(1, -1), derive(1, 0), derive(1, 1)]; assert all(type(value) is int for value in observed); assert observed == [-1, 0, 1], observed",
+  "security_config": {
+    "checkpoint_path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "decoder": "structured",
+    "embedding_snapshot_path": null,
+    "finite_state_domains": {
+      "source.py": {
+        "capacity": {
+          "lower": -1,
+          "upper": 1
+        },
+        "threshold": {
+          "lower": -1,
+          "upper": 1
+        }
+      }
+    },
+    "lake": null,
+    "schema": "supervisor-security-source-program-384-config/v2"
+  },
+  "source_configs_sha256": {
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json": "55d31c015d31b2aea8623ca0a3ec347f7265f33282074b83f1c9833614b8ca5d",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/security-config.json": "6b1a32536d4aa5e38428c0706d841026380a7f2b3c99a030d0911090e86b3847"
+  },
+  "source_text": "def derive(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n"
+}

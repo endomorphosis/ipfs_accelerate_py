@@ -1,0 +1,1672 @@
+{
+  "advice_sha256": "409b67167f25499595a16e6f4ab8e4103357bf29209fab78a5215b25908d5a7d",
+  "association_inferred": false,
+  "candidate_intent_ir": {
+    "actions": [
+      {
+        "action_id": "action",
+        "actor": "runner",
+        "effect_ids": [
+          "effect:equation",
+          "effect:returned"
+        ],
+        "grounding": "inferred",
+        "input_refs": [],
+        "object_refs": [
+          "result"
+        ],
+        "output_refs": [],
+        "precondition_ids": [
+          "precondition"
+        ],
+        "source_ref_ids": [
+          "intent-contract:source"
+        ],
+        "tool_refs": [],
+        "verb": "compute",
+        "verification_ids": []
+      }
+    ],
+    "control_edges": [],
+    "document_id": "intent-action-contract:single",
+    "entry_action_ids": [
+      "action"
+    ],
+    "intent_kind": "procedure",
+    "schema_version": "intent-ir/v1",
+    "sources": [
+      {
+        "container_sha256": "",
+        "container_uri": "",
+        "content_cid": "",
+        "content_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+        "license_expression": "",
+        "ref_id": "intent-contract:source",
+        "review_status": "machine_extracted",
+        "source_id": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+        "source_revision": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+        "source_uri": "instruction:explicit-action-contract",
+        "span": {
+          "end_char": 104,
+          "start_char": 0
+        }
+      }
+    ],
+    "statements": [
+      {
+        "arguments": [
+          "result",
+          "old:right",
+          "mul",
+          "old:left"
+        ],
+        "confidence": 0.0,
+        "grounding": "inferred",
+        "kind": "effect",
+        "modality": "asserted",
+        "normalized_text": "Declared return equation.",
+        "predicate": "return_equation",
+        "review_status": "machine_extracted",
+        "source_ref_ids": [
+          "intent-contract:source"
+        ],
+        "statement_id": "effect:equation"
+      },
+      {
+        "arguments": [
+          "returned"
+        ],
+        "confidence": 0.0,
+        "grounding": "inferred",
+        "kind": "effect",
+        "modality": "asserted",
+        "normalized_text": "Declared returned observation.",
+        "predicate": "returned",
+        "review_status": "machine_extracted",
+        "source_ref_ids": [
+          "intent-contract:source"
+        ],
+        "statement_id": "effect:returned"
+      },
+      {
+        "arguments": [
+          "runner",
+          "result"
+        ],
+        "confidence": 0.0,
+        "grounding": "inferred",
+        "kind": "goal",
+        "modality": "required",
+        "normalized_text": "Declared scalar computation.",
+        "predicate": "compute",
+        "review_status": "machine_extracted",
+        "source_ref_ids": [
+          "intent-contract:source"
+        ],
+        "statement_id": "goal"
+      },
+      {
+        "arguments": [
+          "left",
+          "0"
+        ],
+        "confidence": 0.0,
+        "grounding": "inferred",
+        "kind": "precondition",
+        "modality": "asserted",
+        "normalized_text": "Declared input requirement.",
+        "predicate": "input_gt",
+        "review_status": "machine_extracted",
+        "source_ref_ids": [
+          "intent-contract:source"
+        ],
+        "statement_id": "precondition"
+      }
+    ],
+    "tags": [
+      "unverified-candidate"
+    ],
+    "terminal_action_ids": [
+      "action"
+    ],
+    "title": "Explicit scalar action contract candidate"
+  },
+  "candidate_repaired": false,
+  "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+  "claim_proved": false,
+  "completion_authority": false,
+  "config": {
+    "checkpoint_path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "embedding_snapshot_path": null,
+    "schema": "supervisor-intent-action-384-config/v1"
+  },
+  "continue_planning": true,
+  "default_model_promoted": false,
+  "download_calls": 0,
+  "error_type": null,
+  "execution_authority": false,
+  "failure_stage": null,
+  "instruction_bytes": 104,
+  "instruction_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+  "intent_meaning_verified": false,
+  "mutation_authority": false,
+  "native_candidate_sha256": "30813549c6528cf47b08c8df6b141b4c07f3d1822d4d5c67188111beea6e5c41",
+  "normative_compliance_verified": false,
+  "numerical_replay_verified": true,
+  "omission_authority": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "raw_candidate_ir": {
+    "document": {
+      "actions": [
+        {
+          "action_id": "action",
+          "actor": "runner",
+          "effect_ids": [
+            "effect:equation",
+            "effect:returned"
+          ],
+          "grounding": "inferred",
+          "input_refs": [],
+          "object_refs": [
+            "result"
+          ],
+          "output_refs": [],
+          "precondition_ids": [
+            "precondition"
+          ],
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "tool_refs": [],
+          "verb": "compute",
+          "verification_ids": []
+        }
+      ],
+      "control_edges": [],
+      "document_id": "intent-action-contract:single",
+      "entry_action_ids": [
+        "action"
+      ],
+      "intent_kind": "procedure",
+      "schema_version": "intent-ir/v1",
+      "sources": [
+        {
+          "container_sha256": "",
+          "container_uri": "",
+          "content_cid": "",
+          "content_sha256": "4d76b30fa68e9c895ae3783a6ff63a576ed1ad3c1ba4c17db0ee41cf1cf3da9a",
+          "license_expression": "",
+          "ref_id": "intent-contract:source",
+          "review_status": "unreviewed",
+          "source_id": "unbound",
+          "source_revision": "v1",
+          "source_uri": "urn:intent-action-contract:unbound-source:v1",
+          "span": null
+        }
+      ],
+      "statements": [
+        {
+          "arguments": [
+            "result",
+            "old:right",
+            "mul",
+            "old:left"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "effect",
+          "modality": "asserted",
+          "normalized_text": "Declared return equation.",
+          "predicate": "return_equation",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "effect:equation"
+        },
+        {
+          "arguments": [
+            "returned"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "effect",
+          "modality": "asserted",
+          "normalized_text": "Declared returned observation.",
+          "predicate": "returned",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "effect:returned"
+        },
+        {
+          "arguments": [
+            "runner",
+            "result"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "goal",
+          "modality": "required",
+          "normalized_text": "Declared scalar computation.",
+          "predicate": "compute",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "goal"
+        },
+        {
+          "arguments": [
+            "left",
+            "0"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "precondition",
+          "modality": "asserted",
+          "normalized_text": "Declared input requirement.",
+          "predicate": "input_gt",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "precondition"
+        }
+      ],
+      "tags": [
+        "unverified-candidate"
+      ],
+      "terminal_action_ids": [
+        "action"
+      ],
+      "title": "Explicit scalar action contract candidate"
+    },
+    "kind": "document"
+  },
+  "raw_candidate_sha256": "beb29f87cd6422b1843f28c2bf7bc4222bcf3d1027c677dd375dd36743a69585",
+  "raw_instruction_preserved": true,
+  "report": {
+    "admitted": false,
+    "binding": {
+      "admitted": false,
+      "bound_candidate": {
+        "document": {
+          "actions": [
+            {
+              "action_id": "action",
+              "actor": "runner",
+              "effect_ids": [
+                "effect:equation",
+                "effect:returned"
+              ],
+              "grounding": "inferred",
+              "input_refs": [],
+              "object_refs": [
+                "result"
+              ],
+              "output_refs": [],
+              "precondition_ids": [
+                "precondition"
+              ],
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "tool_refs": [],
+              "verb": "compute",
+              "verification_ids": []
+            }
+          ],
+          "control_edges": [],
+          "document_id": "intent-action-contract:single",
+          "entry_action_ids": [
+            "action"
+          ],
+          "intent_kind": "procedure",
+          "schema_version": "intent-ir/v1",
+          "sources": [
+            {
+              "container_sha256": "",
+              "container_uri": "",
+              "content_cid": "",
+              "content_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+              "license_expression": "",
+              "ref_id": "intent-contract:source",
+              "review_status": "machine_extracted",
+              "source_id": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+              "source_revision": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+              "source_uri": "instruction:explicit-action-contract",
+              "span": {
+                "end_char": 104,
+                "start_char": 0
+              }
+            }
+          ],
+          "statements": [
+            {
+              "arguments": [
+                "result",
+                "old:right",
+                "mul",
+                "old:left"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "effect",
+              "modality": "asserted",
+              "normalized_text": "Declared return equation.",
+              "predicate": "return_equation",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "effect:equation"
+            },
+            {
+              "arguments": [
+                "returned"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "effect",
+              "modality": "asserted",
+              "normalized_text": "Declared returned observation.",
+              "predicate": "returned",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "effect:returned"
+            },
+            {
+              "arguments": [
+                "runner",
+                "result"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "goal",
+              "modality": "required",
+              "normalized_text": "Declared scalar computation.",
+              "predicate": "compute",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "goal"
+            },
+            {
+              "arguments": [
+                "left",
+                "0"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "precondition",
+              "modality": "asserted",
+              "normalized_text": "Declared input requirement.",
+              "predicate": "input_gt",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "precondition"
+            }
+          ],
+          "tags": [
+            "unverified-candidate"
+          ],
+          "terminal_action_ids": [
+            "action"
+          ],
+          "title": "Explicit scalar action contract candidate"
+        },
+        "kind": "document"
+      },
+      "bound_candidate_sha256": "d84041e5a13bb43480566af93692c9c1451ef7ba0938fe3c3e8a5bd0c146ef31",
+      "candidate": {
+        "document": {
+          "actions": [
+            {
+              "action_id": "action",
+              "actor": "runner",
+              "effect_ids": [
+                "effect:equation",
+                "effect:returned"
+              ],
+              "grounding": "inferred",
+              "input_refs": [],
+              "object_refs": [
+                "result"
+              ],
+              "output_refs": [],
+              "precondition_ids": [
+                "precondition"
+              ],
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "tool_refs": [],
+              "verb": "compute",
+              "verification_ids": []
+            }
+          ],
+          "control_edges": [],
+          "document_id": "intent-action-contract:single",
+          "entry_action_ids": [
+            "action"
+          ],
+          "intent_kind": "procedure",
+          "schema_version": "intent-ir/v1",
+          "sources": [
+            {
+              "container_sha256": "",
+              "container_uri": "",
+              "content_cid": "",
+              "content_sha256": "4d76b30fa68e9c895ae3783a6ff63a576ed1ad3c1ba4c17db0ee41cf1cf3da9a",
+              "license_expression": "",
+              "ref_id": "intent-contract:source",
+              "review_status": "unreviewed",
+              "source_id": "unbound",
+              "source_revision": "v1",
+              "source_uri": "urn:intent-action-contract:unbound-source:v1",
+              "span": null
+            }
+          ],
+          "statements": [
+            {
+              "arguments": [
+                "result",
+                "old:right",
+                "mul",
+                "old:left"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "effect",
+              "modality": "asserted",
+              "normalized_text": "Declared return equation.",
+              "predicate": "return_equation",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "effect:equation"
+            },
+            {
+              "arguments": [
+                "returned"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "effect",
+              "modality": "asserted",
+              "normalized_text": "Declared returned observation.",
+              "predicate": "returned",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "effect:returned"
+            },
+            {
+              "arguments": [
+                "runner",
+                "result"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "goal",
+              "modality": "required",
+              "normalized_text": "Declared scalar computation.",
+              "predicate": "compute",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "goal"
+            },
+            {
+              "arguments": [
+                "left",
+                "0"
+              ],
+              "confidence": 0.0,
+              "grounding": "inferred",
+              "kind": "precondition",
+              "modality": "asserted",
+              "normalized_text": "Declared input requirement.",
+              "predicate": "input_gt",
+              "review_status": "machine_extracted",
+              "source_ref_ids": [
+                "intent-contract:source"
+              ],
+              "statement_id": "precondition"
+            }
+          ],
+          "tags": [
+            "unverified-candidate"
+          ],
+          "terminal_action_ids": [
+            "action"
+          ],
+          "title": "Explicit scalar action contract candidate"
+        },
+        "kind": "document"
+      },
+      "candidate_repaired": false,
+      "candidate_sha256": "beb29f87cd6422b1843f28c2bf7bc4222bcf3d1027c677dd375dd36743a69585",
+      "changed_paths": [
+        "/document/sources/0"
+      ],
+      "claim_proved": false,
+      "completion_authority": false,
+      "continue_planning": true,
+      "execution_authority": false,
+      "kernel_executed": false,
+      "mutation_authority": false,
+      "proof_authority": false,
+      "provenance_binding_only": true,
+      "qualified": false,
+      "schema": "intent-action-contract-source-binding/v1",
+      "semantic_fields_unchanged": true,
+      "source_audit": {
+        "admitted": false,
+        "candidate": {
+          "document": {
+            "actions": [
+              {
+                "action_id": "action",
+                "actor": "runner",
+                "effect_ids": [
+                  "effect:equation",
+                  "effect:returned"
+                ],
+                "grounding": "inferred",
+                "input_refs": [],
+                "object_refs": [
+                  "result"
+                ],
+                "output_refs": [],
+                "precondition_ids": [
+                  "precondition"
+                ],
+                "source_ref_ids": [
+                  "intent-contract:source"
+                ],
+                "tool_refs": [],
+                "verb": "compute",
+                "verification_ids": []
+              }
+            ],
+            "control_edges": [],
+            "document_id": "intent-action-contract:single",
+            "entry_action_ids": [
+              "action"
+            ],
+            "intent_kind": "procedure",
+            "schema_version": "intent-ir/v1",
+            "sources": [
+              {
+                "container_sha256": "",
+                "container_uri": "",
+                "content_cid": "",
+                "content_sha256": "4d76b30fa68e9c895ae3783a6ff63a576ed1ad3c1ba4c17db0ee41cf1cf3da9a",
+                "license_expression": "",
+                "ref_id": "intent-contract:source",
+                "review_status": "unreviewed",
+                "source_id": "unbound",
+                "source_revision": "v1",
+                "source_uri": "urn:intent-action-contract:unbound-source:v1",
+                "span": null
+              }
+            ],
+            "statements": [
+              {
+                "arguments": [
+                  "result",
+                  "old:right",
+                  "mul",
+                  "old:left"
+                ],
+                "confidence": 0.0,
+                "grounding": "inferred",
+                "kind": "effect",
+                "modality": "asserted",
+                "normalized_text": "Declared return equation.",
+                "predicate": "return_equation",
+                "review_status": "machine_extracted",
+                "source_ref_ids": [
+                  "intent-contract:source"
+                ],
+                "statement_id": "effect:equation"
+              },
+              {
+                "arguments": [
+                  "returned"
+                ],
+                "confidence": 0.0,
+                "grounding": "inferred",
+                "kind": "effect",
+                "modality": "asserted",
+                "normalized_text": "Declared returned observation.",
+                "predicate": "returned",
+                "review_status": "machine_extracted",
+                "source_ref_ids": [
+                  "intent-contract:source"
+                ],
+                "statement_id": "effect:returned"
+              },
+              {
+                "arguments": [
+                  "runner",
+                  "result"
+                ],
+                "confidence": 0.0,
+                "grounding": "inferred",
+                "kind": "goal",
+                "modality": "required",
+                "normalized_text": "Declared scalar computation.",
+                "predicate": "compute",
+                "review_status": "machine_extracted",
+                "source_ref_ids": [
+                  "intent-contract:source"
+                ],
+                "statement_id": "goal"
+              },
+              {
+                "arguments": [
+                  "left",
+                  "0"
+                ],
+                "confidence": 0.0,
+                "grounding": "inferred",
+                "kind": "precondition",
+                "modality": "asserted",
+                "normalized_text": "Declared input requirement.",
+                "predicate": "input_gt",
+                "review_status": "machine_extracted",
+                "source_ref_ids": [
+                  "intent-contract:source"
+                ],
+                "statement_id": "precondition"
+              }
+            ],
+            "tags": [
+              "unverified-candidate"
+            ],
+            "terminal_action_ids": [
+              "action"
+            ],
+            "title": "Explicit scalar action contract candidate"
+          },
+          "kind": "document"
+        },
+        "candidate_contract": {
+          "actor": "runner",
+          "equation": {
+            "left": "right",
+            "operator": "mul",
+            "right": "left"
+          },
+          "precondition": {
+            "input": "left",
+            "kind": "gt",
+            "threshold": 0
+          }
+        },
+        "candidate_repaired": false,
+        "candidate_sha256": "beb29f87cd6422b1843f28c2bf7bc4222bcf3d1027c677dd375dd36743a69585",
+        "candidate_unchanged": true,
+        "claim_proved": false,
+        "complete_source_agreement": true,
+        "completion_authority": false,
+        "execution_authority": false,
+        "expected_contract": {
+          "actor": "runner",
+          "equation": {
+            "left": "right",
+            "operator": "mul",
+            "right": "left"
+          },
+          "precondition": {
+            "input": "left",
+            "kind": "gt",
+            "threshold": 0
+          }
+        },
+        "grammar": "intent-explicit-action-contract/v1",
+        "kernel_executed": false,
+        "mutation_authority": false,
+        "proof_authority": false,
+        "qualified": false,
+        "schema": "intent-action-contract-source-audit/v1",
+        "source_executed": false,
+        "source_semantics_verified": false,
+        "source_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+        "source_text": "the runner must compute result; requires left > 0; ensures result = old(right) * old(left) and returned.",
+        "status": "source_agreement",
+        "training_executed": false
+      },
+      "source_executed": false,
+      "source_identity_predicted": false,
+      "source_semantics_verified": false,
+      "source_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+      "source_text": "the runner must compute result; requires left > 0; ensures result = old(right) * old(left) and returned.",
+      "status": "source_agreement",
+      "training_executed": false
+    },
+    "candidate_semantics_rewritten": false,
+    "checkpoint_path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "completion_authority": false,
+    "continue_planning": true,
+    "dimension": 384,
+    "download_performed": false,
+    "embedding_provenance": {
+      "asset_manifest": [
+        {
+          "bytes": 190,
+          "name": "1_Pooling/config.json",
+          "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+        },
+        {
+          "bytes": 583,
+          "name": "config.json",
+          "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+        },
+        {
+          "bytes": 66746168,
+          "name": "model.safetensors",
+          "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+        },
+        {
+          "bytes": 385,
+          "name": "modules.json",
+          "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+        },
+        {
+          "bytes": 57,
+          "name": "sentence_bert_config.json",
+          "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+        },
+        {
+          "bytes": 125,
+          "name": "special_tokens_map.json",
+          "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+        },
+        {
+          "bytes": 711661,
+          "name": "tokenizer.json",
+          "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+        },
+        {
+          "bytes": 394,
+          "name": "tokenizer_config.json",
+          "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+        },
+        {
+          "bytes": 231508,
+          "name": "vocab.txt",
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        }
+      ],
+      "dimension": 384,
+      "model_id": "thenlper/gte-small",
+      "snapshot_path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+      "verified_local_assets": true
+    },
+    "embedding_sha256": "760a308fda9dc9bda6e23f31af485448765a7f2d4da31b6736539414b1bd25a4",
+    "execution_authority": false,
+    "formalized": false,
+    "inference": {
+      "admitted": false,
+      "dimension": 384,
+      "domain_id": "intent_ir",
+      "proof_authority": false,
+      "publication_performed": false,
+      "qualified": false,
+      "rows": [
+        {
+          "admitted": false,
+          "candidate_ir": {
+            "document": {
+              "actions": [
+                {
+                  "action_id": "action",
+                  "actor": "runner",
+                  "effect_ids": [
+                    "effect:equation",
+                    "effect:returned"
+                  ],
+                  "grounding": "inferred",
+                  "input_refs": [],
+                  "object_refs": [
+                    "result"
+                  ],
+                  "output_refs": [],
+                  "precondition_ids": [
+                    "precondition"
+                  ],
+                  "source_ref_ids": [
+                    "intent-contract:source"
+                  ],
+                  "tool_refs": [],
+                  "verb": "compute",
+                  "verification_ids": []
+                }
+              ],
+              "control_edges": [],
+              "document_id": "intent-action-contract:single",
+              "entry_action_ids": [
+                "action"
+              ],
+              "intent_kind": "procedure",
+              "schema_version": "intent-ir/v1",
+              "sources": [
+                {
+                  "container_sha256": "",
+                  "container_uri": "",
+                  "content_cid": "",
+                  "content_sha256": "4d76b30fa68e9c895ae3783a6ff63a576ed1ad3c1ba4c17db0ee41cf1cf3da9a",
+                  "license_expression": "",
+                  "ref_id": "intent-contract:source",
+                  "review_status": "unreviewed",
+                  "source_id": "unbound",
+                  "source_revision": "v1",
+                  "source_uri": "urn:intent-action-contract:unbound-source:v1",
+                  "span": null
+                }
+              ],
+              "statements": [
+                {
+                  "arguments": [
+                    "result",
+                    "old:right",
+                    "mul",
+                    "old:left"
+                  ],
+                  "confidence": 0.0,
+                  "grounding": "inferred",
+                  "kind": "effect",
+                  "modality": "asserted",
+                  "normalized_text": "Declared return equation.",
+                  "predicate": "return_equation",
+                  "review_status": "machine_extracted",
+                  "source_ref_ids": [
+                    "intent-contract:source"
+                  ],
+                  "statement_id": "effect:equation"
+                },
+                {
+                  "arguments": [
+                    "returned"
+                  ],
+                  "confidence": 0.0,
+                  "grounding": "inferred",
+                  "kind": "effect",
+                  "modality": "asserted",
+                  "normalized_text": "Declared returned observation.",
+                  "predicate": "returned",
+                  "review_status": "machine_extracted",
+                  "source_ref_ids": [
+                    "intent-contract:source"
+                  ],
+                  "statement_id": "effect:returned"
+                },
+                {
+                  "arguments": [
+                    "runner",
+                    "result"
+                  ],
+                  "confidence": 0.0,
+                  "grounding": "inferred",
+                  "kind": "goal",
+                  "modality": "required",
+                  "normalized_text": "Declared scalar computation.",
+                  "predicate": "compute",
+                  "review_status": "machine_extracted",
+                  "source_ref_ids": [
+                    "intent-contract:source"
+                  ],
+                  "statement_id": "goal"
+                },
+                {
+                  "arguments": [
+                    "left",
+                    "0"
+                  ],
+                  "confidence": 0.0,
+                  "grounding": "inferred",
+                  "kind": "precondition",
+                  "modality": "asserted",
+                  "normalized_text": "Declared input requirement.",
+                  "predicate": "input_gt",
+                  "review_status": "machine_extracted",
+                  "source_ref_ids": [
+                    "intent-contract:source"
+                  ],
+                  "statement_id": "precondition"
+                }
+              ],
+              "tags": [
+                "unverified-candidate"
+              ],
+              "terminal_action_ids": [
+                "action"
+              ],
+              "title": "Explicit scalar action contract candidate"
+            },
+            "kind": "document"
+          },
+          "continue_planning": true,
+          "head_sha256": "6319a31a06ea946ac37262ef858b014438c00cac3bbc36a3ea3e4ac416c1f8e3",
+          "id": "instruction",
+          "predicted_classes": [
+            3,
+            1,
+            1,
+            0,
+            3,
+            1
+          ],
+          "projected_embedding": [
+            -0.114799047509313,
+            -0.05706105414291574,
+            0.03852304310779935,
+            -0.037653358684738014,
+            0.05306567899120738,
+            0.06226516964052124,
+            0.05045290376627899,
+            -0.0011829577510920342,
+            -0.025203921091180113,
+            -0.04706379991779241,
+            -0.021301812399362456,
+            -0.1841954091183273,
+            -0.02571811396225568,
+            0.024582817907238094,
+            -0.042826147391148935,
+            -0.03957868224789394,
+            0.007575449009107792,
+            0.09933387788950467,
+            -0.09480901520106533,
+            -0.036930792626553605,
+            0.11820544190188478,
+            -0.07163412348129825,
+            0.04341594109413217,
+            -0.06677989144132684,
+            0.05861440515602656,
+            0.09215218826500605,
+            -0.06387247945005052,
+            -0.012052589313060691,
+            -0.003111983067410805,
+            -0.4348700743662736,
+            -0.06564823445397197,
+            -0.11169230594121526,
+            0.07426404481748053,
+            -0.1020610622643484,
+            0.09687785465545662,
+            -0.02029436379807888,
+            -0.11758208670524425,
+            -0.036227972751745496,
+            0.031891698474418556,
+            0.022801678028456104,
+            0.017434833692892684,
+            0.08980419868442535,
+            -0.011883254676912619,
+            -0.1045915135203492,
+            0.08200177829026369,
+            -0.12143593287338397,
+            -0.12613722793327864,
+            -0.009983964632066675,
+            0.07477224165750865,
+            -0.0825169388326006,
+            0.010469511906598804,
+            -0.03599808180216674,
+            0.011256974244161104,
+            0.03507504622593281,
+            0.0655689494566386,
+            0.07409985443482361,
+            0.07937735591889603,
+            0.055570445639377825,
+            -0.03957048323740008,
+            0.012166984731939053,
+            -0.04165484613536384,
+            0.055536658032366404,
+            -0.4015130606276802,
+            -0.17268601604372677,
+            0.032635720013727526,
+            -0.041118831365215144,
+            -0.05294120363531097,
+            -0.12480678689703055,
+            -0.07995812727265983,
+            0.1490320640976811,
+            -0.0121750562112109,
+            0.030733912758879767,
+            0.12684494508590852,
+            0.02734890670215527,
+            0.135145356365313,
+            -0.10942619343849116,
+            0.05454804018232065,
+            0.003959667083193924,
+            -0.01835448879428319,
+            -0.013718932297574843,
+            -0.0019430803194313978,
+            -0.11954155997029653,
+            -0.05205485410756245,
+            0.0452949402428936,
+            0.046074139606984865,
+            -0.012184446409044397,
+            0.09483858816600677,
+            -0.03151838316863421,
+            0.12444586532411395,
+            0.08576201405232754,
+            0.025035418566159887,
+            0.09160326952807778,
+            -0.04982246534737203,
+            0.0612161574524695,
+            -0.07662208762055663,
+            -0.16087435059589422,
+            0.04011213592394077,
+            0.0885015171935368,
+            -0.22862852318339733,
+            0.3286941060822369,
+            -0.10823513617731752,
+            0.019675252573810795,
+            0.08478087692383358,
+            0.04752150444648632,
+            0.08562710588052233,
+            -0.02658801317476414,
+            0.059662892829946135,
+            -0.028708319764314545,
+            0.005940652303959508,
+            -0.13823668023118196,
+            0.04274503390751812,
+            -0.05253394935914632,
+            0.15796359849773328,
+            -0.0479629773205337,
+            -0.08745310606558254,
+            0.1743398111352357,
+            -0.004840088540065757,
+            0.04879321611407958,
+            -0.10682156971463569,
+            -0.008644612513252764,
+            -0.04528000160186531,
+            0.028726695780233666,
+            0.010713284062796466,
+            0.020851223429554498,
+            0.079609446404077,
+            -0.06539092658082746,
+            0.08413517248600963,
+            0.17930194531627744,
+            -0.0654353299567911,
+            0.020825996991465007,
+            0.055310330975447866,
+            -0.131261070491566,
+            -0.08949648574355411,
+            -0.08434445764888462,
+            -0.0023654541158867823,
+            0.0500359847862958,
+            -0.04475678598688957,
+            0.02137246114269258,
+            0.10040345675579229,
+            -0.09035860272112134,
+            0.03313196150422449,
+            -0.13315686919842462,
+            0.033177980674427995,
+            -0.12860979303219391,
+            -0.11506254980269048,
+            0.20144723624378855,
+            -0.04184708402544896,
+            0.04505647101572735,
+            -0.00808520416551246,
+            -0.07465383833040626,
+            0.03755014885281499,
+            -0.049288390666801886,
+            0.010850896254602713,
+            -0.1864525305703001,
+            0.01720975822599537,
+            0.10978072539021459,
+            -0.09322249173305434,
+            0.10942199308110788,
+            -0.1534986027050329,
+            -0.022627088900941145,
+            -0.01483212612084834,
+            0.001430153982004842,
+            -0.2599339748548659,
+            0.07823291813951755,
+            0.07375383092525745,
+            -0.046298683103360834,
+            -0.020022085547131113,
+            0.004043527525937125,
+            0.06430230890943892,
+            0.03792269241596831,
+            -0.05616471013446609,
+            0.05570198561727583,
+            -0.07208792486237695,
+            -0.0807241090230973,
+            0.21668102772182146,
+            0.05156212897886048,
+            -0.09554938892309474,
+            -0.041876811455780566,
+            0.0497992436851764,
+            0.021867055480756736,
+            0.04699285982667813,
+            0.00118319809546482,
+            -0.03339320147953541,
+            -0.062171834251360976,
+            0.10274322246193462,
+            -0.06840027405530617,
+            -0.021306904182297158,
+            -0.06196574460900876,
+            0.023713092441092362,
+            0.1756050916843753,
+            -0.055762091739573916,
+            -0.08424317647673116,
+            -0.14304563228533712,
+            -0.013915298281067523,
+            0.10675329687727471,
+            -0.09955140001708174,
+            -0.06330010111021436,
+            -0.0835843255149807,
+            0.017565668250340623,
+            0.05429688265187413,
+            0.027210338654867897,
+            0.057665904941890556,
+            -0.03393977945326072,
+            -0.002439661111846181,
+            0.046717140505734174,
+            0.14902495319241674,
+            -0.11787710341934086,
+            -0.04168736983505049,
+            0.024634658236696402,
+            0.1285092122132869,
+            -0.10720548139710959,
+            -0.1254727650854607,
+            0.18157187193275548,
+            -0.010519315875407591,
+            -0.13272365772240358,
+            -0.04981644402692903,
+            -0.005876674721106742,
+            0.05409259423950892,
+            0.08098952483655787,
+            0.0607957478160618,
+            0.029162183087949777,
+            0.006253813240211795,
+            0.18160093792395599,
+            -0.29822182589998536,
+            -0.011776628278630446,
+            -0.012265356854589758,
+            -0.11332277410742889,
+            0.09524204498304262,
+            -0.14665145006312125,
+            -0.03519792063127082,
+            -0.03962234567122691,
+            0.03190067541031549,
+            0.06468202857286065,
+            0.10299122469954325,
+            0.10109185154183332,
+            -0.06581081138272626,
+            0.09878942468512956,
+            0.02401122471369569,
+            -0.06414639329294859,
+            0.0941988815548977,
+            0.08229127239644787,
+            -0.01673794983168818,
+            0.024346171554194787,
+            -0.06168334324100852,
+            -7.446681978702865e-05,
+            0.020212650991639547,
+            -0.14357224229752502,
+            0.09375722288214626,
+            -0.14704296615553258,
+            0.30583876274936667,
+            -0.011340552141930221,
+            0.0863237701966134,
+            -0.09014014149938962,
+            0.05265568361206609,
+            0.06091854043773101,
+            -0.04388684095351954,
+            -0.15533378958843774,
+            0.008550551127103276,
+            0.015335501423135722,
+            -0.01904202958223196,
+            0.03540117779084315,
+            -0.008942850526312371,
+            -0.04020102560960849,
+            0.012630865798695733,
+            0.06955796046770141,
+            0.08315237293702107,
+            -0.0913742594513765,
+            -0.06245289341077523,
+            -0.03754505009984707,
+            -0.06145641580323348,
+            0.08744857333658629,
+            -0.08632961919386893,
+            0.09005629632432989,
+            0.014886529980607965,
+            -0.03745031616461508,
+            -0.019181242212793208,
+            0.06594655272756629,
+            0.07560168171502818,
+            -0.013664275082698463,
+            -0.10140305768318106,
+            0.07801933580916429,
+            -0.046664960139037356,
+            0.03918286320455815,
+            -0.046453298029060834,
+            -0.025416388517557023,
+            -0.0467924162157334,
+            -0.09682913887707881,
+            0.07186665150477037,
+            0.07263823559005476,
+            -0.03453141102153276,
+            -0.12427795648295736,
+            0.046484766161779004,
+            -0.09745081311547527,
+            -0.02836456454438751,
+            0.06774815723757897,
+            0.09930165264661311,
+            -0.05563918045616976,
+            0.010991334407457101,
+            0.0350942989382058,
+            0.10834845288691139,
+            -0.012763956102677013,
+            1.96918702533265e-05,
+            0.008494870478534713,
+            0.1132860029005524,
+            -0.16576378967473804,
+            -0.030192005877026196,
+            0.02256975802176711,
+            0.09115720878478713,
+            -0.027394340844837606,
+            0.11861789091869253,
+            0.03930681685819869,
+            -0.02591020717636891,
+            -0.1117628034172596,
+            -0.02970443373775436,
+            0.021695571694738007,
+            -0.060945026896067823,
+            -0.16823280980257166,
+            -0.007939868554189072,
+            0.2963309885472521,
+            -0.45697184697313425,
+            0.07411208120983873,
+            0.014364603303253391,
+            0.10845007696707398,
+            -0.026867603881091676,
+            0.03881465129054355,
+            0.06111950990924439,
+            0.12113816546695302,
+            -0.08161208626165328,
+            0.07230748073648435,
+            0.032086032889627324,
+            0.07597700647714717,
+            0.10156918803116602,
+            -0.020007222513917886,
+            -0.04932057377477489,
+            -0.017851523031296765,
+            0.051980482553452355,
+            -0.14816760776240737,
+            0.16314139775003375,
+            -0.04414313278208479,
+            0.10516362652785992,
+            -0.20785491572331577,
+            0.25261712337826014,
+            -0.036939626119367755,
+            0.07658032117624408,
+            0.09659626626471132,
+            -0.03448192996895484,
+            -0.05243758576895924,
+            0.0631277689692822,
+            -0.1721204922375901,
+            0.049061242027642185,
+            -0.003228861842541092,
+            0.18028847132210898,
+            -0.12270203957207122,
+            0.08512692846286665,
+            0.06462717647589816,
+            -0.04939176065208103,
+            0.03762715267831593,
+            0.0882168920044798,
+            0.16818881901144175,
+            0.011633836435144707,
+            0.020035371968500835,
+            -0.04462958432574526,
+            -0.17922932492893484,
+            0.12249578368091424,
+            0.008190003495081234,
+            -0.04012325956580996,
+            -0.02861571330488675,
+            -0.056915356231733626,
+            0.09223439651924234,
+            -0.0841297451151511,
+            0.016290629402998098,
+            -0.07536404393201415,
+            -0.09291344700409415,
+            0.026705621070887905,
+            0.10018972573478187,
+            0.08400070568516542,
+            -0.012852759863106161,
+            -0.14288031233492668,
+            -0.11601458104536985,
+            -0.08831654004726389,
+            -0.09024365268278114,
+            0.0022912161610169415,
+            0.08477465990550277,
+            0.08912072890843813
+          ],
+          "projection_sha256": "4e90ec5a3ff3978d3f6d40fb366ea01f2a056fe6c59b3fddcf7c50f66366afd7",
+          "proof_authority": false,
+          "publication_performed": false,
+          "qualified": false,
+          "reason": null,
+          "source_semantics_verified": false,
+          "source_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+          "status": "unqualified_candidate",
+          "target_access": false,
+          "teacher_forcing": false,
+          "weight_ablation": null
+        }
+      ],
+      "schema": "structured-source-384-autoencoder/v1",
+      "source_semantics_verified": false
+    },
+    "instruction": "the runner must compute result; requires left > 0; ensures result = old(right) * old(left) and returned.",
+    "lake_executed": false,
+    "llm_used": false,
+    "model_inference_executed": true,
+    "native_intent_ir": {
+      "actions": [
+        {
+          "action_id": "action",
+          "actor": "runner",
+          "effect_ids": [
+            "effect:equation",
+            "effect:returned"
+          ],
+          "grounding": "inferred",
+          "input_refs": [],
+          "object_refs": [
+            "result"
+          ],
+          "output_refs": [],
+          "precondition_ids": [
+            "precondition"
+          ],
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "tool_refs": [],
+          "verb": "compute",
+          "verification_ids": []
+        }
+      ],
+      "control_edges": [],
+      "document_id": "intent-action-contract:single",
+      "entry_action_ids": [
+        "action"
+      ],
+      "intent_kind": "procedure",
+      "schema_version": "intent-ir/v1",
+      "sources": [
+        {
+          "container_sha256": "",
+          "container_uri": "",
+          "content_cid": "",
+          "content_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+          "license_expression": "",
+          "ref_id": "intent-contract:source",
+          "review_status": "machine_extracted",
+          "source_id": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+          "source_revision": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+          "source_uri": "instruction:explicit-action-contract",
+          "span": {
+            "end_char": 104,
+            "start_char": 0
+          }
+        }
+      ],
+      "statements": [
+        {
+          "arguments": [
+            "result",
+            "old:right",
+            "mul",
+            "old:left"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "effect",
+          "modality": "asserted",
+          "normalized_text": "Declared return equation.",
+          "predicate": "return_equation",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "effect:equation"
+        },
+        {
+          "arguments": [
+            "returned"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "effect",
+          "modality": "asserted",
+          "normalized_text": "Declared returned observation.",
+          "predicate": "returned",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "effect:returned"
+        },
+        {
+          "arguments": [
+            "runner",
+            "result"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "goal",
+          "modality": "required",
+          "normalized_text": "Declared scalar computation.",
+          "predicate": "compute",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "goal"
+        },
+        {
+          "arguments": [
+            "left",
+            "0"
+          ],
+          "confidence": 0.0,
+          "grounding": "inferred",
+          "kind": "precondition",
+          "modality": "asserted",
+          "normalized_text": "Declared input requirement.",
+          "predicate": "input_gt",
+          "review_status": "machine_extracted",
+          "source_ref_ids": [
+            "intent-contract:source"
+          ],
+          "statement_id": "precondition"
+        }
+      ],
+      "tags": [
+        "unverified-candidate"
+      ],
+      "terminal_action_ids": [
+        "action"
+      ],
+      "title": "Explicit scalar action contract candidate"
+    },
+    "producer_pin_scope": "direct_modules_loaded_functions_and_disk_not_full_environment",
+    "producer_pins": {
+      "ipfs_datasets_py.logic.formalization.autoencoder.intent_action_runtime_384": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+      "ipfs_datasets_py.logic.formalization.autoencoder.portable_source_pins": "ca685ec1d78167d8d74568d7d6090b1dc448a851b6136ef1022ef2fb649274e8",
+      "ipfs_datasets_py.logic.formalization.autoencoder.source_embeddings_384": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+      "ipfs_datasets_py.logic.formalization.autoencoder.structured_source_384": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "ipfs_datasets_py.logic.intent_ir.formalize.action_contracts": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_embedding_runtime": "27855f5ffd59ebc45444d5e37c18ff1569618084cd27b1503db112940051ffb0"
+    },
+    "proof_authority": false,
+    "provenance_binding_performed": true,
+    "qualified": false,
+    "raw_candidate_ir": {
+      "document": {
+        "actions": [
+          {
+            "action_id": "action",
+            "actor": "runner",
+            "effect_ids": [
+              "effect:equation",
+              "effect:returned"
+            ],
+            "grounding": "inferred",
+            "input_refs": [],
+            "object_refs": [
+              "result"
+            ],
+            "output_refs": [],
+            "precondition_ids": [
+              "precondition"
+            ],
+            "source_ref_ids": [
+              "intent-contract:source"
+            ],
+            "tool_refs": [],
+            "verb": "compute",
+            "verification_ids": []
+          }
+        ],
+        "control_edges": [],
+        "document_id": "intent-action-contract:single",
+        "entry_action_ids": [
+          "action"
+        ],
+        "intent_kind": "procedure",
+        "schema_version": "intent-ir/v1",
+        "sources": [
+          {
+            "container_sha256": "",
+            "container_uri": "",
+            "content_cid": "",
+            "content_sha256": "4d76b30fa68e9c895ae3783a6ff63a576ed1ad3c1ba4c17db0ee41cf1cf3da9a",
+            "license_expression": "",
+            "ref_id": "intent-contract:source",
+            "review_status": "unreviewed",
+            "source_id": "unbound",
+            "source_revision": "v1",
+            "source_uri": "urn:intent-action-contract:unbound-source:v1",
+            "span": null
+          }
+        ],
+        "statements": [
+          {
+            "arguments": [
+              "result",
+              "old:right",
+              "mul",
+              "old:left"
+            ],
+            "confidence": 0.0,
+            "grounding": "inferred",
+            "kind": "effect",
+            "modality": "asserted",
+            "normalized_text": "Declared return equation.",
+            "predicate": "return_equation",
+            "review_status": "machine_extracted",
+            "source_ref_ids": [
+              "intent-contract:source"
+            ],
+            "statement_id": "effect:equation"
+          },
+          {
+            "arguments": [
+              "returned"
+            ],
+            "confidence": 0.0,
+            "grounding": "inferred",
+            "kind": "effect",
+            "modality": "asserted",
+            "normalized_text": "Declared returned observation.",
+            "predicate": "returned",
+            "review_status": "machine_extracted",
+            "source_ref_ids": [
+              "intent-contract:source"
+            ],
+            "statement_id": "effect:returned"
+          },
+          {
+            "arguments": [
+              "runner",
+              "result"
+            ],
+            "confidence": 0.0,
+            "grounding": "inferred",
+            "kind": "goal",
+            "modality": "required",
+            "normalized_text": "Declared scalar computation.",
+            "predicate": "compute",
+            "review_status": "machine_extracted",
+            "source_ref_ids": [
+              "intent-contract:source"
+            ],
+            "statement_id": "goal"
+          },
+          {
+            "arguments": [
+              "left",
+              "0"
+            ],
+            "confidence": 0.0,
+            "grounding": "inferred",
+            "kind": "precondition",
+            "modality": "asserted",
+            "normalized_text": "Declared input requirement.",
+            "predicate": "input_gt",
+            "review_status": "machine_extracted",
+            "source_ref_ids": [
+              "intent-contract:source"
+            ],
+            "statement_id": "precondition"
+          }
+        ],
+        "tags": [
+          "unverified-candidate"
+        ],
+        "terminal_action_ids": [
+          "action"
+        ],
+        "title": "Explicit scalar action contract candidate"
+      },
+      "kind": "document"
+    },
+    "raw_instruction_preserved": true,
+    "reason": null,
+    "report_sha256": "b1a127f2d73d23d40598b6894cbc16c40beaccdf001496361753e27daaeb2d76",
+    "schema": "intent-action-inference-384/v1",
+    "snapshot_path": null,
+    "source_semantics_verified": false,
+    "source_sha256": "5c152fea8b6701d11c42574386896fde9780172370e946dd51b6db8be6ce8718",
+    "status": "source_supported_action_contract",
+    "training_executed": false,
+    "whole_document_formalized": false
+  },
+  "schema": "supervisor-intent-action-384-advice/v1",
+  "scope": "explicit source-audited 384D action candidate; provenance binding is separate from learned semantic fields",
+  "source_executed": false,
+  "source_semantics_verified": false,
+  "status": "semantic_candidate_advice",
+  "training_steps": 0,
+  "whole_instruction_verified": false
+}

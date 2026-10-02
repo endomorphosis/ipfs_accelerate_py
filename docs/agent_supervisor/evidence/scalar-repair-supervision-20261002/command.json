@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-P",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_scalar_supervision",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/scalar-repair-supervision-20261002/native-05",
+    "--intent-config",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json",
+    "--security-config",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/security-config.json",
+    "--lake",
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lake"
+  ],
+  "cwd": "/tmp/ir-release-accelerate-20261001",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/tmp/ir-release-accelerate-20261001:/tmp/ir-release-datasets-20261001",
+    "TOKENIZERS_PARALLELISM": "false",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "exit_code": 0
+}

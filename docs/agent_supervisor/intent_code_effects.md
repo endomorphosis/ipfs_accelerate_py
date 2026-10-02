@@ -98,3 +98,8 @@ optional output leave planning and the original advisors available. All results
 remain advisory: the bounded interpretation does not establish the instruction's
 meaning, Python equivalence, a security policy, or execution/completion authority.
 Saved receipts retain their evidence role and cannot substitute for live handles.
+
+The separate [bounded scalar repair path](scalar_counterexample_repair.md) can
+start from a fresh checked counterexample, generate operator-only proposals,
+and recheck every candidate before an independently admitted native worker
+handoff. Enabling effect advice alone does not enable that repair path.

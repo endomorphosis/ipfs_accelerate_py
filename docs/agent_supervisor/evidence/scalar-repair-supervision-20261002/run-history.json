@@ -1,0 +1,58 @@
+[
+  {
+    "error": {
+      "message": "scalar handoff directories must be owner-controlled and worker-readable",
+      "type": "ValueError"
+    },
+    "qualified": false,
+    "reason": "Fixture .runtime parent inherited group-writable mode0775; owner-handoff refused. Fixed driver to create fresh parent0755.",
+    "remaining_processes": null,
+    "result_sha256": "4bb8cf872af2879224ff3258fb6417b0021464ad4d187f7f90b8927259170832",
+    "run": "native-01",
+    "seconds": 21.761001962935552,
+    "start_status": null,
+    "task": null
+  },
+  {
+    "error": {
+      "message": "native START failed",
+      "type": "RuntimeError"
+    },
+    "qualified": false,
+    "reason": "START failed: required owner heartbeat never appeared before30s deadline. No lifecycle fix claimed; intermittent cause remains unresolved.",
+    "remaining_processes": 0,
+    "result_sha256": "480be60de2b934daaae47b03e684f0d967a323c06a692c1159861947d27fa9ac",
+    "run": "native-02",
+    "seconds": 54.723387805977836,
+    "start_status": "conflict",
+    "task": null
+  },
+  {
+    "exit_code": 139,
+    "log_sha256": "3281750d7191e3637de053c5e73226eaa9197a597d989b65babba6379c6e2342",
+    "qualified": false,
+    "reason": "Parent segfaulted while diagnostic faulthandler printed a shim stack, before worker startup; no application result. Follow-up diagnostics enabled tracebacks only in supervisor children. No root-cause claim.",
+    "run": "native-03-diagnostic"
+  },
+  {
+    "error": null,
+    "qualified": false,
+    "reason": "Worker materialized exact candidate; declared absolute Python validation launcher rejected by sealed runtime. Fixed driver to declare python3.",
+    "remaining_processes": 0,
+    "result_sha256": "efeffbfdd59b39c70f53e554d34dd1560962e76a7317e20c04d661e6e014bb36",
+    "run": "native-04-diagnostic",
+    "seconds": 121.14928195509128,
+    "start_status": "succeeded",
+    "task": {
+      "revision": 3,
+      "status": "in_progress"
+    }
+  },
+  {
+    "qualified": true,
+    "reason": "Normal run; no diagnostic Python hook. Fresh inference and live proofs, native START, exact worker materialization, validation, publication, completion, refresh, STOP.",
+    "remaining_processes": 0,
+    "run": "native-05",
+    "seconds": 38.52111692586914
+  }
+]
