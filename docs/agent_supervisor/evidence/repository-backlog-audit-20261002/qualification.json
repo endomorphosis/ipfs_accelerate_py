@@ -1,0 +1,20 @@
+{
+  "schema": "repository-ledger-audit-qualification@1",
+  "tests_passed": 7,
+  "seconds": 0.48,
+  "skipped": 0,
+  "actual_evidence_audit": "audit.json",
+  "ledger_snapshot": "audited-ledger.json",
+  "synthetic_controls": "Only tiny evidence bytes in bookkeeping tests are synthetic. The separately archived CLI audit verifies actual retained evidence files in both repository trees.",
+  "acceptance_sufficiency_evaluated": false,
+  "source_inventory": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_backlog_audit.py",
+      "sha256": "65139ea7046e73dceedd300ce65d535150a19de97d7dd60eab21031b283ad2c0"
+    },
+    {
+      "path": "test/integration/test_repository_backlog_audit.py",
+      "sha256": "bb056d826539e1ec8d9baed5585c406249b74a0a9aba55f32a2f3f4f6319d20c"
+    }
+  ]
+}

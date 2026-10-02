@@ -1,8 +1,9 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Twenty exits are closed for their declared
-profiles; 12 remain open.** Twenty individual criteria have passed qualification. These results do not establish
+every original acceptance criterion. **Seventeen exits are closed for their declared
+profiles; 15 remain open.** Twenty individual criteria have passed qualification;
+three still depend on unfinished resource integration. These results do not establish
 default production activation or a Terminal Bench advantage.
 
 ## Actual results
@@ -196,3 +197,9 @@ keys, formatting, missing/revoked evidence and complete populations. This closes
 The015 worker-contract dependency passed an independent68-control audit,
 closing that delivery criterion for this bounded profile. The model provider is
 replaced in routing tests; actual native storage/claim/check observations run.
+
+The dependency audit corrected an earlier lifecycle ledger error:010,027 and011
+had been listed as closed while022 remained open. Their native qualification
+results remain valid, but production closure now correctly waits for that
+resource prerequisite. Cross-repository evidence links also name their explicit
+repository rather than relying on a local checkout layout.

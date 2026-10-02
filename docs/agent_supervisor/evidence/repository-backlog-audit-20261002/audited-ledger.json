@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T09:36:56.034475+00:00",
+  "updated_at_utc": "2026-10-02T09:28:46.567144+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -287,11 +287,6 @@
       "repository": "ipfs_datasets_py",
       "path": "docs/autoencoders/evidence/nested-daemon-resources-20261002/manifest.json",
       "sha256": "b555234190d7983004f029283bfedbee9a737d3fc54c7c12fda467c13799a4db",
-      "retention": "repository_evidence"
-    },
-    "ledger-bookkeeping-audit": {
-      "path": "docs/agent_supervisor/evidence/repository-backlog-audit-20261002/manifest.json",
-      "sha256": "152d9358982720805e310b429a5b431656505243c7066c6f400ca7f58a502ca8",
       "retention": "repository_evidence"
     }
   },

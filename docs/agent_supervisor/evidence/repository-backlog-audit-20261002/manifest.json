@@ -1,0 +1,40 @@
+{
+  "schema": "repository-evidence-files@1",
+  "files": [
+    {
+      "path": "audit.json",
+      "bytes": 2086,
+      "sha256": "c2417e3d55700b5135c4919589acdb61234f5e53f818e99eb6f945b1109598a4"
+    },
+    {
+      "path": "audited-ledger.json",
+      "bytes": 83124,
+      "sha256": "1362e29be7a5e2c61db609641ec04b24abbed1439f640a495aa85adf6c7108fa"
+    },
+    {
+      "path": "final-tests.log",
+      "bytes": 2011,
+      "sha256": "63affcbf79e00518f2ee3aec4cd8b21ff9f935b0788c4abdc46f745d38084fd0"
+    },
+    {
+      "path": "final-tests.xml",
+      "bytes": 1332,
+      "sha256": "4815c3ae8e2f7c8dc321efb848ffcddf3e580e098651aedc7c6535f366c9a54d"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 809,
+      "sha256": "6a06e6c1a45be2c71ddac98632c1b9c667620d37b389c5997cc7cfa9c6b084ea"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 2005,
+      "sha256": "8498af377436261aeece5e7eb64a70edb3c4fd8366d3b38605a86eca83cb5dd4"
+    },
+    {
+      "path": "tests.xml",
+      "bytes": 1332,
+      "sha256": "2cda65d9af7fa5eecb4638a72422268300e89cfecd152b0692c6a315266d14bc"
+    }
+  ]
+}
