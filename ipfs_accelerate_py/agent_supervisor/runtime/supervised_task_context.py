@@ -38,6 +38,9 @@ def prepare_supervised_task_context(
     semantic_worker_query: str = "",
     semantic_worker_max_bytes: int = 32768,
     security_source_program_config=None,
+    intent_code_effect_instruction=None,
+    intent_code_effect_intent_advice=None,
+    intent_code_effect_config=None,
 ) -> dict:
     """Join native task, capsules, Doctor and world evidence from one scope.
 
@@ -197,5 +200,24 @@ def prepare_supervised_task_context(
             expected_sha256=semantic["worker_payload_sha256"], task_id=alias)
         if intent.event_watermark() != watermark:
             raise ValueError("task intent changed during optional Security inference")
+    if intent_code_effect_config is not None:
+        try:
+            from .intent_code_effect_advisor import prepare_repository_intent_code_effect_advice
+            effect_advice = prepare_repository_intent_code_effect_advice(
+                repository=root, paths=list(paths), instruction=intent_code_effect_instruction,
+                intent_advice=intent_code_effect_intent_advice,
+                security_advice=result.get("security_source_program_advice"), config=intent_code_effect_config)
+        except Exception as error:
+            effect_advice = dict(status="fail_open_unavailable", continue_planning=True,
+                error_type=type(error).__name__, proof_authority=False,
+                execution_authority=False, completion_authority=False)
+        result["intent_code_effect_advice"] = effect_advice
+        # An optional contract never selects a prompt from the task title or
+        # attaches its declarations to the native IntentRepository. Recheck the
+        # independent current owners after this potentially expensive work.
+        load_semantic_worker_context(repository=root, artifact=semantic_artifact,
+            expected_sha256=semantic["worker_payload_sha256"], task_id=alias)
+        if intent.event_watermark() != watermark:
+            raise ValueError("task intent changed during optional Intent/code contract check")
     (output / "result.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     return result
