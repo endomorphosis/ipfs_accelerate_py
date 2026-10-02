@@ -1,0 +1,139 @@
+{
+  "behavioral_evidence_selected": true,
+  "benchmark_result": false,
+  "budgeted_preparation_selected": true,
+  "error": {
+    "message": "supervisor lane policy refused repository envelope: host_disk_high_watermark",
+    "type": "RepositoryResourceError"
+  },
+  "full_trial_resources_selected": true,
+  "host_pressure": {
+    "cpu": "some avg10=19.41 avg60=22.24 avg300=23.28 total=460513331378\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "io": "some avg10=0.98 avg60=0.34 avg300=0.38 total=21270831558\nfull avg10=0.76 avg60=0.25 avg300=0.31 total=19171016186\n",
+    "memory": "some avg10=0.00 avg60=0.62 avg300=3.52 total=7096530534\nfull avg10=0.00 avg60=0.51 avg300=2.97 total=6350889232\n"
+  },
+  "initial_public_check_exit_code": 1,
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "observations": [],
+  "phase_accounting": {
+    "complete_contiguous_wall_coverage": true,
+    "enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "includes_cleanup": true,
+    "includes_queue_waits": true,
+    "schema": "repository-trial-wall-accounting@1",
+    "seconds": 0.09082737285643816,
+    "setup_before_resource_admission": true
+  },
+  "preparation_reports": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "qualified": false,
+  "resource_state": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "allocated_child_process_slots": 0,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 0,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 0,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "lanes": {
+      "validation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 2,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 0,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 0,
+          "wait_seconds_max": 0.0,
+          "wait_seconds_mean": 0.0,
+          "wait_seconds_total": 0.0
+        }
+      }
+    },
+    "proof_backoff": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 0,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "wait_time_seconds": {
+      "count": 0,
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "total": 0.0
+    },
+    "waiting_request_count": 0
+  },
+  "run_owner_pid": 394454,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 0.09082737285643816,
+  "training_steps": 0,
+  "trial_phases": [
+    {
+      "elapsed_seconds": 0.06005820189602673,
+      "end_seconds": 0.06005820189602673,
+      "phase": "setup",
+      "start_seconds": 0.0,
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.03076917096041143,
+      "end_seconds": 0.09082737285643816,
+      "phase": "host_admission",
+      "start_seconds": 0.06005820189602673,
+      "status": "failed"
+    }
+  ]
+}

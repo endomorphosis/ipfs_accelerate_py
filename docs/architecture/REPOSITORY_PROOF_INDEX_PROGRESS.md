@@ -1,9 +1,8 @@
 # Repository proof index: qualified integration progress
 
 The [32-task evidence ledger](repository_proof_index_backlog_status.json) preserves
-every original acceptance criterion. **Fifteen exits are closed for their declared
-profiles; 17 remain open.** Eighteen individual criteria have passed qualification,
-including three still blocked by prerequisites. These results do not establish
+every original acceptance criterion. **Twenty exits are closed for their declared
+profiles; 12 remain open.** Twenty individual criteria have passed qualification. These results do not establish
 default production activation or a Terminal Bench advantage.
 
 ## Actual results
@@ -188,3 +187,12 @@ Typed intent and residual queries now pass11 controls, including a separate
 process reopening durable source/catalog/cache owners and running a fresh positive
 checker. All four bounded native query shapes are implemented; they retain the
 complete requirement population and confer no task-omission authority.
+
+The source/evidence matrix is complete for the bounded model-off profile. Seven
+joined source cases include actual parser-configuration refusal; the28 native
+evidence controls and11 typed intent controls cover persistent replay, exact
+keys, formatting, missing/revoked evidence and complete populations. This closes
+023 and032, together with the qualified013/014 planning/admission dependencies.
+The015 worker-contract dependency passed an independent68-control audit,
+closing that delivery criterion for this bounded profile. The model provider is
+replaced in routing tests; actual native storage/claim/check observations run.

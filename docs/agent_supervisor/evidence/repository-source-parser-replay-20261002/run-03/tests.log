@@ -1,0 +1,45 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /tmp/ir-release-accelerate-20261001/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 7 items / 6 deselected / 1 selected
+
+test/integration/test_repository_code_evidence_source_matrix.py::test_real_parser_configuration_change_cannot_reuse_old_projection [31mERROR[0m[31m [100%][0m
+
+==================================== ERRORS ====================================
+[31m[1m_ ERROR at setup of test_real_parser_configuration_change_cannot_reuse_old_projection _[0m
+[1m[31m/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py[0m:924: in pytest_fixture_setup
+    [0m[94mreturn[39;49;00m ([94myield[39;49;00m)[90m[39;49;00m
+            ^^^^^[90m[39;49;00m
+[1m[31mtest/integration/test_terminal_codebase_semantic_index.py[0m:32: in prepared
+    [0mhead, descriptor = prepare_semantic_index(index=index, repository=repository,[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py[0m:37: in prepare_semantic_index
+    [0mverify_semantic_index(index=index, repository=repository, expected_head=head,[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py[0m:55: in verify_semantic_index
+    [0mverify_policy_current(index, repository, expected_head=expected_head,[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py[0m:59: in verify_policy_current
+    [0mindex.observe_current(root, expected_head=expected_head, parent_lease=lease,[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py[0m:446: in observe_current
+    [0m[94mwith[39;49;00m acquire_codebase_resources([90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py[0m:75: in acquire_codebase_resources
+    [0mlease = parent_lease.acquire_child(**request)[90m[39;49;00m
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py[0m:720: in acquire_child
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m._scheduler.acquire([90m[39;49;00m
+[1m[31m../ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py[0m:1502: in acquire
+    [0m[94mraise[39;49;00m LeaseTimeoutError([33m"[39;49;00m[33mtimed out waiting for a resource lease[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE   ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease[0m
+- generated xml file: /home/barberb/lift_coding/artifacts/repository-code-evidence-source-matrix-20261002/run-03/tests.xml -
+============================= slowest 10 durations =============================
+67.42s setup    integration/test_repository_code_evidence_source_matrix.py::test_real_parser_configuration_change_cannot_reuse_old_projection
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mERROR[0m test/integration/test_repository_code_evidence_source_matrix.py::[1mtest_real_parser_configuration_change_cannot_reuse_old_projection[0m - ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.Leas...
+[31m================== [33m6 deselected[0m, [31m[1m1 error[0m[31m in 84.44s (0:01:24)[0m[31m ===================[0m

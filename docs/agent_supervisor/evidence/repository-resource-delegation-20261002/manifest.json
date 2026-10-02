@@ -1,0 +1,75 @@
+{
+  "schema": "repository-evidence-files@1",
+  "files": [
+    {
+      "path": "native-02/driver.py.txt",
+      "bytes": 41093,
+      "sha256": "62b4559a186802accd5154b6bf5e762e1e55e083f55ed46e5dc637517e7ff6bd"
+    },
+    {
+      "path": "native-02/manifest.json",
+      "bytes": 256,
+      "sha256": "99bb18634a0824bec90eb66647c39f03835f6fafd60fded65fb558431747b606"
+    },
+    {
+      "path": "native-02/result.json",
+      "bytes": 5459,
+      "sha256": "e824c72914ae72e29120b2cfdce0ecd393fb723aca12fb9b19532b5c62899812"
+    },
+    {
+      "path": "native-02/run.log",
+      "bytes": 525,
+      "sha256": "063768089e2da729daa58011d26fd883e7200d9f4e6b06142232c9ec9c67970a"
+    },
+    {
+      "path": "native-03/driver.py.txt",
+      "bytes": 41178,
+      "sha256": "b4b8a47a28c50705e09370da5e1a746f9ec7b9823896171a9653553ff557a3f3"
+    },
+    {
+      "path": "native-03/manifest.json",
+      "bytes": 256,
+      "sha256": "83480db4e2e5c21b36056951794153da3e9d45171424d2bacc37283c54a0398d"
+    },
+    {
+      "path": "native-03/result.json",
+      "bytes": 3420,
+      "sha256": "ea015942ce49fcdf19a563d2f7f7d0d042a42dc4c877643a219c12e2c442b3d1"
+    },
+    {
+      "path": "native-03/run.log",
+      "bytes": 527,
+      "sha256": "e29f4cc97ae57bed4a72ed2e9ef11cf881e7bed7ca896b5fecf2c277eee2bb90"
+    },
+    {
+      "path": "native-04/driver.py.txt",
+      "bytes": 42833,
+      "sha256": "dc66febe2a0237ec89b883cda331e443693aae71646fe96f6b0b05f5d946ffc2"
+    },
+    {
+      "path": "native-04/result.json",
+      "bytes": 4170,
+      "sha256": "2ed134a3a286d9cfd72cee369d5dcd76f4661a9f82006efd48661cfe1aca4a7e"
+    },
+    {
+      "path": "native-04/run.log",
+      "bytes": 527,
+      "sha256": "a054c86c96431cad622c7d76637f2c0c793cecf3ab06b19c4d866ce82a7c75d4"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 1892,
+      "sha256": "b9a3e4eef9a302e9537022fff879f5841c6d8840ea72a48734eddb6645febf65"
+    },
+    {
+      "path": "tests.log",
+      "bytes": 3559,
+      "sha256": "b266a51c110016558e5e60f535965cac01260ffd159e31079ac17cdffa26ecb3"
+    },
+    {
+      "path": "tests.xml",
+      "bytes": 1592,
+      "sha256": "30ece8143df6aa92c2b6e0bd2f80331a1ea6a1075c95ab9f3f3a53fe16aab4ef"
+    }
+  ]
+}

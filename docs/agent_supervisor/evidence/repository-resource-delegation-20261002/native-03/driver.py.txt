@@ -183,17 +183,7 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         budgeted_preparation_selected=budgeted_preparation,
         full_trial_resources_selected=full_trial_resources,
         preparation_reports=[],
-        observations=[], trial_phases=[])
-    phase_name, phase_started = "setup", started
-    def advance_phase(name, *, status="completed"):
-        nonlocal phase_name, phase_started
-        now = time.monotonic()
-        report["trial_phases"].append(dict(phase=phase_name, status=status,
-            elapsed_seconds=now-phase_started, start_seconds=phase_started-started,
-            end_seconds=now-started))
-        phase_name, phase_started = name, now
-        if trial_envelope is not None:
-            trial_envelope.remaining()
+        observations=[])
     try:
         repository = output / "repository"; repository.mkdir()
         for name, body in {"calc.py": SOURCE, "instruction.txt": INSTRUCTION,
@@ -220,7 +210,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             raise RuntimeError("independent public acceptance must initially fail")
         tools = seal_finite_integer_tools(python_executable=python, lean_executable=lean)
         scheduler = get_global_resource_scheduler()
-        advance_phase("host_admission")
         if full_trial_resources:
             from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge import (
                 RepositoryResourceBridge, RepositoryResourceBudget, RepositoryPhaseDemand,
@@ -293,7 +282,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             saved = owner.check_and_store(owner_inputs=inputs)
             _write(output / (name + "-checked-cache.json"), saved)
             return dict(owner=owner, inputs=inputs, binding=_cache_binding(saved)), saved
-        advance_phase("initial_preparation")
         with duckdb.connect(str(output / "repository.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             index = _index(cx, output / "artifacts")
             if behavioral_evidence:
@@ -311,7 +299,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 report["initial_checked_cache"] = _cache_binding(cache_result)
                 if cache_result["status"] != "refuted" or cache_result["positive_reuse_eligible"]:
                     raise RuntimeError("initial offset must remain a checked residual")
-            advance_phase("planning_admission_and_context")
             with IntentRepository(output / "intent.duckdb") as intent:
                 declared = prepare_local_task(repository=repository, state=output / "policy", intent=intent,
                     scope_paths=["calc.py", "instruction.txt", "public_check.py"], output_path="calc.py",
@@ -360,7 +347,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                     selected_operations=candidate["preview"]["selected_task_ids"],
                     retained_preview_execution_debt=candidate["preview"]["execution_plan"],
                     context_bundle=bundle, handoff_sha256=candidate["handoff_sha256"])
-        advance_phase("worker_prelaunch")
         binding = candidate["signed_evidence"]["binding"]
         runner_module = "repository_finite_public_context" if public_evidence else "repository_finite_runner"
         if behavioral_evidence:
@@ -390,7 +376,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 "--repository-id", head.repository_id]
         command = shlex.join(command_args)
         worktrees = output / "worktrees"; worktrees.mkdir(mode=0o750)
-        advance_phase("native_supervision_and_stop")
         with open_existing_native_owner(database=output / "intent.duckdb", checkout=repository,
                 state_dir=output / "owner", repository_id=declared["manifest"]["payload"]["repository_cid"],
                 execution_routes={declared["task_id"]: GROK_CODEX_EXECUTION_MODE}) as owner:
@@ -428,7 +413,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                         report["after_stop"] = runtime.observe()
                 finally:
                     runtime.close()
-        advance_phase("publication_verification")
         if public_context is not None:
             receipts = []
             logs = list((output / "launch/state/run").glob(
@@ -483,7 +467,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 report["stale_dispatch_refused"] = False
         finally:
             _git(repository, "worktree", "remove", "--force", str(stale_workspace))
-        advance_phase("successor_preparation_and_reproof")
         # Reopen the durable owner and capture the actual published successor.
         with duckdb.connect(str(output / "repository.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             index = _index(cx, output / "artifacts")
@@ -529,7 +512,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             report["successor"] = dict(head=successor.to_dict(), fact_count=len(matched["current_facts"]),
                 residuals=matched["residual_clause_ids"], observation_cid=matched["observation_cid"])
             _write(output / "successor-match.json", matched)
-        advance_phase("independent_cold_comparison")
         with duckdb.connect(str(output / "cold.duckdb"), config={"threads": 1, "memory_limit": "64MB"}) as cx:
             cold = _index(cx, output / "cold-artifacts")
             cold_head, cold_index = prepare_source(cold, repository_id=head.repository_id,
@@ -552,7 +534,6 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                 "cold": finite_successor_semantics(cold_match),
                 "generation_bound_receipts_remain_distinct": matched["observation_cid"] != cold_match["observation_cid"]})
             _write(output / "cold-match.json", cold_match)
-        advance_phase("resource_cleanup")
         if trial_envelope is not None:
             resources_stack.close()
             report["full_trial_resource_receipt"] = trial_envelope.receipt()
@@ -582,18 +563,7 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         resources_stack.close()
         if trial_envelope is not None:
             report["full_trial_resource_receipt"] = trial_envelope.receipt()
-        finished = time.monotonic()
-        report["trial_phases"].append(dict(phase=phase_name,
-            status="failed" if "error" in report else "completed",
-            elapsed_seconds=finished-phase_started, start_seconds=phase_started-started,
-            end_seconds=finished-started))
-        report["seconds"] = finished - started
-        report["phase_accounting"] = dict(schema="repository-trial-wall-accounting@1",
-            includes_queue_waits=True, includes_cleanup=True,
-            seconds=sum(row["elapsed_seconds"] for row in report["trial_phases"]),
-            complete_contiguous_wall_coverage=True,
-            setup_before_resource_admission=True,
-            enforcement="cooperative_parent_and_native_subprocess_limits")
+        report["seconds"] = time.monotonic() - started
         _write(output / "result.json", report)
     return report
 

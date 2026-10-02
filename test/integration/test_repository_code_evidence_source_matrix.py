@@ -104,3 +104,22 @@ def test_ignore_configuration_change_refuses_frozen_page(owner):
     with (args['repository']/'.gitignore').open('a') as out:out.write('unsupported.py\n')
     with pytest.raises(ValueError):
         plane.relevant_units(query=RelevantUnitsQuery(page_size=2),cursor=first['next_cursor'],**args)
+
+
+def test_real_parser_configuration_change_cannot_reuse_old_projection(owner):
+    from ipfs_datasets_py.logic.software_contracts.duckdb_ingest import _frontend_cache_context
+    from ipfs_datasets_py.logic.software_contracts.python_frontend import PythonASTExtractor
+    plane,args=owner
+    original=plane.index.ingestor._frontends['python']
+    changed=PythonASTExtractor(max_ast_nodes=1)
+    before=_frontend_cache_context(original,language='python',path='calc.py')
+    after=_frontend_cache_context(changed,language='python',path='calc.py')
+    assert before.configuration_cid!=after.configuration_cid
+    source=(args['repository']/'calc.py').read_bytes()
+    # A native same-revision publication must refuse conflicting extraction.
+    # The old immutable historical projection may still be read under its
+    # original identity; it cannot be relabeled as the new parser result.
+    plane.index.ingestor._frontends['python']=changed
+    with pytest.raises(ValueError):refresh(plane,args,'changed-parser')
+    assert (args['repository']/'calc.py').read_bytes()==source
+    assert plane.index.current(args['expected_head'].repository_id)==args['expected_head']

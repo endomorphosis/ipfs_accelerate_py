@@ -1,0 +1,16 @@
+{
+  "schema": "repository-parser-replay-qualification@1",
+  "passed": 1,
+  "skipped": 0,
+  "seconds": 16.77,
+  "test_path": "test/integration/test_repository_code_evidence_source_matrix.py",
+  "test_sha256": "e04485e8db153da2422b0b3131ecbc68ef55573102656300e2874dc8f19886a3",
+  "prior_distinct_source_cases": 6,
+  "scope": "Actual PythonASTExtractor configuration change alters native parser configuration CID. Same source revision with incompatible extracted AST is refused; original source/head persist. Historical old parser projections are not relabeled.",
+  "attempts": {
+    "run-03": "actual native setup lease timeout; no test executed",
+    "run-04": "actual native setup lease timeout; no test executed",
+    "run-05": "passed actual parser publication conflict test"
+  },
+  "implementation_changed": false
+}

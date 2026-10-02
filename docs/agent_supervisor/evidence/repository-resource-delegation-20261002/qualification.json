@@ -1,0 +1,38 @@
+{
+  "schema": "repository-resource-delegation-qualification@1",
+  "helper_tests_passed": 9,
+  "helper_seconds": 1.31,
+  "skipped": 0,
+  "full_trial_qualified": false,
+  "native_attempts": {
+    "02": "original 8GiB model-off parent demand timed out under actual memory pressure before preparation",
+    "03": "rightsized 3GiB parent and 1GiB phases refused actual95percent host disk watermark before preparation",
+    "04": "same actual disk refusal with complete contiguous wall accounting including queue and cleanup"
+  },
+  "private_grants_archived": false,
+  "source_inventory": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_handoff.py",
+      "sha256": "ca3777ad9fff604f801844b7a86677ce2c111ab75192ebb3b7e68c33591c138e"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_budgeted_behavioral_runner.py",
+      "sha256": "77a35bd880f75f286b51d87e923eed8ff695d0bbefc517e7bf07c7037c5eba34"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "dc66febe2a0237ec89b883cda331e443693aae71646fe96f6b0b05f5d946ffc2"
+    },
+    {
+      "path": "test/integration/test_repository_resource_handoff.py",
+      "sha256": "67eb59fe6b66fa39c1f05f962d20f87a49be4c84b901745c52f612d7ed7226c8"
+    }
+  ],
+  "qualified_scope": "Native cross-process resource-only delegation with exact repository/task binding, existing global parent authority, sibling validation, parent cancellation and released-parent refusal. No secret capability enters receipts.",
+  "limitations": [
+    "Full supervisor worker delegation has not run to completion",
+    "CPU/RAM admission is sampled; no new kernel hard limit or per-device GPU authority",
+    "No claim of global disk, retained payload queue, or automatic sibling reserve enforcement"
+  ],
+  "benchmark_score": false
+}

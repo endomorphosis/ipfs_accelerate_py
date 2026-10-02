@@ -1,0 +1,183 @@
+{
+  "behavioral_evidence_selected": true,
+  "benchmark_result": false,
+  "budgeted_preparation_selected": true,
+  "error": {
+    "message": "timed out waiting for a resource lease",
+    "type": "LeaseTimeoutError"
+  },
+  "full_trial_resources_selected": true,
+  "host_pressure": {
+    "cpu": "some avg10=21.67 avg60=21.60 avg300=20.93 total=460333573019\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "io": "some avg10=0.03 avg60=0.23 avg300=0.55 total=21264827965\nfull avg10=0.03 avg60=0.23 avg300=0.49 total=19165685772\n",
+    "memory": "some avg10=0.00 avg60=0.12 avg300=2.42 total=7058886339\nfull avg10=0.00 avg60=0.10 avg300=1.96 total=6318491459\n"
+  },
+  "initial_public_check_exit_code": 1,
+  "intent_origin": "complete explicitly scoped controlled-language IntentIR",
+  "learned_interpretation": false,
+  "observations": [],
+  "preparation_reports": [],
+  "production_activation": false,
+  "proof_cache_bypass": false,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "qualified": false,
+  "resource_state": {
+    "active_child_lease_count": 2,
+    "active_lease_count": 4,
+    "active_root_lease_count": 2,
+    "allocated": {
+      "cpu_slots": 5,
+      "memory_mb": 4864
+    },
+    "allocated_child_process_slots": 13,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 3,
+      "cpu_slots": 11,
+      "gpu_memory_mb": null,
+      "memory_mb": 94824,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 16,
+      "cpu_slots": 16,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 57,
+      "cancellations_total": 2,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 53,
+      "saturation_events_total": 63,
+      "timeouts_total": 8
+    },
+    "lanes": {
+      "hammer_lean": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 1,
+          "cancellations_total": 0,
+          "timeouts_total": 1,
+          "wait_count": 2,
+          "wait_seconds_max": 300.00006740610115,
+          "wait_seconds_mean": 150.92113870452158,
+          "wait_seconds_total": 301.84227740904316
+        }
+      },
+      "orchestration": {
+        "allocated": {
+          "child_process_slots": 12,
+          "cpu_slots": 4,
+          "gpu_memory_mb": 0,
+          "memory_mb": 4352,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 6,
+          "cancellations_total": 2,
+          "timeouts_total": 2,
+          "wait_count": 8,
+          "wait_seconds_max": 599.8937934290152,
+          "wait_seconds_mean": 149.0962041298917,
+          "wait_seconds_total": 1192.7696330391336
+        }
+      },
+      "snapshot_evaluation": {
+        "allocated": {
+          "child_process_slots": 1,
+          "cpu_slots": 1,
+          "gpu_memory_mb": 0,
+          "memory_mb": 512,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 45,
+          "cancellations_total": 0,
+          "timeouts_total": 5,
+          "wait_count": 50,
+          "wait_seconds_max": 120.00008128397167,
+          "wait_seconds_mean": 10.195023463261315,
+          "wait_seconds_total": 509.7511731630657
+        }
+      },
+      "validation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 2,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 5,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 5,
+          "wait_seconds_max": 23.845861223060638,
+          "wait_seconds_mean": 6.740685644233599,
+          "wait_seconds_total": 33.703428221168
+        }
+      }
+    },
+    "proof_backoff": {
+      "reason": "proof_memory_headroom",
+      "until": 1790931108.3480344
+    },
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 63,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": true,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "wait_time_seconds": {
+      "count": 65,
+      "max": 599.8937934290152,
+      "mean": 31.354869412806316,
+      "p50": 5.630080335075036,
+      "p95": 179.91543713095598,
+      "p99": 599.8937934290152,
+      "total": 2038.0665118324105
+    },
+    "waiting_request_count": 1
+  },
+  "run_owner_pid": 4170387,
+  "schema": "native-repository-finite-qualification@1",
+  "seconds": 600.0156162891071,
+  "training_steps": 0
+}

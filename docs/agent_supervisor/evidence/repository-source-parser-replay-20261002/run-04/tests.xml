@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="44.139" timestamp="2026-10-02T08:59:55.631417+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_real_parser_configuration_change_cannot_reuse_old_projection" time="30.259"><error message="failed on setup with &quot;ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease&quot;">fixturedef = &lt;FixtureDef argname='prepared' scope='function' baseid='integration/test_repository_code_evidence_source_matrix.py'&gt;
+request = &lt;SubRequest 'prepared' for &lt;Function test_real_parser_configuration_change_cannot_reuse_old_projection&gt;&gt;
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -&gt; object | None:
+        if (
+            fixturedef.argname == "event_loop_policy"
+            and fixturedef.func.__module__ != __name__
+        ):
+            warnings.warn(
+                PytestDeprecationWarning(_EVENT_LOOP_POLICY_FIXTURE_DEPRECATION_WARNING),
+            )
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+&gt;               return (yield)
+                        ^^^^^
+
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:924: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/integration/test_terminal_codebase_semantic_index.py:32: in prepared
+    head, descriptor = prepare_semantic_index(index=index, repository=repository,
+benchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py:26: in prepare_semantic_index
+    observed = prepare_policy_current(index, repository, repository_id=repository_id,
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy.py:383: in prepare_policy_current
+    publication = index.prepare_current(root, repository_id=repository_id,
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py:299: in prepare_current
+    self._prepare(
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py:343: in _prepare
+    with acquire_codebase_resources(
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py:78: in acquire_codebase_resources
+    lease = owner.acquire(**request)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xfc786c097740&gt;
+lane = &lt;ResourceLane.SNAPSHOT_EVALUATION: 'snapshot_evaluation'&gt;, cpu_slots = 1
+memory_mb = 512, gpu_memory_mb = 0, unified_memory_mb = 0
+child_process_slots = 1, requires_gpu = False, parent_lease = None
+parent = None, timeout = 30.0, cancel_event = None
+request_id = 'codebase-ir:prepare', owner_pid = None
+
+    def acquire(
+        self,
+        lane: Union[str, ResourceLane],
+        *,
+        cpu_slots: int = 1,
+        memory_mb: int = 0,
+        gpu_memory_mb: int = 0,
+        unified_memory_mb: int = 0,
+        child_process_slots: int = 0,
+        requires_gpu: bool = False,
+        parent_lease: Optional[Union[ResourceLease, ResourceLeaseToken, str]] = None,
+        parent: Optional[Union[ResourceLease, ResourceLeaseToken, str]] = None,
+        timeout: Optional[float] = None,
+        cancel_event: Optional[CancellationSignal] = None,
+        request_id: str = "",
+        owner_pid: Optional[int] = None,
+    ) -&gt; ResourceLease:
+        """Wait for and return a root or nested lease.
+    
+        Child resources are bounded by, but do not add to, the parent's
+        global allocation.  ``parent`` is an alias for ``parent_lease``.
+        Cancellation and timeouts remove the durable waiter before raising.
+        """
+    
+        lane_value = self._normalise_lane(lane)
+        if isinstance(cpu_slots, bool) or not isinstance(cpu_slots, int) or cpu_slots &lt;= 0:
+            raise ResourceConfigurationError("cpu_slots must be a positive integer")
+        if isinstance(memory_mb, bool) or not isinstance(memory_mb, int) or memory_mb &lt; 0:
+            raise ResourceConfigurationError("memory_mb must be a non-negative integer")
+        if self.config.proof_safety_enabled and memory_mb == 0:
+            raise ResourceConfigurationError("proof safety requires a positive memory_mb reservation")
+        if (
+            isinstance(gpu_memory_mb, bool)
+            or not isinstance(gpu_memory_mb, int)
+            or gpu_memory_mb &lt; 0
+        ):
+            raise ResourceConfigurationError("gpu_memory_mb must be a non-negative integer")
+        if (
+            isinstance(unified_memory_mb, bool)
+            or not isinstance(unified_memory_mb, int)
+            or unified_memory_mb &lt; 0
+        ):
+            raise ResourceConfigurationError("unified_memory_mb must be a non-negative integer")
+        if (
+            isinstance(child_process_slots, bool)
+            or not isinstance(child_process_slots, int)
+            or child_process_slots &lt; 0
+        ):
+            raise ResourceConfigurationError("child_process_slots must be a non-negative integer")
+        if timeout is not None and (not math.isfinite(float(timeout)) or timeout &lt; 0):
+            raise ResourceConfigurationError("timeout must be non-negative and finite")
+        if parent is not None and parent_lease is not None:
+            raise ResourceConfigurationError("specify only one of parent and parent_lease")
+        parent_id, parent_key = self._parent_authority(parent_lease or parent)
+        if not parent_id:
+            reservations = self.config.reservations()
+            maximum_cpu = self.config.total_cpu_slots - sum(
+                reservation.cpu_slots
+                for reserved_lane, reservation in reservations.items()
+                if reserved_lane != lane_value
+            )
+            maximum_memory = (
+                self.config.total_memory_mb
+                - sum(
+                    reservation.memory_mb
+                    for reserved_lane, reservation in reservations.items()
+                    if reserved_lane != lane_value
+                )
+                - self.config.reserved_memory_mb
+            )
+            if cpu_slots &gt; maximum_cpu or memory_mb &gt; maximum_memory:
+                raise ResourceUnavailableError(
+                    "request exceeds capacity available to its reservation lane"
+                )
+            if gpu_memory_mb &gt; 0:
+                maximum_gpu_memory = (
+                    None
+                    if self.config.total_gpu_memory_mb is None
+                    else self.config.total_gpu_memory_mb - self.config.reserved_gpu_memory_mb
+                )
+                if maximum_gpu_memory is not None and gpu_memory_mb &gt; maximum_gpu_memory:
+                    raise ResourceUnavailableError(
+                        "GPU memory request exceeds configured GPU capacity"
+                    )
+            if (
+                self.config.total_unified_memory_mb is not None
+                and unified_memory_mb &gt; self.config.total_unified_memory_mb
+            ):
+                raise ResourceUnavailableError(
+                    "unified memory request exceeds configured unified-memory capacity"
+                )
+            if child_process_slots &gt; self.config.total_child_process_slots:
+                raise ResourceUnavailableError(
+                    "child-process request exceeds configured process capacity"
+                )
+    
+        pid = int(owner_pid if owner_pid is not None else os.getpid())
+        birth_marker = _owner_birth_marker(pid)
+        waiter_id = uuid.uuid4().hex
+        started_wall = time.time()
+        started_mono = time.monotonic()
+        deadline = None if timeout is None else started_mono + float(timeout)
+        terminal: Optional[str] = None
+        granted_record: Optional[Dict[str, Any]] = None
+    
+        while granted_record is None and terminal is None:
+            now_wall = time.time()
+            now_mono = time.monotonic()
+            externally_cancelled = bool(cancel_event is not None and cancel_event.is_set())
+            with self._locked_state() as state:
+                self._recover_stale_locked(state, now_wall)
+                if waiter_id not in state["waiters"]:
+                    if (self.config.max_waiting_requests is not None
+                            and len(state["waiters"]) &gt;= self.config.max_waiting_requests):
+                        raise ResourceUnavailableError("resource admission queue is full; retry later")
+                    if parent_id:
+                        parent_record = state["leases"].get(parent_id)
+                        if parent_record is None:
+                            raise LeaseNotFoundError(f"parent lease {parent_id!r} is not active")
+                        if parent_key and parent_record.get("lease_key") != parent_key:
+                            raise LeaseNotFoundError("parent lease authority does not match")
+                        if cpu_slots &gt; int(parent_record["cpu_slots"]) or memory_mb &gt; int(
+                            parent_record["memory_mb"]
+                        ):
+                            raise ResourceUnavailableError(
+                                "child request exceeds parent lease capacity"
+                            )
+                        if gpu_memory_mb &gt; int(parent_record.get("gpu_memory_mb", 0)):
+                            raise ResourceUnavailableError(
+                                "child GPU memory request exceeds parent lease capacity"
+                            )
+                        if unified_memory_mb &gt; int(parent_record.get("unified_memory_mb", 0)):
+                            raise ResourceUnavailableError(
+                                "child unified-memory request exceeds parent lease capacity"
+                            )
+                        if child_process_slots &gt; int(parent_record.get("child_process_slots", 0)):
+                            raise ResourceUnavailableError(
+                                "child process request exceeds parent lease capacity"
+                            )
+                    sequence = int(state["next_sequence"])
+                    state["next_sequence"] = sequence + 1
+                    state["waiters"][waiter_id] = {
+                        "waiter_id": waiter_id,
+                        "sequence": sequence,
+                        "lane": lane_value,
+                        "cpu_slots": cpu_slots,
+                        "memory_mb": memory_mb,
+                        "gpu_memory_mb": gpu_memory_mb,
+                        "unified_memory_mb": unified_memory_mb,
+                        "child_process_slots": child_process_slots,
+                        "requires_gpu": bool(requires_gpu or gpu_memory_mb &gt; 0),
+                        "parent_lease_id": parent_id,
+                        "owner_pid": pid,
+                        "owner_birth_marker": birth_marker,
+                        "created_at": started_wall,
+                        "request_id": str(request_id)[:256],
+                        "saturation_recorded": False,
+                    }
+                waiter = state["waiters"][waiter_id]
+                parent_record = state["leases"].get(parent_id) if parent_id else None
+                parent_cancelled = bool(
+                    parent_id and (parent_record is None or parent_record.get("cancelled"))
+                )
+                timed_out = deadline is not None and now_mono &gt;= deadline
+                can_grant_now = self._can_grant(state, waiter) and self._is_fair_turn(state, waiter)
+                if (
+                    not externally_cancelled
+                    and not parent_cancelled
+                    and not can_grant_now
+                    and not waiter.get("saturation_recorded")
+                ):
+                    waiter["saturation_recorded"] = True
+                    state["metrics"]["saturation_events_total"] += 1
+                if externally_cancelled or parent_cancelled:
+                    state["waiters"].pop(waiter_id, None)
+                    wait_seconds = now_mono - started_mono
+                    self._record_wait(state, lane_value, wait_seconds)
+                    state["metrics"]["cancellations_total"] += 1
+                    self._lane_metrics(state, lane_value)["cancellations_total"] += 1
+                    terminal = "cancelled"
+                elif timed_out and not can_grant_now:
+                    state["waiters"].pop(waiter_id, None)
+                    wait_seconds = now_mono - started_mono
+                    self._record_wait(state, lane_value, wait_seconds)
+                    state["metrics"]["timeouts_total"] += 1
+                    self._lane_metrics(state, lane_value)["timeouts_total"] += 1
+                    terminal = "timeout"
+                elif can_grant_now:
+                    state["waiters"].pop(waiter_id, None)
+                    lease_id = uuid.uuid4().hex
+                    lease_key = uuid.uuid4().hex
+                    wait_seconds = now_mono - started_mono
+                    granted_record = {
+                        "lease_id": lease_id,
+                        "lease_key": lease_key,
+                        "sequence": waiter["sequence"],
+                        "lane": lane_value,
+                        "cpu_slots": cpu_slots,
+                        "memory_mb": memory_mb,
+                        "gpu_memory_mb": gpu_memory_mb,
+                        "unified_memory_mb": unified_memory_mb,
+                        "child_process_slots": child_process_slots,
+                        "requires_gpu": bool(requires_gpu or gpu_memory_mb &gt; 0),
+                        "parent_lease_id": parent_id,
+                        "owner_pid": pid,
+                        "owner_birth_marker": birth_marker,
+                        "acquired_at": now_wall,
+                        "heartbeat_at": now_wall,
+                        "expires_at": now_wall + self.config.lease_ttl_seconds,
+                        "request_id": str(request_id)[:256],
+                        "cancelled": False,
+                        "wait_seconds": wait_seconds,
+                    }
+                    state["leases"][lease_id] = granted_record
+                    self._record_wait(state, lane_value, wait_seconds)
+                    state["metrics"]["acquisitions_total"] += 1
+                    self._lane_metrics(state, lane_value)["acquisitions_total"] += 1
+    
+            if terminal is None and granted_record is None:
+                wait_for = self.config.poll_interval_seconds
+                if self.config.proof_safety_enabled:
+                    remaining_backoff = float(state.get("proof_backoff", {}).get("until", 0)) - time.time()
+                    wait_for = max(wait_for, min(1.0, remaining_backoff))
+                if deadline is not None:
+                    wait_for = min(wait_for, max(0.0, deadline - time.monotonic()))
+                if cancel_event is not None and hasattr(cancel_event, "wait"):
+                    try:
+                        cancel_event.wait(wait_for)  # type: ignore[attr-defined]
+                    except (TypeError, ValueError):
+                        time.sleep(wait_for)
+                else:
+                    time.sleep(wait_for)
+    
+        if terminal == "cancelled":
+            raise LeaseCancelledError("resource lease request was cancelled")
+        if terminal == "timeout":
+&gt;           raise LeaseTimeoutError("timed out waiting for a resource lease")
+E           ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease
+
+../ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:1502: LeaseTimeoutError</error></testcase></testsuite></testsuites>

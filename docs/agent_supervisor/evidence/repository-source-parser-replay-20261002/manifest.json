@@ -1,0 +1,40 @@
+{
+  "schema": "repository-evidence-files@1",
+  "files": [
+    {
+      "path": "qualification.json",
+      "bytes": 819,
+      "sha256": "b86d3f912a4dc61c80bb040d1b2e727dbfb75b4421a78bd7acd00c15b6b692b7"
+    },
+    {
+      "path": "run-03/tests.log",
+      "bytes": 4426,
+      "sha256": "352d4e0ef4f1c2eaa14fe7d714ce35d2205074e0c27c6bc1312b49861ad65b70"
+    },
+    {
+      "path": "run-03/tests.xml",
+      "bytes": 2470,
+      "sha256": "28bf50aaef8f8f26a42e740245d26bd9a3e5defe8a90bc79e08e87e09e66acf8"
+    },
+    {
+      "path": "run-04/tests.log",
+      "bytes": 32242,
+      "sha256": "7537bc268979632f592e26d5dcc8d41607335491d219369fb2d92021ec9a4bac"
+    },
+    {
+      "path": "run-04/tests.xml",
+      "bytes": 16519,
+      "sha256": "8bd11855606c78eba4d6e23414f91b332125ea1474394186764e4b966132a764"
+    },
+    {
+      "path": "run-05/tests.log",
+      "bytes": 2388,
+      "sha256": "e741a5726a52f688112801a05b149df327d166c46b8f8d0d07f24f42d8a0e98f"
+    },
+    {
+      "path": "run-05/tests.xml",
+      "bytes": 413,
+      "sha256": "08f8d5dbf184b34a24f00a534b15cd234f84ebd4409af0b6ceb49a163c2a21bd"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T09:01:01.836428+00:00",
+  "updated_at_utc": "2026-10-02T09:09:01.377126+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -11,9 +11,9 @@
   },
   "summary": {
     "criteria": 32,
-    "production_closed": 15,
-    "production_open": 17,
-    "criteria_qualified_for_declared_profile": 18
+    "production_closed": 20,
+    "production_open": 12,
+    "criteria_qualified_for_declared_profile": 20
   },
   "evidence": {
     "foundation-tests-log": {
@@ -257,6 +257,21 @@
     "typed-intent-evidence": {
       "path": "docs/agent_supervisor/evidence/repository-typed-intent-evidence-20261002/manifest.json",
       "sha256": "90595aca22181618ad97c5ac0de34c65abc16cb7ed3a9645853af72a3e84a2e8",
+      "retention": "repository_evidence"
+    },
+    "source-parser-replay": {
+      "path": "docs/agent_supervisor/evidence/repository-source-parser-replay-20261002/manifest.json",
+      "sha256": "22b41853699ab6f6e7c1c27b694cc744ee211c6e61730abc5872ca571823f8c9",
+      "retention": "repository_evidence"
+    },
+    "resource-worker-delegation": {
+      "path": "docs/agent_supervisor/evidence/repository-resource-delegation-20261002/manifest.json",
+      "sha256": "89562b633b3bbcc76dd589676adef1a67a95da777c4b5ca94cd8ad8ef13e9f09",
+      "retention": "repository_evidence"
+    },
+    "worker-contract-prerequisites": {
+      "path": "docs/agent_supervisor/evidence/repository-worker-contracts-20261002/manifest.json",
+      "sha256": "7b74ec21dbdc794068de59e8fe4f559bd2753b7bc6e0a2d4400a6e2dec014f5e",
       "retention": "repository_evidence"
     }
   },
@@ -556,15 +571,13 @@
       "dependencies": "RPI-007, RPI-012, RPI-023; TIP-007 complete planning materials",
       "criterion": "Add the strict behavioral repository adapter and `repository-proof-planning-snapshot@2`, including explicit model-off identity; preserve conditional/indexed `@1` meanings. Extend/wire service materials for code obligations, query plans and proof results. Require nonempty exact roots for each eligible current fact and mandatory owner-backed live observation; allow no facts when evidence is unavailable. Demonstrate one genuine fact and one residual in the qualification fixture. Join reviewed producers, tasks and residuals; independently reconstruct proof/premise/effect closure through existing compiler, candidate planner and critic. Refuse synthetic `proof:<concept>` and forged authority labels.",
       "source_line": 287,
-      "production_acceptance": "open",
+      "production_acceptance": "closed",
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Ported strict PlanCreateService live-root enforcement as opt-in with legacy default preserved. Scoped finite service binds current native source/head, exact complete intent/query/tool policies, reviewed operations and independent signed task roots. Existing planner/compiler/critic consumes one current fact and one residual; forged/stale/missing evidence controls pass.",
         "Five native v2 planning controls pass exact code obligations, query/discovery records, proof results and nonempty current-fact provenance roots through the actual compiler/planner/critic. Current source, catalog, proof artifacts and producer/configuration identity are observed across callbacks. One fact and one residual remain bound; both declared operations are retained. Static roots and caller facts have no input route."
       ],
-      "remaining_work": [
-        "Full RPI-023 source/evidence plane controls are still required for production closure. The bounded TIP-007 complete materials contract is independently qualified."
-      ],
+      "remaining_work": [],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
@@ -576,11 +589,10 @@
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
       "qualified_profile": "explicit finite two-clause controlled-language integer source profile",
-      "blocking_dependencies": [
-        "RPI-023"
-      ],
+      "blocking_dependencies": [],
       "out_of_profile_extensions": [
-        "Learned interpretations and richer behavioral profiles remain separate; this snapshot has no signed task-omission or execution authority."
+        "Learned interpretations and richer behavioral profiles remain separate; this snapshot has no signed task-omission or execution authority.",
+        "Generic DQP service and consumed learned-model behavioral admission remain outside this qualification; deterministic model-off proof keys do not claim learned source equivalence."
       ]
     },
     {
@@ -589,15 +601,13 @@
       "dependencies": "RPI-013; TIP-005 and TIP-008 admission/symbolic route",
       "criterion": "Add a new repository-evidence admission profile across preview, signed admission, native storage and launch; the current administrative gate cannot accept it unchanged. Replay frozen exact facts, receipts, source/model/index roots and root correspondences without fitting or reinterpretation. Preserve required frozen inference in the current validators; qualify authenticated receipt-only numerical replay separately before optimizing it away. Require live observation and reject static shadowing. Initially preserve the complete signed task population. Qualify source/model changes between stages and wrong or omitted material bindings.",
       "source_line": 288,
-      "production_acceptance": "open",
-      "local_status": "criterion_qualified_prerequisites_open",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused.",
         "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START\u2192worker\u2192public validation\u2192publication\u2192successor/cold agreement\u2192STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
       ],
-      "remaining_work": [
-        "Production closure depends on RPI-013 source/evidence prerequisite closure. Model-selected admission is outside the qualified model-off profile."
-      ],
+      "remaining_work": [],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
@@ -607,8 +617,10 @@
         "behavioral-native-supervision"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
-      "blocking_dependencies": [
-        "RPI-013"
+      "blocking_dependencies": [],
+      "qualified_profile": "bounded native local finite integer source and complete controlled-language IntentIR; explicit model-off",
+      "out_of_profile_extensions": [
+        "Generic DQP service and consumed learned-model behavioral admission remain outside this qualification; deterministic model-off proof keys do not claim learned source equivalence."
       ]
     },
     {
@@ -617,15 +629,14 @@
       "dependencies": "RPI-014; TIP-009 worker/observation route",
       "criterion": "Deliver relevant source units, assumptions, checked evidence, counterexamples and residuals after semantic encoding while retaining original instruction. Qualify public replay without owner keys and actual owner-backed claim/check/publication. Keep output existence, public checks, proof status and official reward distinct.",
       "source_line": 289,
-      "production_acceptance": "open",
+      "production_acceptance": "closed",
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Actual native-06 run used semantic task context plus public owner-signed finite facts/counterexample/candidate evidence, retained the exact original instruction in an immutable signed input, and dispatched a real allocated native worker without owner private keys. Owner-backed claim, independent public validation, merge publication and completion reached revision 4; STOP fenced all native processes.",
-        "The public finite evidence bundle retains all source/receipt bodies, assumptions, counterexamples and residuals, replays without owner private state in a fresh process, and is consumed after semantic encoding in an actual native28.831s worker/publication/completion run. Native executable paths remain part of its declared local tool policy."
+        "The public finite evidence bundle retains all source/receipt bodies, assumptions, counterexamples and residuals, replays without owner private state in a fresh process, and is consumed after semantic encoding in an actual native28.831s worker/publication/completion run. Native executable paths remain part of its declared local tool policy.",
+        "Sixty-eight existing controls pass complete requirement/dependency delivery, public replay without owner keys, native claim/check/publication custody and source/revision/attempt freshness, residual repair nominations and unchanged missing-output/check/proof/reward distinctions. Model-provider calls are isolated stubs in routing tests; native owners execute normally."
       ],
-      "remaining_work": [
-        "The declared-profile delivery exit is qualified; general repository-evidence admission and the frozen TIP-009 prerequisite remain separate release gates. Official benchmark reward remains unmeasured."
-      ],
+      "remaining_work": [],
       "evidence": [
         "finite-native-summary",
         "finite-native-final",
@@ -633,13 +644,12 @@
         "finite-native-owned-file-scope",
         "public-context-manifest",
         "public-context-native",
-        "semantic-supervision"
+        "semantic-supervision",
+        "worker-contract-prerequisites"
       ],
       "criterion_acceptance": "qualified_for_declared_profile",
-      "blocking_dependencies": [
-        "RPI-014",
-        "TIP-009"
-      ]
+      "blocking_dependencies": [],
+      "dependency_scope": "TIP-009 bounded worker/observation contract independently qualified by68existing controls; broader conditional scope and generic semantic completion are not marked complete."
     },
     {
       "id": "RPI-016",
@@ -693,7 +703,8 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero.",
-        "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress."
+        "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress.",
+        "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed."
       ],
       "remaining_work": [
         "Complete whole-trial phase/deadline and resource-bridge qualification, including worker delegation, remains pending."
@@ -705,7 +716,8 @@
         "finite-native-owned-file-scope",
         "semantic-supervision",
         "budgeted-repository-preparation",
-        "behavioral-native-supervision"
+        "behavioral-native-supervision",
+        "resource-worker-delegation"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -771,7 +783,8 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Datasets shared lease admission, nested parent preservation, pressure refusal and cancellation are qualified in the structural wrapper.",
-        "Eighteen controls include actual shared-default/live-sampler two-repository admission, killed-parent lease recovery and child-process cancellation; injected telemetry controls are separately identified. The CPU bridge is reusable by native scan/training/proof consumers with one shared host authority."
+        "Eighteen controls include actual shared-default/live-sampler two-repository admission, killed-parent lease recovery and child-process cancellation; injected telemetry controls are separately identified. The CPU bridge is reusable by native scan/training/proof consumers with one shared host authority.",
+        "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed."
       ],
       "remaining_work": [
         "Bridge disk/queue accounting is local declaration plus sampling; GPU/per-device/global retained-payload queues, hard enforcement, gradual recovery and protected validation capacity within each parent remain open."
@@ -780,7 +793,8 @@
         "foundation-tests-log",
         "foundation-tests-junit",
         "foundation-selected-port-manifest",
-        "shared-host-resource-bridge"
+        "shared-host-resource-bridge",
+        "resource-worker-delegation"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -790,16 +804,15 @@
       "dependencies": "RPI-001, RPI-004, RPI-007",
       "criterion": "Project canonical captured bytes into AST ingestion and `CodeEvidencePlane`; repair dirty-overlay and parser/config cache identities. Carry source/dependency/environment identities through stage caches, exact proof lookup, matches and planning materials. Qualify different dirty states at unchanged HEAD, submodules, parallel worktrees, renames, parser changes, source races and fresh-process persistent lookup. Independently checked deterministic proofs survive model changes only when their complete keys remain eligible.",
       "source_line": 297,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Captured dirty-overlay bytes at unchanged Git HEAD, distinct worktree views, renames and parser-context shard reuse are integrated and tested; old snapshots retain immutable history.",
         "The full canonical bridge preserves exact source/dependency/environment identity without equivalence inference. Doctor invalidation survives restart and refuses unseen-root late registration, concurrent equivocation and stale positives detected before cache return.",
-        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases."
+        "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases.",
+        "Seven joined actual source cases now include distinct dirty states at unchanged HEAD, rename/opaque prior path, separate worktrees, true opaque submodule, source race, ignore scope and changed Python frontend configuration. Native typed evidence controls separately cover formatting/span rebinding, exact persistent fresh-process proof lookup, ignored model-only changes, wrong domains/receipts and fresh positive checker reconstruction. Before/after worker source fences are independently qualified."
       ],
-      "remaining_work": [
-        "Complete declared source/configuration/model and freeze-to-admission matrix remains open beyond the qualified bounded local facade. DQP-backed cross-process service and generic model-dependent projections are unsupported in this profile."
-      ],
+      "remaining_work": [],
       "evidence": [
         "foundation-tests-log",
         "foundation-tests-junit",
@@ -810,9 +823,17 @@
         "proof-cache-summary-json",
         "proof-cache-checksums-json",
         "typed-code-evidence",
-        "joined-source-evidence-matrix"
+        "joined-source-evidence-matrix",
+        "source-parser-replay",
+        "typed-intent-evidence",
+        "behavioral-repository-admission"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [],
+      "qualified_profile": "bounded native local finite integer source and complete controlled-language IntentIR; explicit model-off",
+      "out_of_profile_extensions": [
+        "Generic DQP service and consumed learned-model behavioral admission remain outside this qualification; deterministic model-off proof keys do not claim learned source equivalence."
+      ]
     },
     {
       "id": "RPI-024",
@@ -972,16 +993,14 @@
       "dependencies": "RPI-004, RPI-007, RPI-012, RPI-013",
       "criterion": "Specify bounded typed relevant-unit, unit-evidence, intent-resolution and residual-obligation queries with root-bound cursors and exact consumed record/receipt commitments. Register reverse source/contract/premise/tool/model dependencies at publication. Reuse durable accelerate FormalVerificationCache through the full-key adapter; persist or deterministically rebuild datasets proof/CodeEvidencePlane projections. Qualify fresh-process replay, incomplete pages/frontiers, model-only versus source edits, formatting span rebinding, wrong assumptions, revoked/missing evidence and freeze-to-admission races. Required service gates cannot depend on optional context hooks.",
       "source_line": 306,
-      "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "production_acceptance": "closed",
+      "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Historical proof-cache discovery uses bounded keyset pages, continuation keys and explicit omissions; the compatibility scanner walks beyond 512 rows and persists reports. Exact source locator plus full key prevents basename/truncated-key collisions.",
         "Twenty-eight distinct native controls qualify bounded typed full-inventory and exact unit-evidence queries, source/root/producer-bound cursors, consumed record commitments, deterministic typed CodeEvidencePlane projection, fresh-process lookup and fresh native positive eligibility. Native input cap32 is enforced. This local profile does not claim a generic DQP release or completion of all source/model race cases.",
         "Eleven controls qualify complete typed intent-resolution and residual-obligation queries, exact consumed native record/receipt commitments, wrong premise/tool refusal and independent-process positive replay with a fresh checker. This completes the four bounded local query shapes; source/configuration and admission matrices are tracked separately."
       ],
-      "remaining_work": [
-        "Complete declared source/configuration/model and freeze-to-admission matrix remains open beyond the qualified bounded local facade. DQP-backed cross-process service and generic model-dependent projections are unsupported in this profile."
-      ],
+      "remaining_work": [],
       "evidence": [
         "proof-cache-tests-log",
         "proof-cache-tests-xml",
@@ -990,9 +1009,16 @@
         "proof-cache-checksums-json",
         "typed-code-evidence",
         "joined-source-evidence-matrix",
-        "typed-intent-evidence"
+        "typed-intent-evidence",
+        "source-parser-replay",
+        "behavioral-repository-admission"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "blocking_dependencies": [],
+      "qualified_profile": "bounded native local finite integer source and complete controlled-language IntentIR; explicit model-off",
+      "out_of_profile_extensions": [
+        "Generic DQP service and consumed learned-model behavioral admission remain outside this qualification; deterministic model-off proof keys do not claim learned source equivalence."
+      ]
     }
   ],
   "source_revision_observation": {

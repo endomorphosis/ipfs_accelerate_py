@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="84.393" timestamp="2026-10-02T08:42:17.748798+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_code_evidence_source_matrix" name="test_real_parser_configuration_change_cannot_reuse_old_projection" time="67.421"><error message="failed on setup with &quot;ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease&quot;">/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+test/integration/test_terminal_codebase_semantic_index.py:32: in prepared
+    head, descriptor = prepare_semantic_index(index=index, repository=repository,
+benchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py:37: in prepare_semantic_index
+    verify_semantic_index(index=index, repository=repository, expected_head=head,
+benchmarks/agent_supervisor/container_coding/terminal_codebase_semantic_index.py:55: in verify_semantic_index
+    verify_policy_current(index, repository, expected_head=expected_head,
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py:59: in verify_policy_current
+    index.observe_current(root, expected_head=expected_head, parent_lease=lease,
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py:446: in observe_current
+    with acquire_codebase_resources(
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_resources.py:75: in acquire_codebase_resources
+    lease = parent_lease.acquire_child(**request)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:720: in acquire_child
+    return self._scheduler.acquire(
+../ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:1502: in acquire
+    raise LeaseTimeoutError("timed out waiting for a resource lease")
+E   ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease</error></testcase></testsuite></testsuites>
