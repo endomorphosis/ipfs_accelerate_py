@@ -1,0 +1,40 @@
+{
+  "benchmark_task_complete": false,
+  "billing_total_verified": false,
+  "cached_input_is_subset": true,
+  "dollar_cost": null,
+  "efficiency_claim": false,
+  "enforced_total_token_budget": false,
+  "model": "gpt-5.6-sol",
+  "model_prompt_bytes": 26013,
+  "model_prompt_sha256": "06e4a7e4e5f875cbb23d739817072ea268ba255af2667a72827bba764936a08d",
+  "native_agent_metrics": {
+    "cost_usd": null,
+    "n_cache_tokens": 11264,
+    "n_input_tokens": 21497,
+    "n_output_tokens": 1090
+  },
+  "native_usage_schema": "native-codex-cumulative-usage@1",
+  "observed_token_count_records": 1,
+  "provider": "codex_cli",
+  "provider_model_task_complete_observed": true,
+  "provider_output_token_cap_enforced": false,
+  "provider_tool_call_events": 0,
+  "raw_prompt_or_rollout_exported": false,
+  "reasoning_output_is_subset": true,
+  "requested_output_tokens": 4096,
+  "rollout_sha256": "5ba586ffd282c7caa8bc673cd4b494bb97185864b2a8676cfcaea4a5fd9c7cea",
+  "router_calls": 1,
+  "schema": "failed-full-trial-planning-usage@1",
+  "scope": "one planning invocation only",
+  "total_definition": "input_tokens + output_tokens; do not add cache or reasoning subsets",
+  "usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 11264,
+    "input_tokens": 21497,
+    "output_tokens": 1090,
+    "reasoning_output_tokens": 151,
+    "total_tokens": 22587
+  },
+  "usage_available": true
+}

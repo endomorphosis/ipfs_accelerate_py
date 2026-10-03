@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/source384-initial-context-lifetime-20261003/trial-02"
+  ],
+  "attempts": 1,
+  "cleanup_reserve_seconds": 40,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "driver_seconds": 285,
+  "enforced_token_budget": false,
+  "harbor_agent_seconds": 300,
+  "harbor_retries": 0,
+  "model": "gpt-5.6-sol",
+  "operation": "execute",
+  "provider": "codex_cli via llm_router",
+  "qualification_exit_sha256": "97fadeff179341cb7190fced5391b015738bfb9a6a2d26906a7cbfe4179d5813",
+  "qualification_sha256": "d7d976234062510a330a0071e665c34542261dc304f0a80126c2ce0e38221da0",
+  "reasoning_effort": "high",
+  "requested_output_tokens_per_call": 4096,
+  "scope": "one full official Harbor task trial",
+  "selected_archive_sha256": "4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64",
+  "selected_manifest_sha256": "b749d42b246fce2a7013c8637cf43e77e4bca8a8fd81b1abb8692bb739ce8602",
+  "setup_seconds": 1800,
+  "source384_seconds": 90,
+  "work_cutoff_seconds": 245,
+  "workers": 1
+}

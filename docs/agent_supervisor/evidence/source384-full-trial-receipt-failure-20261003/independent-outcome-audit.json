@@ -1,0 +1,49 @@
+{
+  "coding_worker_dispatch_completed": false,
+  "controller_returncode": 0,
+  "driver_official_reward": null,
+  "driver_phase": "context",
+  "driver_returncode": 1,
+  "driver_seconds": 244.32288190200052,
+  "error": {
+    "message": "Source384 context receipt exceeds its byte bound",
+    "type": "ValueError"
+  },
+  "harbor_returncode": 0,
+  "initial_source384": "Returned with all127 candidates unsupported; source/inference plumbing is separate from successful code repair.",
+  "official_reward": 0.0,
+  "passed_audit": true,
+  "phases": {
+    "context_seconds": 24.263933238005848,
+    "initial_context_seconds": 139.99104537800304,
+    "planning_seconds": 68.9527179299912,
+    "prepare_seconds": 10.493529322004179
+  },
+  "pins": {
+    "execute-02-exit.json": "a61cf6b2711bc9967e42ebb9505d96a6fd94076e955e297db56d984dd4378cfa",
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/agent/supervisor-result.json": "576252d19bea687952e2ec49615b3403fc5e00be1e2c7c8910243a637d4790a1",
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/result.json": "21e7876f4497067543ed03558341415d371bdabab01e771ab271be1024041c9d",
+    "trial-02/receipt.json": "da60dbb9d26707c604203d3fed297104b7b8e4eec4cdd0a2b16a21cf92155067"
+  },
+  "planner_graph": {
+    "goals": 2,
+    "tasks": 1
+  },
+  "production_activation": false,
+  "provider": "codex_cli via llm_router",
+  "provider_invocations": 1,
+  "provider_phase": "planning",
+  "schema": "independent-full-trial-outcome-audit@1",
+  "scope": "No hidden verifier inputs read; official reward read from final result only. Native provider cumulative usage includes planning only, not a completed benchmark token score. Controller/Harbor0 are collection completion, not task success. No efficiency advantage or proof claim.",
+  "task_completed": false,
+  "tokens": {
+    "billing_total_verified": false,
+    "cached_input_subset": 11264,
+    "dollar_cost": null,
+    "input": 21497,
+    "output": 1090,
+    "reasoning_output_subset": 151,
+    "total_input_plus_output": 22587
+  },
+  "trial_outcome": "failed_before_task_worker_dispatch"
+}

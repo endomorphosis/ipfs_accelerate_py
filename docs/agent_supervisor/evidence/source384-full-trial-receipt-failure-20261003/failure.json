@@ -1,0 +1,79 @@
+{
+  "archived_inline_transport_limit_bytes": 32768,
+  "boundary": "write_task_context_bundle/_source384_receipt, after initial-context and provider planning returned",
+  "canonical_observer_receipt_limit_bytes": 131072,
+  "canonical_receipt_bytes": 78563,
+  "canonical_receipt_sha256": "892e7c658fc9c04fa86b4189eb43bd7590dca7f57be48851140b21513241cd05",
+  "error": {
+    "message": "Source384 context receipt exceeds its byte bound",
+    "type": "ValueError"
+  },
+  "error_phase": "context",
+  "failure_resources": {
+    "available_memory_mb": 9170,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 26.33,
+    "io_stall_percent": 0.16,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "failure_scheduler": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "capacity": {
+      "child_process_slots": 4,
+      "cpu_slots": 4,
+      "gpu_memory_mb": null,
+      "memory_mb": 9830,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 9830
+    },
+    "causal_proof": false,
+    "exact_admission_decision": false,
+    "native_snapshot_may_recover_stale_owners": true,
+    "observation_boundary": "after_unwind",
+    "proof_backoff": {},
+    "proof_recovery": {},
+    "schema": "terminal-scheduler-failure-observation@1",
+    "status": "observed",
+    "waiting_request_count": 0
+  },
+  "observations_are_after_unwind": true,
+  "resource_cause_inferred": false,
+  "schema": "failed-full-trial-context-transport@1",
+  "traceback": {
+    "frames": [
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+        "function": "run",
+        "line": 476
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "function": "context",
+        "line": 750
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+        "function": "write_task_context_bundle",
+        "line": 69
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+        "function": "_source384_receipt",
+        "line": 35
+      }
+    ],
+    "frames_omitted": 0,
+    "frames_walked": 4,
+    "walk_truncated": false
+  }
+}

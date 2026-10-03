@@ -1,0 +1,63 @@
+{
+  "note": "Relative to the original source384-initial-context-lifetime-20261003 artifact directory. Original paths are provenance, not package member references.",
+  "original_payloads_included": false,
+  "records": {
+    "bundle/manifest.json": {
+      "bytes": 6133136,
+      "sha256": "b749d42b246fce2a7013c8637cf43e77e4bca8a8fd81b1abb8692bb739ce8602"
+    },
+    "execute-02-command.json": {
+      "bytes": 1885,
+      "sha256": "6bbd7c848bb8a18b186343d5fa215700de7f5f553380a7ac8e23cf0db222adad"
+    },
+    "execute-02-exit.json": {
+      "bytes": 54,
+      "sha256": "a61cf6b2711bc9967e42ebb9505d96a6fd94076e955e297db56d984dd4378cfa"
+    },
+    "frozen-production-pins.json": {
+      "bytes": 5223,
+      "sha256": "2bffe4ee99f62ebd4533c894f7821abd509cc3d0942de43d2f81b76351053888"
+    },
+    "host-controller-correction.json": {
+      "bytes": 1829,
+      "sha256": "1481f3197312413114daa1f2a5c3a0d875785be493c0912db48a6163f0b1c46d"
+    },
+    "prepare-02-command.json": {
+      "bytes": 2368,
+      "sha256": "fbd20765fd20a26c2f86d379227ec3514a3fffc712e69ec2e2f6c902ef90cfff"
+    },
+    "prepare-02-exit.json": {
+      "bytes": 54,
+      "sha256": "711805fb790aa3a5ad038024da67b8babc2c6a00eb0a0ccdd06d34d3dd2c8d8e"
+    },
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/agent/deployment/deployment.json": {
+      "bytes": 73066,
+      "sha256": "3f0c6698ccd0f4a3d66876fb962475e7cae67c576c2291d5ccf03960f4a89048"
+    },
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/agent/public-output-evidence/receipt.json": {
+      "bytes": 1396,
+      "sha256": "851c35cea89c845bfa5f20c79890c6d941bca43f5a34a4f85e91eb94a7854d2b"
+    },
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/agent/setup-cache/resources.json": {
+      "bytes": 249,
+      "sha256": "29c29f983986318c6c530442632932ed39e430e097cc3502385701743ba61fed"
+    },
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/agent/supervisor-result.json": {
+      "bytes": 114943,
+      "sha256": "576252d19bea687952e2ec49615b3403fc5e00be1e2c7c8910243a637d4790a1"
+    },
+    "trial-02/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__aaqEeLD/result.json": {
+      "bytes": 93152,
+      "sha256": "21e7876f4497067543ed03558341415d371bdabab01e771ab271be1024041c9d"
+    },
+    "trial-02/receipt.json": {
+      "bytes": 209413,
+      "sha256": "da60dbb9d26707c604203d3fed297104b7b8e4eec4cdd0a2b16a21cf92155067"
+    },
+    "trial-02/root-cleanup-observation.json": {
+      "bytes": 235,
+      "sha256": "5995b31ba86b92f6abfa6d47e754fe8ab9b00be2784a5da184e92984b9d58eb7"
+    }
+  },
+  "schema": "retained-original-record-identities@1"
+}

@@ -1,0 +1,8 @@
+{
+  "artifact_persisted": true,
+  "before_goal_decomposition": true,
+  "completion_authority": false,
+  "execution_authority": false,
+  "status": "fail_open_no_checkpoint",
+  "supplied_to_router": false
+}

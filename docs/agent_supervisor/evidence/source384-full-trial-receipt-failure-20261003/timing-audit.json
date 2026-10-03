@@ -1,0 +1,42 @@
+{
+  "controller_seconds": 816.9544487429957,
+  "driver_phase_seconds": {
+    "context_seconds": 24.263933238005848,
+    "initial_context_seconds": 139.99104537800304,
+    "planning_seconds": 68.9527179299912,
+    "prepare_seconds": 10.493529322004179
+  },
+  "driver_phase_sum_seconds": 243.70122586800426,
+  "driver_seconds": 244.32288190200052,
+  "driver_unassigned_seconds": 0.6216560339962598,
+  "harbor_invocation_seconds": 815.5523373370088,
+  "harbor_stage_seconds": {
+    "agent_execution": 248.231199,
+    "agent_setup": 536.168514,
+    "environment_setup": 11.15033,
+    "verifier": 3.183303
+  },
+  "initial_context_component_seconds": {
+    "empty_native_world_capture": 0.4167228700098349,
+    "final_evidence_verification": 11.721099442002014,
+    "persisted_snapshot_reopen": 0.33989649900468066,
+    "retrieval_persistence": 1.6550869719940238,
+    "semantic_build_reconstruction_and_hydration": 40.092737162995036,
+    "source384_capture_and_inference": 78.32371076800337,
+    "vector_qualification": 7.018757694007945
+  },
+  "initial_context_component_sum_seconds": 139.5680114080169,
+  "initial_context_unassigned_seconds": 0.42303396998613607,
+  "interpretation": "Nested independently instrumented intervals are not additive. Reported unassigned intervals are arithmetic residuals, not attributed causes. Context ended on a byte-bound ValueError, not an identified timeout. No repeated-run speedup or cost advantage is inferred.",
+  "max_total_agent_seconds": 285,
+  "planning_and_cold_index_charged_to_agent_time": true,
+  "planning_provider_invocation_seconds": 31.268994861005922,
+  "planning_provider_receipt_latency_ms": 45373,
+  "planning_receipt_elapsed_seconds": 57.205770811997354,
+  "prepare_host_seconds": 11.82726040900161,
+  "reserved_cleanup_seconds": 40,
+  "schema": "failed-full-trial-timing-audit@1",
+  "source384_native_deadline_seconds": 90,
+  "source384_native_seconds": 78.25353022100171,
+  "work_cutoff_seconds": 245
+}

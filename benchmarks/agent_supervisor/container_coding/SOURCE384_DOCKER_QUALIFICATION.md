@@ -551,3 +551,32 @@ conditions, not measured cache reclamation or a general speedup. It permits a
 fresh full task trial; it supplies no benchmark reward or token score. RPI-019
 remains open, automatic post-publication Source384 successor inference remains
 unavailable, and the backlog stays 18 closed criteria out of 32.
+
+
+## Full trial reached planning, then failed receipt transport
+
+The [subsequent full Harbor trial](../../../docs/agent_supervisor/evidence/source384-full-trial-receipt-failure-20261003/README.md)
+received official reward **0**. Initial context returned in 139.991s, including
+78.254s for Source384 within its unchanged 90s deadline. Planning returned in
+68.953s with two goals and one task. Task-context publication then rejected the
+78,563-byte selected receipt against the archived 32,768-byte inline transport
+limit. No coding worker was dispatched or production supervisor activated. The
+driver returned 1; Harbor and the host controller returned 0 after collecting
+the failed task result. The later receipt-reference fix is separate evidence.
+
+One llm_router → Codex CLI planning call recorded 21,497 input tokens and 1,090
+output tokens: **22,587 total**. The 11,264 cached-input and 151 reasoning-output
+tokens are subsets, not additional tokens. Cost is unavailable, billing totals
+are unverified, and the requested output cap was not enforced. This is usage
+from planning in an unsuccessful trial, not a completed-work token score or a
+matched-arm efficiency advantage. All 127 decoded Source384 candidates remained
+unsupported by the source-contract guard; IntentIR preprocessing remained
+fail-open with no selected checkpoint.
+
+Actual cgroups observed five CPUs and 12,288MiB. The driver took 244.323s, Harbor
+agent setup 536.169s, agent execution 248.231s, and the outer controller 816.954s;
+these nested intervals are recorded separately. The exact container was removed
+and worker cleanup returned 0, while the native remaining-processes receipt is
+null. Post-task observation covered unchanged `bottle.py` and missing
+`report.jsonl`, not every original input. RPI-019 and RPI-020 remain open; the
+backlog stays **18/32 closed**.
