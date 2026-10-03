@@ -1,0 +1,17 @@
+{
+  "returncode": 1,
+  "seconds": 691.3044489179956,
+  "outputs": {
+    "stderr": {
+      "observed_bytes": 1758,
+      "retained_bytes": 1758,
+      "truncated": false
+    },
+    "stdout": {
+      "observed_bytes": 891,
+      "retained_bytes": 891,
+      "truncated": false
+    }
+  },
+  "script_unchanged": true
+}

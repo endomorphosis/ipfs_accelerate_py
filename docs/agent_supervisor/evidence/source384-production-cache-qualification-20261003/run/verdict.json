@@ -1,0 +1,112 @@
+{
+  "actual_refusal_cause": "not determined: no native decision sample or shared backoff receipt retained; post-unwind resource sample is not the admission decision",
+  "archive_sha256": "a36bf3550eb17a0c3a1f190f5cad2364a66b07994e9ecacd6637666d5df761e0",
+  "benchmark_result": false,
+  "cache_policy": "source384-native-aarch64-dontneed@1",
+  "cache_populations": {
+    "archive": {
+      "advised_bytes": 3914491746,
+      "advised_files": 26918,
+      "errors": [],
+      "metadata_unchanged": true,
+      "schema": "manifest-cache-advice@1",
+      "seconds": 8.065284518001135,
+      "selected_bytes": 3914491746,
+      "selected_files": 26918
+    },
+    "native_binaries": {
+      "advised_bytes": 628736528,
+      "advised_files": 4,
+      "body_read_bytes": 628736528,
+      "body_reads_after_advice": 0,
+      "errors": [],
+      "metadata_unchanged": true,
+      "schema": "pinned-native-codex-cache-advice@1",
+      "seconds": 0.3777892809957848,
+      "selected_bytes": 628736528,
+      "selected_files": 4
+    },
+    "native_libraries": {
+      "advised_bytes": 565702269,
+      "advised_files": 131,
+      "body_read_bytes": 565702269,
+      "body_reads_after_advice": 0,
+      "errors": [],
+      "metadata_unchanged": true,
+      "schema": "pinned-native-libraries-cache-advice@1",
+      "seconds": 0.3330924770052661,
+      "selected_bytes": 565702269,
+      "selected_files": 131
+    }
+  },
+  "cleanup_verified": true,
+  "controller_seconds": 691.3044489179956,
+  "deployment_qualified": true,
+  "error": "timed out waiting for a resource lease",
+  "error_phase": "initial_context",
+  "error_type": "LeaseTimeoutError",
+  "exported_native_inference_receipt": false,
+  "failure_boundary": "validate_shared_parent_units second observe (codebase_source_units_384.py:293) acquiring nested observation child before any observation-body work",
+  "full_trial_executed": false,
+  "initial_context_seconds": 159.39397933999862,
+  "limitations": [
+    "No native full-context qualification or benchmark result.",
+    "No inference/model count is inferred from control flow without the exported immutable native receipt.",
+    "The host comparison showed smaller retained graph and warm-load allocation spike, but no observation-return RSS improvement; the Docker run also did not qualify admission.",
+    "No policy/deadline/resource threshold was altered, and no additional retry or full trial was launched."
+  ],
+  "manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "model_load_count": null,
+  "native_empty_supervisor_start_step_passed": true,
+  "neural_candidate_count": null,
+  "official_verifier_executed": false,
+  "post_unwind_failure_resources": {
+    "available_memory_mb": 8667,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 41.31,
+    "io_stall_percent": 0.16,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "preflight_resources": {
+    "available_memory_mb": 9350,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 12288,
+    "memory_max": "12884901888",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "prepare_seconds": 10.369743445000495,
+  "probe_seconds": 170.81637635300285,
+  "provider_calls": 0,
+  "public_task_inputs_unchanged": true,
+  "qualified": false,
+  "request": {
+    "admission_timeout_max_seconds": 30,
+    "child_process_slots": 1,
+    "consumer_parent_child_process_slots": 3,
+    "consumer_parent_cpu_slots": 3,
+    "consumer_parent_memory_mb": 6144,
+    "consumer_replay_budget_seconds": 90,
+    "cpu_slots": 1,
+    "exact_remaining_deadline_seconds": null,
+    "lane": "SNAPSHOT_EVALUATION",
+    "left_formula": "D replay deadline - time.monotonic() at second observe",
+    "memory_mb": 4096,
+    "observation_admission_timeout_formula": "min(30.0, left)",
+    "remaining_scope": "0 < left <=90; numerical left was not recorded",
+    "replay_parent_memory_mb": 4096
+  },
+  "runtime_diagnostic_hooks_installed": false,
+  "schema": "ordinary-source384-production-qualification-verdict@1",
+  "setup_cache_claim": "best effort advice only; advised bytes are not measured freed bytes",
+  "setup_cache_completed": true,
+  "source_pins_unchanged": true,
+  "source_revisions": {
+    "accelerate": "f55585fa111bd8ad80ac96afdeace280b3bf5bfc",
+    "datasets": "0d6ed4b7d3dfd1935c60a3db414dafb0ad15ffef"
+  },
+  "training_steps": 0,
+  "unpublished_candidate_at_measurement": true
+}

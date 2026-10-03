@@ -1,0 +1,25 @@
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py", line 129, in main
+    result = asyncio.run(qualify(archive, selection))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py", line 69, in qualify
+    return await asyncio.wait_for(qualify_original_container(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_deployment.py", line 1229, in qualify_original_container
+    report["source384"] = await qualify_context(environment, task_dir=task_dir,
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py", line 169, in qualify_context
+    raise ValueError("original-container Source384 qualification failed; see retained receipt")
+ValueError: original-container Source384 qualification failed; see retained receipt

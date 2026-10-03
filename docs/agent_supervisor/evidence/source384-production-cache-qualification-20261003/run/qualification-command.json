@@ -1,0 +1,54 @@
+{
+  "admission_sha256": "8127bd4b360e2acf688bc06a5c0471264011d91c846e79f14f4ed2a21a45c4c9",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py"
+  ],
+  "benchmark_result": false,
+  "build_audit_sha256": "872cea0d943cfa215bdd137e8228e8484dc294a52a85dbf31e8bf0db6f3ae4e3",
+  "cache_policy": "source384-native-aarch64-dontneed@1",
+  "component_review": {
+    "passed_scopes": [
+      "D actual on-disk273 distinct controls:266 general plus7 explicit configured-client cases on the unchanged native4CPU/9830MiB ledger.",
+      "A8 authored replay-lifetime controls passed.",
+      "A13 actual checkpoint consumer controls passed40.56s after the foreign lease naturally exited; same native ledger and sampler."
+    ],
+    "resource_blocked_scopes": [
+      "Earlier D7 host-default fixture attempts were refused by existing global scheduler configuration; retained as prior attempts, followed by the successful configured-client retry on the unchanged ledger."
+    ],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "credential_contents_recorded": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "diagnostic_only": false,
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "inherited_environment_recipe": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/prepare-command.json",
+  "inherited_environment_recipe_sha256": "5204f81fb32b680286cfdba8a147b64a473efea6a856accfecaf8e870a42443e",
+  "later_full_harbor_setup_seconds": 1800,
+  "official_verifier_executed": false,
+  "preceding_ordinary_qualifier": "/home/barberb/lift_coding/artifacts/source384-docker-inference-publication-20261003/run_qualification.py",
+  "preceding_ordinary_qualifier_sha256": "33b6ed37a6379cc067a20387f46c6f039efc5ddd0c17b94e369486bcd9c03279",
+  "provider_calls": 0,
+  "qualification_aggregate_setup_timeout": null,
+  "qualification_exec_seconds": 300,
+  "qualification_inner_seconds": 270,
+  "qualification_outer_seconds": 2300,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "runtime_hooks_installed": false,
+  "script_sha256": "ad677991909587b0bdca064b8526c32b2af7b3e7f9f465552b50efc7766a876a",
+  "selected_archive_sha256": "a36bf3550eb17a0c3a1f190f5cad2364a66b07994e9ecacd6637666d5df761e0",
+  "selected_manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "setup_operation_timeouts_unchanged": true,
+  "source384_native_seconds": 90
+}

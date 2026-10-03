@@ -1,0 +1,17 @@
+{
+  "schema": "ordinary-bundle-build-controller@1",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/build_fresh.py"
+  ],
+  "cwd": "/home/barberb/lift_coding",
+  "script_sha256": "3438dd155c07266f63bd14252d72908caaa71de80a6067ec9353262f82a7be28",
+  "source_revisions": {
+    "datasets": "0d6ed4b7d3dfd1935c60a3db414dafb0ad15ffef",
+    "accelerate": "f55585fa111bd8ad80ac96afdeace280b3bf5bfc"
+  },
+  "authorized_by_root": true,
+  "provider_calls": 0,
+  "benchmark_executed": false
+}

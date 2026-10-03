@@ -1,0 +1,57 @@
+{
+  "added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_controls.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/dimension_native_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/dimension_source_inputs.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/gte_multilingual_profile.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/legal_native_conditioning.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_768.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_768_complete.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py"
+  ],
+  "archive_sha256": "a36bf3550eb17a0c3a1f190f5cad2364a66b07994e9ecacd6637666d5df761e0",
+  "benchmark_executed": false,
+  "builder_sha256": "148f3dc0942bd51c90b46f1e8e3817ea74391da256a43d95653866aed8ce2b7e",
+  "changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/decoder_distillation_experiment.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/decoder_source_fidelity.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_count_exposure_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/cache.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+    "source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+    "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+  ],
+  "compressed_bytes": 1338037230,
+  "logical_bytes": 3914491746,
+  "manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "nonmutable_manifest_metadata_unchanged": true,
+  "original_task_read": false,
+  "preceding_manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+  "provider_calls": 0,
+  "removed": [],
+  "setup_cache_selection": {
+    "manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source384_unchanged": true,
+  "source_revisions": {
+    "accelerate": "f55585fa111bd8ad80ac96afdeace280b3bf5bfc",
+    "datasets": "0d6ed4b7d3dfd1935c60a3db414dafb0ad15ffef"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26918
+}

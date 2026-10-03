@@ -1,0 +1,5 @@
+{
+  "manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "policy": "source384-native-aarch64-dontneed@1",
+  "schema": "terminal-setup-cache-selection@1"
+}

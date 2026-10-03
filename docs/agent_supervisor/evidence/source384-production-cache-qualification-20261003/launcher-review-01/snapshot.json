@@ -1,0 +1,22 @@
+{
+  "schema": "ordinary-qualification-prerequisite-label-snapshot@1",
+  "files": [
+    {
+      "path": "run_qualification.py",
+      "bytes": 7225,
+      "sha256": "cba73d18a6062dca471479e75ea3f4b4ffcd2157c6b2cd19d905b20c5034786c"
+    },
+    {
+      "path": "run-admission.template.json",
+      "bytes": 148,
+      "sha256": "ce71405bb4a49c075dbfb9da08e722e3318e227db2a3ce5057f874f81d3333ce"
+    },
+    {
+      "path": "qualification-command.template.json",
+      "bytes": 1172,
+      "sha256": "8196c589162c6390ac734a920214d22a0c6eaad20a1ceff1e7504c1b318b86f8"
+    }
+  ],
+  "executed": false,
+  "superseded_reason": "Use explicit component review scopes instead of implying every host suite passed."
+}

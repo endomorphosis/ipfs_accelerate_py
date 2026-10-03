@@ -1,0 +1,62 @@
+{
+  "schema": "retained-bundle-build-refusal@1",
+  "archive_created": false,
+  "cause": "Missing multiformats from incomplete build subprocess PYTHONPATH; no source or policy changes required.",
+  "files": [
+    {
+      "path": "resources-before.json",
+      "bytes": 188,
+      "sha256": "8ab7496ec9b97bc56b90509e7501103f9c187af69ad044fff27fe8453f4b6297"
+    },
+    {
+      "path": "frozen-production-pins.json",
+      "bytes": 4085,
+      "sha256": "5e9641bfbbe4440eaf4b6482fde1bf1567820d40e2a4e56c9a2614f30bea871f"
+    },
+    {
+      "path": "build-command.json",
+      "bytes": 4762,
+      "sha256": "ae646697f70988142a1be5d4dc349bdb314ad2d6626a858116d8016b42e6a08a"
+    },
+    {
+      "path": "build-exit.json",
+      "bytes": 56,
+      "sha256": "170d7176a114815886b05309308136cdae330085d6ce85281737c7d02cbfa3bb"
+    },
+    {
+      "path": "build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build.stderr",
+      "bytes": 3776,
+      "sha256": "62f311da2862fb7acce0cd3b5fcc9dd636e33d3c2ae74f97896a8825cbffae38"
+    },
+    {
+      "path": "build-controller-command.json",
+      "bytes": 605,
+      "sha256": "c6bc6d3e588747b13c301b1d877aab3fed51628745e2892011a06392b6daa903"
+    },
+    {
+      "path": "build-controller.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build-controller.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "build-controller-exit.json",
+      "bytes": 83,
+      "sha256": "31bed678c25f1d75e092d527f54d4ca5ea287250353cc5b7890756ed36a5dc49"
+    },
+    {
+      "path": "build_fresh.py",
+      "bytes": 8533,
+      "sha256": "3438dd155c07266f63bd14252d72908caaa71de80a6067ec9353262f82a7be28"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "command_template_sha256": "6292747c84a42d866324b4b427ccf4b26853a6824b434a49c34d93cc261ec873",
+  "controls": [
+    {
+      "name": "passed_only",
+      "passed": true
+    },
+    {
+      "name": "passed_and_blocked",
+      "passed": true
+    },
+    {
+      "name": "missing",
+      "passed": true
+    },
+    {
+      "name": "missing_blocked_field",
+      "passed": true
+    },
+    {
+      "name": "empty_passes",
+      "passed": true
+    },
+    {
+      "name": "blank_scope",
+      "passed": true
+    },
+    {
+      "name": "unresolved_failure",
+      "passed": true
+    },
+    {
+      "name": "obsolete_all_tests_passed_field_does_not_enable_launch",
+      "passed": true
+    }
+  ],
+  "docker_calls": 0,
+  "failed": 0,
+  "model_calls": 0,
+  "native_admission_calls": 0,
+  "old_launcher_snapshot": "launcher-review-01",
+  "passed": 8,
+  "production_runtime_changed": false,
+  "schema": "qualification-component-review-label-controls@1",
+  "script_sha256": "ad677991909587b0bdca064b8526c32b2af7b3e7f9f465552b50efc7766a876a",
+  "template_sha256": "ead4058182f320bba531e81ad545f70605176d7e53ecfe12304151e028866d0f"
+}

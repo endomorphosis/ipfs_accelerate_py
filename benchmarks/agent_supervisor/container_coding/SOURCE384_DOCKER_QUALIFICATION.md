@@ -463,3 +463,58 @@ the earlier timeout bug: `TimeoutError` is an `OSError`, so the best-effort
 filesystem handlers swallowed the deadline exception. Both advice loops now
 propagate it. This component result does not qualify the full Docker profile;
 the memory admission failure still requires a fresh production-archive run.
+
+## Manifest replay and report lifetimes
+
+The current local candidate reuses a validated private manifest only after a
+fresh bounded CAS read, exact byte-key match and fresh CID check. Native reader,
+JSON dependency, producer, registry and instance guards remain mandatory;
+custom readers retain their ordinary validation path. Compaction shares exact
+immutable metadata inside the private graph while keeping returned records
+detached. The consumer also releases its parsed input bytes before native
+replay, and the datasets validator releases the duplicate replay graph before
+its second source observation. Final source/model/digest checks are unchanged.
+
+Datasets qualification records 273 distinct passing controls: 266 in the broad
+actual-source run and seven native Source384 cases in a configured-client retry.
+The supervisor passes eight actual lifetime controls and all 13 existing
+real-checkpoint context controls. The native retry and supervisor context run
+join the exact existing four-CPU/9,830-MiB scheduler through its supported API,
+using the same ledger, sampler, headroom and deadlines. Earlier host-default
+configuration refusals remain retained. The foreign lease had naturally ended
+before these retries; this does not qualify host-default startup or concurrent
+operation alongside that lease.
+
+A single instrumented, source-only three-arm comparison measures baseline and
+combined cold observations at 14.550 and 14.416 seconds, and warm observations
+at 5.339 and 4.587 seconds. Accounted private memo retention decreases from
+89,210,779 to 29,251,864 bytes, and the sampled 40.516-MiB warm-load anonymous
+allocation increase is absent. Anonymous RSS at the second observation return
+is nevertheless higher: 285.156 MiB combined versus 258.812 MiB baseline.
+These measurements establish neither an admission-memory fix nor a general
+throughput improvement. They exclude the source-report lifetime changes and
+numerical inference.
+
+The [closed lifetime evidence](../../../docs/agent_supervisor/evidence/source384-replay-lifetime-20261003/README.md)
+retains the two expected pre-fix lifetime failures, controlled object-release
+checks and actual-source results. The datasets candidate and three-arm evidence
+are in local datasets commit `0d6ed4b7d3dfd1935c60a3db414dafb0ad15ffef`, under
+`docs/software_contracts/evidence/source384-manifest-replay-candidate-20261003/`
+and `docs/software_contracts/evidence/source384-manifest-combined-comparison-20261003/`.
+Their manifests are respectively `60da8174b275aac1ddf967e50ac5bc5fe2d73bdc537725ce75f7b3c98bb6b0db`
+and `a85f841e16040803863c5845d23e6302baecfe9563b67abfdc80c0d7ecc52a48`.
+
+The [fresh ordinary Docker qualification](../../../docs/agent_supervisor/evidence/source384-production-cache-qualification-20261003/README.txt)
+passes setup, native START and all three cache-advice populations, then fails
+at the second source-observation child lease during cold replay. Its archive
+contains 26,918 verified files. The probe takes 170.816 seconds, including
+159.394 seconds in initial context; the controller takes 690.414 seconds.
+Cleanup and unchanged runtime/task hashes are verified.
+
+Preflight reports 9,350 MiB available; the post-unwind sample reports 8,667 MiB.
+The latter is not a decision-time sample and cannot establish the refusal's
+specific cause. No inference artifact was exported, so model-load and coverage
+counts remain unavailable for this run. There are no provider or verifier calls.
+The five-CPU/12-GiB profile, admission rules and deadlines are unchanged. The
+full task remains gated on qualification; RPI-019 remains open and the backlog
+remains 18 closed criteria out of 32. No new reward or token score is available.

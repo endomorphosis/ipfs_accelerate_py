@@ -1,0 +1,19 @@
+{
+  "build_audit_sha256": "872cea0d943cfa215bdd137e8228e8484dc294a52a85dbf31e8bf0db6f3ae4e3",
+  "component_review": {
+    "passed_scopes": [
+      "D actual on-disk273 distinct controls:266 general plus7 explicit configured-client cases on the unchanged native4CPU/9830MiB ledger.",
+      "A8 authored replay-lifetime controls passed.",
+      "A13 actual checkpoint consumer controls passed40.56s after the foreign lease naturally exited; same native ledger and sampler."
+    ],
+    "resource_blocked_scopes": [
+      "Earlier D7 host-default fixture attempts were refused by existing global scheduler configuration; retained as prior attempts, followed by the successful configured-client retry on the unchanged ledger."
+    ],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "reviewed_at": "2026-10-03T16:39:20.202776+00:00",
+  "root_go_received": true,
+  "scope_note": "Root component and archive review complete. Existing user authorization covers the ordinary isolated qualification; this receipt asserts no Docker/benchmark result."
+}

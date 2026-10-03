@@ -1,0 +1,28 @@
+{
+  "schema": "ordinary-setup-process-metadata-observation@1",
+  "controller_elapsed_seconds": 476.9703862667084,
+  "last_completed_stage": "native-extensions",
+  "seconds_since_completed_stage": 242.14650893211365,
+  "codex_install_timeout_seconds": 600,
+  "stage_elapsed_scope": "Time since preceding native-extensions log is an upper bound for current install wait; installer subprocess elapsed is separately observed.",
+  "container": "9bdd75b16e40",
+  "selected_processes": [
+    {
+      "pid": 7311,
+      "comm": "bash",
+      "elapsed": "02:39",
+      "state": "Ss"
+    },
+    {
+      "pid": 8145,
+      "comm": "npm install @op",
+      "elapsed": "00:15",
+      "state": "Sl"
+    }
+  ],
+  "process_arguments_read": false,
+  "environment_read": false,
+  "credential_contents_read": false,
+  "runtime_modified": false,
+  "inference_started_at_this_observation": false
+}
