@@ -1,0 +1,76 @@
+{
+  "at": "2026-10-03T11:32:12.222323+00:00",
+  "binding_checks": [
+    "Canonical report serialization reproduces native staged-artifact digest and length.",
+    "Native export file hash equals context inference_sha256.",
+    "Native key, worker receipt and coverage exactly match context receipt.",
+    "Canonical worker output reproduces native worker receipt output digest.",
+    "Original218 before/after input hashes match and are contained in signed220 with two explicitly added supervisor inputs."
+  ],
+  "blocking_findings": [],
+  "candidate_sample_policy": "Two generic arithmetic candidate IR samples plus source hashes/ranges/names may be retained with unsupported status and all false authority flags; they contain no source body or weights.",
+  "claim_limits": [
+    "All127 decoded candidates remain unsupported by the source contract; no decoder correctness or proof authority is established.",
+    "Pipeline qualification is not an official benchmark task success, token score, LLM comparison or indexed-system advantage.",
+    "Full report replay requires retained private/local export; public hashes cannot reconstruct excluded payloads.",
+    "No live inference/tests performed by auditor."
+  ],
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "excluded_public_payloads": [
+    "native-inference.json raw source and embedding arrays",
+    "task source and instruction body",
+    "checkpoint/model weights and wheel binary",
+    "mutable DBs and authority/signing state"
+  ],
+  "initial_context_seconds": 147.2673762830018,
+  "model_loads": 1,
+  "native_export": {
+    "bytes": 4505485,
+    "public_export_allowed": false,
+    "raw_body_field_counts": {
+      "embedding": 128,
+      "normalized_source_text": 944,
+      "source_text": 128
+    },
+    "retained_local_only": true,
+    "sha256": "2fc72e0de92a97547661885cc5dcb9c00f2257356a49efe8b6537adecb95ffb7"
+  },
+  "native_source384_seconds": 82.87209984999936,
+  "probe_seconds": 171.9617923409969,
+  "recommended_public_export": [
+    "immutable native artifact descriptor and full-export SHA/length",
+    "native provenance key and bounded worker receipt",
+    "complete coverage/deferral counts",
+    "fixed checkpoint/embedding asset descriptors",
+    "exact source hashes and resource/deadline/lifecycle outcomes"
+  ],
+  "schema": "source384-success-receipt-content-independent-audit@1",
+  "smaller_receipt_body_key_scans": {
+    "qualification.json": {},
+    "source384-context.json": {},
+    "source384-result.json": {}
+  },
+  "staged_report_artifact": {
+    "bytes": 4504315,
+    "sha256": "4d8eb34490fb16f08c81448ed041b959d7158ab3fc238cbee55dc53f0514b25b"
+  },
+  "verdict": "Native inference plumbing and immutable artifact binding verified; raw inference export must remain excluded from public package.",
+  "warm_observation_seconds": 13.403441998001654
+}

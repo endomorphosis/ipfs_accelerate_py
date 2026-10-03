@@ -1,0 +1,170 @@
+{
+  "schema": "diagnostic-projection-persistence-distribution@1",
+  "diagnostic_only": true,
+  "source_paths_recorded": false,
+  "query_events_recorded": false,
+  "sql_vs_materialization_split_available": false,
+  "events_sha256": "8a6fac96f50b1887bd2db35d2f215013b0fd810c77bd7d386f73e999b4a7707a",
+  "calls": 31,
+  "sum_seconds": 39.979265484980715,
+  "min_seconds": 0.011798521001765039,
+  "median_seconds": 0.4189730329962913,
+  "max_seconds": 17.315318348999426,
+  "descending_calls": [
+    {
+      "call_id": 1205,
+      "seconds": 17.315318348999426,
+      "error_type": null
+    },
+    {
+      "call_id": 1213,
+      "seconds": 5.343610862000787,
+      "error_type": null
+    },
+    {
+      "call_id": 1233,
+      "seconds": 2.6167811949999304,
+      "error_type": null
+    },
+    {
+      "call_id": 1223,
+      "seconds": 1.5588626299941097,
+      "error_type": null
+    },
+    {
+      "call_id": 1226,
+      "seconds": 1.5154840539980796,
+      "error_type": null
+    },
+    {
+      "call_id": 1232,
+      "seconds": 1.4643701370005147,
+      "error_type": null
+    },
+    {
+      "call_id": 1231,
+      "seconds": 1.1565323869945132,
+      "error_type": null
+    },
+    {
+      "call_id": 1225,
+      "seconds": 1.1278369809951982,
+      "error_type": null
+    },
+    {
+      "call_id": 1211,
+      "seconds": 0.997259342999314,
+      "error_type": null
+    },
+    {
+      "call_id": 1234,
+      "seconds": 0.9462701079974067,
+      "error_type": null
+    },
+    {
+      "call_id": 1229,
+      "seconds": 0.906244133002474,
+      "error_type": null
+    },
+    {
+      "call_id": 1222,
+      "seconds": 0.7563733760034665,
+      "error_type": null
+    },
+    {
+      "call_id": 1228,
+      "seconds": 0.6466625399989425,
+      "error_type": null
+    },
+    {
+      "call_id": 1227,
+      "seconds": 0.47185358299611835,
+      "error_type": null
+    },
+    {
+      "call_id": 1215,
+      "seconds": 0.44242231500538765,
+      "error_type": null
+    },
+    {
+      "call_id": 1221,
+      "seconds": 0.4189730329962913,
+      "error_type": null
+    },
+    {
+      "call_id": 1219,
+      "seconds": 0.3697013619967038,
+      "error_type": null
+    },
+    {
+      "call_id": 1230,
+      "seconds": 0.3479127300015534,
+      "error_type": null
+    },
+    {
+      "call_id": 1220,
+      "seconds": 0.2824838680026005,
+      "error_type": null
+    },
+    {
+      "call_id": 1214,
+      "seconds": 0.20969522999803303,
+      "error_type": null
+    },
+    {
+      "call_id": 1218,
+      "seconds": 0.1867510489973938,
+      "error_type": null
+    },
+    {
+      "call_id": 1212,
+      "seconds": 0.18333659500058275,
+      "error_type": null
+    },
+    {
+      "call_id": 1224,
+      "seconds": 0.15453995200368809,
+      "error_type": null
+    },
+    {
+      "call_id": 1204,
+      "seconds": 0.13501362999522826,
+      "error_type": null
+    },
+    {
+      "call_id": 1206,
+      "seconds": 0.1348054609989049,
+      "error_type": null
+    },
+    {
+      "call_id": 1216,
+      "seconds": 0.0759981279989006,
+      "error_type": null
+    },
+    {
+      "call_id": 1209,
+      "seconds": 0.06889615100226365,
+      "error_type": null
+    },
+    {
+      "call_id": 1210,
+      "seconds": 0.05696804000035627,
+      "error_type": null
+    },
+    {
+      "call_id": 1207,
+      "seconds": 0.04025540399743477,
+      "error_type": null
+    },
+    {
+      "call_id": 1217,
+      "seconds": 0.036254338003345765,
+      "error_type": null
+    },
+    {
+      "call_id": 1208,
+      "seconds": 0.011798521001765039,
+      "error_type": null
+    }
+  ]
+}

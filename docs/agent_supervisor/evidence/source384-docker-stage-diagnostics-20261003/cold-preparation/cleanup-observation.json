@@ -1,0 +1,15 @@
+{
+  "command": [
+    "docker",
+    "ps",
+    "-a",
+    "--filter",
+    "name=ipfs-native-deploy-1791019418",
+    "--format",
+    "{{.Names}} {{.Status}}"
+  ],
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "container_absent": true
+}

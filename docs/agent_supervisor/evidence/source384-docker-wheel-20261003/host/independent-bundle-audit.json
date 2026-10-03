@@ -1,0 +1,92 @@
+{
+  "added_members": [
+    {
+      "bytes": 155005253,
+      "mode": 420,
+      "path": "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    }
+  ],
+  "all_regular_members_hash_size_mode_verified": true,
+  "archive_sha256": "567a7357df9a6b25aa60855633c841b75ae619f41de934ea5bfe785277ebe788",
+  "at": "2026-10-03T10:58:52.108081+00:00",
+  "base_and_learned_requirements_unchanged": true,
+  "blocking_findings": [],
+  "changed_members": [
+    {
+      "after": {
+        "bytes": 71016,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+      },
+      "before": {
+        "bytes": 63757,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+      }
+    }
+  ],
+  "limitations": [
+    "Read-only archive verification; no installation, inference or Docker run by reviewer.",
+    "Wheel is an executable dependency asset, not model weights; public evidence should retain metadata/digests rather than this binary.",
+    "Deployment600s and native90s qualification remain unchanged and unproven by archive integrity alone."
+  ],
+  "live_core_source_pins": [
+    {
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43"
+    },
+    {
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f"
+    },
+    {
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463"
+    },
+    {
+      "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf"
+    },
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+    }
+  ],
+  "manifest_sha256": "aaf71e7dc98a13cf4f8fbf83b12ed1fbeded97ef8bf7ccc94640655817be540b",
+  "member_bytes": 609089286,
+  "members": 11719,
+  "model_assets_and_source384_binding_unchanged": true,
+  "schema": "optional-torch-wheel-bundle-independent-audit@1",
+  "top_level_delta": [
+    "archive_sha256",
+    "files",
+    "torch_cpu_wheel"
+  ],
+  "verdict": "No blocker: closed fresh archive preserves previous model and core source identities, with only reviewed deployment body and explicitly pinned CPU wheel transport changes.",
+  "wheel_binding": {
+    "bytes": 155005253,
+    "path": "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "requirement": "torch==2.13.0+cpu",
+    "schema": "terminal-torch-cpu-wheel@1",
+    "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+  }
+}

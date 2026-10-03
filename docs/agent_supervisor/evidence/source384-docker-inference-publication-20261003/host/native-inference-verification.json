@@ -1,0 +1,65 @@
+{
+  "authority_and_semantics_flags": {
+    "claim_proved": false,
+    "completion_authority": false,
+    "execution_authority": false,
+    "promotion_performed": false,
+    "proof_authority": false,
+    "source_executed": false,
+    "source_semantics_verified": false,
+    "training_executed": false,
+    "training_labels_used": false,
+    "whole_file_semantics_verified": false
+  },
+  "benchmark_result": false,
+  "canonical_registry_report_digest_verified": true,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "inference_executed": true,
+  "model_loads": 1,
+  "native_key_matches_qualified_receipt": true,
+  "native_registry_artifact": {
+    "bytes": 4504315,
+    "sha256": "4d8eb34490fb16f08c81448ed041b959d7158ab3fc238cbee55dc53f0514b25b"
+  },
+  "native_worker_executed": true,
+  "original_export": {
+    "bytes": 4505485,
+    "publicly_included": false,
+    "sha256": "2fc72e0de92a97547661885cc5dcb9c00f2257356a49efe8b6537adecb95ffb7"
+  },
+  "original_export_digest_matches_qualified_receipt": true,
+  "schema": "source384-retained-native-export-verification@1",
+  "scope": "Metadata verified against the retained original export; this is not that export.",
+  "source_payload_excluded": true,
+  "worker_receipt": {
+    "child_lease_id": "2460c46031ac4bd6896959a949992129",
+    "device": "cpu",
+    "elapsed_ms": 12736,
+    "input_sha256": "50076990133f8606ce700982a1be3d2e552f73aee4d5029b2a71025bdb69d0b7",
+    "memory_enforcement": "sampled_process_tree_RSS_may_overshoot",
+    "memory_mb": 4096,
+    "output_sha256": "961ff23923a0d56e490b94ab6e8d52340be0a8d7f5308366f22c499a51d1eb7d",
+    "parent_lease_id": "d85af09f22df4488ac45559aff43eb3d",
+    "provider_calls": 0,
+    "returncode": 0,
+    "workspace_cleaned": true
+  }
+}

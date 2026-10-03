@@ -1,0 +1,10 @@
+{
+  "root_go_received": true,
+  "current_producer_component_tests_passed": true,
+  "consumer_test_prefix": "unchanged qualified-manifest-final; new deployment91controls",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "native_context_seconds": 90,
+  "provider_calls_allowed": 0,
+  "archive_sha256": "aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e",
+  "archive_source_pins_verified": true
+}

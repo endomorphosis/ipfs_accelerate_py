@@ -122,3 +122,24 @@ not require all 358 functions to become supported. Supervisor planning may
 consume candidates and counterexamples, but admission, repair application,
 proof acceptance and task completion retain their existing independent gates.
 No coverage increase automatically upgrades proof or execution authority.
+
+## Full original-container result
+
+The subsequent [container qualification](SOURCE384_DOCKER_QUALIFICATION.md)
+consumes the same pinned checkpoint over all 218 original files plus two
+framework inputs. It completes Source384 in 82.872 seconds under its existing
+90-second budget. The full index/context assembly takes 147.267 seconds;
+these are separate scopes. The actual saved inference has one model load,
+944 inventoried functions, 128 selected units, 127 decoded but unsupported
+candidates, one token-limit deferral, 737 selection deferrals and 79 unsupported
+normalizations. Container startup, inference publication and source-bound
+validation now pass; the source grammar limitation above remains unchanged.
+
+The first header slice should attach the existing deterministic derivation to
+a complete captured module and explicit protocol premise. Its acceptance target
+is two modeled helpers, 12 deterministic formulas and six SMT obligations, with
+zero learned header formulas from the current checkpoint. Cold replay must
+reject changed source/helper/protocol bindings and forged authority. Reuse pure
+source validation for replay: the complete formalization pipeline rebuilds
+through its assembler and can rerun decoding or solvers, so it must remain a
+separate, explicitly budgeted operation.

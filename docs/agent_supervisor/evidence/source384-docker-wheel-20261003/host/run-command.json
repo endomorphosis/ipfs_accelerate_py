@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "python",
+    "/home/barberb/lift_coding/artifacts/source384-docker-wheel-20261003/run_qualification.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "OMP_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "outer_timeout_seconds": 2300,
+  "wrapper_sha256": "33b6ed37a6379cc067a20387f46c6f039efc5ddd0c17b94e369486bcd9c03279"
+}

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "python",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-docker-pandas-20261003/controls.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "timeout_seconds": 300
+}

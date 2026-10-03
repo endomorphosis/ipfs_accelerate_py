@@ -1,0 +1,34 @@
+[
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+    "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43",
+    "bytes": 28950
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+    "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f",
+    "bytes": 95861
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463",
+    "bytes": 41061
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+    "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf",
+    "bytes": 30864
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_384.py",
+    "sha256": "f00ff90983770e0e9ac32d8a16c9654059630cfb2880e00bf891902fafe4bb03"
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+    "sha256": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6"
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_model_generation.py",
+    "sha256": "a5801a7a0edef1e7b6b77e8e2fdc6108fd4c904e7276008abde3f708a3bdde17"
+  }
+]

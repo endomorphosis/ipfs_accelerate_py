@@ -32,6 +32,28 @@ config hash. Archive verification checks every selected member before upload.
 Source384 selection excludes legacy SecurityIR training, checkpoint, formula
 and header selections. Intent384 remains an independent compatible selection.
 
+For repeated container setup, `terminal_deployment bundle` also accepts a local
+CPU PyTorch wheel with an independent SHA256:
+
+```text
+--torch-cpu-wheel /absolute/path/to/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl
+--torch-cpu-wheel-sha256 6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604
+```
+
+This example pin is for CPython 3.12 on Linux aarch64, from the
+[official CPU wheel index](https://download.pytorch.org/whl/cpu/torch/).
+The explicit option also supports the corresponding x86_64 filename with its
+own independently verified digest. Packaging checks the bounded regular file,
+wheel metadata and archive binding; deployment rechecks the extracted bytes
+and interpreter architecture before installing that exact local wheel. A
+failed selected-wheel check stops deployment. The wheel does not enable a
+model runtime that was not already selected.
+
+This removes the large wheel download from each fresh container. PyTorch's
+dependencies and other runtime packages still use their configured package
+indexes, and the existing 600-second installation bound remains unchanged.
+Omitting both options retains the ordinary pinned online installation.
+
 For `full_supervisor_benchmark prepare`, the optional `--source384-config`
 rechecks the selected local config against the archive. A full arm containing
 Source384 requires `--resource-profile source384-5cpu-12gib@1`. Select that same

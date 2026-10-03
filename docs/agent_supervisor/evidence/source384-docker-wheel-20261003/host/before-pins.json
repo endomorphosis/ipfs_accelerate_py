@@ -1,0 +1,10 @@
+[
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11"
+  }
+]

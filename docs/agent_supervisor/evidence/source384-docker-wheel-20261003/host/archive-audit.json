@@ -1,0 +1,26 @@
+{
+  "schema": "source384-fresh-wheel-archive-audit@1",
+  "archive_sha256": "567a7357df9a6b25aa60855633c841b75ae619f41de934ea5bfe785277ebe788",
+  "entries": 11719,
+  "exact_member_bytes_checked": true,
+  "core_eight_producers_unchanged": true,
+  "all_selected_model_assets_unchanged": true,
+  "manifest_only_new_selection": {
+    "bytes": 155005253,
+    "path": "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "requirement": "torch==2.13.0+cpu",
+    "schema": "terminal-torch-cpu-wheel@1",
+    "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+  },
+  "changes": {
+    "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl": {
+      "before": null,
+      "after": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+      "before": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d",
+      "after": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+    }
+  },
+  "production_qualification": false
+}

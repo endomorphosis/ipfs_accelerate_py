@@ -1,0 +1,67 @@
+{
+  "after_context": {
+    "cid_native_registry_layout_recognized": true,
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 0,
+      "evictions": 0,
+      "hits": 0,
+      "misses": 0,
+      "retained_bytes": 0
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "after_units_install": {
+    "cid_native_registry_layout_recognized": true,
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 0,
+      "evictions": 0,
+      "hits": 0,
+      "misses": 0,
+      "retained_bytes": 0
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "after_wrappers": {
+    "cid_native_registry_layout_recognized": true,
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 0,
+      "evictions": 0,
+      "hits": 0,
+      "misses": 0,
+      "retained_bytes": 0
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "before_wrappers": {
+    "cid_native_registry_layout_recognized": true,
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 0,
+      "evictions": 0,
+      "hits": 0,
+      "misses": 0,
+      "retained_bytes": 0
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "calls": 0,
+  "diagnostic_only": true,
+  "dropped_events": 0,
+  "event_bytes": 122,
+  "events": 2,
+  "max_event_bytes": 1048576,
+  "max_events": 4096,
+  "production_qualification_claimed": false,
+  "schema": "source384-stage-diagnostic@1",
+  "scope": "In-memory method timing wrappers; production source files and timeout arguments unchanged.",
+  "seconds": 0.14823499500198523,
+  "source_unit_wrappers_installed": true,
+  "stack_empty": true
+}

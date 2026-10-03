@@ -1,0 +1,24 @@
+{
+  "schema": "source384-portable-publication-archive-audit@1",
+  "archive_sha256": "50ed24823090ca9034819bc27e350bbbd098de2345c120c2db4a3c720aceed6c",
+  "entries": 11719,
+  "exact_member_bytes_checked": true,
+  "all_frozen_producers_checked": true,
+  "model_config_wheel_unchanged": true,
+  "canonical_workspace_guard_unchanged": true,
+  "changes": {
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_model_generation.py": {
+      "before": "213d323cd8c906590b310b181d91698f2c8257940870a5b055595da696e56063",
+      "after": "a5801a7a0edef1e7b6b77e8e2fdc6108fd4c904e7276008abde3f708a3bdde17"
+    },
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_384.py": {
+      "before": "1d9685ff53d0ba04dad4056fae11e0ddf8abf6bafe387bff428aa79e8e29b378",
+      "after": "f00ff90983770e0e9ac32d8a16c9654059630cfb2880e00bf891902fafe4bb03"
+    },
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": {
+      "before": "4e43ba59fd26a11a6b371634918fbaae2a9899ba51da1ec53cf850d565d2e246",
+      "after": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6"
+    }
+  },
+  "production_qualification": false
+}

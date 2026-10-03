@@ -1,0 +1,5 @@
+{
+  "pid": 286179,
+  "signal": "SIGINT",
+  "reason": "Preserve partial wheel and resume using official index-selected CDN URL; canonical CDN transfer too slow. Exact expected SHA remains unchanged."
+}

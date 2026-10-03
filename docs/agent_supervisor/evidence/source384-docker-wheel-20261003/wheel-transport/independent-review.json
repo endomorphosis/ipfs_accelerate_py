@@ -1,0 +1,54 @@
+{
+  "at": "2026-10-03T10:57:13.602062+00:00",
+  "blocking_findings": [],
+  "control_xml_sha256": "15769d12a18026d6936f8b74b09b75dd037e018de2d3e6cca91e6397228738e8",
+  "controls": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 136
+  },
+  "limitations": [
+    "Transport controls use inert synthetic wheels and mocked installation failure; full real installation/Docker qualification remains subsequent work.",
+    "Reviewer reran only real stdlib-only wheel verification;136-control suite was executed by implementation owner and its raw XML reviewed.",
+    "Caching one wheel does not make all dependency installation offline.",
+    "Archive upload/extraction retains existing controller trust assumptions; this review does not claim arbitrary remote root tamper resistance."
+  ],
+  "real_stdlib_only_verifier": {
+    "actual_wheel_bytes": 155005253,
+    "actual_wheel_sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "command": [
+      "/home/barberb/.local/bin/python",
+      "-I",
+      "-S",
+      "-B",
+      "/home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/stdlib-only-verifier.py"
+    ],
+    "owner_after_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+    "owner_before_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+    "returncode": 0,
+    "schema": "stdlib-only-torch-wheel-verifier-execution@1",
+    "scope": "Real extracted-wheel verification in fresh isolated no-site interpreter; no installation/model inference.",
+    "script_sha256": "f265f2d4ad170bfc538ffc8ea981735c0bf16eb8f5b376e9bca74535e8cd2ff4",
+    "seconds": 0.4293679769980372
+  },
+  "reviewed_invariants": [
+    "Absent selection retains existing online Torch requirement and ordinary package feature selection.",
+    "Wheel cannot activate an otherwise absent Torch feature; paired independent digest required.",
+    "Exact CPU version, CPython3.12 supported platform and bounded unique wheel metadata validated without importing package code.",
+    "Bounded stable independent regular-file capture rejects symlink, hardlink, oversize and digest drift.",
+    "Closed manifest/inventory binding and actual tar prefix check reject missing, duplicate, changed, extra or hidden unselected wheel members before container calls.",
+    "Actual extracted wheel is reverified for hash, metadata, byte length and interpreter architecture before pip; selected mismatch does not fall back online.",
+    "Pip target is the exact quoted local wheel path, CPU index/dependency resolution remain, and install timeout stays600 seconds.",
+    "No change to native90-second phase, source population, checkpoints, resource profile or proof authority."
+  ],
+  "reviewed_source_test_pins": {
+    "terminal_deployment.py": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+    "test_terminal_deployment.py": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+    "test_terminal_source384_qualification.py": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+    "test_terminal_source384_transport.py": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9",
+    "test_terminal_torch_wheel.py": "e3adc285954b0397831ef9adffc8f2dd6244562a3675cf923c8471c5e2b9ee40"
+  },
+  "schema": "optional-torch-wheel-transport-independent-review@1",
+  "verdict": "No blocker found for fresh bundle preparation with explicitly selected pinned wheel."
+}

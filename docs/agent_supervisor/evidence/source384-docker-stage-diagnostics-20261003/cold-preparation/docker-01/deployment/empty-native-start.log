@@ -1,0 +1,139 @@
+{
+  "completion_authority": false,
+  "configuration_root": "sha256:ffe98b764d940519717cfa3bd0aa378f562044144c78e04e8075468b2ce6a3c0",
+  "handler_manifest": {
+    "adopt": false,
+    "authorize": false,
+    "materialize": false,
+    "observe": true,
+    "preview": false,
+    "resolve": false,
+    "start": true,
+    "steer": false,
+    "stop": true,
+    "validate": false
+  },
+  "healthy_stable_process_tree": true,
+  "lease_id": "lease:3686e3cc162c4757a501f2ce46375cca",
+  "observed_process_identity_ids": [
+    "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+    "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+  ],
+  "passed": true,
+  "process_tree_absent_after_stop": true,
+  "production_activation": false,
+  "profile_id": "6b55d3e32d2c69512f03435e59eb2452",
+  "provider_dispatch_allowed": false,
+  "repository_id": "baguqeerakuasmvccldjqcs3fjyufa2pnjgjioivt43pzopznjbknz7uuomsa",
+  "repository_root": "/opt/ipfs-supervisor/state/empty-start/repository",
+  "schema": "isolated-supervisor-lifecycle-qualification@1",
+  "stability_observation": {
+    "daemon_identity_id": "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9",
+    "initial_heartbeat_ms": 1791019528438,
+    "observed_process_identity_ids": [
+      "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+      "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+    ],
+    "passed": true,
+    "poll_interval_seconds": 0.1,
+    "reason": "stable_tree_and_fresh_native_heartbeat",
+    "root_identity_id": "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+    "samples": [
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.006367299996782094,
+        "healthy": true,
+        "heartbeat_ms": 1791019528438,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.11469764899811707,
+        "healthy": true,
+        "heartbeat_ms": 1791019528438,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.22363740899891127,
+        "healthy": true,
+        "heartbeat_ms": 1791019528692,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.33207386099820724,
+        "healthy": true,
+        "heartbeat_ms": 1791019528692,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.4444330429978436,
+        "healthy": true,
+        "heartbeat_ms": 1791019528947,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.5568347629960044,
+        "healthy": true,
+        "heartbeat_ms": 1791019528947,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.6690666009963024,
+        "healthy": true,
+        "heartbeat_ms": 1791019529202,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.7776587319967803,
+        "healthy": true,
+        "heartbeat_ms": 1791019529202,
+        "identity_ids": [
+          "sha256:3877dd6980f93af2d65c595b43a124b1b88a72a409645149c15e14954f4f2caa",
+          "sha256:5c3296eafd0c227a67649960f3720787adb7c1bc74acbae0dc5f4e822a385dd9"
+        ],
+        "removed_identity_ids": []
+      }
+    ],
+    "schema": "isolated-supervisor-stability-observation@1",
+    "stable_seconds": 0.7712914319999982,
+    "stable_window_seconds": 0.75
+  },
+  "start_receipt_cid": "baguqeeranpuomujqs7k2jp2oyhdtmbwirn6mmohzkmmzcmgclczoxlwugkqq",
+  "state_root": "/opt/ipfs-supervisor/state/empty-start/state",
+  "stop_receipt_cid": "baguqeera56djpnd6ua5pcxam6ew5t6gqder6fftpcy5gov4zkei42kzmmxya",
+  "task_admission_authority": false
+}

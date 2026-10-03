@@ -1,0 +1,18 @@
+{
+  "actual_wheel_bytes": 155005253,
+  "actual_wheel_sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/stdlib-only-verifier.py"
+  ],
+  "owner_after_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "owner_before_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "returncode": 0,
+  "schema": "stdlib-only-torch-wheel-verifier-execution@1",
+  "scope": "Real extracted-wheel verification in fresh isolated no-site interpreter; no installation/model inference.",
+  "script_sha256": "f265f2d4ad170bfc538ffc8ea981735c0bf16eb8f5b376e9bca74535e8cd2ff4",
+  "seconds": 0.4293679769980372
+}

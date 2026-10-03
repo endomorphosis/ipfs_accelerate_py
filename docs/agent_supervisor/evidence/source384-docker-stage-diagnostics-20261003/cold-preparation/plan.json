@@ -1,0 +1,11 @@
+{
+  "diagnostic_only": true,
+  "production_qualification_claimed": false,
+  "root_go_received": false,
+  "previous_events_sha256": "5a1ea6867a45f76db6ee9bb14706b42625d79c986543c4a2f1f06100f808d946",
+  "archive_sha256": "43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3",
+  "original_source_files": 218,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "native_context_budget_seconds": 90,
+  "probe_budget_seconds": 270
+}

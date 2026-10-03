@@ -1,0 +1,157 @@
+{
+  "archive_closed_inventory": {
+    "all_member_sha256_sizes_modes_verified": true,
+    "members": 11718,
+    "same_paths_as_previous_archive": true,
+    "uncompressed_bytes": 454076774
+  },
+  "archive_sha256": "aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e",
+  "blocking_findings": [],
+  "controls": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 91
+  },
+  "controls_xml_sha256": "8107b9ed712d7ef2c61723c99f2386aa681cb835141912dcd28e3f4b8bbb41bc",
+  "file_delta": [
+    {
+      "new": {
+        "bytes": 63757,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+      },
+      "old": {
+        "bytes": 63543,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "79d750afbadf760d19efdcd649240c4b4497ba9d695e193861088ef628e04627"
+      },
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py"
+    },
+    {
+      "new": {
+        "bytes": 20626,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_boundary_training.py",
+        "sha256": "9ffde0b48c9d595b788a56dae182968d21b1e65e67e4d538691b72aa888924ff"
+      },
+      "old": {
+        "bytes": 17568,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_boundary_training.py",
+        "sha256": "06bfb523a1a70b5dc09889cfc80c07fc03dc6680e7f258445a6f4ee4617e0e0f"
+      },
+      "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_boundary_training.py"
+    },
+    {
+      "new": {
+        "bytes": 39014,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+        "sha256": "181657ee8f7475856821d35fd97130b8429836e058152df2eff55363f85c76a1"
+      },
+      "old": {
+        "bytes": 38242,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+        "sha256": "a236cbef0a5aa49c2e4f8096946eee5ae15d14764ed3fe8b468ed7fd3e3d20f2"
+      },
+      "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py"
+    },
+    {
+      "new": {
+        "bytes": 20524,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/shared_slot_source_decoder_experiment.py",
+        "sha256": "4a2fec44a1d8756c212a2e64cad774919aed1f8c12b3741c6608e2dd35c7f0d1"
+      },
+      "old": {
+        "bytes": 16545,
+        "mode": 420,
+        "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/shared_slot_source_decoder_experiment.py",
+        "sha256": "66c265ae4021c0f427ebcc879f7324e7492aa07c0e74b6d98c3ceec45e81e734"
+      },
+      "path": "datasets/ipfs_datasets_py/logic/formalization/autoencoder/shared_slot_source_decoder_experiment.py"
+    }
+  ],
+  "frozen_producer_pins_verified_live_and_archive": [
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+    },
+    {
+      "bytes": 28950,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43"
+    },
+    {
+      "bytes": 95861,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f"
+    },
+    {
+      "bytes": 41061,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463"
+    },
+    {
+      "bytes": 30864,
+      "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf"
+    }
+  ],
+  "limitations": [
+    "Read-only source/archive audit; 91 tests executed by implementing agent, not rerun here.",
+    "No new Docker, model inference, training, benchmark score or throughput qualification is claimed by this receipt.",
+    "Preserved upstream experimental training files are not independently qualified here."
+  ],
+  "manifest_sha256": "0d876b1cbf96ea61417314693b557e3682074563cf475735710dfd3430e082fb",
+  "model_assets_and_source384_selection_unchanged": true,
+  "patch_review": [
+    "Base pandas3.0.2 and numpy1.26.4 pins apply to nonlearned and learned bundles alike.",
+    "Native import probe imports both real packages and reports actual versions before START; missing package refuses.",
+    "No source semantics, deadlines, resource profile, source population, checkpoints or proof-authority change."
+  ],
+  "reviewed_at_utc": "2026-10-03T10:31:49.281675+00:00",
+  "schema": "source384-pandas-deployment-independent-review@1",
+  "source_edits_or_tests_by_reviewer": false,
+  "top_level_delta": [
+    "archive_sha256",
+    "base_requirements",
+    "files"
+  ],
+  "upstream_dependency_review": {
+    "all_prior_runtime_dependency_pins_still_match_live_and_archive": true,
+    "findings": [
+      "The only3 package code changes are opt-in training/experimental decoder files. No direct Source384 runtime owner, structured decoder, checkpoint compatibility loader, package initializer or dependency metadata changes occur.",
+      "Full-package text reference search found changed training module names only in imports within the same experimental training family; scripts/tests provide explicit invocations.",
+      "autoencoder/__init__.py is docstring-only and performs no automatic experiment import or registration.",
+      "The source-unit worker explicitly imports structured_source_384 and SourceProgramDecoder384, constructs decoder.Runtime(request checkpoint), and does not select the experimental shared-slot model.",
+      "Producer chain codebase_source_units_384.pins -> codebase_source_384._pins -> structured_source_384._implementation -> source_training_v2._implementation binds unchanged runtime/numerical/domain codec owners.",
+      "The upstream additions preserve opt-in defaults (additive slot interaction; all_trainable boundary gradients) and do not modify assets or promote the experimental model into Source384."
+    ],
+    "prior_receipt_path": "/home/barberb/lift_coding/artifacts/source-combined-observation-performance-20261003/upstream-training-dependency-audit.json",
+    "prior_receipt_sha256": "4b816c9b1e4e72d94bdf4e4ea03f7afa29d6724d9ea8b29c52e5de5b6dd55752",
+    "three_preserved_training_files_outside_selected_runtime_import_closure": true,
+    "upstream_commit": "3aaa24d1296badf68e514418e9cbb2cbc671f37d"
+  },
+  "verdict": "no blocker in dependency fix, archive inventory, frozen runtime pins or preserved upstream training delta"
+}

@@ -1,0 +1,6 @@
+{
+  "final_result_reviewed": true,
+  "readme_sha256": "ffc1384d0042b0ae1bfff68241c0786c4d032f1891a4ac96b4dc5ee97f3bff38",
+  "summary_sha256": "234deefcbc6871b7c4f73490d00ef099598b5fd7364c36bbd0e4c654bde59d81",
+  "review_scope": "Raw failure/traceback, stopped phase, independent archive review,91controls and absent container; no inference result present."
+}

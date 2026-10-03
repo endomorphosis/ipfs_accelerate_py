@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "python",
+    "/home/barberb/lift_coding/artifacts/source384-docker-stage-diagnostic-20261003/run_diagnostic.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "diagnostic_only": true,
+  "overall_timeout_seconds": 2300,
+  "root_go_received": false,
+  "archive_built": false,
+  "archive_reused": "43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3"
+}

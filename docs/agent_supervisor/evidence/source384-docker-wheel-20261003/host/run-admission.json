@@ -1,0 +1,11 @@
+{
+  "archive_sha256": "567a7357df9a6b25aa60855633c841b75ae619f41de934ea5bfe785277ebe788",
+  "archive_source_pins_verified": true,
+  "current_producer_component_tests_passed": true,
+  "final_deployment_pin_pending": true,
+  "native_context_seconds": 90,
+  "provider_calls_allowed": 0,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "root_go_received": true,
+  "consumer_test_prefix": "unchanged qualified-manifest-final; current136wheeldeploymentcontrols"
+}

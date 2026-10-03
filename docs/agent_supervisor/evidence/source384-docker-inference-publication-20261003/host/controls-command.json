@@ -1,0 +1,8 @@
+{
+  "schema": "recovered-wheel-control-command-reference@1",
+  "provenance": "Exact executed pytest tool arguments recovered from original recorded tool payload; original standalone command JSON was not retained.",
+  "source": "wheel-transport/recovered-test-commands.json",
+  "sha256": "10d937f73cdf54ab6b6202e30863525fa00a1264458195dcea426e9fa782ffae",
+  "final_generation": "combined-02",
+  "earlier_generation": "focused-01"
+}

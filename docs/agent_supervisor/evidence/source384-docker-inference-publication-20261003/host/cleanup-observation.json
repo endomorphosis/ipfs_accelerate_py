@@ -1,0 +1,16 @@
+{
+  "command": [
+    "docker",
+    "ps",
+    "-a",
+    "--filter",
+    "id=2cdf67773d98",
+    "--format",
+    "{{.ID}} {{.Names}} {{.Status}}"
+  ],
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "container_id": "2cdf67773d98",
+  "container_absent": true
+}

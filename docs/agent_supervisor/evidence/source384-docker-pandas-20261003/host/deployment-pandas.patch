@@ -1,0 +1,107 @@
+diff --git a/benchmarks/agent_supervisor/container_coding/terminal_deployment.py b/benchmarks/agent_supervisor/container_coding/terminal_deployment.py
+index ad4137e25..412b82219 100644
+--- a/benchmarks/agent_supervisor/container_coding/terminal_deployment.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_deployment.py
+@@ -30,6 +30,9 @@ CODEX_VERSION = "0.158.0"
+ RUNTIME_PYTHON_VERSION = "3.12.12"
+ BASE_REQUIREMENTS = (
+     "duckdb==1.5.5",
++    # DuckDB's scalar binder retries failed optional pandas imports per value.
++    "pandas==3.0.2",
++    "numpy==1.26.4",
+     "multiformats==0.3.1.post4",
+     "requests==2.34.2",
+     "anyio==4.14.2",
+@@ -43,6 +46,12 @@ LEARNED_REQUIREMENTS = (
+     "numpy==1.26.4",
+ )
+ SECURITY_TRAINING_REQUIREMENTS = ("numpy==1.26.4",)
++NATIVE_IMPORT_PROBE = """import json,sys,duckdb,numpy,pandas
++from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
++from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap import NativeOwnerHeartbeat
++print(json.dumps({'python':sys.version.split()[0],'duckdb':duckdb.__version__,
++ 'numpy':numpy.__version__,'pandas':pandas.__version__,'native_imports':True}))
++"""
+ SECURITY_INITIALIZER_PATH = "models/security-code-initializer"
+ SECURITY_INITIALIZER_DESCRIPTOR = "models/security-code-initializer.descriptor.json"
+ SECURITY_CHECKPOINT_PATH = "models/security-autoencoder"
+@@ -940,16 +949,11 @@ print(duckdb.__version__,platform)
+             )
+     finally:
+         environment.default_user = old_default
+-    probe = """import json,sys,duckdb
+-from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
+-from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap import NativeOwnerHeartbeat
+-print(json.dumps({'python':sys.version.split()[0],'duckdb':duckdb.__version__,'native_imports':True}))
+-"""
+     imported = json.loads(
+         (
+             await execute(
+                 "native-imports",
+-                PYTHON + " -P -c " + shlex.quote(probe),
++                PYTHON + " -P -c " + shlex.quote(NATIVE_IMPORT_PROBE),
+                 user="supervisor",
+                 env=runtime_environment(),
+             )
+diff --git a/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py b/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py
+index 1c416876a..62d50d302 100644
+--- a/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py
++++ b/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py
+@@ -1,11 +1,14 @@
+ from __future__ import annotations
+ 
+ import asyncio
++import builtins
++import json
+ import tarfile
+ from pathlib import Path
+ 
+ import pytest
+ from benchmarks.agent_supervisor.container_coding.terminal_deployment import (
++    NATIVE_IMPORT_PROBE,
+     build_runtime_archive,
+     deploy_supervisor,
+     runtime_environment,
+@@ -49,6 +52,42 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
+     assert "OPENAI_API_KEY" not in runtime_environment()
+ 
+ 
++def test_base_archive_pins_scalar_binding_dependencies_without_learned_assets(tmp_path):
++    result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
++    assert "duckdb==1.5.5" in result["base_requirements"]
++    assert "pandas==3.0.2" in result["base_requirements"]
++    assert "numpy==1.26.4" in result["base_requirements"]
++    assert result["learned_requirements"] == []
++    assert result["source384_requirements"] == []
++
++
++def test_exact_native_import_probe_reports_available_scalar_dependencies(capsys):
++    import duckdb
++    import numpy
++    import pandas
++
++    exec(compile(NATIVE_IMPORT_PROBE, "native-imports", "exec"), {})
++    report = json.loads(capsys.readouterr().out)
++    assert report["native_imports"] is True
++    assert report["duckdb"] == duckdb.__version__
++    assert report["numpy"] == numpy.__version__
++    assert report["pandas"] == pandas.__version__
++
++
++def test_exact_native_import_probe_refuses_missing_pandas(monkeypatch, capsys):
++    original = builtins.__import__
++
++    def without_pandas(name, *args, **kwargs):
++        if name == "pandas":
++            raise ModuleNotFoundError("pandas unavailable for native scalar binding", name="pandas")
++        return original(name, *args, **kwargs)
++
++    monkeypatch.setattr(builtins, "__import__", without_pandas)
++    with pytest.raises(ModuleNotFoundError, match="pandas unavailable"):
++        exec(compile(NATIVE_IMPORT_PROBE, "native-imports", "exec"), {})
++    assert capsys.readouterr().out == ""
++
++
+ def test_extension_symlink_cannot_enter_runtime_archive(tmp_path):
+     inputs = _inputs(tmp_path)
+     target = inputs["extension_dir"] / "quack.duckdb_extension"

@@ -1,0 +1,9 @@
+{
+  "process_elapsed_seconds": null,
+  "pytest_reported_seconds": 21.78,
+  "schema": "retained-pytest-outcome@1",
+  "source": "Final combined XML/log and frozen-source receipt; no separate original shell-exit JSON was retained.",
+  "tests_failed": 0,
+  "tests_passed": 136,
+  "tests_skipped": 0
+}

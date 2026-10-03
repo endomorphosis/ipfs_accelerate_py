@@ -1,0 +1,90 @@
+{
+  "early_and_final_generations_retained_separately": true,
+  "files": [
+    {
+      "bytes": 1445,
+      "path": "wheel-transport/frozen-sources.json",
+      "sha256": "82f340f192dde7d463df3d71cc9f6c8942d57582592943cc3d5bd65c3adb42ec"
+    },
+    {
+      "bytes": 3496,
+      "path": "wheel-transport/independent-review.json",
+      "sha256": "91e2b6fdd5f3be9f699a1fc8b491abee37c521fc411bd0c1330af210873ca898"
+    },
+    {
+      "bytes": 10775,
+      "path": "wheel-transport/focused-01.log",
+      "sha256": "4f03af88ba5f42ac30d8a90e64a4f427e82b4083e0ebaad7ae792dbd1eb4b32b"
+    },
+    {
+      "bytes": 9956,
+      "path": "wheel-transport/focused-01.xml",
+      "sha256": "3e86331089103b6a1c6f829c8702a09802c346ce2df01ac5ed8babc59c1a97c5"
+    },
+    {
+      "bytes": 27100,
+      "path": "wheel-transport/combined-02.log",
+      "sha256": "df6d1eab2db2aeecc4b9c961d2ce6767389af413e5b0b88ca88eda0be55b53c4"
+    },
+    {
+      "bytes": 26464,
+      "path": "wheel-transport/combined-02.xml",
+      "sha256": "15769d12a18026d6936f8b74b09b75dd037e018de2d3e6cca91e6397228738e8"
+    },
+    {
+      "bytes": 1161,
+      "path": "wheel-transport/stdlib-only-verifier.py",
+      "sha256": "f265f2d4ad170bfc538ffc8ea981735c0bf16eb8f5b376e9bca74535e8cd2ff4"
+    },
+    {
+      "bytes": 498,
+      "path": "wheel-transport/stdlib-only-verifier.stdout",
+      "sha256": "1a83a0873192647ccbdbe69dca693c6e7e124b532dc74e7dfe500e895189d597"
+    },
+    {
+      "bytes": 0,
+      "path": "wheel-transport/stdlib-only-verifier.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 908,
+      "path": "wheel-transport/stdlib-only-verifier-exit.json",
+      "sha256": "004258501dc32b8ff428001575ae56a645c7b405914fb148a41184399d2884f0"
+    },
+    {
+      "bytes": 498,
+      "path": "wheel-transport/stdlib-only-verifier-final.stdout",
+      "sha256": "1a83a0873192647ccbdbe69dca693c6e7e124b532dc74e7dfe500e895189d597"
+    },
+    {
+      "bytes": 0,
+      "path": "wheel-transport/stdlib-only-verifier-final.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 831,
+      "path": "wheel-transport/stdlib-only-verifier-final-exit.json",
+      "sha256": "e21fe4c75ff3f56b89a11d99c29eed0ed4487a298e2e7a9a22e631c4e711b1fd"
+    },
+    {
+      "bytes": 70966,
+      "path": "wheel-transport/focused-01-sources/terminal_deployment.py",
+      "sha256": "c22998a6612d0b09775fffc99dad83d0606c4e8382225f444b0c5341eb87c8a5"
+    },
+    {
+      "bytes": 5333,
+      "path": "wheel-transport/focused-01-sources/test_terminal_deployment.py",
+      "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11"
+    },
+    {
+      "bytes": 11317,
+      "path": "wheel-transport/focused-01-sources/test_terminal_torch_wheel.py",
+      "sha256": "d4fe65d1f91fe74bee643f13afc1a5b31c6f557347f093fa1015dd3e3438649e"
+    },
+    {
+      "path": "wheel-transport/recovered-test-commands.json",
+      "sha256": "10d937f73cdf54ab6b6202e30863525fa00a1264458195dcea426e9fa782ffae",
+      "bytes": 3016
+    }
+  ]
+}

@@ -1,0 +1,210 @@
+test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors (__main__.DiagnosticControls.test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors) ... ERROR
+test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors (__main__.DiagnosticControls.test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors) ... ERROR
+test_event_byte_limit_records_drops (__main__.DiagnosticControls.test_event_byte_limit_records_drops) ... ERROR
+test_event_byte_limit_records_drops (__main__.DiagnosticControls.test_event_byte_limit_records_drops) ... ERROR
+test_event_count_limit_records_drops (__main__.DiagnosticControls.test_event_count_limit_records_drops) ... ERROR
+test_event_count_limit_records_drops (__main__.DiagnosticControls.test_event_count_limit_records_drops) ... ERROR
+test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness (__main__.DiagnosticControls.test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness) ... ERROR
+test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness (__main__.DiagnosticControls.test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness) ... ERROR
+test_native_guard_survives_wrappers_and_units_are_lazy (__main__.DiagnosticControls.test_native_guard_survives_wrappers_and_units_are_lazy) ... ERROR
+test_native_guard_survives_wrappers_and_units_are_lazy (__main__.DiagnosticControls.test_native_guard_survives_wrappers_and_units_are_lazy) ... ERROR
+test_probe_injection_keeps_original_runtime_and_alarm (__main__.DiagnosticControls.test_probe_injection_keeps_original_runtime_and_alarm) ... ok
+test_restore_wrappers_even_when_diagnostic_stream_close_fails (__main__.DiagnosticControls.test_restore_wrappers_even_when_diagnostic_stream_close_fails) ... ERROR
+test_restore_wrappers_even_when_diagnostic_stream_close_fails (__main__.DiagnosticControls.test_restore_wrappers_even_when_diagnostic_stream_close_fails) ... ERROR
+test_snapshots_do_not_initialize_native_layout_or_cid_memos (__main__.DiagnosticControls.test_snapshots_do_not_initialize_native_layout_or_cid_memos) ... ERROR
+test_snapshots_do_not_initialize_native_layout_or_cid_memos (__main__.DiagnosticControls.test_snapshots_do_not_initialize_native_layout_or_cid_memos) ... ERROR
+test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads (__main__.DiagnosticControls.test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads) ... ERROR
+test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads (__main__.DiagnosticControls.test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads) ... ERROR
+
+======================================================================
+ERROR: test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors (__main__.DiagnosticControls.test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 160, in test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors
+    m._diag_install()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors (__main__.DiagnosticControls.test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_event_byte_limit_records_drops (__main__.DiagnosticControls.test_event_byte_limit_records_drops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 182, in test_event_byte_limit_records_drops
+    m=self.runtime;m._DIAG_MAX_BYTES=128;m._diag_install()
+                                         ^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_event_byte_limit_records_drops (__main__.DiagnosticControls.test_event_byte_limit_records_drops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_event_count_limit_records_drops (__main__.DiagnosticControls.test_event_count_limit_records_drops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 113, in test_event_count_limit_records_drops
+    m=self.runtime;m._DIAG_MAX_EVENTS=3;m._diag_install()
+                                        ^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_event_count_limit_records_drops (__main__.DiagnosticControls.test_event_count_limit_records_drops)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness (__main__.DiagnosticControls.test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 121, in test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness
+    m=self.runtime;m._diag_install();key=self.index._manifest_producer_key()
+                   ^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness (__main__.DiagnosticControls.test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_native_guard_survives_wrappers_and_units_are_lazy (__main__.DiagnosticControls.test_native_guard_survives_wrappers_and_units_are_lazy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 46, in test_native_guard_survives_wrappers_and_units_are_lazy
+    m._diag_install()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_native_guard_survives_wrappers_and_units_are_lazy (__main__.DiagnosticControls.test_native_guard_survives_wrappers_and_units_are_lazy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_restore_wrappers_even_when_diagnostic_stream_close_fails (__main__.DiagnosticControls.test_restore_wrappers_even_when_diagnostic_stream_close_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 170, in test_restore_wrappers_even_when_diagnostic_stream_close_fails
+    m._diag_install()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_restore_wrappers_even_when_diagnostic_stream_close_fails (__main__.DiagnosticControls.test_restore_wrappers_even_when_diagnostic_stream_close_fails)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_snapshots_do_not_initialize_native_layout_or_cid_memos (__main__.DiagnosticControls.test_snapshots_do_not_initialize_native_layout_or_cid_memos)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 105, in test_snapshots_do_not_initialize_native_layout_or_cid_memos
+    self.runtime._diag_install()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_snapshots_do_not_initialize_native_layout_or_cid_memos (__main__.DiagnosticControls.test_snapshots_do_not_initialize_native_layout_or_cid_memos)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+======================================================================
+ERROR: test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads (__main__.DiagnosticControls.test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 76, in test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads
+    m=self.runtime;m._diag_install()
+                   ^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 173, in _diag_install
+    _diag_wrap(getattr(module, class_name), method, label)
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 132, in _diag_wrap
+    raise TypeError('diagnostic target is not callable')
+TypeError: diagnostic target is not callable
+
+======================================================================
+ERROR: test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads (__main__.DiagnosticControls.test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/check_diagnostic.py", line 36, in tearDown
+    self.runtime._diag_finish()
+  File "/home/barberb/lift_coding/artifacts/source384-docker-cold-stages-20261003/timing_runtime.py", line 189, in _diag_finish
+    before_wrappers=state['before_wrappers'], after_wrappers=state['after_wrappers'],
+                                                             ~~~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'after_wrappers'
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.115s
+
+FAILED (errors=16)

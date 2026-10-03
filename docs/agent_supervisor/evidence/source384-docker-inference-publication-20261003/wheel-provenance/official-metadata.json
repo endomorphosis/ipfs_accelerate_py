@@ -1,0 +1,84 @@
+{
+  "dist_metadata": {
+    "bytes": 37906,
+    "fields": [
+      "Name: torch",
+      "Version: 2.13.0+cpu",
+      "Requires-Python: >=3.10",
+      "Requires-Dist: filelock",
+      "Requires-Dist: typing-extensions>=4.10.0",
+      "Requires-Dist: setuptools>=77.0.3",
+      "Requires-Dist: sympy>=1.13.3",
+      "Requires-Dist: networkx>=2.5.1",
+      "Requires-Dist: jinja2",
+      "Requires-Dist: fsspec>=0.8.5",
+      "Requires-Dist: optree>=0.13.0; extra == \"optree\"",
+      "Requires-Dist: opt-einsum>=3.3; extra == \"opt-einsum\"",
+      "Requires-Dist: pyyaml; extra == \"pyyaml\""
+    ],
+    "sha256": "b3c7f4b3f77d06f86a42aab7d0facef7b661ca3c22967bfcc396917d935dd335",
+    "url": "https://download.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl.metadata"
+  },
+  "head_attempts": [
+    {
+      "final_url": "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "155005253",
+        "Date": "Sat, 03 Oct 2026 10:43:11 GMT",
+        "ETag": "\"ac9eb27ed057c7555a76e5d8412e6109-19\"",
+        "Last-Modified": "Wed, 08 Jul 2026 11:31:29 GMT"
+      },
+      "status": 200,
+      "url": "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl"
+    },
+    {
+      "final_url": "https://download.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "155005253",
+        "Content-Type": "binary/octet-stream",
+        "Date": "Sat, 03 Oct 2026 10:43:12 GMT",
+        "ETag": "\"20e135ba06287fe4a1d037d5abb268d1\"",
+        "Last-Modified": "Wed, 08 Jul 2026 19:28:51 GMT",
+        "x-amz-meta-checksum-sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+      },
+      "status": 200,
+      "url": "https://download.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl"
+    }
+  ],
+  "index_bytes": 414325,
+  "index_final_url": "https://download.pytorch.org/whl/cpu/torch/",
+  "index_response_headers": {
+    "Accept-Ranges": "bytes",
+    "Content-Length": "414325",
+    "Content-Type": "text/html",
+    "Date": "Sat, 03 Oct 2026 10:41:56 GMT",
+    "ETag": "\"34388517684984dfbe582fcc4d2159a6\"",
+    "Last-Modified": "Sat, 03 Oct 2026 10:17:21 GMT"
+  },
+  "index_sha256": "370952b6a22007ad3601781b0fa72246c7c215dfcdfc3644434007f8188a7176",
+  "index_url": "https://download.pytorch.org/whl/cpu/torch/",
+  "initial_head_attempt": {
+    "status": 403,
+    "url": "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "wheel_body_downloaded": false
+  },
+  "observed_at_utc": "2026-10-03T10:43:11.388935+00:00",
+  "response_header_policy": "Retain public identity/size/date headers only; omit incidental cookies and network request identifiers.",
+  "schema": "official-torch-cpu-wheel-metadata@1",
+  "selection": {
+    "attributes": {
+      "data-core-metadata": "sha256=b3c7f4b3f77d06f86a42aab7d0facef7b661ca3c22967bfcc396917d935dd335",
+      "data-dist-info-metadata": "sha256=b3c7f4b3f77d06f86a42aab7d0facef7b661ca3c22967bfcc396917d935dd335",
+      "data-upload-time": "2026-07-08T19:28:51Z",
+      "href": "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl#sha256=6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    "filename": "torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "url": "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl#sha256=6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+  },
+  "wheel_body_downloaded": false,
+  "wheel_bytes": 155005253,
+  "wheel_sha256_independently_verified_by_body": false
+}

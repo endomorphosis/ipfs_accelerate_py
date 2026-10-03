@@ -1,0 +1,61 @@
+{
+  "blockers": [],
+  "decision": "no_blocker_for_root_authorized_diagnostic",
+  "docker_started_by_reviewer": false,
+  "files": {
+    "check_diagnostic.py": {
+      "bytes": 10726,
+      "sha256": "b4ce0a130e4b7215d48909d276f466cf3983f1048e3b41a321cda7968fd26424"
+    },
+    "controls-02-exit.json": {
+      "bytes": 356,
+      "sha256": "0be150b9ff420e88d47157c948b7a58c131314089a9c718a21c380571d1a85b5"
+    },
+    "controls-02.log": {
+      "bytes": 1513,
+      "sha256": "0728e2e9a505cc4e6a4bbe2b1022a5d7db2c3112d19d422f86b43b953d40b5e4"
+    },
+    "controls-native-guard.json": {
+      "bytes": 3837,
+      "sha256": "4a8986b411b45f9b08acb58caa7359d2fe8413f94def0e6536fc4728b274f184"
+    },
+    "run_diagnostic.py": {
+      "bytes": 5647,
+      "sha256": "de0f37d4aff3422ae94fdfb9a28fbf01a28fd14153f6cf733ed38559facd3b97"
+    },
+    "timing_runtime.py": {
+      "bytes": 11229,
+      "sha256": "937c78baa0d26e89e85b9b482e8f292a09ffc6f568a06a3e67a639a1fa22caf4"
+    }
+  },
+  "limitations": [
+    "No new Docker result exists in this review; root authorization and run are separate.",
+    "Inclusive nested method durations must not be summed as independent costs; dropped events or incomplete pairs limit timing attribution.",
+    "Wrappers add timing overhead within unchanged native budget. A raw native success would remain an instrumented diagnostic, not production qualification.",
+    "The first diagnostic gave the worker0.917290456seconds before child admission after79.330941009seconds of cold preparation; this does not measure neural inference throughput.",
+    "Downloads have per-file30-second time bounds, trusted-writer size bounds and post-download bounded regular-file validation; download transport itself is not streaming size-capped.",
+    "Initial failed classmethod-descriptor control is retained separately; final nine-control receipt corresponds to exact script pins above."
+  ],
+  "production_sources_changed": false,
+  "read_only_review": true,
+  "retained_controls": {
+    "passed": 9,
+    "process_seconds": 0.36048218100040685,
+    "reported_suite_seconds": 0.283,
+    "returncode": 0
+  },
+  "reviewed_at_utc": "2026-10-03T09:20:55.883488+00:00",
+  "reviewer": "/root/restart_cid",
+  "root_owns_go": true,
+  "schema": "independent-diagnostic-review@1",
+  "tests_rerun_by_reviewer": false,
+  "verified_contracts": [
+    "Sixteen additional class methods are resolved from already-loaded sys.modules; source-unit wrappers remain lazy at original prepare_current entry.",
+    "Original archive43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3, original218-source selection, native90-second context budget,270-second probe alarm and5CPU/12GiB profile are unchanged.",
+    "Native ingest_snapshot callback parameters are keyword-only; canonical implementation forwards and invokes callbacks without identity-sensitive comparison. Temporary callback wrappers preserve argument/order/return/exception behavior and generator laziness.",
+    "Staticmethod/classmethod descriptors, subclass binding, original method descriptors and arguments are preserved; finally restoration also survives stream-close failure.",
+    "Native manifest producer guard remains recognized and equal after class/late-source-unit wrappers. CID/layout cache snapshots do not initialize lazy caches. Cached-layout recognition is explicitly not live-fast-path proof.",
+    "Event output contains only stages, call/depth/timing, bounded numerical budget fields and exception class;4096-event/1MiB limits retain drop counts. Summary has32768-byte cap.",
+    "Runner is byte-identical to previously reviewed first diagnostic runner; it verifies archive/live source pins, obtains external admission, downloads diagnostics before native deployment cleanup and marks all outcomes diagnostic-only."
+  ]
+}

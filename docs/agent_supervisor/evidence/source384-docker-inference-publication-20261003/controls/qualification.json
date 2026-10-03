@@ -1,0 +1,53 @@
+{
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 136
+  },
+  "earlier_focused_controls": 52,
+  "earlier_focused_generation_is_separate": true,
+  "production_qualification_claimed": false,
+  "pytest_reported_seconds": 21.78,
+  "schema": "terminal-torch-wheel-deployment-controls@1",
+  "scope": "Inherited136 A deployment/wheel/transport controls from preceding generation; not rerun against changed D publication helpers. Separate current D/A integration controls are retained under publication-controls.",
+  "source_freeze": {
+    "combined_controls": 136,
+    "combined_seconds": 21.78,
+    "combined_xml": "combined-02.xml",
+    "files": [
+      {
+        "bytes": 71016,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+      },
+      {
+        "bytes": 5333,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+        "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11"
+      },
+      {
+        "bytes": 12320,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+        "sha256": "e3adc285954b0397831ef9adffc8f2dd6244562a3675cf923c8471c5e2b9ee40"
+      },
+      {
+        "bytes": 15468,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+        "sha256": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9"
+      },
+      {
+        "bytes": 10340,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+        "sha256": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327"
+      }
+    ],
+    "model_weights_changed": false,
+    "no_install_timeout_change": true,
+    "no_source384_deadline_change": true,
+    "runtime_changes": [
+      "paired optional CPUwheel transport and validation in terminal_deployment.py"
+    ],
+    "schema": "torch-wheel-transport-source-freeze@1"
+  }
+}

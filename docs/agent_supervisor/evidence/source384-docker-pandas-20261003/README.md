@@ -1,0 +1,15 @@
+# Pinned pandas Docker generation: setup failure
+
+The fresh uninstrumented Docker qualification failed in `torch-cpu-install`: its existing 600-second command bound expired before pandas installation, native import verification, supervisor START, or Source384 preparation. The wrapper exited with status 1 after 812.483728 seconds. This is a setup failure and provides no new native inference result or benchmark score.
+
+The archive pins pandas 3.0.2 and NumPy 1.26.4 alongside DuckDB 1.5.5. Its dependency/probe change passed 91 local deployment, Source384 transport, and qualification controls with zero failures or skips (20.66 seconds pytest; 21.666968 seconds including process startup). The exact native import probe succeeded with installed host packages and refused an injected missing-pandas import. These controls do not establish that the failed Docker deployment installed pandas.
+
+The selected profile remains `source384-5cpu-12gib@1`, with native preparation 90 seconds, probe 270 seconds, Harbor exec 300 seconds, and setup Torch exec 600 seconds. No bounds were increased. The runtime cgroup observation and final original-source preservation checks were not reached. Before setup, the original 218 input file hashes were captured; Bottle SHA256 is `761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba`.
+
+Archive SHA256: `aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e` (11,718 members). The fixed checkpoint and GTE assets match the preceding generation. The eight structural, inference consumer, lifecycle and resource owners are unchanged; the deployment owner adds pinned dependencies and the import probe. The archive audit also records three previously merged training-only module changes. No experimental column-list SQL patch or diagnostic timing wrappers were applied.
+
+The raw exception traceback identifies the timeout and owner call site. No separate Torch-step stdout log was returned by Harbor on timeout, and no retained per-step measurements support a detailed download timeline. Unsaved progress observations are not reproduced as timing evidence. Container `5772919a2c3a` was confirmed absent after cleanup.
+
+This package includes the closed archive inventory, exact archived framework owner snapshots, original input hashes, dependency compatibility metadata, independent source/archive review, 91-control receipts, setup logs, failure and cleanup observations. It excludes the runtime tarball, weights, task source/instruction contents, mutable databases, authority state, and hidden verifier. There were no provider calls, model training, official verifier runs, or qualified proof results. The earlier successful 13 real-checkpoint component tests remain separate historical evidence for the unchanged consumers.
+
+The reproducible commands and selected environment are retained in `host/bundle-command.json`, `host/run-command.json`, and `host/controls-command.json`. `qualification.json` records the final setup failure; `controls/qualification.json` records only local dependency/probe controls.

@@ -1,0 +1,30 @@
+{
+  "schema": "exact-session-test-command-recovery@1",
+  "provenance": "Exact executed nested exec_command arguments recovered from scoped session call payloads; not reconstructed command guesses. Parent exec call also contained source edits, excluded here. Original exits remain tool output/history and completed XML.",
+  "commands": [
+    {
+      "timestamp": "2026-10-03T10:53:56.484Z",
+      "call_id": "call_tB3GhbMhJxfXYO3eTRK1N65g",
+      "session_path": "/home/barberb/.codex/sessions/2026/10/02/rollout-2026-10-02T23-12-57-01a0fee4-6a10-7c93-aea7-6451ed4d5813.jsonl",
+      "selected_tool_payload_sha256": "e868f16241c977a0147b25e62d0bcc5e3cfc82eb4932321881f0d367fab7fedb",
+      "executed_tool_arguments": {
+        "cmd": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py --junitxml=/home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/focused-01.xml > /home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/focused-01.log 2>&1",
+        "workdir": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+        "yield_time_ms": 1000,
+        "max_output_tokens": 1000
+      }
+    },
+    {
+      "timestamp": "2026-10-03T10:55:31.122Z",
+      "call_id": "call_gQgldXD8o9wcni6TNmkowQok",
+      "session_path": "/home/barberb/.codex/sessions/2026/10/02/rollout-2026-10-02T23-12-57-01a0fee4-6a10-7c93-aea7-6451ed4d5813.jsonl",
+      "selected_tool_payload_sha256": "1f5d2c07cc308481bc5196e17d719295bed955ccbcb84d0433d0ec612e2c379e",
+      "executed_tool_arguments": {
+        "cmd": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py --junitxml=/home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/combined-02.xml > /home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/combined-02.log 2>&1",
+        "workdir": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+        "yield_time_ms": 1000,
+        "max_output_tokens": 1000
+      }
+    }
+  ]
+}

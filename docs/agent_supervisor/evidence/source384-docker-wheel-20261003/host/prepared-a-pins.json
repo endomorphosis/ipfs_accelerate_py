@@ -1,0 +1,22 @@
+[
+  {
+    "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+    "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+  },
+  {
+    "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+    "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc"
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+    "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+    "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+  }
+]

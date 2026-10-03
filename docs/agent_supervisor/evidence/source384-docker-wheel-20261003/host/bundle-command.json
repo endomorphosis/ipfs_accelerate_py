@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/source384-docker-wheel-20261003/bundle",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+    "--datasets",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "--kit",
+    "/home/barberb/lift_coding/external/ipfs_kit",
+    "--extension-dir",
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/bottle-canary-04/source384-config.json",
+    "--torch-cpu-wheel",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "OMP_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "executed": false
+}

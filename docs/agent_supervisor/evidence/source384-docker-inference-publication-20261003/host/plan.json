@@ -1,0 +1,18 @@
+{
+  "schema": "source384-portable-publication-qualification-plan@1",
+  "status": "launched-after-current43-datasets13-supervisor-controls-and-archive-audit",
+  "archive_built": true,
+  "docker_started": true,
+  "native_context_budget_seconds": 90,
+  "probe_budget_seconds": 270,
+  "harbor_exec_budget_seconds": 300,
+  "outer_budget_seconds": 2300,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "original_input_files": 218,
+  "framework_inputs": 2,
+  "checkpoint_weights_changed": false,
+  "provider_calls": 0,
+  "official_verifier_executed": false,
+  "benchmark_result": false,
+  "change": "Move generic canonical JSON staging out of training-only inference import; preserve existing provenance guards and publication fences."
+}

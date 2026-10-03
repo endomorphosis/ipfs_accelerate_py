@@ -1,0 +1,8 @@
+{
+  "final_result_reviewed": true,
+  "readme_sha256": "f26c27496cc2bf88bf50718a6820790b2d8db8aedca90ad8d10b8d02bf4e4d89",
+  "summary_sha256": "bae1d0efeb57e082bb5b56561e3efcd6668e1356623279d10f8ebbbd48190e15",
+  "native_inference_retained_sha256": "2fc72e0de92a97547661885cc5dcb9c00f2257356a49efe8b6537adecb95ffb7",
+  "native_inference_export": "exclude_source_payload",
+  "review_scope": "Actual successful native qualification and source-free metadata independently checked; source-bearing export deliberately omitted."
+}

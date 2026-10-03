@@ -1,0 +1,92 @@
+{
+  "archive_entries": 11718,
+  "archive_selected_assets_unchanged": true,
+  "archive_sha256": "aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e",
+  "benchmark_result": false,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "completed_neural_inference_qualified": false,
+  "container_absent": true,
+  "control_process_seconds": 21.666967930999817,
+  "current_deployment_controls": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 91
+  },
+  "exit_returncode": 1,
+  "failure_error": "Command timed out after 600 seconds",
+  "failure_phase": "deployment:torch-cpu-install",
+  "failure_type": "RuntimeError",
+  "limits": [
+    "The Torch installation command exceeded its existing 600-second exec bound before pandas installation, native import verification, supervisor START, or Source384 preparation.",
+    "Total wrapper duration includes prior deployment steps and cleanup; no saved per-step timing supports a more detailed breakdown.",
+    "Read-only progress observations in tool history were not retained as raw artifacts and are not represented as measured timing evidence.",
+    "The original218 file hashes were recorded before setup; final source-preservation and cgroup probes were never reached.",
+    "This setup failure does not test whether the pinned pandas dependency resolves native Source384 timeouts.",
+    "No new benchmark score, token comparison, completed inference, or source-qualified proof is claimed."
+  ],
+  "model_download_calls": 0,
+  "native_context_budget_seconds": 90,
+  "native_context_started": false,
+  "native_import_probe_reached": false,
+  "native_inference_artifact_exported": false,
+  "native_supervisor_start_reached": false,
+  "official_verifier_executed": false,
+  "original_bottle_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "original_source_files_observed_before_setup": 218,
+  "pandas_runtime_install_reached": false,
+  "postdeployment_original_source_preservation_qualified": false,
+  "producer_pins": [
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+    },
+    {
+      "bytes": 28950,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43"
+    },
+    {
+      "bytes": 95861,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f"
+    },
+    {
+      "bytes": 41061,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463"
+    },
+    {
+      "bytes": 30864,
+      "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf"
+    }
+  ],
+  "production_sql_patch_applied": false,
+  "provider_calls": 0,
+  "qualified": false,
+  "resource_limits_weakened": false,
+  "resource_profile_requested": "source384-5cpu-12gib@1",
+  "runtime_cgroup_observation_available": false,
+  "schema": "source384-docker-pandas-qualification@1",
+  "setup_step_timeout_seconds": 600,
+  "source_qualified_proof_claimed": false,
+  "total_wrapper_seconds": 812.4837281590007,
+  "training_steps": 0
+}

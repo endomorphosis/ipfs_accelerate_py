@@ -1,0 +1,70 @@
+[
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d",
+    "bytes": 63757
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+    "bytes": 5333
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "sha256": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9",
+    "bytes": 15468
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "sha256": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+    "bytes": 10340
+  },
+  {
+    "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+    "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+    "bytes": 17751,
+    "unchanged": true
+  },
+  {
+    "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+    "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+    "bytes": 33516,
+    "unchanged": true
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+    "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18",
+    "bytes": 12062,
+    "unchanged": true
+  },
+  {
+    "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+    "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e",
+    "bytes": 1350,
+    "unchanged": true
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+    "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43",
+    "bytes": 28950,
+    "unchanged": true
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+    "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f",
+    "bytes": 95861,
+    "unchanged": true
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463",
+    "bytes": 41061,
+    "unchanged": true
+  },
+  {
+    "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+    "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf",
+    "bytes": 30864,
+    "unchanged": true
+  }
+]

@@ -1,0 +1,6 @@
+{
+  "final_result_reviewed": true,
+  "readme_sha256": "0da2d162f9b98a448b7dc2b7f9ec3e1e0eecf52e4a5f4a4684b694a1db48dfdb",
+  "summary_sha256": "06744655070f1d043a6a4b76c1872ce4439cb008bc1209bb22da010e715526dd",
+  "review_scope": "Actual setup/resources/source-preservation/traceback plus frozen code; worker path inferred but no persisted inference receipt."
+}

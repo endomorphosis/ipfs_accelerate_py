@@ -1,0 +1,156 @@
+{
+  "benchmark_result": false,
+  "bounded_worker_invoked": true,
+  "cache_after": {
+    "cid_encode_memo": {
+      "currsize": 32768,
+      "hits": 333583,
+      "maxsize": 32768,
+      "misses": 34482
+    },
+    "cid_layout_recognition_is_not_live_fast_path_proof": true,
+    "cid_native_layout_cache": {
+      "currsize": 1,
+      "hits": 810372,
+      "maxsize": 1,
+      "misses": 1
+    },
+    "cid_preexisting_cached_layout_recognized": true,
+    "cid_validate_memo": {
+      "currsize": 3804,
+      "hits": 14169,
+      "maxsize": 32768,
+      "misses": 3804
+    },
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 1,
+      "evictions": 0,
+      "hits": 3,
+      "misses": 1,
+      "retained_bytes": 89231179
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "cache_before": {
+    "cid_encode_memo": {
+      "currsize": 0,
+      "hits": 0,
+      "maxsize": 32768,
+      "misses": 0
+    },
+    "cid_layout_recognition_is_not_live_fast_path_proof": true,
+    "cid_native_layout_cache": {
+      "currsize": 0,
+      "hits": 0,
+      "maxsize": 1,
+      "misses": 0
+    },
+    "cid_preexisting_cached_layout_recognized": null,
+    "cid_validate_memo": {
+      "currsize": 0,
+      "hits": 0,
+      "maxsize": 32768,
+      "misses": 0
+    },
+    "manifest_memo": {
+      "bypasses": 0,
+      "entries": 0,
+      "evictions": 0,
+      "hits": 0,
+      "misses": 0,
+      "retained_bytes": 0
+    },
+    "manifest_producer_recognized": true,
+    "manifest_producer_unchanged": true
+  },
+  "completed_neural_inference_qualified": false,
+  "deployment_seconds": 80.80737202300224,
+  "diagnostic_only": true,
+  "dropped_events": 0,
+  "events": 258,
+  "events_sha256": "5a1ea6867a45f76db6ee9bb14706b42625d79c986543c4a2f1f06100f808d946",
+  "findings": [
+    "Cold preparation consumed79.330941s before the worker.",
+    "Worker received0.917290s before child admission, then timed out after0.955463s.",
+    "Manifest memo was active with3hits,1miss,0bypasses and0evictions.",
+    "Nested stage inclusive totals overlap; exclusive totals subtract immediate timed children only.",
+    "Instrumentation changes runtime callables in memory; this is not production qualification or a speed claim.",
+    "These events do not split cold preparation into scanner, canonical reconstruction and SQL costs."
+  ],
+  "initial_context_seconds": 97.16132554200158,
+  "original_files_preserved": 218,
+  "paired_calls": 128,
+  "probe_seconds": 108.61180300100386,
+  "production_qualification_claimed": false,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "source384-stage-timing-analysis@1",
+  "stage_calls": [
+    {
+      "at_seconds": 18.30065550099971,
+      "elapsed_seconds": 79.33094100900053,
+      "error_type": null,
+      "passed_timeout_seconds": 89.12261259200022,
+      "stage": "index.prepare_current",
+      "timeout_scope": null
+    },
+    {
+      "at_seconds": 99.29729614100506,
+      "elapsed_seconds": 5.597702750994358,
+      "error_type": null,
+      "passed_timeout_seconds": 8.126227085995197,
+      "stage": "index.observe_current",
+      "timeout_scope": null
+    },
+    {
+      "at_seconds": 104.89504213900364,
+      "elapsed_seconds": 1.609509027999593,
+      "error_type": null,
+      "passed_timeout_seconds": null,
+      "stage": "source_units._context",
+      "timeout_scope": null
+    },
+    {
+      "at_seconds": 106.50623233900114,
+      "elapsed_seconds": 0.9554627489997074,
+      "error_type": "ValueError",
+      "passed_timeout_seconds": 0.9172904559964081,
+      "stage": "source_units._worker",
+      "timeout_scope": "worker_entry_before_child_admission_and_subprocess_allocation"
+    }
+  ],
+  "successful_model_load_qualified": false,
+  "totals": {
+    "ast_store._load": {
+      "calls": 31,
+      "exclusive_seconds": 1.1507897379706264,
+      "inclusive_seconds": 2.082735344993125
+    },
+    "ast_store._rebuild": {
+      "calls": 93,
+      "exclusive_seconds": 3.066793359022995,
+      "inclusive_seconds": 3.066793359022995
+    },
+    "index.observe_current": {
+      "calls": 1,
+      "exclusive_seconds": 3.514967406001233,
+      "inclusive_seconds": 5.597702750994358
+    },
+    "index.prepare_current": {
+      "calls": 1,
+      "exclusive_seconds": 77.19609325700003,
+      "inclusive_seconds": 79.33094100900053
+    },
+    "source_units._context": {
+      "calls": 1,
+      "exclusive_seconds": 1.609509027999593,
+      "inclusive_seconds": 1.609509027999593
+    },
+    "source_units._worker": {
+      "calls": 1,
+      "exclusive_seconds": 0.9554627489997074,
+      "inclusive_seconds": 0.9554627489997074
+    }
+  }
+}

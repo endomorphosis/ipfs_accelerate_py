@@ -158,3 +158,144 @@ against these exact producers. The new closed package is
 `docs/agent_supervisor/evidence/source384-docker-reconstruction-20261003`;
 earlier packages remain unchanged. Docker qualification is still refused,
 with no new benchmark score, token comparison or source-qualified proof.
+
+## Preparation stage diagnostics
+
+Two instrumented runs reuse the fifth generation's exact archive, original
+218 files, five CPUs/12288 MiB and native 90-second context budget. Seven and
+nine wrapper controls pass; producer guards remain unchanged and all timing
+events are retained. Cold preparation takes 79.331 and 79.481 seconds. The
+first run reaches the worker with only 0.917 seconds remaining before child
+admission; its timeout does not measure inference throughput.
+
+The deeper run spends 39.979 seconds across 31 projection-persistence calls,
+including row materialization and SQL execution. Scanning takes 14.140 seconds
+and parsing 0.705 seconds. Its first observation receives 0.588 seconds and
+refuses before worker invocation. Inclusive nested timings overlap; they do
+not establish a production latency or speed improvement. A database-only
+replay is needed to separate SQL calls from Python batching.
+
+The independently retained runs, controls, analyses and cleanup are in
+`docs/agent_supervisor/evidence/source384-docker-stage-diagnostics-20261003`.
+These diagnostics identify preparation budget starvation without qualifying
+Docker inference, a benchmark score, token savings or any source property.
+
+## SQL replay and runtime dependency diagnosis
+
+An exact replay of 31 retained projections preserves all 13 catalog tables and
+cold native reconstruction. The native batched VALUES path takes 3.399 seconds
+of execute time on the host and 40.269 seconds in Docker. An external column-list
+UNNEST candidate reduces host execute time to 0.946 seconds, but Docker still
+takes 38.692 seconds. Both paths bind the same 870,877 scalar values through the
+same DuckDB 1.5.5 binary. The candidate SQL patch remains unapplied.
+
+DuckDB's scalar conversion probes pandas types before ordinary Python scalar
+types. With pandas absent, its optional import cache retries failed imports.
+Four fresh subprocesses with standard import finders isolate real pandas
+availability while retaining the same interpreter, DuckDB binary, NumPy and
+36,864 mixed scalar values. Available-pandas execute times are 0.0215/0.0217
+seconds; missing-pandas times are 0.9992/0.9958 seconds. Every returned value
+matches. The separate import-count control records two failed import attempts
+per non-null scalar. These small native controls establish dependency-related
+conversion overhead; they do not measure full container qualification.
+
+The deployment now pins pandas 3.0.2 and NumPy 1.26.4 in its base requirements.
+Its native import probe checks and reports both before START. All 91 focused
+deployment, transport and qualification controls pass, including missing-pandas
+refusal. The source catalog, decoder weights and inference contracts are
+unchanged. The closed diagnostic package is in datasets at
+`docs/software_contracts/evidence/source-sql-column-performance-20261003`.
+
+The first fresh archive with that correction has SHA256
+`aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e`.
+It stops during the existing 600-second CPU PyTorch installation limit, before
+pandas installation, native START or Source384 preparation. The whole attempt
+takes 812.484 seconds. Its raw failure, tested owners, archive inventory and
+container cleanup are retained in
+`docs/agent_supervisor/evidence/source384-docker-pandas-20261003`. This setup
+failure does not test the correction's full-container inference outcome.
+
+## Packaged Torch wheel and inference publication
+
+The next uninstrumented run used an explicitly selected Torch 2.13.0 CPU
+wheel, verified against its SHA256 before transport and again after extraction.
+Installation, the pandas/NumPy import probe, native START/STOP, and preservation
+of all 218 original input files passed. Deployment took 65.266 seconds. Actual
+cgroup limits matched five CPUs and 12288 MiB; the native 90-second Source384
+budget and all other execution bounds stayed unchanged.
+
+Source384 qualification remained false. Initial context failed after 78.045
+seconds, and the full probe took 89.425 seconds. The traceback reached the
+publication helper import and raised `SchemaLakeError: canonical workspace
+checkout is unavailable`. Frozen code and the traceback indicate that the
+bounded worker returned and output/source checks passed before that import.
+No model-load count, decoded coverage, final Source384 receipt, or committed
+inference artifact was exported or verified. The container was removed. The
+closed failure package is
+`docs/agent_supervisor/evidence/source384-docker-wheel-20261003`, manifest
+`bc0bea276d89b2f70367488d0cd0641c8190155ae7dbfeacfe17d921029d6272`.
+
+The cause was inference publication importing a training module solely to
+stage canonical JSON. That import also loaded training/proof workspace
+initialization. The datasets fix moves the identical staging operation into
+the existing shared Source384 owner; inference calls it directly and the
+training helper delegates to it. Canonical serialization, registry staging,
+source/model checks and deadlines remain unchanged. The canonical-workspace
+guard itself is unchanged.
+
+Validation remains separated by scope: 136 accelerate deployment, wheel,
+transport and qualification controls; 43 datasets publication, inference and
+training integration tests; and 13 accelerate tests using the actual pinned
+checkpoint. These are distinct suites, not an official benchmark score. The
+datasets regressions cover publication without importing training/proof
+owners and replay after reopening the registry. The corrected Docker result follows separately.
+
+## Successful original-source checkpoint inference
+
+The fresh corrected archive has SHA256
+`50ed24823090ca9034819bc27e350bbbd098de2345c120c2db4a3c720aceed6c`.
+All 11,719 members passed independent byte/hash/mode verification. Relative
+to the preceding wheel archive, only the three datasets staging-helper owners
+changed. The checkpoint, GTE snapshot, supervisor runtime, original 218 files,
+five-CPU/12288-MiB limits and all deadlines were retained.
+
+Deployment passed in 458.743 seconds, including dependency installation and
+native START/STOP. Preparation took 10.364 seconds. Actual Source384 capture,
+inference and publication completed in 82.872 seconds against its cooperative
+90-second budget. The complete initial context took 147.267 seconds, including
+other indexing, hydration and evidence checks. The subsequent warm observation
+took 13.403 seconds without rerunning neural inference. The whole native probe
+took 171.962 seconds within its 270-second limit; the complete deployment and
+qualification attempt took 656.825 seconds. One observed success does not
+establish a latency distribution or a network-installation speedup.
+
+The saved artifact verifies actual checkpoint consumption, one GTE model load,
+and a successful CPU worker with a 12.736-second receipt. It accounts for all
+220 permitted inputs (218 original plus two framework inputs), 31 Python files
+and 944 functions. Of 128 selected units, 127 decode as unverified candidates
+that the source-contract guard rejects as unsupported, and one exceeds the GTE
+token limit. Another 737 units are deferred by selection limits and 79 have
+unsupported normalization. No property becomes proved or source-qualified.
+
+The container was removed. The closed evidence is
+`docs/agent_supervisor/evidence/source384-docker-inference-publication-20261003`.
+The full 4,505,485-byte native artifact remains local under SHA256
+`2fc72e0de92a97547661885cc5dcb9c00f2257356a49efe8b6537adecb95ffb7`;
+it contains benchmark source text, so the public package retains reviewed
+metadata and verification receipts instead. No checkpoint weights or runtime
+archive are included in that package.
+
+This qualifies original-container deployment and the full Source384 initial
+context path. It performs zero provider calls, training steps or official
+verifier runs. A full task trial, automatic successor inference after accepted
+publication, a fresh reward/token comparison and the header grammar extension
+remain separate work. The 32-item backlog's closure counts remain unchanged.
+
+For the successful closed package, `qualification.json` retains several
+original host-relative receipt names. Resolve
+`distinct_component_suites.inherited_accelerate_transport.artifact`
+(`controls.xml`) as `host/controls.xml`. In
+`command_provenance.actual_execution_receipts`, the four bare JSON filenames
+resolve under `host/`; `docker-01/qualification.json` is already package-relative.
+The manifest contains each resolved file and its digest. This clarification
+preserves the sealed evidence bytes and does not change the test or run result.

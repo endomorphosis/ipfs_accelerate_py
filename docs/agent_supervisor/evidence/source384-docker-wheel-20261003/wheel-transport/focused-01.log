@@ -1,0 +1,69 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 52 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_selected_wheel_exact_bytes_and_closed_binding_roundtrip[aarch64] [32mPASSED[0m[32m [  1%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_selected_wheel_exact_bytes_and_closed_binding_roundtrip[x86_64] [32mPASSED[0m[32m [  3%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_selection_requires_path_and_independent_pin_together[path] [32mPASSED[0m[32m [  5%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_selection_requires_path_and_independent_pin_together[pin] [32mPASSED[0m[32m [  7%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_wheel_does_not_activate_a_new_model_runtime [32mPASSED[0m[32m [  9%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_wrong_or_malformed_independent_pin_refused[0000000000000000000000000000000000000000000000000000000000000000] [32mPASSED[0m[32m [ 11%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_wrong_or_malformed_independent_pin_refused[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA] [32mPASSED[0m[32m [ 13%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_wrong_or_malformed_independent_pin_refused[not-a-pin] [32mPASSED[0m[32m [ 15%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_wrong_or_malformed_independent_pin_refused[123] [32mPASSED[0m[32m [ 17%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.13.0+cu128-cp312-cp312-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 19%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.12.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 21%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unsupported_version_runtime_or_wheel_filename_refused[unselected.whl] [32mPASSED[0m[32m [ 25%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_bounded_regular_independent_wheel_required[symlink] [32mPASSED[0m[32m [ 26%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_bounded_regular_independent_wheel_required[hardlink] [32mPASSED[0m[32m [ 28%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_bounded_regular_independent_wheel_required[oversize] [32mPASSED[0m[32m [ 30%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_bounded_regular_independent_wheel_required[missing] [32mPASSED[0m[32m [ 32%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[package] [32mPASSED[0m[32m [ 34%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[version] [32mPASSED[0m[32m [ 36%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[tag] [32mPASSED[0m[32m [ 38%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[duplicate] [32mPASSED[0m[32m [ 40%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[oversized] [32mPASSED[0m[32m [ 42%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_malformed_wheel_metadata_refused_even_with_matching_digest[not-zip] [32mPASSED[0m[32m [ 44%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[missing-binding] [32mPASSED[0m[32m [ 46%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[missing-member] [32mPASSED[0m[32m [ 48%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[wrong-size] [32mPASSED[0m[32m [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[wrong-digest] [32mPASSED[0m[32m [ 51%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[duplicate-member] [32mPASSED[0m[32m [ 53%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[extra-member] [32mPASSED[0m[32m [ 55%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[bad-path] [32mPASSED[0m[32m [ 57%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[bad-requirement] [32mPASSED[0m[32m [ 59%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[bool-size] [32mPASSED[0m[32m [ 61%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_unbound_or_malformed_selection_refused_before_container_calls[extra-key] [32mPASSED[0m[32m [ 63%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[bytes] [32mPASSED[0m[32m [ 65%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[missing] [32mPASSED[0m[32m [ 67%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[symlink] [32mPASSED[0m[32m [ 69%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[duplicate] [32mPASSED[0m[32m [ 71%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_exact_extracted_probe_runs_before_third_party_installation [32mPASSED[0m[32m [ 73%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_extracted_wheel_rechecked_before_install[changed] [32mPASSED[0m[32m [ 75%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_extracted_wheel_rechecked_before_install[wrong-platform] [32mPASSED[0m[32m [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_extracted_wheel_rechecked_before_install[wrong-size] [32mPASSED[0m[32m [ 78%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_install_selection_timeout_and_no_fallback[False-False] [32mPASSED[0m[32m [ 80%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_install_selection_timeout_and_no_fallback[True-False] [32mPASSED[0m[32m [ 82%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_install_selection_timeout_and_no_fallback[True-True] [32mPASSED[0m[32m [ 84%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_archive_contains_only_explicit_runtime_sources_and_native_assets [32mPASSED[0m[32m [ 86%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_base_archive_pins_scalar_binding_dependencies_without_learned_assets [32mPASSED[0m[32m [ 88%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_exact_native_import_probe_reports_available_scalar_dependencies [32mPASSED[0m[32m [ 90%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_exact_native_import_probe_refuses_missing_pandas [32mPASSED[0m[32m [ 92%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_extension_symlink_cannot_enter_runtime_archive [32mPASSED[0m[32m [ 94%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_changed_runtime_archive_refused_before_container_calls [32mPASSED[0m[32m [ 96%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_model_revision_survives_asset_packaging [32mPASSED[0m[32m [ 98%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_model_revision_must_be_an_explicit_snapshot_directory [32mPASSED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-torch-wheel-transport-20261003/focused-01.xml -
+============================= slowest 10 durations =============================
+0.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py::test_exact_native_import_probe_reports_available_scalar_dependencies
+0.22s call     benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py::test_exact_extracted_probe_runs_before_third_party_installation
+
+(8 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================== [32m[1m52 passed[0m[32m in 2.04s[0m[32m ==============================[0m

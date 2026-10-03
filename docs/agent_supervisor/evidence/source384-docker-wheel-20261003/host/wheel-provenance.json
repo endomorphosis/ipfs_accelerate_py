@@ -1,0 +1,65 @@
+{
+  "files": [
+    {
+      "bytes": 1364,
+      "path": "wheel-provenance/download.py",
+      "sha256": "c6ea9d771f649ce2c126fa62ec4408ea09fe794eccf1925044662195086dcbf1"
+    },
+    {
+      "bytes": 640,
+      "path": "wheel-provenance/command.json",
+      "sha256": "d2171a129242fc529f27153653d9e502d5f015c960dcfe62307cb1d81d281630"
+    },
+    {
+      "bytes": 422,
+      "path": "wheel-provenance/download-result.json",
+      "sha256": "5496bc9124b77e2de53b55a371121ed02dd091fadb0c825893ebe41cbe51e7e7"
+    },
+    {
+      "bytes": 9480,
+      "path": "wheel-provenance/download.log",
+      "sha256": "3277ec60b907ba4e98752ca2ed91e163199525f5568efe341459b3bbc85183e2"
+    },
+    {
+      "bytes": 1077,
+      "path": "wheel-provenance/indexed-download.log",
+      "sha256": "71d65b2a8e353d91d4d5f63366a5f0127699af841f3c4e0086427a6184d64611"
+    },
+    {
+      "bytes": 201,
+      "path": "wheel-provenance/canonical-transfer-interruption.json",
+      "sha256": "e4664433ea8711621742484f5fd5132f9878dcde8fbb28b11c04290accdff6e3"
+    },
+    {
+      "bytes": 1353,
+      "path": "wheel-provenance/canonical-attempt-01/download.py",
+      "sha256": "316fe1efe0ed640656d6449f5319e13ad607f07be517d81d262d27a9498f1403"
+    },
+    {
+      "bytes": 637,
+      "path": "wheel-provenance/canonical-attempt-01/command.json",
+      "sha256": "2558dfe13f157ede8cdbe1f911456b95b91871c8eb06c11b19e132d7a5115064"
+    },
+    {
+      "bytes": 184,
+      "path": "wheel-provenance/canonical-attempt-01/download-result.json",
+      "sha256": "edaef9718c4ffb2f85e862dd79ce3de7e45464131d96aef414fa16bf24e61ed4"
+    },
+    {
+      "bytes": 9480,
+      "path": "wheel-provenance/canonical-attempt-01/download.log",
+      "sha256": "3277ec60b907ba4e98752ca2ed91e163199525f5568efe341459b3bbc85183e2"
+    },
+    {
+      "bytes": 3955,
+      "path": "wheel-provenance/official-metadata.json",
+      "sha256": "988d6fa6728ad68c2cde546e3a14eab69a4b3e7eee1007fc7001c57ba40aa2e8"
+    }
+  ],
+  "official_metadata_pending": false,
+  "schema": "qualification-wheel-provenance@1",
+  "verified_download_receipt": true,
+  "wheel_bytes": 155005253,
+  "wheel_payload_excluded": true,
+  "wheel_sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+}

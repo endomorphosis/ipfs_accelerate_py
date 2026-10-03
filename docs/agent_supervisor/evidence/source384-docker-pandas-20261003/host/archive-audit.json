@@ -1,0 +1,29 @@
+{
+  "schema": "source384-fresh-runtime-archive-audit@1",
+  "archive_sha256": "aeba7f2233a2b7dc042d6c6eb5d74debad64e0be36ae61196a0ebf9c425ea91e",
+  "entries": 11718,
+  "exact_member_bytes_checked": true,
+  "live_tested_source_pins_checked": true,
+  "core_eight_producers_unchanged": true,
+  "all_selected_model_assets_unchanged": true,
+  "changes": {
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_boundary_training.py": {
+      "before": "06bfb523a1a70b5dc09889cfc80c07fc03dc6680e7f258445a6f4ee4617e0e0f",
+      "after": "9ffde0b48c9d595b788a56dae182968d21b1e65e67e4d538691b72aa888924ff"
+    },
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py": {
+      "before": "a236cbef0a5aa49c2e4f8096946eee5ae15d14764ed3fe8b468ed7fd3e3d20f2",
+      "after": "181657ee8f7475856821d35fd97130b8429836e058152df2eff55363f85c76a1"
+    },
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/shared_slot_source_decoder_experiment.py": {
+      "before": "66c265ae4021c0f427ebcc879f7324e7492aa07c0e74b6d98c3ceec45e81e734",
+      "after": "4a2fec44a1d8756c212a2e64cad774919aed1f8c12b3741c6608e2dd35c7f0d1"
+    },
+    "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+      "before": "79d750afbadf760d19efdcd649240c4b4497ba9d695e193861088ef628e04627",
+      "after": "a0fec6bc70beb6f51c2cd51564c7958f9ebb64b24d3469db597174956b84a94d"
+    }
+  },
+  "additional_changes": "Three previously merged upstream training-only modules; separate closure review required. No source/test SQL patch applied.",
+  "production_qualification": false
+}

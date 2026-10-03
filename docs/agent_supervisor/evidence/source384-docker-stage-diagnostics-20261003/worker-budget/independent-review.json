@@ -1,0 +1,50 @@
+{
+  "control_evidence": {
+    "exit_sha256": "f4a67c20f74e17f7feb5f13b264d965fda10aaad90677efe30d1c9585d80b7f2",
+    "log_sha256": "227378d0962cf53326661dcb55e0a51be8ba1dc348117c9389df67fdba770476",
+    "passed": 7,
+    "process_seconds": 0.34255526599736186,
+    "reviewer_reran_controls": false,
+    "unittest_seconds": 0.266
+  },
+  "limitations": [
+    "Method wrappers add timing overhead; diagnostic outcome cannot substitute for production qualification.",
+    "CID cached-layout recognition is not live registry fast-branch profiling.",
+    "Worker-entry remaining timeout includes child admission; further subprocess-time allocation is not directly observed.",
+    "Host file download is bounded by producer file limits and post-download regular-file size checks, not a separate streaming byte cap."
+  ],
+  "preserved_scope": {
+    "archive_sha256": "43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3",
+    "cpu_count": 5,
+    "memory_bytes": 12884901888,
+    "model_or_source_unit_imports_before_original_boundary_added": false,
+    "native_context_seconds": 90,
+    "original_inputs": 218,
+    "probe_seconds": 270,
+    "runtime_owner_source_files_changed": false
+  },
+  "reviewed_at_utc": "2026-10-03T09:02:30.428265+00:00",
+  "reviewed_contracts": [
+    "Launcher verifies unchanged archive bytes and eight frozen/archive/live producer pins; requires fresh output and explicit rootGO diagnostic marker.",
+    "Instrumentation installs only in-memory class/method wrappers after existing production _pins call; source-unit module wrappers install via sys.modules only after production imports it inside native timer.",
+    "Native manifest producer guard remains recognized and unchanged before/after class and module wrappers.",
+    "Snapshots read CID memo/layout cache_info without initializing lazy native layout; cold control proves counters unchanged by diagnostic snapshots.",
+    "Post-context inspection of already populated layout is narrowly labeled cached-layout recognition, not proof of active fast branch.",
+    "Actual CID encode/validate memo hits/misses/current size and manifest hit/miss/bypass/retention counters are emitted.",
+    "Worker timeout field is labeled entry budget before child admission and subprocess allocation; exact subprocess allocation is not claimed.",
+    "Arguments, staticmethod descriptor and exception identity are preserved by bounded controls; only finite timeout/memory scalars and error class name enter events.",
+    "Event stream is bounded4096 events/1MiB with dropped-event count; summary is bounded32768 bytes; no paths, state, source text, formulas or payload contents are recorded in timing events.",
+    "Diagnostic finish restores wrappers even if stream close fails; host fetches bounded event/summary files before original container cleanup, each download under30 seconds.",
+    "Outer result always labels diagnostic_only and production_qualification_claimed false; raw production wrapper output is retained as diagnostic evidence even if instrumented native path passes."
+  ],
+  "reviewer_heavy_tests_or_native_jobs": false,
+  "reviewer_source_edits": false,
+  "root_go_granted_by_reviewer": false,
+  "schema": "independent-external-diagnostic-review@1",
+  "scripts": {
+    "check_diagnostic.py": "8e49dc04d6da6200cd88af57c66b82b400c09bd9accad88d37a72e24137f6a65",
+    "run_diagnostic.py": "de0f37d4aff3422ae94fdfb9a28fbf01a28fd14153f6cf733ed38559facd3b97",
+    "timing_runtime.py": "a99b6a3e563152b0fe8284621e57460fe7eb5f148c60414fb49375c0da2d3d9c"
+  },
+  "verdict": "no blocker; suitable for root-authorized diagnostic-only run"
+}

@@ -1,0 +1,43 @@
+{
+  "base_requirements": [
+    "numpy>=1.26.0; python_version < \"3.14\"",
+    "numpy>=2.3.3; python_version >= \"3.14\"",
+    "python-dateutil>=2.8.2",
+    "tzdata; sys_platform == \"win32\"",
+    "tzdata; sys_platform == \"emscripten\""
+  ],
+  "cp312_aarch64_wheel": [
+    {
+      "bytes": 10399577,
+      "filename": "pandas-3.0.2-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+      "requires_python": ">=3.11",
+      "sha256": "aff4e6f4d722e0652707d7bcb190c445fe58428500c6d16005b02401764b1b3d"
+    }
+  ],
+  "host_python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "installed": [
+    {
+      "distribution": "pandas",
+      "metadata_sha256": "455c6d9fca848660525501efe855e8e8e9c9e5bc86603f575c7fc2e7bb015c89",
+      "requires_python": ">=3.11",
+      "version": "3.0.2",
+      "wheel": "Wheel-Version: 1.0\nGenerator: meson\nRoot-Is-Purelib: false\nTag: cp312-cp312-manylinux_2_24_aarch64\nTag: cp312-cp312-manylinux_2_28_aarch64\n\n"
+    },
+    {
+      "distribution": "numpy",
+      "metadata_sha256": "cd7a5f30fae1d746a914838bfc713f412f5ccc3cec445b39483f304546398401",
+      "requires_python": ">=3.9",
+      "version": "1.26.4",
+      "wheel": "Wheel-Version: 1.0\nGenerator: meson\nRoot-Is-Purelib: false\nTag: cp312-cp312-manylinux_2_17_aarch64\nTag: cp312-cp312-manylinux2014_aarch64\n\n"
+    },
+    {
+      "distribution": "duckdb",
+      "metadata_sha256": "581ba787fa022badf7995c01dcae8f5a3af6fd3f9a8c5fb4eee74e8c241e6c01",
+      "requires_python": ">=3.10.0",
+      "version": "1.5.5",
+      "wheel": "Wheel-Version: 1.0\nGenerator: scikit-build-core 1.0.3\nRoot-Is-Purelib: false\nTag: cp312-cp312-manylinux_2_26_aarch64\nTag: cp312-cp312-manylinux_2_28_aarch64\n\n"
+    }
+  ],
+  "requires_python": ">=3.11",
+  "source": "https://pypi.org/pypi/pandas/3.0.2/json"
+}

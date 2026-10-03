@@ -1,0 +1,14 @@
+test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors (__main__.DiagnosticControls.test_all_cold_targets_preserve_native_guard_and_restore_exact_descriptors) ... ok
+test_event_byte_limit_records_drops (__main__.DiagnosticControls.test_event_byte_limit_records_drops) ... ok
+test_event_count_limit_records_drops (__main__.DiagnosticControls.test_event_count_limit_records_drops) ... ok
+test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness (__main__.DiagnosticControls.test_ingest_callbacks_preserve_order_arguments_results_errors_and_generator_laziness) ... ok
+test_native_guard_survives_wrappers_and_units_are_lazy (__main__.DiagnosticControls.test_native_guard_survives_wrappers_and_units_are_lazy) ... ok
+test_probe_injection_keeps_original_runtime_and_alarm (__main__.DiagnosticControls.test_probe_injection_keeps_original_runtime_and_alarm) ... ok
+test_restore_wrappers_even_when_diagnostic_stream_close_fails (__main__.DiagnosticControls.test_restore_wrappers_even_when_diagnostic_stream_close_fails) ... ok
+test_snapshots_do_not_initialize_native_layout_or_cid_memos (__main__.DiagnosticControls.test_snapshots_do_not_initialize_native_layout_or_cid_memos) ... ok
+test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads (__main__.DiagnosticControls.test_timeout_arguments_staticmethod_and_exceptions_preserved_without_payloads) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.283s
+
+OK

@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-03T11:13:07.614208+00:00",
+  "cause": "ExplicitCODEBASE384_LAKE selected the Elan launcher; native_family_lake_v4._execute intentionally refuses that path before executing a backend. Two checked-property labels therefore stay unqualified and the shared fixture assertion correctly fails.",
+  "checked_receipt": "/home/barberb/lift_coding/artifacts/source384-inference-publication-import-20261003/datasets-02-temp/strict3840/owned/public/property-lake/receipt.json",
+  "correction": "Select already installed pinned native toolchain bin/lake as in previously qualified runs; do not change assertions, skip checks or weaken native-owner path policy.",
+  "failed_command": "datasets-02-command.json",
+  "failed_suite": "datasets-02.xml",
+  "native_execution_findings": {
+    "backend_executed": false,
+    "count": 2,
+    "execution": {
+      "backend_executed": false,
+      "reason": "select_installed_native_lake_not_elan_shim",
+      "status": "unavailable"
+    },
+    "qualified": false,
+    "status": "unavailable"
+  },
+  "receipt_sha256": "620c885f29ecbfb213e87ad93d3766ce4e601aa65c4673933b34dcf52ce58db1",
+  "runtime_changes_to_fix_fixture": false,
+  "schema": "native-lake-fixture-independent-diagnosis@1"
+}

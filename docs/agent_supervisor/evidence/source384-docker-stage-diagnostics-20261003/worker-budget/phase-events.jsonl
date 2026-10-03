@@ -1,0 +1,258 @@
+{"at_seconds": 0.0009025520048453473, "event": "installed"}
+{"at_seconds": 18.300613117004104, "event": "units_wrapped"}
+{"at_seconds": 18.30065550099971, "call_id": 1, "depth": 0, "event": "enter", "memory_mb": 4096, "parent_call_id": null, "stage": "index.prepare_current", "timeout_seconds": 89.12261259200022}
+{"at_seconds": 51.97227200800262, "call_id": 2, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 51.975595007002994, "call_id": 2, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.003321158998005558, "stage": "ast_store._rebuild"}
+{"at_seconds": 51.97595345200534, "call_id": 3, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.783013508000295, "call_id": 3, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.807057015997998, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.796473565998895, "call_id": 4, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80642843399983, "call_id": 4, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.009953668006346561, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80679454300116, "call_id": 5, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80778240800282, "call_id": 5, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0009875609976006672, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80792520700197, "call_id": 6, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80846475400176, "call_id": 6, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0005393230021581985, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.80855780999991, "call_id": 7, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.81002371900104, "call_id": 7, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0014656210041721351, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.81015555799968, "call_id": 8, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.811526123005024, "call_id": 8, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0013703250006074086, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.81164949799859, "call_id": 9, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.83202654300112, "call_id": 9, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.020375973006593995, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.83287928900245, "call_id": 10, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.83698788200127, "call_id": 10, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.00410798499797238, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.83732480700564, "call_id": 11, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.94863418499881, "call_id": 11, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.11130801799299661, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.951934864002396, "call_id": 12, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.957607941003516, "call_id": 12, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.005672341001627501, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.95788408299995, "call_id": 13, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.966779503003636, "call_id": 13, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.008895036000467371, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.967124843999045, "call_id": 14, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.968838767003035, "call_id": 14, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0017136509995907545, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.96899900599965, "call_id": 15, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.96995055099978, "call_id": 15, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0009513050026725978, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.970051094001974, "call_id": 16, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.97389533700334, "call_id": 16, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0038440670032287017, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.9740997350018, "call_id": 17, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.98169991800387, "call_id": 17, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.007599798998853657, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.98203409100097, "call_id": 18, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.98781079900073, "call_id": 18, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.005776532001618762, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.98807977300021, "call_id": 19, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.996206911004265, "call_id": 19, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.00812646600388689, "stage": "ast_store._rebuild"}
+{"at_seconds": 52.996610924004926, "call_id": 20, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.01229350900394, "call_id": 20, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.01568157699512085, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.01299203200324, "call_id": 21, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.045236090998515, "call_id": 21, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.032243098998151254, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.04635611399863, "call_id": 22, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.050430643001164, "call_id": 22, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.004074033000506461, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.050630609999644, "call_id": 23, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.07299268000497, "call_id": 23, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.022361174000252504, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.073856720999174, "call_id": 24, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.1052521620004, "call_id": 24, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.03139433700562222, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.10639543399884, "call_id": 25, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.116582988004666, "call_id": 25, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.010186002000409644, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.11713037600566, "call_id": 26, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.13081547200272, "call_id": 26, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.013682935998076573, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.1315013390049, "call_id": 27, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.150364346998686, "call_id": 27, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.018862239994632546, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.15110555800493, "call_id": 28, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.158401614004106, "call_id": 28, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.007295719995454419, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.15873878000275, "call_id": 29, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.181823771999916, "call_id": 29, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.023083264000888448, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.18276437299937, "call_id": 30, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.213683226000285, "call_id": 30, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.03091749300074298, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.21486768100294, "call_id": 31, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.269529953999154, "call_id": 31, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.054660672998579685, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.27132017999975, "call_id": 32, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 53.29188948000228, "call_id": 32, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.020567412000673357, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.40989745900151, "call_id": 33, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.413023883003916, "call_id": 33, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.003126039999187924, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.413200282004254, "call_id": 34, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.78883458600467, "call_id": 34, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.3756328960007522, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.79998224600422, "call_id": 35, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.80886387400096, "call_id": 35, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.008880475994374137, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.808998065003834, "call_id": 36, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.809965066000586, "call_id": 36, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0009666810001363046, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.810005338003975, "call_id": 37, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81039451900142, "call_id": 37, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.00038895699981367216, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81041191099939, "call_id": 38, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81196783500491, "call_id": 38, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0015557480001007207, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81202141800168, "call_id": 39, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81336252800247, "call_id": 39, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0013409020029939711, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.81341188800434, "call_id": 40, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.83333399300318, "call_id": 40, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.019921656996302772, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.83389661300316, "call_id": 41, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.837729799000954, "call_id": 41, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0038329779999912716, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.83790981399943, "call_id": 42, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.946342512004776, "call_id": 42, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.10843153000314487, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.949405577004654, "call_id": 43, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.955197164999845, "call_id": 43, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.005790995994175319, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.955365836001874, "call_id": 44, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.96435901500081, "call_id": 44, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.008992875002149958, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.96461303000251, "call_id": 45, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.966292425000574, "call_id": 45, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0016792189999250695, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.96635400800005, "call_id": 46, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.96727907300374, "call_id": 46, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0009248249989468604, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.9673114410034, "call_id": 47, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.97111794000375, "call_id": 47, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0038063069951022044, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.97124293100205, "call_id": 48, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.978782329999376, "call_id": 48, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.007539079000707716, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.97901370400359, "call_id": 49, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.98472012500133, "call_id": 49, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.005706165000447072, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.98488554800133, "call_id": 50, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.99303222200251, "call_id": 50, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.00814624199847458, "stage": "ast_store._rebuild"}
+{"at_seconds": 56.993287772005715, "call_id": 51, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.008365273999516, "call_id": 51, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.01507714999752352, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.00880107899866, "call_id": 52, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.040330904004804, "call_id": 52, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.031528833002084866, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.041257153003244, "call_id": 53, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.044883669004776, "call_id": 53, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.003625844001362566, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.04499525199935, "call_id": 54, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.06787439100299, "call_id": 54, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.022877795003296342, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.06853997000144, "call_id": 55, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.099653878001845, "call_id": 55, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.031113028002437204, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.10049081499892, "call_id": 56, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.11024466100207, "call_id": 56, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.009753318001457956, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.110521731003246, "call_id": 57, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.123761950999324, "call_id": 57, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.013239419997262303, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.12414140400506, "call_id": 58, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.14242241800093, "call_id": 58, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.018279941999935545, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.14294692600379, "call_id": 59, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.150232710002456, "call_id": 59, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.0072853039964684285, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.150457861003815, "call_id": 60, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.17328480799915, "call_id": 60, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.022825683001428843, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.173920531000476, "call_id": 61, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.20424898900092, "call_id": 61, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.030327658001624513, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.20509367000341, "call_id": 62, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.25924695600406, "call_id": 62, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.05415197399997851, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.26066785700095, "call_id": 63, "depth": 1, "event": "enter", "parent_call_id": 1, "stage": "ast_store._rebuild"}
+{"at_seconds": 57.280690696999955, "call_id": 63, "error_type": null, "event": "exit", "parent_call_id": 1, "seconds": 0.020022424003400374, "stage": "ast_store._rebuild"}
+{"at_seconds": 97.63159907000227, "call_id": 1, "error_type": null, "event": "exit", "parent_call_id": null, "seconds": 79.33094100900053, "stage": "index.prepare_current"}
+{"at_seconds": 99.29729614100506, "call_id": 64, "depth": 0, "event": "enter", "memory_mb": 4096, "parent_call_id": null, "stage": "index.observe_current", "timeout_seconds": 8.126227085995197}
+{"at_seconds": 100.10053410800174, "call_id": 65, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 100.1023196150054, "call_id": 66, "depth": 2, "event": "enter", "parent_call_id": 65, "stage": "ast_store._rebuild"}
+{"at_seconds": 100.10572208600206, "call_id": 66, "error_type": null, "event": "exit", "parent_call_id": 65, "seconds": 0.0034015109995380044, "stage": "ast_store._rebuild"}
+{"at_seconds": 100.1152836149995, "call_id": 65, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.014747619003173895, "stage": "ast_store._load"}
+{"at_seconds": 100.36580562499876, "call_id": 67, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 100.37343438500102, "call_id": 68, "depth": 2, "event": "enter", "parent_call_id": 67, "stage": "ast_store._rebuild"}
+{"at_seconds": 100.78947388000233, "call_id": 68, "error_type": null, "event": "exit", "parent_call_id": 67, "seconds": 0.41603771899826825, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.0899928660001, "call_id": 67, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.7241851290018531, "stage": "ast_store._load"}
+{"at_seconds": 101.65115041399986, "call_id": 69, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.65339530900383, "call_id": 70, "depth": 2, "event": "enter", "parent_call_id": 69, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.65695117100404, "call_id": 70, "error_type": null, "event": "exit", "parent_call_id": 69, "seconds": 0.0035546459985198453, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.66503535200172, "call_id": 69, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.013882666004064959, "stage": "ast_store._load"}
+{"at_seconds": 101.68625348299975, "call_id": 71, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.68761964900477, "call_id": 72, "depth": 2, "event": "enter", "parent_call_id": 71, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.68906191100541, "call_id": 72, "error_type": null, "event": "exit", "parent_call_id": 71, "seconds": 0.0014409020004677586, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.6947258049986, "call_id": 71, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.008470257998851594, "stage": "ast_store._load"}
+{"at_seconds": 101.71195646200067, "call_id": 73, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.71331027600536, "call_id": 74, "depth": 2, "event": "enter", "parent_call_id": 73, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.71408318300382, "call_id": 74, "error_type": null, "event": "exit", "parent_call_id": 73, "seconds": 0.0007723469971097074, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.71907268200448, "call_id": 73, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.007114508000086062, "stage": "ast_store._load"}
+{"at_seconds": 101.7356304480054, "call_id": 75, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.73705467800028, "call_id": 76, "depth": 2, "event": "enter", "parent_call_id": 75, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.73922901300102, "call_id": 76, "error_type": null, "event": "exit", "parent_call_id": 75, "seconds": 0.0021736950002377853, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.74597848400299, "call_id": 75, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.01034614799573319, "stage": "ast_store._load"}
+{"at_seconds": 101.76343152300251, "call_id": 77, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.7649609680011, "call_id": 78, "depth": 2, "event": "enter", "parent_call_id": 77, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.76673663499969, "call_id": 78, "error_type": null, "event": "exit", "parent_call_id": 77, "seconds": 0.0017748030004440807, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.77348172100028, "call_id": 77, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.010047413998108823, "stage": "ast_store._load"}
+{"at_seconds": 101.79075373800151, "call_id": 79, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.7923720300023, "call_id": 80, "depth": 2, "event": "enter", "parent_call_id": 79, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.81443961200421, "call_id": 80, "error_type": null, "event": "exit", "parent_call_id": 79, "seconds": 0.02206625400140183, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.83845789900079, "call_id": 79, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.04770252900198102, "stage": "ast_store._load"}
+{"at_seconds": 101.86930551200203, "call_id": 81, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.87098423499992, "call_id": 82, "depth": 2, "event": "enter", "parent_call_id": 81, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.87545669900283, "call_id": 82, "error_type": null, "event": "exit", "parent_call_id": 81, "seconds": 0.004471296000701841, "stage": "ast_store._rebuild"}
+{"at_seconds": 101.88492099699943, "call_id": 81, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.015613661002134904, "stage": "ast_store._load"}
+{"at_seconds": 101.9038788090038, "call_id": 83, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 101.90673272400454, "call_id": 84, "depth": 2, "event": "enter", "parent_call_id": 83, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.03224092000164, "call_id": 84, "error_type": null, "event": "exit", "parent_call_id": 83, "seconds": 0.12550667599862209, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.12966452300316, "call_id": 83, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.22578318599698832, "stage": "ast_store._load"}
+{"at_seconds": 102.23045010100032, "call_id": 85, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.23201346600399, "call_id": 86, "depth": 2, "event": "enter", "parent_call_id": 85, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.23715253200498, "call_id": 86, "error_type": null, "event": "exit", "parent_call_id": 85, "seconds": 0.005137337997439317, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.24815729900001, "call_id": 85, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.017705133999697864, "stage": "ast_store._load"}
+{"at_seconds": 102.26752546000353, "call_id": 87, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.26916079199873, "call_id": 88, "depth": 2, "event": "enter", "parent_call_id": 87, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.27928793400497, "call_id": 88, "error_type": null, "event": "exit", "parent_call_id": 87, "seconds": 0.010125750006409362, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.2944792940034, "call_id": 87, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.026952169995638542, "stage": "ast_store._load"}
+{"at_seconds": 102.31758805199934, "call_id": 89, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.31907396099996, "call_id": 90, "depth": 2, "event": "enter", "parent_call_id": 89, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.32174450100138, "call_id": 90, "error_type": null, "event": "exit", "parent_call_id": 89, "seconds": 0.0026692920000641607, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.32958791599958, "call_id": 89, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.011997768000583164, "stage": "ast_store._load"}
+{"at_seconds": 102.34731573700265, "call_id": 91, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.34867617500277, "call_id": 92, "depth": 2, "event": "enter", "parent_call_id": 91, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.35003181300272, "call_id": 92, "error_type": null, "event": "exit", "parent_call_id": 91, "seconds": 0.0013549659997806884, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.35645264600316, "call_id": 91, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.009134924999671057, "stage": "ast_store._load"}
+{"at_seconds": 102.37382407000405, "call_id": 93, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.37522782000451, "call_id": 94, "depth": 2, "event": "enter", "parent_call_id": 93, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.37999536900315, "call_id": 94, "error_type": null, "event": "exit", "parent_call_id": 93, "seconds": 0.004766572994412854, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.39002273500228, "call_id": 93, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.016197001001273748, "stage": "ast_store._load"}
+{"at_seconds": 102.40945564800495, "call_id": 95, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.41102658000455, "call_id": 96, "depth": 2, "event": "enter", "parent_call_id": 95, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.41977869200491, "call_id": 96, "error_type": null, "event": "exit", "parent_call_id": 95, "seconds": 0.008750720000534784, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.43375599700084, "call_id": 95, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.02429836499504745, "stage": "ast_store._load"}
+{"at_seconds": 102.45591132200207, "call_id": 97, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.45749279900338, "call_id": 98, "depth": 2, "event": "enter", "parent_call_id": 97, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.46423359700566, "call_id": 98, "error_type": null, "event": "exit", "parent_call_id": 97, "seconds": 0.006739550000929739, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.47583509600372, "call_id": 97, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.01992206199793145, "stage": "ast_store._load"}
+{"at_seconds": 102.49648936000449, "call_id": 99, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.49794214899885, "call_id": 100, "depth": 2, "event": "enter", "parent_call_id": 99, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.50726360000408, "call_id": 100, "error_type": null, "event": "exit", "parent_call_id": 99, "seconds": 0.009319979006249923, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.52114234599867, "call_id": 99, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.024651289997564163, "stage": "ast_store._load"}
+{"at_seconds": 102.54307183300261, "call_id": 101, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.54454868600442, "call_id": 102, "depth": 2, "event": "enter", "parent_call_id": 101, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.56104787700315, "call_id": 102, "error_type": null, "event": "exit", "parent_call_id": 101, "seconds": 0.016497766999236774, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.57887478500197, "call_id": 101, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.03580104900174774, "stage": "ast_store._load"}
+{"at_seconds": 102.60610655300115, "call_id": 103, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.60776012499991, "call_id": 104, "depth": 2, "event": "enter", "parent_call_id": 103, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.64206099299918, "call_id": 104, "error_type": null, "event": "exit", "parent_call_id": 103, "seconds": 0.03429963600501651, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.6740781490007, "call_id": 103, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.0679699000029359, "stage": "ast_store._load"}
+{"at_seconds": 102.71311056600098, "call_id": 105, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.71439809200092, "call_id": 106, "depth": 2, "event": "enter", "parent_call_id": 105, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.71850001400162, "call_id": 106, "error_type": null, "event": "exit", "parent_call_id": 105, "seconds": 0.004100946003745776, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.72589290400356, "call_id": 105, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.012780017998011317, "stage": "ast_store._load"}
+{"at_seconds": 102.74441724800272, "call_id": 107, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.74589533299877, "call_id": 108, "depth": 2, "event": "enter", "parent_call_id": 107, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.77058518300328, "call_id": 108, "error_type": null, "event": "exit", "parent_call_id": 107, "seconds": 0.02468868200230645, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.79514549799933, "call_id": 107, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.050726601999485865, "stage": "ast_store._load"}
+{"at_seconds": 102.82756042799883, "call_id": 109, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.82930633499927, "call_id": 110, "depth": 2, "event": "enter", "parent_call_id": 109, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.86291922400414, "call_id": 110, "error_type": null, "event": "exit", "parent_call_id": 109, "seconds": 0.03361098500317894, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.89401296299911, "call_id": 109, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.06645053500687936, "stage": "ast_store._load"}
+{"at_seconds": 102.93228463300329, "call_id": 111, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.93413071599934, "call_id": 112, "depth": 2, "event": "enter", "parent_call_id": 111, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.94489721300488, "call_id": 112, "error_type": null, "event": "exit", "parent_call_id": 111, "seconds": 0.010765185004856903, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.95831839400489, "call_id": 111, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.026031984998553526, "stage": "ast_store._load"}
+{"at_seconds": 102.9812117610054, "call_id": 113, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 102.98270887000399, "call_id": 114, "depth": 2, "event": "enter", "parent_call_id": 113, "stage": "ast_store._rebuild"}
+{"at_seconds": 102.99722447599925, "call_id": 114, "error_type": null, "event": "exit", "parent_call_id": 113, "seconds": 0.014514342001348268, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.01355918700574, "call_id": 113, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.032345505998819135, "stage": "ast_store._load"}
+{"at_seconds": 103.03903954400448, "call_id": 115, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.04043606200139, "call_id": 116, "depth": 2, "event": "enter", "parent_call_id": 115, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.060400923001, "call_id": 116, "error_type": null, "event": "exit", "parent_call_id": 115, "seconds": 0.019963213002483826, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.08231368999986, "call_id": 115, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.043271634000120685, "stage": "ast_store._load"}
+{"at_seconds": 103.11148137900454, "call_id": 117, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.11309778300347, "call_id": 118, "depth": 2, "event": "enter", "parent_call_id": 117, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.12099174100149, "call_id": 118, "error_type": null, "event": "exit", "parent_call_id": 117, "seconds": 0.007893062000221107, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.13185964500008, "call_id": 117, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.020376665997901, "stage": "ast_store._load"}
+{"at_seconds": 103.15302441699896, "call_id": 119, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.15466118900076, "call_id": 120, "depth": 2, "event": "enter", "parent_call_id": 119, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.17938804699952, "call_id": 120, "error_type": null, "event": "exit", "parent_call_id": 119, "seconds": 0.02472562600451056, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.20439154300402, "call_id": 119, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.05136533400218468, "stage": "ast_store._load"}
+{"at_seconds": 103.23687187999894, "call_id": 121, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.23864332299854, "call_id": 122, "depth": 2, "event": "enter", "parent_call_id": 121, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.27069745599874, "call_id": 122, "error_type": null, "event": "exit", "parent_call_id": 121, "seconds": 0.03205266100121662, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.30183452300116, "call_id": 121, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.06496025900560198, "stage": "ast_store._load"}
+{"at_seconds": 103.33929474300385, "call_id": 123, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.3414156880026, "call_id": 124, "depth": 2, "event": "enter", "parent_call_id": 123, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.39861160299915, "call_id": 124, "error_type": null, "event": "exit", "parent_call_id": 123, "seconds": 0.0571945709962165, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.67600916299853, "call_id": 123, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.3367121959963697, "stage": "ast_store._load"}
+{"at_seconds": 103.72976862400537, "call_id": 125, "depth": 1, "event": "enter", "parent_call_id": 64, "stage": "ast_store._load"}
+{"at_seconds": 103.73192099200242, "call_id": 126, "depth": 2, "event": "enter", "parent_call_id": 125, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.75349704200198, "call_id": 126, "error_type": null, "event": "exit", "parent_call_id": 125, "seconds": 0.02157491399702849, "stage": "ast_store._rebuild"}
+{"at_seconds": 103.77496224400238, "call_id": 125, "error_type": null, "event": "exit", "parent_call_id": 64, "seconds": 0.04519182799413102, "stage": "ast_store._load"}
+{"at_seconds": 104.89500108400534, "call_id": 64, "error_type": null, "event": "exit", "parent_call_id": null, "seconds": 5.597702750994358, "stage": "index.observe_current"}
+{"at_seconds": 104.89504213900364, "call_id": 127, "depth": 0, "event": "enter", "parent_call_id": null, "stage": "source_units._context"}
+{"at_seconds": 106.50455281500035, "call_id": 127, "error_type": null, "event": "exit", "parent_call_id": null, "seconds": 1.609509027999593, "stage": "source_units._context"}
+{"at_seconds": 106.50623233900114, "call_id": 128, "depth": 0, "event": "enter", "memory_mb": 4096, "parent_call_id": null, "stage": "source_units._worker", "timeout": 0.9172904559964081, "timeout_scope": "worker_entry_before_child_admission_and_subprocess_allocation"}
+{"at_seconds": 107.46169857600034, "call_id": 128, "error_type": "ValueError", "event": "exit", "parent_call_id": null, "seconds": 0.9554627489997074, "stage": "source_units._worker"}

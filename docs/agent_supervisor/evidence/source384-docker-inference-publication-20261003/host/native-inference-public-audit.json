@@ -1,0 +1,60 @@
+{
+  "audit_script_sha256": "8e08813c54cc901c36f730d37f958a659262c17b6c4599adeae067856772a4dc",
+  "disposition": "retain_original_locally_exclude_from_public_package",
+  "limits": "Public receipts expose source paths, symbol names, hashes and generated typed candidates; full source/activation export remains local. This is not a general secret scanner.",
+  "method": "Inspect structured fields; reject raw source fields, exact normalized-source string leaves of at least16 characters and numerical parameter arrays. Manually inspect two typed candidate summaries.",
+  "original_export": {
+    "bytes": 4505485,
+    "publicly_included": false,
+    "sha256": "2fc72e0de92a97547661885cc5dcb9c00f2257356a49efe8b6537adecb95ffb7"
+  },
+  "public_receipt_checks": [
+    {
+      "bytes": 123203,
+      "complete_normalized_source_matches": 0,
+      "numerical_parameter_arrays": 0,
+      "path": "result.json",
+      "raw_source_fields": 0,
+      "sha256": "16544039b3d8dbb408bcaefaa75b94a2c249254dffdaecec067c224277d67cfd"
+    },
+    {
+      "bytes": 44628,
+      "complete_normalized_source_matches": 0,
+      "numerical_parameter_arrays": 0,
+      "path": "docker-01/source384-context.json",
+      "raw_source_fields": 0,
+      "sha256": "7abbe0a4dfe62c34d54c74d5e53e5fc3ce3e0e3c1b9789131e1b6a8f3d49761a"
+    },
+    {
+      "bytes": 40961,
+      "complete_normalized_source_matches": 0,
+      "numerical_parameter_arrays": 0,
+      "path": "docker-01/source384-result.json",
+      "raw_source_fields": 0,
+      "sha256": "4a463e481ac64b54f20005958299eb98a412d98f8ab2d041e1d03082676873ef"
+    },
+    {
+      "bytes": 123203,
+      "complete_normalized_source_matches": 0,
+      "numerical_parameter_arrays": 0,
+      "path": "docker-01/qualification.json",
+      "raw_source_fields": 0,
+      "sha256": "16544039b3d8dbb408bcaefaa75b94a2c249254dffdaecec067c224277d67cfd"
+    },
+    {
+      "bytes": 72793,
+      "complete_normalized_source_matches": 0,
+      "numerical_parameter_arrays": 0,
+      "path": "docker-01/deployment/deployment.json",
+      "raw_source_fields": 0,
+      "sha256": "62fef4fb91a713b0b6e87e9b8189b801428a09a1b8640572b217e737ffe220fd"
+    }
+  ],
+  "raw_source_field_count": 1072,
+  "raw_source_field_locations": [
+    "report.preparation.files[*].extraction.units[*].normalized_source_text",
+    "report.preparation.selected_inputs[*].source_text"
+  ],
+  "reason": "Native preparation embeds normalized benchmark source and selected source text.",
+  "schema": "source384-native-export-publication-audit@1"
+}
