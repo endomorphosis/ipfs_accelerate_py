@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "/dev/null",
+    "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/tests",
+    "-q",
+    "--disable-warnings",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/bootstrap:/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "SOURCE384_LIFETIME_GENERATION": "before",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before-seal.db"
+  },
+  "scope": "Two complete canonical modules selected from off-tree files. Controlled loader/admission seams; logical object lifetime, not native inference or RSS.",
+  "source_pins": {
+    "A": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "before_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+      "after_sha256": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0"
+    },
+    "D": {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "before_sha256": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6",
+      "after_sha256": "e917f1f5be82b9aa31256aae415606f86a7da25e58c753357428dd6a08695eba"
+    }
+  },
+  "test_pins": {
+    "test_codebase_source_units_lifetime.py": "c1c8fe1db596efc4cdfab80f9fe329eee380e3ce2b60711fb1877f878c9a6d50",
+    "test_source384_context_lifetime.py": "aed9157830f78be7198e95e2753f1e4df3bb253a50f842b166e44288c3abbe96"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "schema": "source384-replay-lifetime-independent-review@1",
+  "reviewer": "restart_preparation",
+  "method": "read-only source, full surrounding validators and retained XML review; no reviewer tests or runtime edits",
+  "verdict": "no source blocker",
+  "files": {
+    "candidate.patch": {
+      "sha256": "0b4648ed5a96e798c9247425f3f96bbda595382642caa82d3d206e3cc77c3050",
+      "bytes": 1019
+    },
+    "source-pins.json": {
+      "sha256": "fbb8852286380091303b87159993dfa7afabd918d017a306407d0cfa775535ec",
+      "bytes": 560
+    },
+    "qualification.json": {
+      "sha256": "91adc05dc81763142ea9c7d054ca99df9ab9a05e09df6ea67de5c59709bfe7d0",
+      "bytes": 2405
+    },
+    "tests/test_codebase_source_units_lifetime.py": {
+      "sha256": "c1c8fe1db596efc4cdfab80f9fe329eee380e3ce2b60711fb1877f878c9a6d50",
+      "bytes": 4730
+    },
+    "tests/test_source384_context_lifetime.py": {
+      "sha256": "aed9157830f78be7198e95e2753f1e4df3bb253a50f842b166e44288c3abbe96",
+      "bytes": 6105
+    },
+    "controls-before.xml": {
+      "sha256": "26531f448abcd03cb2858c2e3f173bae6a6ef3feed9a552125dadb6ccb641808",
+      "bytes": 4178
+    },
+    "controls-proposed.xml": {
+      "sha256": "ff643e9f0d06d92282cf00fbb82a8d0bc9f954bfa3563fc0b814ba50d269a41f",
+      "bytes": 2213
+    },
+    "proposed/A/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": {
+      "sha256": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0",
+      "bytes": 17763
+    },
+    "proposed/D/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": {
+      "sha256": "e917f1f5be82b9aa31256aae415606f86a7da25e58c753357428dd6a08695eba",
+      "bytes": 19545
+    }
+  },
+  "test_receipts": {
+    "controls-before.xml": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "2",
+        "skipped": "0",
+        "tests": "14",
+        "time": "0.893",
+        "timestamp": "2026-10-03T15:56:32.663409+00:00",
+        "hostname": "spark-b271"
+      }
+    ],
+    "controls-proposed.xml": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "14",
+        "time": "0.721",
+        "timestamp": "2026-10-03T15:56:52.786789+00:00",
+        "hostname": "spark-b271"
+      }
+    ]
+  },
+  "findings": [
+    "A deletes raw only after its digest is checked and json.loads succeeds; parsed data and both final artifact/source/producer checks remain unchanged.",
+    "D deletes actual only after canonical byte equality and retained execution-flag checks finish; second current-source observation and detached report return remain unchanged.",
+    "Both deletions end local references at their final use, without clearing the memo, collecting garbage, adjusting admission or changing deadlines.",
+    "Authored controls use actual complete modules with declared loader/admission seams; the two lifetime failures on baseline turn into passes and twelve boundary controls remain passing.",
+    "Reference lifetime evidence on CPython does not establish RSS reduction, admission improvement, model inference or benchmark reward."
+  ],
+  "production_qualification_pending": true
+}

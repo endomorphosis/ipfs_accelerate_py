@@ -289,7 +289,6 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
     raw = _read(output / "inference.json", MAX_INFERENCE_BYTES)
     _require(_sha(raw) == receipt["inference_sha256"], "Source384 inference digest differs")
     inference = json.loads(raw)
-    del raw
     key = inference["report"]["key"]
     _require(key["source_head"] == receipt["source_head"]
              and key["version_id"] == receipt["version_id"]

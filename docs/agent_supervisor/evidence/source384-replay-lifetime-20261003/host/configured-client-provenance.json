@@ -1,0 +1,6 @@
+{
+  "source": "/home/barberb/lift_coding/artifacts/source384-manifest-actual-20261003/configured_client_plugin.py",
+  "source_sha256": "e011a9acc70348b69b3d9b98a39ded5257a1e2eff27925fea2f860a09bd2a96c",
+  "adapted_sha256": "4346eb21c1e440305a722765205fdf05e54fe18d3a3803933d18dc35c1f199b2",
+  "changes": "Only before/after receipt filename prefix changes; local artifact directory follows __file__. Same native canonical API, ledger, limits, sampler and cleanup."
+}

@@ -1,0 +1,68 @@
+{
+  "schema": "source384-replay-lifetime-controls@1",
+  "off_tree_only": true,
+  "runtime_changes": "Two explicit local-reference deletions after final use; fresh validation and returned data are unchanged.",
+  "controls": {
+    "authored_cases": 14,
+    "existing_cases": 0,
+    "before": {
+      "passed": 12,
+      "failed": 2,
+      "expected_failure": "both next-boundary lifetime assertions",
+      "pytest_seconds": 0.89
+    },
+    "proposed": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "pytest_seconds": 0.73
+    }
+  },
+  "scope": "Complete canonical modules loaded from pinned off-tree files. Declared tiny inputs; controlled loader, model-configuration, index and admission seams. Bytes subclass finalizer and weak-referenceable dict verify logical object release before later work on this CPython runtime.",
+  "not_claimed": [
+    "RSS reduction",
+    "admission improvement",
+    "model inference",
+    "native catalog/index/checkpoint qualification",
+    "throughput improvement",
+    "benchmark result"
+  ],
+  "production_tests": {
+    "A": "test/api/semantic_state/test_source384_context_lifetime.py",
+    "D": "tests/unit/logic/software_contracts/test_codebase_source_units_lifetime.py"
+  },
+  "files": {
+    "A-candidate.patch": {
+      "sha256": "7dcd04760b28cdfa486a1c6a87b4a4799dcf6a9b605c4964c4b91df0d2d3056f",
+      "bytes": 547
+    },
+    "D-candidate.patch": {
+      "sha256": "ecfb3b42dac211522e69e87e5de34d938d9acf9250ab2a1f9cf475b1712aec4e",
+      "bytes": 472
+    },
+    "candidate.patch": {
+      "sha256": "0b4648ed5a96e798c9247425f3f96bbda595382642caa82d3d206e3cc77c3050",
+      "bytes": 1019
+    },
+    "source-pins.json": {
+      "sha256": "fbb8852286380091303b87159993dfa7afabd918d017a306407d0cfa775535ec",
+      "bytes": 560
+    },
+    "tests/test_source384_context_lifetime.py": {
+      "sha256": "aed9157830f78be7198e95e2753f1e4df3bb253a50f842b166e44288c3abbe96",
+      "bytes": 6105
+    },
+    "tests/test_codebase_source_units_lifetime.py": {
+      "sha256": "c1c8fe1db596efc4cdfab80f9fe329eee380e3ce2b60711fb1877f878c9a6d50",
+      "bytes": 4730
+    },
+    "bootstrap/sitecustomize.py": {
+      "sha256": "5e7114737dad946d06001cb9fd0e39517a8b47c000b19c3a376cbc56c698e3bf",
+      "bytes": 1069
+    },
+    "run_controls.py": {
+      "sha256": "0c82f5b6f34c0fbfb9cb7efeaf9550a1600402317981034e16b1ba4ab68c7141",
+      "bytes": 1627
+    }
+  }
+}

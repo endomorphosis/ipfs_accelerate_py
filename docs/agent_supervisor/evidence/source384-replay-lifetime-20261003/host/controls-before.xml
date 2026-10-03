@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="14" time="0.893" timestamp="2026-10-03T15:56:32.663409+00:00" hostname="spark-b271"><testcase classname="test_codebase_source_units_lifetime" name="test_duplicate_native_report_released_before_second_source_observation" time="0.013"><failure message="assert False">replay_case = namespace(report={'artifact': {'declared_fixture': True}, 'report': {'key': {'source_head': {'schema': 'codebase-head@... admission={'scheduler': None, 'parent_lease': None, 'cancel_event': None, 'timeout_seconds': 30.0, 'memory_mb': 4096})
+
+    def test_duplicate_native_report_released_before_second_source_observation(replay_case):
+        case=replay_case; before=deepcopy(case.report)
+        returned=case.run()
+        assert len(case.observations)==2 and not case.observations[0]['duplicate_released']
+&gt;       assert case.observations[1]['duplicate_released']
+E       assert False
+
+tests/test_codebase_source_units_lifetime.py:62: AssertionError</failure></testcase><testcase classname="test_codebase_source_units_lifetime" name="test_duplicate_report_is_fully_checked_before_second_fence[report_bytes]" time="0.001" /><testcase classname="test_codebase_source_units_lifetime" name="test_duplicate_report_is_fully_checked_before_second_fence[execution_flags]" time="0.000" /><testcase classname="test_codebase_source_units_lifetime" name="test_both_fresh_source_refusals_remain_authoritative[1]" time="0.000" /><testcase classname="test_codebase_source_units_lifetime" name="test_both_fresh_source_refusals_remain_authoritative[2]" time="0.001" /><testcase classname="test_codebase_source_units_lifetime" name="test_cancellation_between_load_and_second_observation_still_refuses" time="0.000" /><testcase classname="test_source384_context_lifetime" name="test_source384_raw_bytes_released_before_native_replay" time="0.002"><failure message="AssertionError: assert [{'raw_releas...emory': 4096}] == [{'raw_releas...emory': 4096}]&#10;  &#10;  At index 0 diff: {'raw_released': False, 'timeout': 29.99963393300277, 'memory': 4096} != {'raw_released': True, 'timeout': 29.99963393300277, 'memory': 4096}&#10;  Use -v to get more diff">context_case = namespace(repository=PosixPath('/tmp/pytest-of-barberb/pytest-382/test_source384_raw_bytes_relea0/repo'), output=Posix...producer={'declared_fixture': True}, on_validate=None, run=&lt;function context_case.&lt;locals&gt;.&lt;lambda&gt; at 0xf46bb17a53a0&gt;)
+
+    def test_source384_raw_bytes_released_before_native_replay(context_case):
+        case=context_case
+        before=deepcopy(case.receipt)
+        result=case.run()
+&gt;       assert case.calls==[{'raw_released':True,'timeout':case.calls[0]['timeout'],'memory':4096}]
+E       AssertionError: assert [{'raw_releas...emory': 4096}] == [{'raw_releas...emory': 4096}]
+E         
+E         At index 0 diff: {'raw_released': False, 'timeout': 29.99963393300277, 'memory': 4096} != {'raw_released': True, 'timeout': 29.99963393300277, 'memory': 4096}
+E         Use -v to get more diff
+
+tests/test_source384_context_lifetime.py:81: AssertionError</failure></testcase><testcase classname="test_source384_context_lifetime" name="test_source384_input_and_fresh_fences_still_refuse[initial_digest]" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_input_and_fresh_fences_still_refuse[initial_selection]" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_input_and_fresh_fences_still_refuse[final_digest]" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_input_and_fresh_fences_still_refuse[final_source]" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_input_and_fresh_fences_still_refuse[final_producer]" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_replay_exception_is_preserved" time="0.001" /><testcase classname="test_source384_context_lifetime" name="test_source384_final_deadline_still_checked" time="0.001" /></testsuite></testsuites>

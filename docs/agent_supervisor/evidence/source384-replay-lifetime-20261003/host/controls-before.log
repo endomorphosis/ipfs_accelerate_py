@@ -1,0 +1,33 @@
+F.....F.......                                                           [100%]
+=================================== FAILURES ===================================
+____ test_duplicate_native_report_released_before_second_source_observation ____
+
+replay_case = namespace(report={'artifact': {'declared_fixture': True}, 'report': {'key': {'source_head': {'schema': 'codebase-head@... admission={'scheduler': None, 'parent_lease': None, 'cancel_event': None, 'timeout_seconds': 30.0, 'memory_mb': 4096})
+
+    def test_duplicate_native_report_released_before_second_source_observation(replay_case):
+        case=replay_case; before=deepcopy(case.report)
+        returned=case.run()
+        assert len(case.observations)==2 and not case.observations[0]['duplicate_released']
+>       assert case.observations[1]['duplicate_released']
+E       assert False
+
+tests/test_codebase_source_units_lifetime.py:62: AssertionError
+____________ test_source384_raw_bytes_released_before_native_replay ____________
+
+context_case = namespace(repository=PosixPath('/tmp/pytest-of-barberb/pytest-382/test_source384_raw_bytes_relea0/repo'), output=Posix...producer={'declared_fixture': True}, on_validate=None, run=<function context_case.<locals>.<lambda> at 0xf46bb17a53a0>)
+
+    def test_source384_raw_bytes_released_before_native_replay(context_case):
+        case=context_case
+        before=deepcopy(case.receipt)
+        result=case.run()
+>       assert case.calls==[{'raw_released':True,'timeout':case.calls[0]['timeout'],'memory':4096}]
+E       AssertionError: assert [{'raw_releas...emory': 4096}] == [{'raw_releas...emory': 4096}]
+E         
+E         At index 0 diff: {'raw_released': False, 'timeout': 29.99963393300277, 'memory': 4096} != {'raw_released': True, 'timeout': 29.99963393300277, 'memory': 4096}
+E         Use -v to get more diff
+
+tests/test_source384_context_lifetime.py:81: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../../dev/test_codebase_source_units_lifetime.py::test_duplicate_native_report_released_before_second_source_observation
+FAILED ../../../../../dev/test_source384_context_lifetime.py::test_source384_raw_bytes_released_before_native_replay
+2 failed, 12 passed, 2 warnings in 0.89s

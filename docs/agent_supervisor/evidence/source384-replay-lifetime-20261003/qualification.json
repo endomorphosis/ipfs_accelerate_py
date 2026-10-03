@@ -1,0 +1,325 @@
+{
+  "schema": "source384-replay-lifetime-final@1",
+  "status": "actual_lifetime_and_configured_client_native_controls_passed",
+  "changes": [
+    "Release consumer raw inference bytes after parsing; later native replay and fresh artifact digest checks stay unchanged.",
+    "Release duplicate native replay graph after exact bytes and execution flags validation, before second fresh source observation."
+  ],
+  "suites": {
+    "off_tree_before": {
+      "passed": 12,
+      "failed": 2,
+      "skipped": 0
+    },
+    "off_tree_candidate": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "actual_accelerate_lifetime": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "actual_accelerate_context": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "actual_datasets_host_default_attempt": {
+      "passed": 266,
+      "failed": 7,
+      "skipped": 0
+    },
+    "actual_datasets_configured_client_retry": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "actual_datasets_distinct_passing_union": 273,
+    "actual_datasets_lifetime_subset": 6
+  },
+  "distinct_lifetime_and_consumer_cases": 27,
+  "counting": "14 authored lifetime cases (8 A +6 D) and13 existing A integration cases. D six are a subset of the separately counted datasets suite, not added again; off-tree reruns are not additional distinct tests.",
+  "native_scope": "Existing A context tests exercise actual pinned checkpoint/GTE inference, nomination into planning/dispatch and replay without a second model call. Provider response is authored; no live provider, benchmark reward or token score.",
+  "scheduler_scope": "A13 and D7 are explicit configured clients of the existing native4CPU/9830MiB ledger. A before/after has zero leases/waiters and unchanged config. Sampler, headroom, thresholds, source deadlines and ownership checks remain native. No host-default startup qualification: D seven original fixtures refused conflicting active canonical configuration; final retry selected that same configuration through the supported native API.",
+  "limits": [
+    "Logical object release verified on this CPython runtime.",
+    "No RSS, resource-admission or throughput improvement established.",
+    "No complete Docker/full-supervisor qualification in this package."
+  ],
+  "source_pins": {
+    "A": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "before_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+      "after_sha256": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0"
+    },
+    "D": {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "before_sha256": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6",
+      "after_sha256": "e917f1f5be82b9aa31256aae415606f86a7da25e58c753357428dd6a08695eba"
+    }
+  },
+  "selected_files": [
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/A-candidate.patch",
+      "path": "host/A-candidate.patch",
+      "sha256": "7dcd04760b28cdfa486a1c6a87b4a4799dcf6a9b605c4964c4b91df0d2d3056f"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/D-candidate.patch",
+      "path": "host/D-candidate.patch",
+      "sha256": "ecfb3b42dac211522e69e87e5de34d938d9acf9250ab2a1f9cf475b1712aec4e"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/candidate.patch",
+      "path": "host/candidate.patch",
+      "sha256": "0b4648ed5a96e798c9247425f3f96bbda595382642caa82d3d206e3cc77c3050"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/source-pins.json",
+      "path": "host/source-pins.json",
+      "sha256": "fbb8852286380091303b87159993dfa7afabd918d017a306407d0cfa775535ec"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/qualification.json",
+      "path": "host/qualification.json",
+      "sha256": "91adc05dc81763142ea9c7d054ca99df9ab9a05e09df6ea67de5c59709bfe7d0"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/independent-preparation-review.json",
+      "path": "host/independent-preparation-review.json",
+      "sha256": "0b0b007cda47b4504127600b57856be669836fae7af662ecaf7f551a19eafd01"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/run_controls.py",
+      "path": "host/run_controls.py",
+      "sha256": "0c82f5b6f34c0fbfb9cb7efeaf9550a1600402317981034e16b1ba4ab68c7141"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/run_actual_a.py",
+      "path": "host/run_actual_a.py",
+      "sha256": "17880faaa8fc9a180369c6c8a5d7e9a738ffc968bb6027379864f03e185c1772"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/bootstrap/sitecustomize.py",
+      "path": "host/bootstrap/sitecustomize.py",
+      "sha256": "5e7114737dad946d06001cb9fd0e39517a8b47c000b19c3a376cbc56c698e3bf"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/package_evidence.py",
+      "path": "host/package_evidence.py",
+      "sha256": "e8d2d15c026683c2327934e454ec72da78a75d69dc222453c2d3d74741166eaf"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/run_configured_a.py",
+      "path": "host/run_configured_a.py",
+      "sha256": "f52e599c02d85b693718c984ed2ddd9f79fe8e79a79f155183d2c45ae1dee671"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/configured_client_plugin.py",
+      "path": "host/configured_client_plugin.py",
+      "sha256": "4346eb21c1e440305a722765205fdf05e54fe18d3a3803933d18dc35c1f199b2"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/configured-client-provenance.json",
+      "path": "host/configured-client-provenance.json",
+      "sha256": "a8145b6be169fbe5f2c76ec45d84c70449559cf88b024baae435920f895989e0"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-configured-client-before.json",
+      "path": "host/actual-a-context-configured-client-before.json",
+      "sha256": "fb442a70acb5f59c2289e0cb2491488974632033dad4d1bf1c83ed4873598a0f"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-configured-client-after.json",
+      "path": "host/actual-a-context-configured-client-after.json",
+      "sha256": "df0bccb5ea21ce900c0fa65edad88e77d4ce6112d53121ca8432b70efaba688d"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-launch.json",
+      "path": "host/actual-a-context-launch.json",
+      "sha256": "92e8feb6bf83e94699b120f0a7fe71b614817ecba96503be4e594e55fc2e4b21"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-controller-exit.json",
+      "path": "host/actual-a-context-controller-exit.json",
+      "sha256": "9fea7677d0cfbff21671f61bfc1f45eeeaff3e94c174b035f939f62fabeba3de"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before.log",
+      "path": "host/controls-before.log",
+      "sha256": "037b09c2af467ed82f2c364af12a34e83be29af237f4b8628c1d1a03f5504383"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before.xml",
+      "path": "host/controls-before.xml",
+      "sha256": "26531f448abcd03cb2858c2e3f173bae6a6ef3feed9a552125dadb6ccb641808"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before-command.json",
+      "path": "host/controls-before-command.json",
+      "sha256": "e8ea16dead0875a7effbf3aaee0bbf1ec8f9584a5af0332c2374991bb8985a40"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-before-exit.json",
+      "path": "host/controls-before-exit.json",
+      "sha256": "a163749469e7fd81ea0aeed0948aa5b5a98d1195d9b7ba2d94ca4af9d2e7cf86"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-proposed.log",
+      "path": "host/controls-proposed.log",
+      "sha256": "4c61d38af478bd2cdf6254737400e2c166c4829028ab5853cbcea5d891c8bac2"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-proposed.xml",
+      "path": "host/controls-proposed.xml",
+      "sha256": "ff643e9f0d06d92282cf00fbb82a8d0bc9f954bfa3563fc0b814ba50d269a41f"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-proposed-command.json",
+      "path": "host/controls-proposed-command.json",
+      "sha256": "260a28ded4e4b447f6b3a740c1497b121e37350dd6cecca74139e4331afb111e"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/controls-proposed-exit.json",
+      "path": "host/controls-proposed-exit.json",
+      "sha256": "77634a68f2619678a2ca785fb4cdbe649638024d3a2ca69914ae42c636a7d7d6"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-lifetime.log",
+      "path": "host/actual-a-lifetime.log",
+      "sha256": "1e904f34b2f96d621abfc224bd57386bdb922489377aea42870ec183917be301"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-lifetime.xml",
+      "path": "host/actual-a-lifetime.xml",
+      "sha256": "38100598507258cb706fca616e65c4207ee962b940522567bfce3095dae5dfd6"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-lifetime-command.json",
+      "path": "host/actual-a-lifetime-command.json",
+      "sha256": "efba1a94a8dc5d1bba05608ff3f909cbb2d76d95ae027b9fdf42982134a2c828"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-lifetime-exit.json",
+      "path": "host/actual-a-lifetime-exit.json",
+      "sha256": "3a59e1565a54f5a45759d398069e30d9dd9ad8fc73aee3e66b036b7b7aec0881"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context.log",
+      "path": "host/actual-a-context.log",
+      "sha256": "46f0f4849084290f69508530139d5746117444ca0a159c3faced1d2b2a19cec0"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context.xml",
+      "path": "host/actual-a-context.xml",
+      "sha256": "57b28edb7366fc28d08c36ba225756144d743f02257fcd58104b46b281d96b3f"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-command.json",
+      "path": "host/actual-a-context-command.json",
+      "sha256": "ad366d82f1681ad28bb54b6561d9645633ea75072e6d10b0789e185fe8304163"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/actual-a-context-exit.json",
+      "path": "host/actual-a-context-exit.json",
+      "sha256": "90aa145c2912d0619f679160f11e09fa47ede977e566861a34df759847daf316"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/before/A/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "path": "sources/before/A/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/before/D/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "path": "sources/before/D/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "sha256": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/proposed/A/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "path": "sources/proposed/A/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/proposed/D/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "path": "sources/proposed/D/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "sha256": "e917f1f5be82b9aa31256aae415606f86a7da25e58c753357428dd6a08695eba"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/tests/test_codebase_source_units_lifetime.py",
+      "path": "tests/test_codebase_source_units_lifetime.py",
+      "sha256": "c1c8fe1db596efc4cdfab80f9fe329eee380e3ce2b60711fb1877f878c9a6d50"
+    },
+    {
+      "source": "/home/barberb/lift_coding/artifacts/source384-replay-lifetime-20261003/tests/test_source384_context_lifetime.py",
+      "path": "tests/test_source384_context_lifetime.py",
+      "sha256": "aed9157830f78be7198e95e2753f1e4df3bb253a50f842b166e44288c3abbe96"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-02.log",
+      "path": "datasets/controls-02.log",
+      "sha256": "a9d3e54a053398ce94d43bfeed600bb520a2dcf612741fcdb964c787b069903c"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-02.xml",
+      "path": "datasets/controls-02.xml",
+      "sha256": "03cb1b47e930d6ba2b6edd929cc46357fbdb4a5318d9c09529b9df0c466bb475"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-02-command.json",
+      "path": "datasets/controls-02-command.json",
+      "sha256": "978304f1fd18d5ddb49ddd0351a6cb946f6c77e012ca812e01f5c16a5ac08c07"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-02-exit.json",
+      "path": "datasets/controls-02-exit.json",
+      "sha256": "5c2128eff2ba24ea66e2ca1dad07ffecc7f01b08ca2df89be6dd74c794355eef"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03.log",
+      "path": "datasets/controls-03.log",
+      "sha256": "349ff4899795506a3c2a526540f9d082bc3b90740cc3c09288779a718030ada0"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03.xml",
+      "path": "datasets/controls-03.xml",
+      "sha256": "0f9928f2e28b2b67e0e356b9c72746db908d6007c9ddab035df60a2edbe7c97a"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03-command.json",
+      "path": "datasets/controls-03-command.json",
+      "sha256": "786e0abe4a525214fcbfac9c8e47755feb36074d3224ccf4568dc9932daddafc"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03-exit.json",
+      "path": "datasets/controls-03-exit.json",
+      "sha256": "d5aa25c7cf9cac71ea3b85731d768c3f3718d7352a3a8c1fa8da77cc9bbb8741"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/configured_client_plugin.py",
+      "path": "datasets/configured_client_plugin.py",
+      "sha256": "e011a9acc70348b69b3d9b98a39ded5257a1e2eff27925fea2f860a09bd2a96c"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/run_source_controls_03.py",
+      "path": "datasets/run_source_controls_03.py",
+      "sha256": "a798a99e1a17807f7e6d3c51033e89a81f0c358b2b6f3fe3d17df086191f7ad4"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-02-scheduler-diagnosis.json",
+      "path": "datasets/controls-02-scheduler-diagnosis.json",
+      "sha256": "5a3b97daafc084bcb97ead9964d78091c8e52090486ee54817b19beeb7d7912d"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03-configured-client-before.json",
+      "path": "datasets/controls-03-configured-client-before.json",
+      "sha256": "fefeeb5cad7bf5314cb3b884d2f42f0de448b81d6dd867ad0c67a0dfb2b6b5a8"
+    },
+    {
+      "source": "artifacts/source384-manifest-actual-20261003/controls-03-configured-client-after.json",
+      "path": "datasets/controls-03-configured-client-after.json",
+      "sha256": "0177caece95b25788ef3f9e42425aab6ede53f64d0d7651803c0cffcc4944217"
+    }
+  ]
+}

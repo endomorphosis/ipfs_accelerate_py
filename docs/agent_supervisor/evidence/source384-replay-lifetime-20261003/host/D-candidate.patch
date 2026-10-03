@@ -1,0 +1,9 @@
+--- a/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py
++++ b/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py
+@@ -289,5 +289,6 @@
+         require(report['inference_executed']==(report['native_worker_executed']
+             and any(r['candidate'] is not None for r in actual['output']['rows'])),
+             'retained source-unit execution flags differ')
++        del actual
+         observe()
+         return deepcopy(report)
